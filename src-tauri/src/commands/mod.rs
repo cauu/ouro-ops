@@ -1,6 +1,8 @@
-//! Tauri IPC 命令，Phase 1 仅暴露 ping、run_playbook_test、db_version
+//! Tauri IPC commands.
 
 mod deploy;
+pub mod machine;
+pub mod pool;
 
 use crate::db::{get_user_version, table_exists, DbState};
 use crate::error::AppError;

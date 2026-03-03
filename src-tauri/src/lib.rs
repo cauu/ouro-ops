@@ -3,6 +3,7 @@
 mod commands;
 mod db;
 mod error;
+mod keychain;
 mod sidecar;
 
 use std::sync::Mutex;
@@ -52,6 +53,14 @@ pub fn run() {
             commands::ping,
             commands::db_version,
             commands::run_playbook_test,
+            commands::pool::pool_init,
+            commands::pool::pool_get,
+            commands::pool::pool_update,
+            commands::machine::machine_add,
+            commands::machine::machine_remove,
+            commands::machine::machine_list,
+            commands::machine::ssh_agent_list_keys,
+            commands::machine::machine_preflight,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

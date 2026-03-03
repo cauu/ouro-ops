@@ -82,9 +82,19 @@ mod tests {
         let conn = Connection::open_in_memory().expect("open memory db");
         run_migrations(&conn).expect("run migrations");
 
-        let pool_id = pool_insert(&conn, "OURO", "preprod").expect("insert pool");
-        let machine_id =
-            machine_insert(&conn, pool_id, "relay-1", "10.0.0.1", "relay").expect("insert machine");
+        let pool_id = pool_insert(&conn, "OURO", "preprod", Some(0.02), Some(340000000))
+            .expect("insert pool");
+        let machine_id = machine_insert(
+            &conn,
+            pool_id,
+            "relay-1",
+            "10.0.0.1",
+            22,
+            "root",
+            "relay",
+            Some("SHA256:dummy"),
+        )
+        .expect("insert machine");
         conn.execute(
             "INSERT INTO kes_state (machine_id, kes_period_current, kes_period_max, op_cert_counter)
              VALUES (?1, 1, 2, 3)",
@@ -117,5 +127,85 @@ mod tests {
         assert_eq!(count_rows(&conn, "task_machine"), 0);
         // 任务主表与 pool 无直接关联，保留由上层业务继续处理。
         assert_eq!(count_rows(&conn, "task"), 1);
+    }
+
+    #[test]
+    fn tc_p2_7_machine_repo_insert_delete_list_and_pool_binding() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+
+        let pool_id = pool_insert(&conn, "OURO", "preprod", Some(0.02), Some(340000000))
+            .expect("insert pool");
+        let pool = pool_get_single(&conn)
+            .expect("get pool")
+            .expect("pool exists");
+        assert_eq!(pool.id, pool_id);
+
+        let relay_id = machine_insert(
+            &conn,
+            pool.id,
+            "relay-1",
+            "10.0.0.10",
+            22,
+            "root",
+            "relay",
+            Some("SHA256:relay"),
+        )
+        .expect("insert relay");
+        let bp_id = machine_insert(
+            &conn,
+            pool.id,
+            "bp-1",
+            "10.0.0.11",
+            22,
+            "root",
+            "bp",
+            Some("SHA256:bp"),
+        )
+        .expect("insert bp");
+
+        let relay = machine_get(&conn, relay_id)
+            .expect("get relay")
+            .expect("relay exists");
+        assert_eq!(relay.pool_id, pool.id);
+
+        conn.execute(
+            "INSERT INTO kes_state (machine_id, kes_period_current, kes_period_max, op_cert_counter)
+             VALUES (?1, 1, 2, 3)",
+            rusqlite::params![relay_id],
+        )
+        .expect("insert kes_state");
+        conn.execute(
+            "INSERT INTO machine_health (machine_id, block_height) VALUES (?1, 120)",
+            rusqlite::params![relay_id],
+        )
+        .expect("insert machine_health");
+        let task_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO task (id, task_type, status) VALUES (?1, 'deploy', 'running')",
+            rusqlite::params![task_id],
+        )
+        .expect("insert task");
+        conn.execute(
+            "INSERT INTO task_machine (task_id, machine_id, status) VALUES (?1, ?2, 'running')",
+            rusqlite::params![task_id, relay_id],
+        )
+        .expect("insert task_machine");
+
+        let all = machine_list(&conn, None, None).expect("list all");
+        assert_eq!(all.len(), 2);
+        let only_relay = machine_list(&conn, Some("relay"), None).expect("list relay");
+        assert_eq!(only_relay.len(), 1);
+        assert_eq!(only_relay[0].id, relay_id);
+        let by_network = machine_list(&conn, None, Some("preprod")).expect("list network");
+        assert_eq!(by_network.len(), 2);
+
+        machine_delete_cascade(&conn, relay_id).expect("delete relay with cascade");
+        assert_eq!(count_rows(&conn, "machine"), 1);
+        assert_eq!(count_rows(&conn, "kes_state"), 0);
+        assert_eq!(count_rows(&conn, "machine_health"), 0);
+        assert_eq!(count_rows(&conn, "task_machine"), 0);
+        assert!(machine_get(&conn, relay_id).expect("query relay").is_none());
+        assert!(machine_get(&conn, bp_id).expect("query bp").is_some());
     }
 }
