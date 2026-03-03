@@ -4,6 +4,7 @@ import Layout from "./components/Layout";
 import { poolGet } from "./lib/ipc";
 import type { Pool } from "./lib/types";
 import Dashboard from "./pages/Dashboard";
+import DeployWizard from "./pages/DeployWizard";
 import MachineManager from "./pages/MachineManager";
 import Settings from "./pages/Settings";
 import SetupWizard from "./pages/SetupWizard";
@@ -59,6 +60,7 @@ function App() {
       <Route element={pool ? <Layout pool={pool} /> : <Navigate to="/setup" replace />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/machines" element={pool ? <MachineManager pool={pool} /> : null} />
+        <Route path="/deploy" element={pool ? <DeployWizard pool={pool} /> : null} />
         <Route
           path="/settings"
           element={

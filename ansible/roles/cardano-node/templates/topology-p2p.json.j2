@@ -1,0 +1,35 @@
+{% if role == "bp" %}
+{
+  "localRoots": [
+    {
+      "accessPoints": [
+        {% for relay in relay_nodes %}
+        { "address": "{{ relay.ip }}", "port": 3001 }{% if not loop.last %},{% endif %}
+        {% endfor %}
+      ],
+      "advertise": false,
+      "valency": {{ relay_nodes | length }},
+      "trustable": true
+    }
+  ],
+  "publicRoots": [],
+  "useLedgerAfterSlot": -1
+}
+{% else %}
+{
+  "localRoots": [
+    {
+      "accessPoints": [
+        {% for bp in bp_nodes %}
+        { "address": "{{ bp.ip }}", "port": 3001 }{% if not loop.last %},{% endif %}
+        {% endfor %}
+      ],
+      "advertise": false,
+      "valency": {{ bp_nodes | length }},
+      "trustable": true
+    }
+  ],
+  "publicRoots": [],
+  "useLedgerAfterSlot": {{ use_ledger_after_slot | default(128908821) }}
+}
+{% endif %}

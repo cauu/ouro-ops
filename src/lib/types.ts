@@ -76,3 +76,39 @@ export interface SshKeyInfo {
   comment: string;
   key_type: string;
 }
+
+export interface DeployPayload {
+  machine_ids: number[];
+  cardano_version: string;
+  image_registry: string;
+  image_digest?: string;
+  network: "mainnet" | "preprod" | "preview";
+  enable_swap: boolean;
+  swap_size_gb: number;
+  enable_chrony: boolean;
+  enable_hardening: boolean;
+}
+
+export interface TaskMachineStatus {
+  machine_id: number;
+  status: string;
+}
+
+export interface DeployTaskStatus {
+  task_id: string;
+  task_type: string;
+  status: "pending" | "running" | "success" | "failed" | "cancelled" | string;
+  payload: Record<string, unknown> | null;
+  error_msg: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  machine_statuses: TaskMachineStatus[];
+}
+
+export interface TaskLogEvent {
+  task_id: string;
+  stream: "stdout" | "stderr" | string;
+  line: string;
+  timestamp: string;
+}

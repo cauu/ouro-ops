@@ -6,6 +6,7 @@ mod error;
 mod keychain;
 mod sidecar;
 
+use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -29,14 +30,14 @@ pub fn run() {
                 let r = runner.as_mut().ok_or("runner")?;
                 r.ping().map_err(|e| e.to_string())?;
             }
-            app.manage(Mutex::new(Some(sidecar_state)));
+            app.manage(Mutex::new(Some(Arc::new(sidecar_state))));
 
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 let app = window.app_handle();
-                if let Some(state) = app.try_state::<Mutex<Option<sidecar::SidecarState>>>() {
+                if let Some(state) = app.try_state::<Mutex<Option<Arc<sidecar::SidecarState>>>>() {
                     if let Ok(mut guard) = state.lock() {
                         if let Some(s) = guard.take() {
                             if let Ok(mut runner) = s.runner.lock() {
@@ -61,6 +62,9 @@ pub fn run() {
             commands::machine::machine_list,
             commands::machine::ssh_agent_list_keys,
             commands::machine::machine_preflight,
+            commands::deploy::deploy_start,
+            commands::deploy::deploy_status,
+            commands::deploy::deploy_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -81,9 +85,28 @@ mod frontend_tests {
         let sidebar = include_str!("../../src/components/Sidebar.tsx");
         assert!(sidebar.contains("to=\"/\""));
         assert!(sidebar.contains("to=\"/machines\""));
+        assert!(sidebar.contains("to=\"/deploy\""));
         assert!(sidebar.contains("to=\"/settings\""));
         assert!(sidebar.contains("Dashboard"));
         assert!(sidebar.contains("Machines"));
+        assert!(sidebar.contains("Deploy"));
         assert!(sidebar.contains("Settings"));
+    }
+
+    #[test]
+    fn tc_fe_003_task_log_stream_filters_by_task_id() {
+        let file = include_str!("../../src/components/TaskLogStream.tsx");
+        assert!(file.contains("event.payload.task_id !== taskId"));
+    }
+
+    #[test]
+    fn tc_fe_004_deploy_wizard_step_submit() {
+        let app = include_str!("../../src/App.tsx");
+        let deploy = include_str!("../../src/pages/DeployWizard.tsx");
+        assert!(app.contains("path=\"/deploy\""));
+        assert!(deploy.contains("deployStart("));
+        assert!(deploy.contains("step === 1"));
+        assert!(deploy.contains("step === 2"));
+        assert!(deploy.contains("step === 3"));
     }
 }

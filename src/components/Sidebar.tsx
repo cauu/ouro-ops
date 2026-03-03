@@ -28,6 +28,9 @@ export default function Sidebar({ ticker }: SidebarProps) {
         <NavLink to="/machines" className={({ isActive }) => navClass(isActive)}>
           Machines
         </NavLink>
+        <NavLink to="/deploy" className={({ isActive }) => navClass(isActive)}>
+          Deploy
+        </NavLink>
         <NavLink to="/settings" className={({ isActive }) => navClass(isActive)}>
           Settings
         </NavLink>

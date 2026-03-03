@@ -75,6 +75,25 @@ def main() -> None:
                 os.makedirs(os.path.dirname(ev_path), exist_ok=True)
                 with open(ev_path, "w", encoding="utf-8") as f:
                     json.dump(extra_vars, f)
+                project_dir = os.path.join(private_data_dir, "project")
+                os.makedirs(project_dir, exist_ok=True)
+
+                playbook_to_run = playbook
+                if isinstance(playbook, str) and os.path.isfile(playbook):
+                    import shutil
+
+                    playbook_to_run = os.path.basename(playbook)
+                    shutil.copy2(playbook, os.path.join(project_dir, playbook_to_run))
+
+                    roles_dir = os.path.normpath(
+                        os.path.join(os.path.dirname(playbook), "..", "roles")
+                    )
+                    if os.path.isdir(roles_dir):
+                        shutil.copytree(
+                            roles_dir,
+                            os.path.join(project_dir, "roles"),
+                            dirs_exist_ok=True,
+                        )
 
                 if ansible_runner is None:
                     if mock_fail:
@@ -137,7 +156,10 @@ def main() -> None:
 
                 r = ansible_runner.run(
                     private_data_dir=private_data_dir,
-                    playbook=playbook,
+                    project_dir=project_dir,
+                    playbook=playbook_to_run,
+                    inventory=inventory,
+                    extravars=extra_vars,
                     event_handler=event_cb,
                 )
                 status = "successful" if r.rc == 0 else "failed"

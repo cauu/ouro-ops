@@ -1,0 +1,19 @@
+---
+- name: Deploy common baseline
+  hosts: all
+  become: true
+  roles:
+    - role: common
+
+- name: Deploy hardening controls
+  hosts: all
+  become: true
+  roles:
+    - role: hardening
+  when: enable_hardening | default(true) | bool
+
+- name: Deploy cardano node runtime
+  hosts: relay:bp
+  become: true
+  roles:
+    - role: cardano-node

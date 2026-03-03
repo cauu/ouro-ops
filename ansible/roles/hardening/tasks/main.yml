@@ -1,0 +1,42 @@
+---
+- name: Disable SSH password authentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^PasswordAuthentication\\s+"
+    line: "PasswordAuthentication no"
+    state: present
+  notify: Restart sshd
+
+- name: Ensure fail2ban is enabled
+  service:
+    name: fail2ban
+    state: started
+    enabled: true
+
+- name: Ensure UFW default deny incoming
+  command: ufw default deny incoming
+  changed_when: false
+
+- name: Ensure UFW default allow outgoing
+  command: ufw default allow outgoing
+  changed_when: false
+
+- name: Allow SSH port
+  command: "ufw allow {{ ansible_port | default(22) }}/tcp"
+  changed_when: false
+
+- name: Allow relay p2p port for relay hosts
+  command: ufw allow 3001/tcp
+  changed_when: false
+  when: role == "relay"
+
+- name: Allow relay p2p ingress for BP from trusted relay ips
+  command: "ufw allow from {{ item }} to any port 3001 proto tcp"
+  loop: "{{ trusted_relay_ips | default([]) }}"
+  changed_when: false
+  when: role == "bp"
+
+- name: Enable UFW
+  command: ufw --force enable
+  changed_when: false
+

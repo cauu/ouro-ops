@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   DbVersionResult,
+  DeployPayload,
+  DeployTaskStatus,
   Machine,
   MachineAddPayload,
   MachineFilter,
@@ -53,4 +55,16 @@ export async function machinePreflight(machineId: number): Promise<PreflightRepo
 
 export async function sshAgentListKeys(): Promise<SshKeyInfo[]> {
   return invoke("ssh_agent_list_keys");
+}
+
+export async function deployStart(payload: DeployPayload): Promise<string> {
+  return invoke("deploy_start", { payload });
+}
+
+export async function deployStatus(taskId: string): Promise<DeployTaskStatus> {
+  return invoke("deploy_status", { task_id: taskId });
+}
+
+export async function deployCancel(taskId: string): Promise<void> {
+  await invoke("deploy_cancel", { task_id: taskId });
 }

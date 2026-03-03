@@ -1,0 +1,85 @@
+---
+- name: Ensure required apt packages are installed
+  apt:
+    name:
+      - chrony
+      - curl
+      - jq
+      - ufw
+      - fail2ban
+      - docker.io
+      - python3-docker
+    state: present
+    update_cache: true
+
+- name: Ensure chrony is enabled when configured
+  service:
+    name: chrony
+    state: started
+    enabled: true
+  when: enable_chrony | default(true) | bool
+
+- name: Create swap file when enabled
+  command: "fallocate -l {{ swap_size | default('8G') }} /swapfile"
+  args:
+    creates: /swapfile
+  when: enable_swap | default(true) | bool
+
+- name: Set swap file permissions
+  file:
+    path: /swapfile
+    owner: root
+    group: root
+    mode: "0600"
+  when: enable_swap | default(true) | bool
+
+- name: Initialize swap space
+  command: mkswap /swapfile
+  when: enable_swap | default(true) | bool
+
+- name: Enable swap
+  command: swapon /swapfile
+  when: enable_swap | default(true) | bool
+
+- name: Persist swap in fstab
+  lineinfile:
+    path: /etc/fstab
+    line: "/swapfile none swap sw 0 0"
+    state: present
+  when: enable_swap | default(true) | bool
+
+- name: Configure docker daemon log rotation
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "50m",
+          "max-file": "3"
+        }
+      }
+    mode: "0644"
+
+- name: Ensure docker service is restarted after daemon change
+  service:
+    name: docker
+    state: restarted
+
+- name: Ensure docker service is enabled
+  service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Raise file descriptor limit for root
+  lineinfile:
+    path: /etc/security/limits.conf
+    line: "root soft nofile 65535"
+    state: present
+
+- name: Raise hard file descriptor limit for root
+  lineinfile:
+    path: /etc/security/limits.conf
+    line: "root hard nofile 65535"
+    state: present

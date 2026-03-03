@@ -6,7 +6,7 @@ SHELL := /bin/bash
 	fmt fmt-rust fmt-rust-check \
 	test test-rust test-rust-quiet \
 	check check-rust \
-	phase1-verify phase2-verify \
+	phase1-verify phase2-verify phase3-verify \
 	status
 
 help: ## Show available commands
@@ -54,6 +54,8 @@ check-rust: ## Run Rust compile checks
 phase1-verify: test-rust ## Verify Phase 1 baseline tests
 
 phase2-verify: test-rust ## Verify Phase 2 backend tests
+
+phase3-verify: test-rust build ## Verify Phase 3 backend + frontend baseline
 
 status: ## Show concise git status
 	git status --short

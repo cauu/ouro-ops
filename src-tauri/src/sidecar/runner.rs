@@ -98,6 +98,23 @@ pub struct SidecarState {
     _child: Mutex<Option<Child>>,
 }
 
+impl SidecarState {
+    /// 终止当前 sidecar 子进程（用于取消长任务时强制中断）。
+    pub fn terminate_process(&self) -> Result<(), AppError> {
+        let mut guard = self
+            ._child
+            .lock()
+            .map_err(|_| AppError::Internal("lock poisoned".into()))?;
+        if let Some(child) = guard.as_mut() {
+            if child.try_wait()?.is_none() {
+                let _ = child.kill();
+            }
+            let _ = child.wait();
+        }
+        Ok(())
+    }
+}
+
 fn sidecar_script_path() -> Result<PathBuf, AppError> {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .map_err(|_| AppError::Internal("CARGO_MANIFEST_DIR not set".into()))?;

@@ -1,0 +1,88 @@
+---
+- name: Preflight disk check (>=50GB)
+  shell: "df -BG / | awk 'NR==2 {gsub(/G/, \"\", $4); print $4}'"
+  register: disk_available
+  changed_when: false
+
+- name: Fail when disk is insufficient
+  fail:
+    msg: "disk insufficient: {{ disk_available.stdout }}GB"
+  when: (disk_available.stdout | int) < 50
+
+- name: Ensure Cardano directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /opt/cardano/config
+    - /opt/cardano/db
+    - /opt/cardano/keys
+
+- name: Download network config file
+  get_url:
+    url: "https://book.world.dev.cardano.org/environments/{{ network }}/config.json"
+    dest: "/opt/cardano/config/{{ network }}-config.json"
+    mode: "0644"
+
+- name: Download network genesis byron file
+  get_url:
+    url: "https://book.world.dev.cardano.org/environments/{{ network }}/byron-genesis.json"
+    dest: "/opt/cardano/config/{{ network }}-byron-genesis.json"
+    mode: "0644"
+
+- name: Download network genesis shelley file
+  get_url:
+    url: "https://book.world.dev.cardano.org/environments/{{ network }}/shelley-genesis.json"
+    dest: "/opt/cardano/config/{{ network }}-shelley-genesis.json"
+    mode: "0644"
+
+- name: Render topology template
+  template:
+    src: topology-p2p.json.j2
+    dest: /opt/cardano/config/topology.json
+    mode: "0644"
+
+- name: Pull Cardano node image
+  community.docker.docker_image:
+    name: "{{ image_registry | default('ghcr.io/intersectmbo/cardano-node') }}"
+    tag: "{{ cardano_version }}"
+    source: pull
+
+- name: Start cardano-node container
+  community.docker.docker_container:
+    name: cardano-node
+    image: "{{ image_registry | default('ghcr.io/intersectmbo/cardano-node') }}:{{ cardano_version }}"
+    state: started
+    restart_policy: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - /opt/cardano/config:/config
+      - /opt/cardano/db:/db
+      - /opt/cardano/keys:/keys
+    command: >
+      run
+      --topology /config/topology.json
+      --database-path /db
+      --socket-path /db/node.socket
+      --config /config/{{ network }}-config.json
+      --port 3001
+
+- name: Wait for port 3001
+  wait_for:
+    port: 3001
+    timeout: 60
+
+- name: Wait for node sync progress to reach 100%
+  shell: |
+    docker exec cardano-node cardano-cli query tip \
+      --socket-path /db/node.socket \
+      --{{ network }} | jq -r '.syncProgress'
+  register: sync_progress
+  until: sync_progress.stdout == "100.00"
+  retries: 120
+  delay: 30
+  changed_when: false
