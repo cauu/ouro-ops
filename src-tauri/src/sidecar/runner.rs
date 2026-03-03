@@ -2,6 +2,7 @@
 
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
+use std::fs::OpenOptions;
 use tauri::Emitter;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -114,17 +115,28 @@ pub fn spawn_sidecar(app_handle: tauri::AppHandle) -> Result<SidecarState, AppEr
         .arg(&script)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| AppError::Internal(format!("failed to spawn sidecar: {}", e)))?;
 
     let stdin = child.stdin.take().ok_or(AppError::SidecarCrash)?;
     let stdout = child.stdout.take().ok_or(AppError::SidecarCrash)?;
+    let stderr = child.stderr.take().ok_or(AppError::SidecarCrash)?;
 
     let (tx_response, rx_response) = std::sync::mpsc::channel();
 
     thread::spawn(move || {
         read_sidecar_stdout(stdout, app_handle, tx_response);
+    });
+
+    // best-effort stderr logging
+    let stderr_log_path = app_handle
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|p| p.join("sidecar.stderr.log"));
+    thread::spawn(move || {
+        read_sidecar_stderr(stderr, stderr_log_path);
     });
 
     let runner = SidecarRunner {
@@ -182,6 +194,26 @@ fn read_sidecar_stdout(
                     let _ = tx_response.send((id.clone(), obj));
                 }
             }
+        }
+    }
+}
+
+fn read_sidecar_stderr(stderr: std::process::ChildStderr, log_path: Option<PathBuf>) {
+    let mut log_file = log_path.and_then(|path| {
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .ok()
+    });
+    let reader = BufReader::new(stderr);
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        if let Some(ref mut f) = log_file {
+            let _ = writeln!(f, "{}", line);
         }
     }
 }
