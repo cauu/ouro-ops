@@ -65,3 +65,25 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod frontend_tests {
+    #[test]
+    fn tc_fe_001_redirects_to_setup_when_pool_missing() {
+        let app = include_str!("../../src/App.tsx");
+        assert!(app.contains("path=\"/setup\""));
+        assert!(app.contains("<Navigate to=\"/setup\" replace />"));
+        assert!(app.contains("pool ? <Layout pool={pool} /> : <Navigate to=\"/setup\" replace />"));
+    }
+
+    #[test]
+    fn tc_fe_002_sidebar_links_match_routes() {
+        let sidebar = include_str!("../../src/components/Sidebar.tsx");
+        assert!(sidebar.contains("to=\"/\""));
+        assert!(sidebar.contains("to=\"/machines\""));
+        assert!(sidebar.contains("to=\"/settings\""));
+        assert!(sidebar.contains("Dashboard"));
+        assert!(sidebar.contains("Machines"));
+        assert!(sidebar.contains("Settings"));
+    }
+}

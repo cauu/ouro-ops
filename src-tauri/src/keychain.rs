@@ -122,6 +122,18 @@ mod tests {
     }
 
     #[test]
+    fn tc_mch_010_ssh_agent_list_keys_returns_fingerprints() {
+        let output =
+            "3072 SHA256:fp1 user@host (RSA)\n256 SHA256:fp2 /Users/me/.ssh/id_ed25519 (ED25519)";
+        let parsed = parse_ssh_add_list_output(output);
+        let fingerprints: Vec<String> = parsed.into_iter().map(|k| k.fingerprint).collect();
+        assert_eq!(
+            fingerprints,
+            vec!["SHA256:fp1".to_string(), "SHA256:fp2".to_string()]
+        );
+    }
+
+    #[test]
     fn parse_empty_agent_output() {
         let output = "The agent has no identities.";
         let parsed = parse_ssh_add_list_output(output);
