@@ -46,3 +46,7 @@ src-tauri/WixTools/
 # Debug / test
 *.sqlite
 *.sqlite-journal
+
+.claude
+.cursor
+.agents

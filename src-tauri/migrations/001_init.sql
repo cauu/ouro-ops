@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS pool (
 -- ==================== 主机信息 ====================
 CREATE TABLE IF NOT EXISTS machine (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    pool_id             INTEGER NOT NULL REFERENCES pool(id) ON DELETE CASCADE,
+    pool_id             INTEGER NOT NULL,
     name                TEXT NOT NULL,
     ip                  TEXT NOT NULL,
     ssh_port            INTEGER DEFAULT 22,
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS machine (
 -- ==================== KES 状态 ====================
 CREATE TABLE IF NOT EXISTS kes_state (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    machine_id          INTEGER NOT NULL REFERENCES machine(id) ON DELETE CASCADE,
+    machine_id          INTEGER NOT NULL,
     kes_period_current  INTEGER,
     kes_period_max      INTEGER,
     op_cert_counter     INTEGER,
@@ -61,8 +61,8 @@ CREATE TABLE IF NOT EXISTS task (
 
 -- ==================== 任务-主机关联 ====================
 CREATE TABLE IF NOT EXISTS task_machine (
-    task_id     TEXT NOT NULL REFERENCES task(id) ON DELETE CASCADE,
-    machine_id  INTEGER NOT NULL REFERENCES machine(id) ON DELETE CASCADE,
+    task_id     TEXT NOT NULL,
+    machine_id  INTEGER NOT NULL,
     status      TEXT DEFAULT 'pending',
     log_path    TEXT,
     PRIMARY KEY (task_id, machine_id)
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS task_machine (
 -- ==================== 主机健康快照 ====================
 CREATE TABLE IF NOT EXISTS machine_health (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    machine_id          INTEGER NOT NULL REFERENCES machine(id) ON DELETE CASCADE,
+    machine_id          INTEGER NOT NULL,
     block_height        INTEGER,
     sync_progress       REAL,
     peers_count         INTEGER,
