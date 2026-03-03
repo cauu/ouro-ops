@@ -20,7 +20,14 @@ pub struct SidecarRunner {
 
 impl SidecarRunner {
     /// 发送 JSON-RPC 请求，等待同 id 的 result 或 error
-    pub fn request(&mut self, id: &str, method: &str, params: Value) -> Result<Value, AppError> {
+    /// timeout = None 表示不超时
+    pub fn request(
+        &mut self,
+        id: &str,
+        method: &str,
+        params: Value,
+        timeout: Option<Duration>,
+    ) -> Result<Value, AppError> {
         let req = serde_json::json!({
             "id": id,
             "method": method,
@@ -35,11 +42,16 @@ impl SidecarRunner {
         stdin.write_all(b"\n")?;
         stdin.flush()?;
 
-        // 等待匹配 id 的响应（5s 超时）
+        // 等待匹配 id 的响应（可选超时）
         loop {
-            let (rid, val) = self.tx_response.recv_timeout(Duration::from_secs(5)).map_err(|_| {
-                AppError::Internal("sidecar response timeout".into())
-            })?;
+            let (rid, val) = match timeout {
+                Some(t) => self.tx_response.recv_timeout(t).map_err(|_| {
+                    AppError::Internal("sidecar response timeout".into())
+                })?,
+                None => self.tx_response.recv().map_err(|_| {
+                    AppError::Internal("sidecar response channel closed".into())
+                })?,
+            };
             if rid == id {
                 if let Some(err) = val.get("error") {
                     let msg = err.get("message").and_then(Value::as_str).unwrap_or("unknown");
@@ -52,13 +64,23 @@ impl SidecarRunner {
 
     pub fn ping(&mut self) -> Result<(), AppError> {
         let id = uuid::Uuid::new_v4().to_string();
-        self.request(&id, "ping", Value::Object(serde_json::Map::new()))?;
+        self.request(
+            &id,
+            "ping",
+            Value::Object(serde_json::Map::new()),
+            Some(Duration::from_secs(5)),
+        )?;
         Ok(())
     }
 
     pub fn shutdown(&mut self) -> Result<(), AppError> {
         let id = uuid::Uuid::new_v4().to_string();
-        let _ = self.request(&id, "shutdown", Value::Object(serde_json::Map::new()));
+        let _ = self.request(
+            &id,
+            "shutdown",
+            Value::Object(serde_json::Map::new()),
+            Some(Duration::from_secs(5)),
+        );
         Ok(())
     }
 }
@@ -181,6 +203,7 @@ pub fn run_playbook(
         "inventory": inventory,
         "extra_vars": extra_vars
     });
-    runner.request(task_id, "run_playbook", params)?;
+    // 长任务不设超时，依赖 playbook_complete 事件完成
+    runner.request(task_id, "run_playbook", params, None)?;
     Ok(())
 }
