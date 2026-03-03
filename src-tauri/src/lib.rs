@@ -21,7 +21,8 @@ pub fn run() {
             let conn = db::open_and_migrate(&db_path).map_err(|e| e.to_string())?;
             app.manage(DbState(Mutex::new(conn)));
 
-            let sidecar_state = sidecar::spawn_sidecar(app_handle.clone()).map_err(|e| e.to_string())?;
+            let sidecar_state =
+                sidecar::spawn_sidecar(app_handle.clone()).map_err(|e| e.to_string())?;
             {
                 let mut runner = sidecar_state.runner.lock().map_err(|_| "lock")?;
                 let r = runner.as_mut().ok_or("runner")?;

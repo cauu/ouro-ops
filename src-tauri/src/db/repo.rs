@@ -15,9 +15,7 @@ pub fn pool_insert(conn: &Connection, ticker: &str, network: &str) -> Result<i64
 
 /// Phase 2 实现：获取当前唯一 Pool（MVP 单池）
 pub fn pool_get_single(conn: &Connection) -> Result<Option<(i64, String, String)>, AppError> {
-    let mut stmt = conn.prepare(
-        "SELECT id, ticker, network FROM pool LIMIT 1",
-    )?;
+    let mut stmt = conn.prepare("SELECT id, ticker, network FROM pool LIMIT 1")?;
     let mut rows = stmt.query([])?;
     if let Some(row) = rows.next()? {
         Ok(Some((row.get(0)?, row.get(1)?, row.get(2)?)))
@@ -39,6 +37,52 @@ pub fn machine_insert(
         rusqlite::params![pool_id, name, ip, role],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+/// 业务层级联删除 Machine（数据库无 FK，由应用层维护关联）
+pub fn machine_delete_cascade(conn: &Connection, machine_id: i64) -> Result<(), AppError> {
+    conn.execute(
+        "DELETE FROM task_machine WHERE machine_id = ?1",
+        rusqlite::params![machine_id],
+    )?;
+    conn.execute(
+        "DELETE FROM machine_health WHERE machine_id = ?1",
+        rusqlite::params![machine_id],
+    )?;
+    conn.execute(
+        "DELETE FROM kes_state WHERE machine_id = ?1",
+        rusqlite::params![machine_id],
+    )?;
+    conn.execute(
+        "DELETE FROM machine WHERE id = ?1",
+        rusqlite::params![machine_id],
+    )?;
+    Ok(())
+}
+
+/// 业务层级联删除 Pool（数据库无 FK，由应用层维护关联）
+pub fn pool_delete_cascade(conn: &Connection, pool_id: i64) -> Result<(), AppError> {
+    conn.execute(
+        "DELETE FROM task_machine
+         WHERE machine_id IN (SELECT id FROM machine WHERE pool_id = ?1)",
+        rusqlite::params![pool_id],
+    )?;
+    conn.execute(
+        "DELETE FROM machine_health
+         WHERE machine_id IN (SELECT id FROM machine WHERE pool_id = ?1)",
+        rusqlite::params![pool_id],
+    )?;
+    conn.execute(
+        "DELETE FROM kes_state
+         WHERE machine_id IN (SELECT id FROM machine WHERE pool_id = ?1)",
+        rusqlite::params![pool_id],
+    )?;
+    conn.execute(
+        "DELETE FROM machine WHERE pool_id = ?1",
+        rusqlite::params![pool_id],
+    )?;
+    conn.execute("DELETE FROM pool WHERE id = ?1", rusqlite::params![pool_id])?;
+    Ok(())
 }
 
 /// 检查表是否存在（用于 TC-DB-001）

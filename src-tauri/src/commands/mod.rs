@@ -11,9 +11,14 @@ use tauri::State;
 /// 健康检查：Sidecar ping
 #[tauri::command]
 pub async fn ping(sidecar: State<'_, Mutex<Option<SidecarState>>>) -> Result<(), AppError> {
-    let guard = sidecar.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let guard = sidecar
+        .lock()
+        .map_err(|_| AppError::Internal("lock".into()))?;
     let state = guard.as_ref().ok_or(AppError::SidecarCrash)?;
-    let mut runner = state.runner.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let mut runner = state
+        .runner
+        .lock()
+        .map_err(|_| AppError::Internal("lock".into()))?;
     let runner = runner.as_mut().ok_or(AppError::SidecarCrash)?;
     runner.ping()
 }
@@ -23,7 +28,15 @@ pub async fn ping(sidecar: State<'_, Mutex<Option<SidecarState>>>) -> Result<(),
 pub async fn db_version(db: State<'_, DbState>) -> Result<serde_json::Value, AppError> {
     let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
     let version = get_user_version(&conn)?;
-    let tables = ["pool", "machine", "task", "task_machine", "machine_health", "audit_log", "kes_state"];
+    let tables = [
+        "pool",
+        "machine",
+        "task",
+        "task_machine",
+        "machine_health",
+        "audit_log",
+        "kes_state",
+    ];
     let mut exists = serde_json::Map::new();
     for t in tables {
         exists.insert(t.to_string(), serde_json::json!(table_exists(&conn, t)?));
@@ -38,7 +51,9 @@ pub async fn run_playbook_test(
     app_handle: tauri::AppHandle,
 ) -> Result<String, AppError> {
     let task_id = uuid::Uuid::new_v4().to_string();
-    let guard = sidecar.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let guard = sidecar
+        .lock()
+        .map_err(|_| AppError::Internal("lock".into()))?;
     let state = guard.as_ref().ok_or(AppError::SidecarCrash)?;
     run_playbook(
         state,

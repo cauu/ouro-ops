@@ -32,3 +32,90 @@ pub fn open_and_migrate(db_path: &Path) -> Result<Connection, AppError> {
 pub struct DbState(pub Mutex<Connection>);
 
 pub use repo::*;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn count_rows(conn: &Connection, table: &str) -> i64 {
+        conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .expect("count rows")
+    }
+
+    #[test]
+    fn tc_db_001_migration_creates_tables_and_no_fk() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+
+        let tables = [
+            "pool",
+            "machine",
+            "kes_state",
+            "task",
+            "task_machine",
+            "machine_health",
+            "audit_log",
+        ];
+        for table in tables {
+            assert!(table_exists(&conn, table).expect("table exists"));
+        }
+        let version = get_user_version(&conn).expect("user version");
+        assert!(version >= 1);
+
+        let mut stmt = conn
+            .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name IN ('pool','machine','kes_state','task','task_machine','machine_health','audit_log')")
+            .expect("prepare sqlite_master query");
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .expect("query sqlite_master");
+        for row in rows {
+            let ddl = row.expect("read ddl");
+            assert!(
+                !ddl.to_uppercase().contains("REFERENCES"),
+                "ddl should not contain REFERENCES: {ddl}"
+            );
+        }
+    }
+
+    #[test]
+    fn tc_db_002_business_layer_cascade_without_fk() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+
+        let pool_id = pool_insert(&conn, "OURO", "preprod").expect("insert pool");
+        let machine_id =
+            machine_insert(&conn, pool_id, "relay-1", "10.0.0.1", "relay").expect("insert machine");
+        conn.execute(
+            "INSERT INTO kes_state (machine_id, kes_period_current, kes_period_max, op_cert_counter)
+             VALUES (?1, 1, 2, 3)",
+            rusqlite::params![machine_id],
+        )
+        .expect("insert kes_state");
+        conn.execute(
+            "INSERT INTO machine_health (machine_id, block_height) VALUES (?1, 100)",
+            rusqlite::params![machine_id],
+        )
+        .expect("insert machine_health");
+        let task_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO task (id, task_type, status) VALUES (?1, 'deploy', 'running')",
+            rusqlite::params![task_id],
+        )
+        .expect("insert task");
+        conn.execute(
+            "INSERT INTO task_machine (task_id, machine_id, status) VALUES (?1, ?2, 'running')",
+            rusqlite::params![task_id, machine_id],
+        )
+        .expect("insert task_machine");
+
+        pool_delete_cascade(&conn, pool_id).expect("pool cascade delete");
+
+        assert_eq!(count_rows(&conn, "pool"), 0);
+        assert_eq!(count_rows(&conn, "machine"), 0);
+        assert_eq!(count_rows(&conn, "kes_state"), 0);
+        assert_eq!(count_rows(&conn, "machine_health"), 0);
+        assert_eq!(count_rows(&conn, "task_machine"), 0);
+        // 任务主表与 pool 无直接关联，保留由上层业务继续处理。
+        assert_eq!(count_rows(&conn, "task"), 1);
+    }
+}
