@@ -61,6 +61,7 @@ pub fn run() {
             commands::machine::machine_remove,
             commands::machine::machine_list,
             commands::machine::ssh_agent_list_keys,
+            commands::machine::ssh_agent_add_key,
             commands::machine::machine_preflight,
             commands::deploy::deploy_start,
             commands::deploy::deploy_status,
@@ -105,8 +106,17 @@ mod frontend_tests {
         let deploy = include_str!("../../src/pages/DeployWizard.tsx");
         assert!(app.contains("path=\"/deploy\""));
         assert!(deploy.contains("deployStart("));
+        assert!(deploy.contains("useState(\"latest\")"));
+        assert!(deploy.contains("ghcr.io/blinklabs-io/cardano-node"));
         assert!(deploy.contains("step === 1"));
         assert!(deploy.contains("step === 2"));
         assert!(deploy.contains("step === 3"));
+    }
+
+    #[test]
+    fn tc_fe_machine_add_key_flow_exists() {
+        let mm = include_str!("../../src/pages/MachineManager.tsx");
+        assert!(mm.contains("sshAgentAddKey("));
+        assert!(mm.contains("Add Key to ssh-agent"));
     }
 }

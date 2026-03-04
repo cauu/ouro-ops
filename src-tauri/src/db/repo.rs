@@ -4,6 +4,8 @@ use rusqlite::{Connection, Row};
 
 use crate::error::AppError;
 
+const DEFAULT_IMAGE_REGISTRY: &str = "ghcr.io/blinklabs-io/cardano-node";
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PoolRow {
     pub id: i64,
@@ -134,8 +136,8 @@ pub fn machine_insert(
     ssh_key_fingerprint: Option<&str>,
 ) -> Result<i64, AppError> {
     conn.execute(
-        "INSERT INTO machine (pool_id, name, ip, ssh_port, ssh_user, role, ssh_key_fingerprint)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO machine (pool_id, name, ip, ssh_port, ssh_user, role, ssh_key_fingerprint, image_registry)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![
             pool_id,
             name,
@@ -143,7 +145,8 @@ pub fn machine_insert(
             ssh_port,
             ssh_user,
             role,
-            ssh_key_fingerprint
+            ssh_key_fingerprint,
+            DEFAULT_IMAGE_REGISTRY
         ],
     )?;
     Ok(conn.last_insert_rowid())

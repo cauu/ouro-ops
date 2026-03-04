@@ -18,68 +18,138 @@
     mode: "0755"
   loop:
     - /opt/cardano/config
-    - /opt/cardano/db
     - /opt/cardano/keys
+    - /opt/cardano/logs
+    - /opt/cardano/db
+    - /opt/cardano/ipc
+
+- name: Ensure network config directory exists
+  file:
+    path: "/opt/cardano/config/{{ network }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Check legacy data directory
+  stat:
+    path: /opt/cardano/data
+  register: legacy_data_dir
+
+- name: Probe whether new db directory already has data
+  shell: "find /opt/cardano/db -mindepth 1 -maxdepth 1 -print -quit"
+  register: new_db_probe
+  changed_when: false
+  failed_when: false
+
+- name: Migrate legacy data into /opt/cardano/db (one-time)
+  shell: |
+    set -euo pipefail
+    echo "[`date -u +%Y-%m-%dT%H:%M:%SZ`] migrating /opt/cardano/data -> /opt/cardano/db" | tee -a /opt/cardano/logs/deploy-migration.log
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --ignore-existing /opt/cardano/data/ /opt/cardano/db/
+    else
+      cp -a /opt/cardano/data/. /opt/cardano/db/
+    fi
+    echo "[`date -u +%Y-%m-%dT%H:%M:%SZ`] migration completed" | tee -a /opt/cardano/logs/deploy-migration.log
+  args:
+    executable: /bin/bash
+  when:
+    - legacy_data_dir.stat.exists | default(false)
+    - (new_db_probe.stdout | trim | length) == 0
 
 - name: Download network config file
   get_url:
     url: "https://book.world.dev.cardano.org/environments/{{ network }}/config.json"
-    dest: "/opt/cardano/config/{{ network }}-config.json"
+    dest: "/opt/cardano/config/{{ network }}/config.json"
     mode: "0644"
 
 - name: Download network genesis byron file
   get_url:
     url: "https://book.world.dev.cardano.org/environments/{{ network }}/byron-genesis.json"
-    dest: "/opt/cardano/config/{{ network }}-byron-genesis.json"
+    dest: "/opt/cardano/config/{{ network }}/byron-genesis.json"
     mode: "0644"
 
 - name: Download network genesis shelley file
   get_url:
     url: "https://book.world.dev.cardano.org/environments/{{ network }}/shelley-genesis.json"
-    dest: "/opt/cardano/config/{{ network }}-shelley-genesis.json"
+    dest: "/opt/cardano/config/{{ network }}/shelley-genesis.json"
+    mode: "0644"
+
+- name: Download network genesis alonzo file
+  get_url:
+    url: "https://book.world.dev.cardano.org/environments/{{ network }}/alonzo-genesis.json"
+    dest: "/opt/cardano/config/{{ network }}/alonzo-genesis.json"
+    mode: "0644"
+
+- name: Download network genesis conway file
+  get_url:
+    url: "https://book.world.dev.cardano.org/environments/{{ network }}/conway-genesis.json"
+    dest: "/opt/cardano/config/{{ network }}/conway-genesis.json"
     mode: "0644"
 
 - name: Render topology template
   template:
     src: topology-p2p.json.j2
-    dest: /opt/cardano/config/topology.json
+    dest: "/opt/cardano/config/{{ network }}/topology.json"
     mode: "0644"
 
-- name: Pull Cardano node image
+- name: Resolve cardano image reference (digest preferred)
+  set_fact:
+    cardano_image_ref: >-
+      {{
+        (image_registry | default('ghcr.io/blinklabs-io/cardano-node', true) | trim)
+        ~
+        (
+          '@' ~ (image_digest | default('', true) | trim)
+          if ((image_digest | default('', true) | trim | length) > 0)
+          else ':' ~ (cardano_version | default('latest', true) | trim)
+        )
+      }}
+
+- name: Pull cardano image (tag/digest)
   community.docker.docker_image:
-    name: "{{ image_registry | default('ghcr.io/intersectmbo/cardano-node') }}"
-    tag: "{{ cardano_version }}"
+    name: "{{ cardano_image_ref }}"
     source: pull
 
 - name: Start cardano-node container
   community.docker.docker_container:
     name: cardano-node
-    image: "{{ image_registry | default('ghcr.io/intersectmbo/cardano-node') }}:{{ cardano_version }}"
+    image: "{{ cardano_image_ref }}"
     state: started
     restart_policy: unless-stopped
+    command: run
+    env:
+      CARDANO_BLOCK_PRODUCER: "{{ 'true' if role == 'bp' else 'false' }}"
+      CARDANO_CONFIG_BASE: /opt/cardano/config
+      CARDANO_NETWORK: "{{ network }}"
+      CARDANO_CONFIG: "/opt/cardano/config/{{ network }}/config.json"
+      CARDANO_TOPOLOGY: "/opt/cardano/config/{{ network }}/topology.json"
+      CARDANO_DATABASE_PATH: /data/db
+      CARDANO_SOCKET_PATH: /ipc/node.socket
+      CARDANO_PORT: "3001"
     ports:
       - "3001:3001"
     volumes:
-      - /opt/cardano/config:/config
-      - /opt/cardano/db:/db
-      - /opt/cardano/keys:/keys
-    command: >
-      run
-      --topology /config/topology.json
-      --database-path /db
-      --socket-path /db/node.socket
-      --config /config/{{ network }}-config.json
-      --port 3001
+      - /opt/cardano/config:/opt/cardano/config
+      - /opt/cardano/db:/data/db
+      - /opt/cardano/ipc:/ipc
+      - /opt/cardano/keys:/opt/cardano/config/keys
 
 - name: Wait for port 3001
   wait_for:
     port: 3001
     timeout: 60
 
+- name: Wait for cardano socket file
+  wait_for:
+    path: /opt/cardano/ipc/node.socket
+    timeout: 120
+
 - name: Wait for node sync progress to reach 100%
   shell: |
     docker exec cardano-node cardano-cli query tip \
-      --socket-path /db/node.socket \
+      --socket-path /ipc/node.socket \
       --{{ network }} | jq -r '.syncProgress'
   register: sync_progress
   until: sync_progress.stdout == "100.00"

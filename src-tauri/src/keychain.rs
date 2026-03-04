@@ -1,5 +1,6 @@
 //! SSH agent / keychain related helpers.
 
+use std::path::PathBuf;
 use std::process::Command;
 
 use crate::error::AppError;
@@ -20,9 +21,16 @@ pub fn verify_ssh_agent_key(fingerprint: &str) -> Result<bool, AppError> {
 
 /// Prompt user to add key into ssh-agent / keychain.
 pub fn prompt_add_key(key_path: &str) -> Result<(), AppError> {
+    let normalized = normalize_key_path(key_path)?;
+    if !normalized.exists() {
+        return Err(AppError::Internal(format!(
+            "ssh key file not found: {}",
+            normalized.display()
+        )));
+    }
     let status = Command::new("ssh-add")
         .arg("--apple-use-keychain")
-        .arg(key_path)
+        .arg(normalized)
         .status()?;
     if status.success() {
         Ok(())
@@ -105,6 +113,24 @@ fn split_comment_and_type(rest: &str) -> (String, String) {
     (rest.trim().to_string(), String::new())
 }
 
+fn normalize_key_path(key_path: &str) -> Result<PathBuf, AppError> {
+    let trimmed = key_path.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::Internal("key path must not be empty".into()));
+    }
+    if trimmed == "~" {
+        let home = std::env::var("HOME")
+            .map_err(|_| AppError::Internal("HOME not set for key path expansion".into()))?;
+        return Ok(PathBuf::from(home));
+    }
+    if let Some(rest) = trimmed.strip_prefix("~/") {
+        let home = std::env::var("HOME")
+            .map_err(|_| AppError::Internal("HOME not set for key path expansion".into()))?;
+        return Ok(PathBuf::from(home).join(rest));
+    }
+    Ok(PathBuf::from(trimmed))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,5 +164,18 @@ mod tests {
         let output = "The agent has no identities.";
         let parsed = parse_ssh_add_list_output(output);
         assert!(parsed.is_empty());
+    }
+
+    #[test]
+    fn normalize_key_path_with_home_prefix() {
+        let home = std::env::var("HOME").expect("HOME should exist in test env");
+        let path = normalize_key_path("~/.ssh/id_ed25519").expect("normalize");
+        assert_eq!(path, PathBuf::from(home).join(".ssh/id_ed25519"));
+    }
+
+    #[test]
+    fn normalize_key_path_rejects_empty() {
+        let err = normalize_key_path("   ").expect_err("should fail for empty path");
+        assert!(err.to_string().contains("must not be empty"));
     }
 }

@@ -4,6 +4,7 @@ import {
   machineList,
   machinePreflight,
   machineRemove,
+  sshAgentAddKey,
   sshAgentListKeys,
 } from "../lib/ipc";
 import type {
@@ -30,6 +31,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
   const [keys, setKeys] = useState<SshKeyInfo[]>([]);
   const [preflightMap, setPreflightMap] = useState<Record<number, PreflightReport>>({});
   const [runningPreflight, setRunningPreflight] = useState<number | null>(null);
+  const [addingKey, setAddingKey] = useState(false);
 
   const [name, setName] = useState("");
   const [ip, setIp] = useState("");
@@ -37,6 +39,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
   const [sshUser, setSshUser] = useState("root");
   const [role, setRole] = useState<Role>("relay");
   const [fingerprint, setFingerprint] = useState("");
+  const [keyPath, setKeyPath] = useState("~/.ssh/id_ed25519");
 
   const keyOptions = useMemo(() => keys.map((k) => k.fingerprint), [keys]);
 
@@ -118,6 +121,22 @@ export default function MachineManager({ pool }: MachineManagerProps) {
     }
   };
 
+  const handleAddKey = async () => {
+    setAddingKey(true);
+    setError(null);
+    try {
+      const updatedKeys = await sshAgentAddKey(keyPath.trim());
+      setKeys(updatedKeys);
+      if (updatedKeys.length > 0) {
+        setFingerprint(updatedKeys[0].fingerprint);
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setAddingKey(false);
+    }
+  };
+
   return (
     <section className="space-y-6">
       <header>
@@ -127,12 +146,39 @@ export default function MachineManager({ pool }: MachineManagerProps) {
 
       <form onSubmit={handleAdd} className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
         <h2 className="mb-4 text-lg font-medium">Add Machine</h2>
+        {keyOptions.length === 0 && (
+          <div className="mb-4 rounded-md border border-yellow-700/60 bg-yellow-900/20 p-3 text-sm text-yellow-200">
+            <p>No keys in ssh-agent. Add a private key path to continue.</p>
+            <div className="mt-2 flex flex-col gap-2 md:flex-row">
+              <input
+                className="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                placeholder="~/.ssh/id_ed25519"
+                value={keyPath}
+                onChange={(e) => setKeyPath(e.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                onClick={() => void handleAddKey()}
+                disabled={addingKey || keyPath.trim().length === 0}
+                className="rounded-md border border-yellow-600/70 px-3 py-2 text-sm hover:bg-yellow-900/30 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {addingKey ? "Adding key..." : "Add Key to ssh-agent"}
+              </button>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <input
             className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
             placeholder="name"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             required
           />
           <input
@@ -140,6 +186,9 @@ export default function MachineManager({ pool }: MachineManagerProps) {
             placeholder="ip"
             value={ip}
             onChange={(e) => setIp(e.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             required
           />
           <input
@@ -147,6 +196,9 @@ export default function MachineManager({ pool }: MachineManagerProps) {
             placeholder="ssh port"
             value={port}
             onChange={(e) => setPort(e.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             inputMode="numeric"
             required
           />
@@ -155,6 +207,9 @@ export default function MachineManager({ pool }: MachineManagerProps) {
             placeholder="ssh user"
             value={sshUser}
             onChange={(e) => setSshUser(e.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             required
           />
           <select

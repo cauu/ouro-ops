@@ -46,15 +46,19 @@ export async function machineAdd(payload: MachineAddPayload): Promise<Machine> {
 }
 
 export async function machineRemove(machineId: number): Promise<void> {
-  await invoke("machine_remove", { machine_id: machineId });
+  await invoke("machine_remove", { machineId });
 }
 
 export async function machinePreflight(machineId: number): Promise<PreflightReport> {
-  return invoke("machine_preflight", { machine_id: machineId });
+  return invoke("machine_preflight", { machineId });
 }
 
 export async function sshAgentListKeys(): Promise<SshKeyInfo[]> {
   return invoke("ssh_agent_list_keys");
+}
+
+export async function sshAgentAddKey(keyPath: string): Promise<SshKeyInfo[]> {
+  return invoke("ssh_agent_add_key", { keyPath });
 }
 
 export async function deployStart(payload: DeployPayload): Promise<string> {
@@ -62,9 +66,9 @@ export async function deployStart(payload: DeployPayload): Promise<string> {
 }
 
 export async function deployStatus(taskId: string): Promise<DeployTaskStatus> {
-  return invoke("deploy_status", { task_id: taskId });
+  return invoke("deploy_status", { taskId });
 }
 
 export async function deployCancel(taskId: string): Promise<void> {
-  await invoke("deploy_cancel", { task_id: taskId });
+  await invoke("deploy_cancel", { taskId });
 }

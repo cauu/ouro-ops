@@ -49,6 +49,9 @@ export default function ConfirmModal({
               className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
         )}

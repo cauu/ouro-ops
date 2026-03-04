@@ -20,13 +20,14 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
   const [step, setStep] = useState(1);
   const [selectedMachineIds, setSelectedMachineIds] = useState<number[]>([]);
 
-  const [cardanoVersion, setCardanoVersion] = useState("10.2.1");
-  const [imageRegistry, setImageRegistry] = useState("ghcr.io/intersectmbo/cardano-node");
+  const [cardanoVersion, setCardanoVersion] = useState("latest");
+  const [imageRegistry, setImageRegistry] = useState("ghcr.io/blinklabs-io/cardano-node");
   const [network, setNetwork] = useState<Pool["network"]>(pool.network);
   const [enableSwap, setEnableSwap] = useState(true);
   const [swapSizeGb, setSwapSizeGb] = useState(8);
   const [enableChrony, setEnableChrony] = useState(true);
   const [enableHardening, setEnableHardening] = useState(true);
+  const [safeValidationMode, setSafeValidationMode] = useState(false);
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -101,6 +102,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
     swap_size_gb: swapSizeGb,
     enable_chrony: enableChrony,
     enable_hardening: enableHardening,
+    safe_validation_mode: safeValidationMode,
   });
 
   const handleStart = async () => {
@@ -185,12 +187,18 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                   className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
                   value={cardanoVersion}
                   onChange={(e) => setCardanoVersion(e.target.value)}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder="cardano version"
                 />
                 <input
                   className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
                   value={imageRegistry}
                   onChange={(e) => setImageRegistry(e.target.value)}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder="image registry"
                 />
                 <select
@@ -209,6 +217,9 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                   className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
                   value={swapSizeGb}
                   onChange={(e) => setSwapSizeGb(Number(e.target.value))}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={enableSwap} onChange={(e) => setEnableSwap(e.target.checked)} />
@@ -230,6 +241,14 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                   />
                   enable_hardening
                 </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={safeValidationMode}
+                    onChange={(e) => setSafeValidationMode(e.target.checked)}
+                  />
+                  safe_validation_mode (read-only)
+                </label>
               </div>
             </div>
           )}
@@ -242,10 +261,12 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
               </p>
               <p className="text-sm text-zinc-300">Version: {cardanoVersion}</p>
               <p className="text-sm text-zinc-300">Network: {network}</p>
+              <p className="text-sm text-zinc-300">Image: {imageRegistry} (default tag: latest, overridable)</p>
               <p className="text-sm text-zinc-300">
                 swap={String(enableSwap)} ({swapSizeGb}G) · chrony={String(enableChrony)} · hardening=
                 {String(enableHardening)}
               </p>
+              <p className="text-sm text-zinc-300">safe_validation_mode={String(safeValidationMode)}</p>
               <button
                 type="button"
                 onClick={() => setShowConfirm(true)}
@@ -253,6 +274,11 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
               >
                 Execute Deploy
               </button>
+              {safeValidationMode && (
+                <p className="text-xs text-yellow-300">
+                  Safe validation mode only runs read-only checks and will not change host config or restart cardano-node.
+                </p>
+              )}
             </div>
           )}
 
@@ -302,7 +328,11 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
         open={showConfirm}
         level="standard"
         title="Confirm Deployment"
-        description="This action will start deploy_start(payload) and execute playbook on selected machines."
+        description={
+          safeValidationMode
+            ? "This action will run read-only safe validation without modifying target hosts."
+            : "This action will start deploy_start(payload) and execute playbook on selected machines."
+        }
         confirmLabel={starting ? "Starting..." : "Start Deploy"}
         onCancel={() => setShowConfirm(false)}
         onConfirm={() => {

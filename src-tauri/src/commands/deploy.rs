@@ -14,6 +14,9 @@ use crate::db::{
 use crate::error::AppError;
 use crate::sidecar::{run_playbook, spawn_sidecar, SidecarState};
 
+const DEFAULT_IMAGE_REGISTRY: &str = "ghcr.io/blinklabs-io/cardano-node";
+const DEFAULT_IMAGE_TAG: &str = "latest";
+
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct DeployPayload {
     pub machine_ids: Vec<i64>,
@@ -25,6 +28,8 @@ pub struct DeployPayload {
     pub swap_size_gb: i64,
     pub enable_chrony: bool,
     pub enable_hardening: bool,
+    #[serde(default)]
+    pub safe_validation_mode: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -59,6 +64,34 @@ struct TaskRow {
 }
 
 type SshExecFn = dyn Fn(&MachineRow, &str) -> Result<String, AppError>;
+
+fn normalize_deploy_payload(payload: &DeployPayload) -> DeployPayload {
+    let mut next = payload.clone();
+
+    let version = next.cardano_version.trim();
+    if version.is_empty() {
+        next.cardano_version = DEFAULT_IMAGE_TAG.to_string();
+    } else {
+        next.cardano_version = version.to_string();
+    }
+
+    let registry = next.image_registry.trim();
+    if registry.is_empty() {
+        next.image_registry = DEFAULT_IMAGE_REGISTRY.to_string();
+    } else {
+        next.image_registry = registry.to_string();
+    }
+
+    next.image_digest = next
+        .image_digest
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(ToString::to_string);
+
+    next.network = next.network.trim().to_string();
+    next
+}
 
 fn validate_deploy_payload(payload: &DeployPayload) -> Result<(), AppError> {
     if payload.machine_ids.is_empty() {
@@ -457,7 +490,8 @@ fn build_extra_vars(payload: &DeployPayload) -> Value {
         "swap_size": format!("{}G", payload.swap_size_gb),
         "swap_size_gb": payload.swap_size_gb,
         "enable_chrony": payload.enable_chrony,
-        "enable_hardening": payload.enable_hardening
+        "enable_hardening": payload.enable_hardening,
+        "safe_validation_mode": payload.safe_validation_mode
     })
 }
 
@@ -562,6 +596,7 @@ pub async fn deploy_start(
     db: State<'_, DbState>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, AppError> {
+    let payload = normalize_deploy_payload(&payload);
     validate_deploy_payload(&payload)?;
 
     {
@@ -588,7 +623,8 @@ pub async fn deploy_start(
                 "task_id": task_id,
                 "machine_ids": payload.machine_ids,
                 "cardano_version": payload.cardano_version,
-                "network": payload.network
+                "network": payload.network,
+                "safe_validation_mode": payload.safe_validation_mode
             }),
         )?;
     }
@@ -723,14 +759,15 @@ mod tests {
     fn tc_dep_001_payload_validation() {
         let base = DeployPayload {
             machine_ids: vec![1],
-            cardano_version: "10.2.1".into(),
-            image_registry: "ghcr.io/intersectmbo/cardano-node".into(),
+            cardano_version: DEFAULT_IMAGE_TAG.into(),
+            image_registry: DEFAULT_IMAGE_REGISTRY.into(),
             image_digest: None,
             network: "preprod".into(),
             enable_swap: true,
             swap_size_gb: 8,
             enable_chrony: true,
             enable_hardening: true,
+            safe_validation_mode: false,
         };
         assert!(validate_deploy_payload(&base).is_ok());
 
@@ -779,14 +816,15 @@ mod tests {
         let (relay_1, _, bp_1) = seed_pool_with_nodes(&conn);
         let payload = DeployPayload {
             machine_ids: vec![relay_1, bp_1],
-            cardano_version: "10.2.1".into(),
-            image_registry: "ghcr.io/intersectmbo/cardano-node".into(),
+            cardano_version: DEFAULT_IMAGE_TAG.into(),
+            image_registry: DEFAULT_IMAGE_REGISTRY.into(),
             image_digest: None,
             network: "preprod".into(),
             enable_swap: true,
             swap_size_gb: 8,
             enable_chrony: true,
             enable_hardening: true,
+            safe_validation_mode: false,
         };
         insert_task_with_machines(&conn, "task-1", &payload).expect("insert task");
 
@@ -916,5 +954,81 @@ mod tests {
 
         let both = fetch_selected_machines(&conn, &[relay_1, bp_1]).expect("both");
         assert!(ensure_minimum_topology(&both).is_ok());
+    }
+
+    #[test]
+    fn tc_dep_008_extra_vars_contains_safe_validation_mode() {
+        let payload = DeployPayload {
+            machine_ids: vec![1, 2],
+            cardano_version: "10.2.1".into(),
+            image_registry: DEFAULT_IMAGE_REGISTRY.into(),
+            image_digest: Some("sha256:abc123".into()),
+            network: "preprod".into(),
+            enable_swap: false,
+            swap_size_gb: 8,
+            enable_chrony: false,
+            enable_hardening: false,
+            safe_validation_mode: true,
+        };
+        let extra_vars = build_extra_vars(&payload);
+        assert_eq!(extra_vars["safe_validation_mode"], Value::Bool(true));
+        assert_eq!(extra_vars["image_digest"], Value::String("sha256:abc123".into()));
+    }
+
+    #[test]
+    fn tc_dep_009_safe_validation_mode_default_false_on_deserialize() {
+        let payload: DeployPayload = serde_json::from_value(json!({
+            "machine_ids": [1, 2],
+            "cardano_version": DEFAULT_IMAGE_TAG,
+            "image_registry": DEFAULT_IMAGE_REGISTRY,
+            "network": "preprod",
+            "enable_swap": true,
+            "swap_size_gb": 8,
+            "enable_chrony": true,
+            "enable_hardening": false
+        }))
+        .expect("deserialize payload");
+        assert!(!payload.safe_validation_mode);
+    }
+
+    #[test]
+    fn tc_dep_010_normalize_payload_defaults() {
+        let payload = DeployPayload {
+            machine_ids: vec![1, 2],
+            cardano_version: "   ".into(),
+            image_registry: "  ".into(),
+            image_digest: Some("   ".into()),
+            network: " preprod ".into(),
+            enable_swap: true,
+            swap_size_gb: 8,
+            enable_chrony: true,
+            enable_hardening: false,
+            safe_validation_mode: false,
+        };
+        let normalized = normalize_deploy_payload(&payload);
+        assert_eq!(normalized.cardano_version, DEFAULT_IMAGE_TAG);
+        assert_eq!(normalized.image_registry, DEFAULT_IMAGE_REGISTRY);
+        assert_eq!(normalized.image_digest, None);
+        assert_eq!(normalized.network, "preprod");
+    }
+
+    #[test]
+    fn tc_dep_011_normalize_payload_keeps_overrides() {
+        let payload = DeployPayload {
+            machine_ids: vec![1, 2],
+            cardano_version: "10.5.1".into(),
+            image_registry: "ghcr.io/custom/cardano-node".into(),
+            image_digest: Some("sha256:def456".into()),
+            network: "preview".into(),
+            enable_swap: true,
+            swap_size_gb: 8,
+            enable_chrony: true,
+            enable_hardening: true,
+            safe_validation_mode: false,
+        };
+        let normalized = normalize_deploy_payload(&payload);
+        assert_eq!(normalized.cardano_version, "10.5.1");
+        assert_eq!(normalized.image_registry, "ghcr.io/custom/cardano-node");
+        assert_eq!(normalized.image_digest.as_deref(), Some("sha256:def456"));
     }
 }

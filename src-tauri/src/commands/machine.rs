@@ -8,7 +8,8 @@ use crate::db::{
 };
 use crate::error::AppError;
 use crate::keychain::{
-    ssh_agent_list_keys as keychain_ssh_agent_list_keys, verify_ssh_agent_key, SshKeyInfo,
+    prompt_add_key, ssh_agent_list_keys as keychain_ssh_agent_list_keys, verify_ssh_agent_key,
+    SshKeyInfo,
 };
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -306,6 +307,12 @@ pub async fn machine_list(
 
 #[tauri::command]
 pub async fn ssh_agent_list_keys() -> Result<Vec<SshKeyInfo>, AppError> {
+    keychain_ssh_agent_list_keys()
+}
+
+#[tauri::command]
+pub async fn ssh_agent_add_key(key_path: String) -> Result<Vec<SshKeyInfo>, AppError> {
+    prompt_add_key(key_path.as_str())?;
     keychain_ssh_agent_list_keys()
 }
 

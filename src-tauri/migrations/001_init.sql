@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS machine (
     ssh_key_fingerprint TEXT,
     os_version          TEXT,
     cardano_version     TEXT,
-    image_registry      TEXT DEFAULT 'ghcr.io/intersectmbo/cardano-node',
+    image_registry      TEXT DEFAULT 'ghcr.io/blinklabs-io/cardano-node',
     image_digest        TEXT,
     sort_order          INTEGER DEFAULT 0,
     created_at          TEXT DEFAULT (datetime('now')),

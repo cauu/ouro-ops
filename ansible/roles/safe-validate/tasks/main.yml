@@ -1,0 +1,39 @@
+---
+- name: Verify host connectivity
+  ansible.builtin.ping:
+
+- name: Check cardano config directory existence
+  ansible.builtin.stat:
+    path: /opt/cardano/config
+  register: cardano_config_dir
+
+- name: Check cardano db directory existence
+  ansible.builtin.stat:
+    path: /opt/cardano/db
+  register: cardano_db_dir
+
+- name: Check cardano ipc directory existence
+  ansible.builtin.stat:
+    path: /opt/cardano/ipc
+  register: cardano_ipc_dir
+
+- name: Check legacy data directory existence
+  ansible.builtin.stat:
+    path: /opt/cardano/data
+  register: legacy_data_dir
+
+- name: Check cardano container presence
+  ansible.builtin.shell: "docker ps --format '{% raw %}{{.Names}}{% endraw %}' | grep -E '^cardano-node$'"
+  register: cardano_container
+  changed_when: false
+  failed_when: false
+
+- name: Report safe validation summary
+  ansible.builtin.debug:
+    msg:
+      - "safe_validation_mode=true"
+      - "cardano_config_exists={{ cardano_config_dir.stat.exists | default(false) }}"
+      - "cardano_db_exists={{ cardano_db_dir.stat.exists | default(false) }}"
+      - "cardano_ipc_exists={{ cardano_ipc_dir.stat.exists | default(false) }}"
+      - "legacy_data_exists={{ legacy_data_dir.stat.exists | default(false) }}"
+      - "cardano_container_present={{ cardano_container.rc == 0 }}"

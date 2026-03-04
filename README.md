@@ -8,6 +8,9 @@ Cardano Stake Pool 控制平面（macOS）。基于 Tauri 2 + React + TypeScript
 - Rust 1.80+
 - Python 3.11+（Sidecar 使用，需能执行 `sidecar/src/runner_bridge.py`）
 - macOS（当前目标平台）
+- 目标机部署依赖（Ansible 侧）：
+  - `python3 -m pip install ansible-runner pyyaml ansible`
+  - `ansible-galaxy collection install community.docker`
 
 ## 安装与运行
 
@@ -32,6 +35,19 @@ npm run tauri build
 - **Sidecar**：`sidecar/src/runner_bridge.py` 通过 stdin/stdout JSON-RPC 支持 `ping`、`run_playbook`、`shutdown`；无 ansible-runner 时 run_playbook 返回 mock 事件。
 - **事件**：Rust 将 Sidecar 事件转发为 Tauri 事件 `task:progress`、`task:completed`、`task:failed`。
 - **错误类型**：`src-tauri/src/error.rs` 中 `AppError` 含 1xxx～5xxx 分类。
+
+## 部署默认值（Phase 3）
+
+- 默认镜像：`ghcr.io/blinklabs-io/cardano-node`
+- 默认 tag：`latest`
+- 覆盖规则：
+  - 仅指定 `image_registry`/`cardano_version` 时，使用 `<registry>:<tag>`
+  - 指定 `image_digest` 时，优先使用 `<registry>@<digest>`
+- 启动语义：对齐 `blinklabs-io/docker-cardano-node` 的 `run` 模式
+  - 容器数据库路径：`/data/db`
+  - 容器 socket 路径：`/ipc/node.socket`
+- 兼容迁移：若存在旧目录 `/opt/cardano/data` 且新目录 `/opt/cardano/db` 为空，部署时会做一次性迁移并记录日志。
+- `safe_validation_mode=true` 时只执行只读校验，不变更系统配置、不重启容器。
 
 ## 项目结构
 

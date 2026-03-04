@@ -87,6 +87,7 @@ export interface DeployPayload {
   swap_size_gb: number;
   enable_chrony: boolean;
   enable_hardening: boolean;
+  safe_validation_mode?: boolean;
 }
 
 export interface TaskMachineStatus {

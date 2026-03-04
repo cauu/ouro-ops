@@ -1,19 +1,28 @@
 ---
+- name: Safe validation mode (read-only checks)
+  hosts: all
+  become: true
+  roles:
+    - role: safe-validate
+  when: safe_validation_mode | default(false) | bool
+
 - name: Deploy common baseline
   hosts: all
   become: true
   roles:
     - role: common
+  when: not (safe_validation_mode | default(false) | bool)
 
 - name: Deploy hardening controls
   hosts: all
   become: true
   roles:
     - role: hardening
-  when: enable_hardening | default(true) | bool
+  when: (not (safe_validation_mode | default(false) | bool)) and (enable_hardening | default(true) | bool)
 
 - name: Deploy cardano node runtime
   hosts: relay:bp
   become: true
   roles:
     - role: cardano-node
+  when: not (safe_validation_mode | default(false) | bool)

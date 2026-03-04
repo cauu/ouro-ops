@@ -53,6 +53,9 @@ export default function SetupWizard({ onCreated }: SetupWizardProps) {
               className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100 outline-none ring-blue-500 focus:ring"
               value={ticker}
               onChange={(e) => setTicker(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               maxLength={5}
               required
             />
@@ -75,6 +78,9 @@ export default function SetupWizard({ onCreated }: SetupWizardProps) {
               className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100 outline-none ring-blue-500 focus:ring"
               value={margin}
               onChange={(e) => setMargin(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               inputMode="decimal"
             />
           </label>
@@ -84,6 +90,9 @@ export default function SetupWizard({ onCreated }: SetupWizardProps) {
               className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100 outline-none ring-blue-500 focus:ring"
               value={fixedCost}
               onChange={(e) => setFixedCost(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               inputMode="numeric"
             />
           </label>
