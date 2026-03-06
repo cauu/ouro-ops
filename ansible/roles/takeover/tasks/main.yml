@@ -1,0 +1,189 @@
+---
+- name: Init takeover facts
+  ansible.builtin.set_fact:
+    takeover_container_present: false
+    takeover_container_name: cardano-node
+    takeover_image_ref: ""
+    takeover_ports: []
+    takeover_mounts: []
+    takeover_managed_by_compose: false
+    takeover_db_mount_source: ""
+    takeover_keys_mount_source: ""
+    takeover_bp_key_files_present: false
+
+- name: Detect existing cardano-node container
+  ansible.builtin.shell: "docker ps -a --filter name=^/cardano-node$ --format '{% raw %}{{.Names}}{% endraw %}'"
+  register: takeover_container_name_raw
+  changed_when: false
+  failed_when: false
+
+- name: Mark takeover container presence
+  ansible.builtin.set_fact:
+    takeover_container_present: "{{ (takeover_container_name_raw.stdout | trim) == 'cardano-node' }}"
+
+- name: Ensure standard cardano directories exist for takeover
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /opt/cardano/config
+    - /opt/cardano/keys
+    - /opt/cardano/logs
+    - /opt/cardano/db
+    - /opt/cardano/ipc
+  when: takeover_container_present
+
+- name: Inspect runtime mounts
+  ansible.builtin.shell: "docker inspect cardano-node --format '{{ '{' }}{ '{' }}json .Mounts{{ '}' }}{{ '}' }}'"
+  register: takeover_mounts_raw
+  changed_when: false
+  when: takeover_container_present
+
+- name: Inspect runtime labels
+  ansible.builtin.shell: "docker inspect cardano-node --format '{{ '{' }}{ '{' }}json .Config.Labels{{ '}' }}{{ '}' }}'"
+  register: takeover_labels_raw
+  changed_when: false
+  when: takeover_container_present
+
+- name: Inspect runtime image
+  ansible.builtin.shell: "docker inspect cardano-node --format '{{ '{' }}{ '{' }}.Config.Image{{ '}' }}{{ '}' }}'"
+  register: takeover_image_raw
+  changed_when: false
+  when: takeover_container_present
+
+- name: Inspect runtime ports
+  ansible.builtin.shell: "docker inspect cardano-node --format '{{ '{' }}{ '{' }}json .HostConfig.PortBindings{{ '}' }}{{ '}' }}'"
+  register: takeover_ports_raw
+  changed_when: false
+  when: takeover_container_present
+
+- name: Parse runtime metadata
+  ansible.builtin.set_fact:
+    takeover_mounts: "{{ (takeover_mounts_raw.stdout | default('[]', true)) | from_json }}"
+    takeover_labels: "{{ (takeover_labels_raw.stdout | default('{}', true)) | from_json }}"
+    takeover_ports_raw_json: "{{ (takeover_ports_raw.stdout | default('{}', true)) | from_json }}"
+    takeover_image_ref: "{{ takeover_image_raw.stdout | default('', true) | trim }}"
+  when: takeover_container_present
+
+- name: Resolve takeover mount sources
+  ansible.builtin.set_fact:
+    takeover_db_mount_source: >-
+      {{
+        (takeover_mounts
+          | selectattr('Destination', 'equalto', '/data/db')
+          | map(attribute='Source')
+          | list
+          | first)
+        | default('', true)
+      }}
+    takeover_keys_mount_source: >-
+      {{
+        (takeover_mounts
+          | selectattr('Destination', 'equalto', '/opt/cardano/config/keys')
+          | map(attribute='Source')
+          | list
+          | first)
+        | default('', true)
+      }}
+    takeover_managed_by_compose: "{{ (takeover_labels.keys() | select('match', '^com\\.docker\\.compose\\..*') | list | length) > 0 }}"
+  when: takeover_container_present
+
+- name: Fail when required runtime mounts are missing in takeover mode
+  ansible.builtin.fail:
+    msg: >-
+      takeover mode requires /data/db for all roles, and /opt/cardano/config/keys for bp only;
+      detected db='{{ takeover_db_mount_source | default('') }}', keys='{{ takeover_keys_mount_source | default('') }}'
+  when:
+    - takeover_container_present
+    - (takeover_db_mount_source | trim | length) == 0
+      or ((role == 'bp') and ((takeover_keys_mount_source | trim | length) == 0))
+
+- name: Probe whether target db already has data
+  ansible.builtin.shell: "find /opt/cardano/db -mindepth 1 -maxdepth 1 -print -quit"
+  register: takeover_db_probe
+  changed_when: false
+  failed_when: false
+  when: takeover_container_present
+
+- name: Probe whether target keys already has data
+  ansible.builtin.shell: "find /opt/cardano/keys -mindepth 1 -maxdepth 1 -print -quit"
+  register: takeover_keys_probe
+  changed_when: false
+  failed_when: false
+  when:
+    - takeover_container_present
+    - role == 'bp'
+
+- name: Migrate legacy db data to /opt/cardano/db (one-time)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    echo "[`date -u +%Y-%m-%dT%H:%M:%SZ`] takeover migrate db: {{ takeover_db_mount_source }} -> /opt/cardano/db" | tee -a /opt/cardano/logs/takeover.log
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --ignore-existing "{{ takeover_db_mount_source }}/" /opt/cardano/db/
+    else
+      cp -a "{{ takeover_db_mount_source }}/." /opt/cardano/db/
+    fi
+    echo "[`date -u +%Y-%m-%dT%H:%M:%SZ`] takeover migrate db completed" | tee -a /opt/cardano/logs/takeover.log
+  args:
+    executable: /bin/bash
+  when:
+    - takeover_container_present
+    - takeover_db_mount_source != '/opt/cardano/db'
+    - (takeover_db_probe.stdout | trim | length) == 0
+
+- name: Migrate legacy key data to /opt/cardano/keys (one-time)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    echo "[`date -u +%Y-%m-%dT%H:%M:%SZ`] takeover migrate keys: {{ takeover_keys_mount_source }} -> /opt/cardano/keys" | tee -a /opt/cardano/logs/takeover.log
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --ignore-existing "{{ takeover_keys_mount_source }}/" /opt/cardano/keys/
+    else
+      cp -a "{{ takeover_keys_mount_source }}/." /opt/cardano/keys/
+    fi
+    echo "[`date -u +%Y-%m-%dT%H:%M:%SZ`] takeover migrate keys completed" | tee -a /opt/cardano/logs/takeover.log
+  args:
+    executable: /bin/bash
+  when:
+    - takeover_container_present
+    - role == 'bp'
+    - takeover_keys_mount_source != '/opt/cardano/keys'
+    - (takeover_keys_probe.stdout | trim | length) == 0
+
+- name: Check BP key files after takeover migration
+  ansible.builtin.shell: |
+    if [ -f /opt/cardano/keys/kes.skey ] && [ -f /opt/cardano/keys/vrf.skey ] && [ -f /opt/cardano/keys/node.cert ]; then
+      echo yes
+    else
+      echo no
+    fi
+  register: takeover_bp_keys_check
+  changed_when: false
+  when:
+    - takeover_container_present
+    - role == 'bp'
+
+- name: Store BP key file check fact
+  ansible.builtin.set_fact:
+    takeover_bp_key_files_present: "{{ (takeover_bp_keys_check.stdout | trim) == 'yes' }}"
+  when:
+    - takeover_container_present
+    - role == 'bp'
+
+- name: Persist takeover probe summary
+  ansible.builtin.copy:
+    dest: /opt/cardano/logs/takeover-runtime.json
+    mode: "0644"
+    content: |
+      {
+        "container_present": {{ takeover_container_present | to_json }},
+        "container_name": "cardano-node",
+        "image_ref": {{ takeover_image_ref | to_json }},
+        "managed_by_compose": {{ takeover_managed_by_compose | to_json }},
+        "db_mount_source": {{ takeover_db_mount_source | to_json }},
+        "keys_mount_source": {{ takeover_keys_mount_source | to_json }},
+        "bp_key_files_present": {{ takeover_bp_key_files_present | to_json }}
+      }
+  when: takeover_container_present

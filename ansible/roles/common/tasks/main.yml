@@ -1,5 +1,5 @@
 ---
-- name: Ensure required apt packages are installed
+- name: Ensure required baseline apt packages are installed
   apt:
     name:
       - chrony
@@ -7,10 +7,23 @@
       - jq
       - ufw
       - fail2ban
-      - docker.io
       - python3-docker
     state: present
     update_cache: true
+
+- name: Check whether docker CLI is already available
+  command: docker --version
+  register: docker_cli_check
+  changed_when: false
+  failed_when: false
+
+- name: Ensure distro docker package is installed when docker is absent
+  apt:
+    name:
+      - docker.io
+    state: present
+    update_cache: true
+  when: docker_cli_check.rc != 0
 
 - name: Ensure chrony is enabled when configured
   service:
@@ -33,13 +46,24 @@
     mode: "0600"
   when: enable_swap | default(true) | bool
 
+- name: Check whether swapfile is already active
+  shell: "swapon --noheadings --show=NAME | grep -Fx /swapfile"
+  register: swapfile_active
+  changed_when: false
+  failed_when: false
+  when: enable_swap | default(true) | bool
+
 - name: Initialize swap space
   command: mkswap /swapfile
-  when: enable_swap | default(true) | bool
+  when:
+    - enable_swap | default(true) | bool
+    - (swapfile_active.rc | default(1)) != 0
 
 - name: Enable swap
   command: swapon /swapfile
-  when: enable_swap | default(true) | bool
+  when:
+    - enable_swap | default(true) | bool
+    - (swapfile_active.rc | default(1)) != 0
 
 - name: Persist swap in fstab
   lineinfile:

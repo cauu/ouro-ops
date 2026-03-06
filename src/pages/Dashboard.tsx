@@ -1,13 +1,54 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { dbVersion, ping, runPlaybookTest } from "../lib/ipc";
-import type { DbVersionResult } from "../lib/types";
+import { dbVersion, monitorSnapshot, ping, runPlaybookTest } from "../lib/ipc";
+import type { DbVersionResult, MonitorSnapshot } from "../lib/types";
+
+function formatProgress(value: number | null): string {
+  if (value === null) {
+    return "--";
+  }
+  return `${value.toFixed(2)}%`;
+}
+
+function formatBlocksPerMinute(value: number | null): string {
+  if (value === null) {
+    return "--";
+  }
+  return value.toFixed(2);
+}
+
+function statusTone(status: string): string {
+  switch (status) {
+    case "synced":
+      return "text-emerald-300";
+    case "syncing":
+      return "text-amber-300";
+    case "stalled":
+      return "text-red-300";
+    case "unreachable":
+      return "text-red-400";
+    default:
+      return "text-zinc-300";
+  }
+}
 
 export default function Dashboard() {
   const [status, setStatus] = useState<string>("loading");
   const [dbInfo, setDbInfo] = useState<DbVersionResult | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
+  const [snapshots, setSnapshots] = useState<MonitorSnapshot[]>([]);
+  const [monitorStatus, setMonitorStatus] = useState<string>("loading");
+
+  const refreshMonitor = useCallback(async () => {
+    try {
+      const data = await monitorSnapshot();
+      setSnapshots(data);
+      setMonitorStatus(`Updated ${new Date().toLocaleTimeString()}`);
+    } catch (error) {
+      setMonitorStatus(`Monitor error: ${String(error)}`);
+    }
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -16,11 +57,12 @@ export default function Dashboard() {
         setStatus("Sidecar OK");
         const version = await dbVersion();
         setDbInfo(version);
+        await refreshMonitor();
       } catch (error) {
         setStatus(`Error: ${String(error)}`);
       }
     })();
-  }, []);
+  }, [refreshMonitor]);
 
   useEffect(() => {
     const unlisteners: Array<() => void> = [];
@@ -36,6 +78,15 @@ export default function Dashboard() {
       unlisteners.forEach((unlisten) => unlisten());
     };
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void refreshMonitor();
+    }, 30_000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [refreshMonitor]);
 
   const handleRunTest = async () => {
     try {
@@ -57,6 +108,81 @@ export default function Dashboard() {
           <span className="font-medium text-zinc-100">DB:</span> user_version={dbInfo.user_version}
         </p>
       )}
+      <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100">Sync Monitor</h2>
+            <p className="text-xs text-zinc-400">{monitorStatus}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void refreshMonitor()}
+            className="rounded-md border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-100 hover:bg-zinc-800"
+          >
+            Refresh
+          </button>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {snapshots.length === 0 ? (
+            <div className="rounded-md border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
+              No sync samples yet.
+            </div>
+          ) : (
+            snapshots.map((snapshot) => (
+              <article
+                key={snapshot.machine_id}
+                className="rounded-md border border-zinc-800 bg-black/20 p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-100">{snapshot.machine_name}</h3>
+                    <p className="text-xs uppercase tracking-wide text-zinc-500">
+                      {snapshot.role} · {snapshot.network}
+                    </p>
+                  </div>
+                  <span className={`text-xs font-medium uppercase ${statusTone(snapshot.status)}`}>
+                    {snapshot.status}
+                  </span>
+                </div>
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <dt className="text-zinc-500">Sync Progress</dt>
+                    <dd className="mt-1 font-medium text-zinc-100">
+                      {formatProgress(snapshot.sync_progress)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">Blocks/min</dt>
+                    <dd className="mt-1 font-medium text-zinc-100">
+                      {formatBlocksPerMinute(snapshot.blocks_per_minute)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">Block Height</dt>
+                    <dd className="mt-1 font-medium text-zinc-100">
+                      {snapshot.block_height ?? "--"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">Collected At</dt>
+                    <dd className="mt-1 font-medium text-zinc-100">{snapshot.collected_at}</dd>
+                  </div>
+                </dl>
+                {snapshot.note && (
+                  <p className="mt-3 rounded-md border border-red-950 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+                    {snapshot.note}
+                  </p>
+                )}
+                {snapshot.stalled && !snapshot.note && (
+                  <p className="mt-3 rounded-md border border-amber-900 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+                    Sync progress is moving too slowly or has stopped for at least 5 minutes.
+                  </p>
+                )}
+              </article>
+            ))
+          )}
+        </div>
+      </div>
       <button
         type="button"
         onClick={handleRunTest}

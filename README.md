@@ -49,6 +49,18 @@ npm run tauri build
 - 兼容迁移：若存在旧目录 `/opt/cardano/data` 且新目录 `/opt/cardano/db` 为空，部署时会做一次性迁移并记录日志。
 - `safe_validation_mode=true` 时只执行只读校验，不变更系统配置、不重启容器。
 
+## 运行中节点接管（Phase 3.1）
+
+- 新增运行时探测：`machine_runtime_probe(machine_id)`，可识别目标机是否已有 `cardano-node`、镜像引用、挂载来源、compose 标签。
+- 部署参数新增：
+  - `takeover_existing_node`（默认 `false`）
+  - `restore_snapshot`（默认 `false`）
+- 当 `takeover_existing_node=true` 时：
+  - 先迁移旧路径（例如 `/home/cardano/*`）到标准目录 `/opt/cardano/*`（幂等）
+  - 切换容器到 app 托管模板（blinklabs run 模式）
+  - 若启动/健康检查失败，自动回滚到 legacy 容器
+- 默认不暴露 `12798`；如需监控端口，后续可作为高级参数开启。
+
 ## 项目结构
 
 ```

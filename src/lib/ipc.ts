@@ -6,10 +6,12 @@ import type {
   Machine,
   MachineAddPayload,
   MachineFilter,
+  MonitorSnapshot,
   Pool,
   PoolInitPayload,
   PoolUpdatePayload,
   PreflightReport,
+  RuntimeProbe,
   SshKeyInfo,
 } from "./types";
 
@@ -53,6 +55,10 @@ export async function machinePreflight(machineId: number): Promise<PreflightRepo
   return invoke("machine_preflight", { machineId });
 }
 
+export async function machineRuntimeProbe(machineId: number): Promise<RuntimeProbe> {
+  return invoke("machine_runtime_probe", { machineId });
+}
+
 export async function sshAgentListKeys(): Promise<SshKeyInfo[]> {
   return invoke("ssh_agent_list_keys");
 }
@@ -71,4 +77,8 @@ export async function deployStatus(taskId: string): Promise<DeployTaskStatus> {
 
 export async function deployCancel(taskId: string): Promise<void> {
   await invoke("deploy_cancel", { taskId });
+}
+
+export async function monitorSnapshot(machineIds?: number[]): Promise<MonitorSnapshot[]> {
+  return invoke("monitor_snapshot", { machineIds: machineIds ?? null });
 }

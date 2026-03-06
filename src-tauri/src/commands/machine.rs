@@ -1,5 +1,6 @@
 use std::process::Command;
 
+use serde_json::Value;
 use tauri::State;
 
 use crate::db::{
@@ -59,6 +60,41 @@ pub struct PreflightReport {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct RuntimeProbeMount {
+    pub destination: String,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct RuntimeProbe {
+    pub container_present: bool,
+    pub container_name: String,
+    pub image_ref: Option<String>,
+    pub ports: Vec<String>,
+    pub mounts: Vec<RuntimeProbeMount>,
+    pub managed_by_compose: bool,
+    pub bp_key_files_present: bool,
+    pub db_mount_source: Option<String>,
+    pub keys_mount_source: Option<String>,
+}
+
+impl Default for RuntimeProbe {
+    fn default() -> Self {
+        Self {
+            container_present: false,
+            container_name: "cardano-node".into(),
+            image_ref: None,
+            ports: Vec::new(),
+            mounts: Vec::new(),
+            managed_by_compose: false,
+            bp_key_files_present: false,
+            db_mount_source: None,
+            keys_mount_source: None,
+        }
+    }
+}
+
 fn validate_role(role: &str) -> Result<(), AppError> {
     if matches!(role, "relay" | "bp" | "archive") {
         Ok(())
@@ -115,6 +151,143 @@ fn run_ssh_command(
 
 fn parse_i64(value: &str) -> i64 {
     value.trim().parse::<i64>().unwrap_or_default()
+}
+
+fn shell_single_quote(path: &str) -> String {
+    format!("'{}'", path.replace('\'', "'\"'\"'"))
+}
+
+fn parse_runtime_mounts(mounts_json: &str) -> Result<Vec<RuntimeProbeMount>, AppError> {
+    let value: Value = serde_json::from_str(mounts_json)
+        .map_err(|e| AppError::Internal(format!("invalid mounts json: {e}")))?;
+    let mounts = value
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let destination = item.get("Destination")?.as_str()?.to_string();
+                    let source = item.get("Source")?.as_str()?.to_string();
+                    Some(RuntimeProbeMount {
+                        destination,
+                        source,
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Ok(mounts)
+}
+
+fn parse_runtime_ports(port_bindings_json: &str) -> Result<Vec<String>, AppError> {
+    let value: Value = serde_json::from_str(port_bindings_json)
+        .map_err(|e| AppError::Internal(format!("invalid port bindings json: {e}")))?;
+    let mut ports = Vec::new();
+    if let Some(map) = value.as_object() {
+        for (container_port, bindings) in map {
+            if let Some(arr) = bindings.as_array() {
+                for binding in arr {
+                    let host_ip = binding
+                        .get("HostIp")
+                        .and_then(Value::as_str)
+                        .filter(|v| !v.is_empty())
+                        .unwrap_or("0.0.0.0");
+                    let host_port = binding
+                        .get("HostPort")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    if !host_port.is_empty() {
+                        ports.push(format!("{container_port} -> {host_ip}:{host_port}"));
+                    }
+                }
+            }
+        }
+    }
+    ports.sort();
+    Ok(ports)
+}
+
+fn detect_compose_labels(labels_json: &str) -> Result<bool, AppError> {
+    let value: Value = serde_json::from_str(labels_json)
+        .map_err(|e| AppError::Internal(format!("invalid labels json: {e}")))?;
+    Ok(value
+        .as_object()
+        .map(|m| m.keys().any(|k| k.starts_with("com.docker.compose.")))
+        .unwrap_or(false))
+}
+
+fn machine_runtime_probe_with_ssh(
+    machine: &MachineRow,
+    ssh_exec: &SshExecFn,
+) -> Result<RuntimeProbe, AppError> {
+    let mut probe = RuntimeProbe::default();
+    let present = ssh_exec(
+        machine.ssh_user.as_str(),
+        machine.ip.as_str(),
+        machine.ssh_port,
+        "docker ps -a --filter name=^/cardano-node$ --format '{{.Names}}'",
+    )?;
+    if present.trim() != "cardano-node" {
+        return Ok(probe);
+    }
+
+    probe.container_present = true;
+    probe.image_ref = Some(ssh_exec(
+        machine.ssh_user.as_str(),
+        machine.ip.as_str(),
+        machine.ssh_port,
+        "docker inspect cardano-node --format '{{.Config.Image}}'",
+    )?);
+
+    let mounts_json = ssh_exec(
+        machine.ssh_user.as_str(),
+        machine.ip.as_str(),
+        machine.ssh_port,
+        "docker inspect cardano-node --format '{{json .Mounts}}'",
+    )?;
+    probe.mounts = parse_runtime_mounts(mounts_json.as_str())?;
+    probe.db_mount_source = probe
+        .mounts
+        .iter()
+        .find(|m| m.destination == "/data/db")
+        .map(|m| m.source.clone());
+    probe.keys_mount_source = probe
+        .mounts
+        .iter()
+        .find(|m| m.destination == "/opt/cardano/config/keys")
+        .map(|m| m.source.clone());
+
+    let labels_json = ssh_exec(
+        machine.ssh_user.as_str(),
+        machine.ip.as_str(),
+        machine.ssh_port,
+        "docker inspect cardano-node --format '{{json .Config.Labels}}'",
+    )?;
+    probe.managed_by_compose = detect_compose_labels(labels_json.as_str())?;
+
+    let port_bindings_json = ssh_exec(
+        machine.ssh_user.as_str(),
+        machine.ip.as_str(),
+        machine.ssh_port,
+        "docker inspect cardano-node --format '{{json .HostConfig.PortBindings}}'",
+    )?;
+    probe.ports = parse_runtime_ports(port_bindings_json.as_str())?;
+
+    if let Some(keys_source) = &probe.keys_mount_source {
+        let q = shell_single_quote(keys_source);
+        let key_check = ssh_exec(
+            machine.ssh_user.as_str(),
+            machine.ip.as_str(),
+            machine.ssh_port,
+            format!(
+                "if [ -f {q}/kes.skey ] && [ -f {q}/vrf.skey ] && [ -f {q}/node.cert ]; then echo yes; else echo no; fi"
+            )
+            .as_str(),
+        )?;
+        probe.bp_key_files_present = key_check.trim() == "yes";
+    }
+
+    Ok(probe)
 }
 
 fn to_machine(row: MachineRow) -> Machine {
@@ -328,6 +501,19 @@ pub async fn machine_preflight(
     };
 
     machine_preflight_with_ssh(&machine, &run_ssh_command)
+}
+
+#[tauri::command]
+pub async fn machine_runtime_probe(
+    machine_id: i64,
+    db: State<'_, DbState>,
+) -> Result<RuntimeProbe, AppError> {
+    let machine = {
+        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        machine_get(&conn, machine_id)?
+            .ok_or_else(|| AppError::Internal(format!("machine not found: {machine_id}")))?
+    };
+    machine_runtime_probe_with_ssh(&machine, &run_ssh_command)
 }
 
 #[cfg(test)]
@@ -678,5 +864,103 @@ mod tests {
         assert!(json.contains("fingerprint"));
         assert!(!json.to_lowercase().contains("private"));
         assert!(!json.to_lowercase().contains("skey"));
+    }
+
+    #[test]
+    fn tc_mch_010_runtime_probe_parses_inspect_fixtures() {
+        let conn = new_db();
+        let pool_id = create_single_pool(&conn, "preprod");
+        let machine_id = machine_insert(
+            &conn,
+            pool_id,
+            "bp-1",
+            "10.0.0.2",
+            22,
+            "root",
+            "bp",
+            Some("SHA256:bp"),
+        )
+        .expect("insert machine");
+        let machine = machine_get(&conn, machine_id)
+            .expect("get machine")
+            .expect("machine exists");
+
+        let probe = machine_runtime_probe_with_ssh(&machine, &|_, _, _, cmd| {
+            if cmd.contains("docker ps -a") {
+                return Ok("cardano-node".into());
+            }
+            if cmd.contains(".Config.Image") {
+                return Ok("ghcr.io/blinklabs-io/cardano-node:10.5.3-1".into());
+            }
+            if cmd.contains(".Mounts") {
+                return Ok(
+                    r#"[{"Destination":"/data/db","Source":"/home/cardano/node-db"},{"Destination":"/opt/cardano/config/keys","Source":"/home/cardano/node-keys"}]"#
+                        .into(),
+                );
+            }
+            if cmd.contains(".Config.Labels") {
+                return Ok(r#"{"com.docker.compose.project":"cardano"}"#.into());
+            }
+            if cmd.contains(".HostConfig.PortBindings") {
+                return Ok(
+                    r#"{"3001/tcp":[{"HostIp":"0.0.0.0","HostPort":"3001"}],"12798/tcp":[{"HostIp":"0.0.0.0","HostPort":"12798"}]}"#
+                        .into(),
+                );
+            }
+            if cmd.contains("kes.skey") {
+                return Ok("yes".into());
+            }
+            Err(AppError::Internal(format!("unexpected command: {cmd}")))
+        })
+        .expect("runtime probe");
+
+        assert!(probe.container_present);
+        assert_eq!(
+            probe.image_ref.as_deref(),
+            Some("ghcr.io/blinklabs-io/cardano-node:10.5.3-1")
+        );
+        assert!(probe.managed_by_compose);
+        assert_eq!(
+            probe.db_mount_source.as_deref(),
+            Some("/home/cardano/node-db")
+        );
+        assert_eq!(
+            probe.keys_mount_source.as_deref(),
+            Some("/home/cardano/node-keys")
+        );
+        assert!(probe.bp_key_files_present);
+        assert!(probe.ports.iter().any(|p| p.contains("3001/tcp")));
+    }
+
+    #[test]
+    fn tc_mch_011_runtime_probe_returns_absent_when_container_missing() {
+        let conn = new_db();
+        let pool_id = create_single_pool(&conn, "preprod");
+        let machine_id = machine_insert(
+            &conn,
+            pool_id,
+            "relay-1",
+            "10.0.0.1",
+            22,
+            "root",
+            "relay",
+            Some("SHA256:r1"),
+        )
+        .expect("insert machine");
+        let machine = machine_get(&conn, machine_id)
+            .expect("get machine")
+            .expect("machine exists");
+
+        let probe = machine_runtime_probe_with_ssh(&machine, &|_, _, _, cmd| {
+            if cmd.contains("docker ps -a") {
+                return Ok(String::new());
+            }
+            Err(AppError::Internal(format!("unexpected command: {cmd}")))
+        })
+        .expect("runtime probe");
+        assert!(!probe.container_present);
+        assert_eq!(probe.container_name, "cardano-node");
+        assert!(probe.image_ref.is_none());
+        assert!(probe.mounts.is_empty());
     }
 }

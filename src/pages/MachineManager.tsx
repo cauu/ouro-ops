@@ -4,6 +4,7 @@ import {
   machineList,
   machinePreflight,
   machineRemove,
+  machineRuntimeProbe,
   sshAgentAddKey,
   sshAgentListKeys,
 } from "../lib/ipc";
@@ -12,6 +13,7 @@ import type {
   MachineAddPayload,
   Pool,
   PreflightReport,
+  RuntimeProbe,
   SshKeyInfo,
 } from "../lib/types";
 
@@ -30,7 +32,9 @@ export default function MachineManager({ pool }: MachineManagerProps) {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [keys, setKeys] = useState<SshKeyInfo[]>([]);
   const [preflightMap, setPreflightMap] = useState<Record<number, PreflightReport>>({});
+  const [runtimeProbeMap, setRuntimeProbeMap] = useState<Record<number, RuntimeProbe>>({});
   const [runningPreflight, setRunningPreflight] = useState<number | null>(null);
+  const [runningProbe, setRunningProbe] = useState<number | null>(null);
   const [addingKey, setAddingKey] = useState(false);
 
   const [name, setName] = useState("");
@@ -118,6 +122,19 @@ export default function MachineManager({ pool }: MachineManagerProps) {
       setError(String(e));
     } finally {
       setRunningPreflight(null);
+    }
+  };
+
+  const handleRuntimeProbe = async (machineId: number) => {
+    setError(null);
+    setRunningProbe(machineId);
+    try {
+      const probe = await machineRuntimeProbe(machineId);
+      setRuntimeProbeMap((prev) => ({ ...prev, [machineId]: probe }));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRunningProbe(null);
     }
   };
 
@@ -286,6 +303,14 @@ export default function MachineManager({ pool }: MachineManagerProps) {
                     </button>
                     <button
                       type="button"
+                      onClick={() => void handleRuntimeProbe(machine.id)}
+                      className="rounded-md border border-zinc-700 px-3 py-1 text-xs hover:bg-zinc-800"
+                      disabled={runningProbe === machine.id}
+                    >
+                      {runningProbe === machine.id ? "Probing..." : "Runtime Probe"}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => void handleRemove(machine.id)}
                       className="rounded-md border border-red-700/70 px-3 py-1 text-xs text-red-300 hover:bg-red-950/40"
                     >
@@ -307,6 +332,16 @@ export default function MachineManager({ pool }: MachineManagerProps) {
                         ))}
                       </ul>
                     )}
+                  </div>
+                )}
+                {runtimeProbeMap[machine.id] && (
+                  <div className="mt-3 rounded-md border border-zinc-800 bg-black/20 p-2 text-xs text-zinc-300">
+                    <p>container_present: {String(runtimeProbeMap[machine.id].container_present)}</p>
+                    <p>image_ref: {runtimeProbeMap[machine.id].image_ref ?? "-"}</p>
+                    <p>managed_by_compose: {String(runtimeProbeMap[machine.id].managed_by_compose)}</p>
+                    <p>db_mount_source: {runtimeProbeMap[machine.id].db_mount_source ?? "-"}</p>
+                    <p>keys_mount_source: {runtimeProbeMap[machine.id].keys_mount_source ?? "-"}</p>
+                    <p>bp_key_files_present: {String(runtimeProbeMap[machine.id].bp_key_files_present)}</p>
                   </div>
                 )}
               </article>

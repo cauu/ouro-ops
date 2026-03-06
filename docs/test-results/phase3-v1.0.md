@@ -1,6 +1,6 @@
 # Phase 3 验证记录（v1.0）
 
-日期：2026-03-04
+日期：2026-03-05
 
 ## 1. 自动化结果
 
@@ -28,6 +28,7 @@
 | TC-FE-003 | `frontend_tests::tc_fe_003_task_log_stream_filters_by_task_id` |
 | TC-FE-004 | `frontend_tests::tc_fe_004_deploy_wizard_step_submit`（含 `latest` + blinklabs 默认断言） |
 | P3-S1 (可用性补充) | `frontend_tests::tc_fe_machine_add_key_flow_exists`、`keychain::tests::normalize_key_path_*` |
+| P3-S3 runtime probe | `commands::machine::tests::tc_mch_010_runtime_probe_parses_inspect_fixtures`、`tc_mch_011_runtime_probe_returns_absent_when_container_missing` |
 
 ## 3. blinklabs 对齐检查（代码级）
 
@@ -48,8 +49,13 @@
   - 写入 `/opt/cardano/logs/deploy-migration.log`
 - `safe_validation_mode` 保持只读：
   - `ansible/playbooks/deploy.yml` 在 safe 模式只执行 `safe-validate` role
+- takeover 切换托管已实现：
+  - 新增 `machine_runtime_probe(machine_id)` 命令（识别镜像/挂载/compose 标签）
+  - 新增 `takeover` role：迁移 `/home/cardano/*` 到 `/opt/cardano/*`（幂等）
+  - `cardano-node` 角色接入切换回滚（rename legacy + 启动失败自动回滚）
+  - `DeployPayload` 增加 `takeover_existing_node`、`restore_snapshot`（默认 false）
 
 ## 4. 待补充验证（联调）
 
 - TC-INV-002（真实 ansible-runner + 目标主机执行路径）仍需在联调环境做端到端验证。
-- 旧路径迁移与 digest 拉取建议在真实远端机器补充一条集成脚本验证。
+- 需在真实机器补充 takeover 联调：运行中 compose 探测、迁移、切换、故障回滚演练。

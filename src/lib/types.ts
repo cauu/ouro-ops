@@ -61,6 +61,23 @@ export interface MachineFilter {
   network?: "mainnet" | "preprod" | "preview";
 }
 
+export interface RuntimeProbeMount {
+  destination: string;
+  source: string;
+}
+
+export interface RuntimeProbe {
+  container_present: boolean;
+  container_name: string;
+  image_ref: string | null;
+  ports: string[];
+  mounts: RuntimeProbeMount[];
+  managed_by_compose: boolean;
+  bp_key_files_present: boolean;
+  db_mount_source: string | null;
+  keys_mount_source: string | null;
+}
+
 export interface PreflightReport {
   ssh_ok: boolean;
   os_version: string;
@@ -88,6 +105,8 @@ export interface DeployPayload {
   enable_chrony: boolean;
   enable_hardening: boolean;
   safe_validation_mode?: boolean;
+  takeover_existing_node?: boolean;
+  restore_snapshot?: boolean;
 }
 
 export interface TaskMachineStatus {
@@ -112,4 +131,18 @@ export interface TaskLogEvent {
   stream: "stdout" | "stderr" | string;
   line: string;
   timestamp: string;
+}
+
+export interface MonitorSnapshot {
+  machine_id: number;
+  machine_name: string;
+  role: "relay" | "bp" | "archive" | string;
+  network: "mainnet" | "preprod" | "preview" | string;
+  block_height: number | null;
+  sync_progress: number | null;
+  blocks_per_minute: number | null;
+  status: "syncing" | "synced" | "stalled" | "unreachable" | "unknown" | string;
+  stalled: boolean;
+  collected_at: string;
+  note: string | null;
 }

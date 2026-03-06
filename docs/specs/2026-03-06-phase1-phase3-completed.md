@@ -1,0 +1,73 @@
+# Cardano Stake Pool 控制平面 Phase 1 至 Phase 3 归档
+
+状态：`completed`  
+日期：`2026-03-06`
+
+## 1. 需求详情
+
+- 背景
+  - Phase 1 至 Phase 3 已建立面向 macOS 的 Cardano SPO 桌面控制平面基础能力。
+  - 仓库此前通过 PRD、详细设计、开发计划、测试用例、审查记录和阶段性验证文档来追踪这部分工作。
+  - 本 spec 用于把已经完成的范围收敛为一份不可变的已完成归档。
+- 范围
+  - Phase 1：应用壳层、SQLite 持久化、sidecar 生命周期与事件通道。
+  - Phase 2：矿池初始化、主机管理、SSH Agent 集成与预检能力。
+  - Phase 3：部署流程、inventory 生成、blinklabs 镜像对齐、safe validation mode、runtime probe 与 takeover 路径。
+- 约束
+  - SQLite 不使用外键和级联动作。
+  - 部署最小拓扑保持为 `1 relay + 1 bp`。
+  - `safe_validation_mode` 必须保持只读。
+  - 部署默认镜像为 `ghcr.io/blinklabs-io/cardano-node:latest`，同时支持 tag 与 digest 覆盖。
+- 非目标
+  - 监控、KES 生命周期自动化、滚动升级等属于 Phase 4 范围，不纳入本归档 spec。
+
+## 2. 概要设计
+
+- 架构 / 受影响模块
+  - 使用 Tauri 桌面壳层与 React + TypeScript 前端。
+  - 使用 Rust command 层处理 pool、machine、deploy 与 sidecar 编排。
+  - 使用 Python sidecar 驱动 `ansible-runner`。
+  - 使用 `common`、`hardening`、`cardano-node`、`safe-validate`、`takeover` 等 Ansible role。
+- 数据模型与接口
+  - 持久化实体包括 `pool`、`machine`、`task`、`task_machine`、`machine_health`、`kes_state`、`audit_log`。
+  - Pool 与 machine 的关系由 command 和 repository 层保证，不依赖数据库外键。
+  - 部署链路包含 inventory 生成、sidecar 事件流、部署取消、runtime probe 与 takeover/rollback 处理。
+- 风险与回退策略
+  - 历史来源文档保持不变。
+  - 生产回退继续遵循前向变更方式，对已提交改动使用 `git revert`。
+
+## 3. 执行计划
+
+- [x] `p1-1` 建立 Tauri、React、Rust、SQLite 与 sidecar 基础能力
+- [x] `p1-2` 实现 migration、repository、sidecar ping、playbook 执行与事件发射
+- [x] `p1-3` 完成 Phase 1 数据库、sidecar、事件与可读错误验证
+- [x] `p2-1` 实现矿池初始化与更新 command
+- [x] `p2-2` 实现主机 CRUD、SSH 密钥校验与预检报告
+- [x] `p2-3` 实现前端 setup、layout、主机管理与 settings 流程
+- [x] `p2-4` 完成 Phase 2 矿池、主机、安全与前端验证
+- [x] `p3-1` 实现 deploy command、任务持久化、inventory 生成与 sidecar playbook 执行
+- [x] `p3-2` 实现 deploy playbook、hardening、cardano-node role、取消与日志流
+- [x] `p3-3` 完成 blinklabs 默认镜像与 `run` 语义对齐
+- [x] `p3-4` 增加 `safe_validation_mode`、runtime probe、takeover 路径与 legacy 容器回滚
+- [x] `p3-5` 完成 Phase 3 自动化验证与 blinklabs 代码级对齐检查
+
+## 4. 测试与验收标准
+
+- `TC-ARC-001` 已完成归档 spec 包含 requirement、design、plan、acceptance、execution log、validation evidence、change log 等完整结构。
+- `TC-ARC-002` 归档范围明确限定为 Phase 1 至 Phase 3，且明确 Phase 4 不属于本归档。
+- `TC-ARC-003` 归档文档明确引用 Phase 2 与 Phase 3 的验证证据来源。
+
+## 5. 执行日志（仅追加）
+
+- `2026-03-06` 从此前已完成的项目范围创建本归档 spec，覆盖 Phase 1 至 Phase 3。
+- `2026-03-06` 已将完成范围从历史文档映射到一份不可变归档 spec 中。
+
+## 6. 验证证据（仅追加）
+
+- `TC-ARC-001 | stack: other | command: manual inspection of docs/specs/2026-03-06-phase1-phase3-completed.md | result: pass | note: completed archive spec contains all required immutable-spec sections`
+- `TC-ARC-002 | stack: other | command: manual inspection of execution plan and scope sections | result: pass | note: archive scope is explicitly limited to Phase 1 to Phase 3`
+- `TC-ARC-003 | stack: other | command: manual inspection of referenced evidence sources | result: pass | note: archive references docs/test-results/phase2-v1.0.md and docs/test-results/phase3-v1.0.md as historical validation inputs`
+
+## 7. 变更记录（仅追加）
+
+- `2026-03-06` 归档来源：`docs/prd/v1.0.md`、`docs/high-level-design/v1.0.md`、`docs/detail-design/v1.0.md`、`docs/development-plan/v1.0.md`、`docs/test-cases/v1.0.md`、`docs/test-results/phase2-v1.0.md`、`docs/test-results/phase3-v1.0.md`、`docs/review/v1.0.md`。

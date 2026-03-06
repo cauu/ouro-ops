@@ -24,6 +24,77 @@ def summarize_failure(data: dict) -> str:
     msg = data.get("msg") or data.get("stderr") or data.get("line") or "unknown error"
     return f"{host}/{task}: {msg}"
 
+def normalize_inventory(inventory: object) -> object:
+    """
+    Convert dynamic-inventory-like payload used by Rust into a static inventory
+    structure ansible inventory plugins can always parse.
+
+    Input example:
+    {
+      "_meta": {"hostvars": {"relay-1": {...}}},
+      "relay": {"hosts": ["relay-1"]},
+      "bp": {"hosts": ["bp-1"]}
+    }
+
+    Output example:
+    {
+      "all": {
+        "children": {
+          "relay": {"hosts": {"relay-1": {...}}},
+          "bp": {"hosts": {"bp-1": {...}}}
+        }
+      }
+    }
+    """
+    if not isinstance(inventory, dict):
+        return inventory
+
+    meta = inventory.get("_meta")
+    hostvars = {}
+    if isinstance(meta, dict):
+        hv = meta.get("hostvars")
+        if isinstance(hv, dict):
+            hostvars = hv
+
+    children: dict[str, dict] = {}
+    for group_name, group_payload in inventory.items():
+        if group_name == "_meta":
+            continue
+        if not isinstance(group_payload, dict):
+            continue
+        hosts_entry = group_payload.get("hosts", {})
+        group_hosts: dict[str, dict] = {}
+
+        if isinstance(hosts_entry, list):
+            for item in hosts_entry:
+                if isinstance(item, str) and item:
+                    hv = hostvars.get(item)
+                    group_hosts[item] = hv if isinstance(hv, dict) else {}
+        elif isinstance(hosts_entry, dict):
+            for host_name, host_data in hosts_entry.items():
+                if not isinstance(host_name, str) or not host_name:
+                    continue
+                if isinstance(host_data, dict):
+                    group_hosts[host_name] = host_data
+                    continue
+                hv = hostvars.get(host_name)
+                group_hosts[host_name] = hv if isinstance(hv, dict) else {}
+
+        group_obj = {"hosts": group_hosts}
+        group_vars = group_payload.get("vars")
+        if isinstance(group_vars, dict):
+            group_obj["vars"] = group_vars
+        children[group_name] = group_obj
+
+    if not children:
+        return inventory
+
+    return {
+        "all": {
+            "children": children
+        }
+    }
+
 def main() -> None:
     try:
         import ansible_runner
@@ -55,7 +126,7 @@ def main() -> None:
         if method == "run_playbook":
             run_id = params.get("run_id", "default")
             playbook = params.get("playbook", "deploy.yml")
-            inventory = params.get("inventory", {})
+            inventory = normalize_inventory(params.get("inventory", {}))
             extra_vars = params.get("extra_vars", {})
             mock_fail = bool(extra_vars.get("_mock_fail", False))
             private_data_dir = tempfile.mkdtemp(prefix="ouro_runner_")

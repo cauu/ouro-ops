@@ -2,27 +2,36 @@
 - name: Safe validation mode (read-only checks)
   hosts: all
   become: true
-  roles:
-    - role: safe-validate
-  when: safe_validation_mode | default(false) | bool
+  tasks:
+    - name: Run safe-validate role
+      ansible.builtin.include_role:
+        name: safe-validate
+      when: safe_validation_mode | default(false) | bool
 
-- name: Deploy common baseline
+- name: Deploy common and hardening baseline
   hosts: all
   become: true
-  roles:
-    - role: common
-  when: not (safe_validation_mode | default(false) | bool)
+  tasks:
+    - name: Run common role
+      ansible.builtin.include_role:
+        name: common
+      when: not (safe_validation_mode | default(false) | bool)
 
-- name: Deploy hardening controls
-  hosts: all
-  become: true
-  roles:
-    - role: hardening
-  when: (not (safe_validation_mode | default(false) | bool)) and (enable_hardening | default(true) | bool)
+    - name: Run hardening role
+      ansible.builtin.include_role:
+        name: hardening
+      when: (not (safe_validation_mode | default(false) | bool)) and (enable_hardening | default(true) | bool)
 
-- name: Deploy cardano node runtime
+- name: Takeover and deploy cardano runtime
   hosts: relay:bp
   become: true
-  roles:
-    - role: cardano-node
-  when: not (safe_validation_mode | default(false) | bool)
+  tasks:
+    - name: Run takeover role
+      ansible.builtin.include_role:
+        name: takeover
+      when: (not (safe_validation_mode | default(false) | bool)) and (takeover_existing_node | default(false) | bool)
+
+    - name: Run cardano-node role
+      ansible.builtin.include_role:
+        name: cardano-node
+      when: not (safe_validation_mode | default(false) | bool)

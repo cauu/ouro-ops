@@ -23,6 +23,19 @@
     - /opt/cardano/db
     - /opt/cardano/ipc
 
+- name: Ensure runtime directories are writable by container user
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "/opt/cardano/db", owner: "1000", group: "1000", mode: "0770" }
+    - { path: "/opt/cardano/ipc", owner: "1000", group: "1000", mode: "0770" }
+    - { path: "/opt/cardano/keys", owner: "1000", group: "1000", mode: "0770" }
+    - { path: "/opt/cardano/logs", owner: "1000", group: "1000", mode: "0770" }
+
 - name: Ensure network config directory exists
   file:
     path: "/opt/cardano/config/{{ network }}"
@@ -58,11 +71,19 @@
     - legacy_data_dir.stat.exists | default(false)
     - (new_db_probe.stdout | trim | length) == 0
 
-- name: Download network config file
+- name: Download network config file for non-mainnet environments
   get_url:
     url: "https://book.world.dev.cardano.org/environments/{{ network }}/config.json"
     dest: "/opt/cardano/config/{{ network }}/config.json"
     mode: "0644"
+  when: network != "mainnet"
+
+- name: Render bundled mainnet config compatible with 10.5.4-1
+  template:
+    src: config-mainnet-10.5.4-1.json.j2
+    dest: "/opt/cardano/config/mainnet/config.json"
+    mode: "0644"
+  when: network == "mainnet"
 
 - name: Download network genesis byron file
   get_url:
@@ -94,6 +115,31 @@
     dest: "/opt/cardano/config/{{ network }}/topology.json"
     mode: "0644"
 
+- name: Check required BP key files
+  stat:
+    path: "{{ item }}"
+  register: bp_key_stats
+  loop:
+    - /opt/cardano/keys/kes.skey
+    - /opt/cardano/keys/node.cert
+    - /opt/cardano/keys/vrf.skey
+  when: role == "bp"
+
+- name: Fail when required BP key files are missing
+  fail:
+    msg: >-
+      missing block producer key files under /opt/cardano/keys:
+      {{
+        bp_key_stats.results
+        | rejectattr('stat.exists')
+        | map(attribute='stat.path')
+        | list
+        | join(', ')
+      }}
+  when:
+    - role == "bp"
+    - (bp_key_stats.results | rejectattr('stat.exists') | list | length) > 0
+
 - name: Resolve cardano image reference (digest preferred)
   set_fact:
     cardano_image_ref: >-
@@ -103,7 +149,7 @@
         (
           '@' ~ (image_digest | default('', true) | trim)
           if ((image_digest | default('', true) | trim | length) > 0)
-          else ':' ~ (cardano_version | default('latest', true) | trim)
+          else ':' ~ (cardano_version | default('10.5.4-1', true) | trim)
         )
       }}
 
@@ -112,47 +158,141 @@
     name: "{{ cardano_image_ref }}"
     source: pull
 
-- name: Start cardano-node container
-  community.docker.docker_container:
-    name: cardano-node
-    image: "{{ cardano_image_ref }}"
-    state: started
-    restart_policy: unless-stopped
-    command: run
-    env:
-      CARDANO_BLOCK_PRODUCER: "{{ 'true' if role == 'bp' else 'false' }}"
-      CARDANO_CONFIG_BASE: /opt/cardano/config
-      CARDANO_NETWORK: "{{ network }}"
-      CARDANO_CONFIG: "/opt/cardano/config/{{ network }}/config.json"
-      CARDANO_TOPOLOGY: "/opt/cardano/config/{{ network }}/topology.json"
-      CARDANO_DATABASE_PATH: /data/db
-      CARDANO_SOCKET_PATH: /ipc/node.socket
-      CARDANO_PORT: "3001"
-    ports:
-      - "3001:3001"
-    volumes:
-      - /opt/cardano/config:/opt/cardano/config
-      - /opt/cardano/db:/data/db
-      - /opt/cardano/ipc:/ipc
-      - /opt/cardano/keys:/opt/cardano/config/keys
+- name: Resolve takeover switch strategy
+  set_fact:
+    takeover_switch_enabled: >-
+      {{
+        (takeover_existing_node | default(false) | bool)
+        and (takeover_container_present | default(false) | bool)
+        and (takeover_managed_by_compose | default(false) | bool)
+      }}
+    takeover_legacy_container_name: >-
+      cardano-node-legacy-{{ ansible_date_time.epoch }}-{{ inventory_hostname | regex_replace('[^a-zA-Z0-9_.-]', '_') }}
 
-- name: Wait for port 3001
-  wait_for:
-    port: 3001
-    timeout: 60
+- name: Start cardano node with takeover rollback guard
+  block:
+    - name: Stop legacy cardano-node before takeover switch
+      community.docker.docker_container:
+        name: cardano-node
+        state: stopped
+      when: takeover_switch_enabled
 
-- name: Wait for cardano socket file
-  wait_for:
-    path: /opt/cardano/ipc/node.socket
-    timeout: 120
+    - name: Rename legacy cardano-node container
+      ansible.builtin.shell: "docker rename cardano-node {{ takeover_legacy_container_name }}"
+      changed_when: true
+      when: takeover_switch_enabled
 
-- name: Wait for node sync progress to reach 100%
-  shell: |
-    docker exec cardano-node cardano-cli query tip \
-      --socket-path /ipc/node.socket \
-      --{{ network }} | jq -r '.syncProgress'
-  register: sync_progress
-  until: sync_progress.stdout == "100.00"
-  retries: 120
-  delay: 30
-  changed_when: false
+    - name: Build cardano container environment
+      set_fact:
+        cardano_env: >-
+          {{
+            {
+              'CARDANO_BLOCK_PRODUCER': 'true' if role == 'bp' else 'false',
+              'CARDANO_CONFIG_BASE': '/opt/cardano/config',
+              'CARDANO_NETWORK': network,
+              'CARDANO_CONFIG': '/opt/cardano/config/' ~ network ~ '/config.json',
+              'CARDANO_TOPOLOGY': '/opt/cardano/config/' ~ network ~ '/topology.json',
+              'CARDANO_DATABASE_PATH': '/data/db',
+              'CARDANO_SOCKET_PATH': '/ipc/node.socket',
+              'CARDANO_PORT': '3001',
+              'RESTORE_SNAPSHOT': ('true' if (restore_snapshot | default(false) | bool) else 'false')
+            }
+            | combine(
+              (role == 'bp')
+              | ternary(
+                {
+                  'CARDANO_SHELLEY_KES_KEY': '/opt/cardano/config/keys/kes.skey',
+                  'CARDANO_SHELLEY_OPERATIONAL_CERTIFICATE': '/opt/cardano/config/keys/node.cert',
+                  'CARDANO_SHELLEY_VRF_KEY': '/opt/cardano/config/keys/vrf.skey'
+                },
+                {}
+              )
+            )
+          }}
+
+    - name: Start cardano-node container
+      community.docker.docker_container:
+        name: cardano-node
+        image: "{{ cardano_image_ref }}"
+        state: started
+        restart_policy: unless-stopped
+        command: run
+        env: "{{ cardano_env }}"
+        ports:
+          - "3001:3001"
+        volumes:
+          - /opt/cardano/config:/opt/cardano/config
+          - /opt/cardano/db:/data/db
+          - /opt/cardano/ipc:/ipc
+          - /opt/cardano/keys:/opt/cardano/config/keys
+
+    - name: Wait for cardano socket file inside container
+      shell: docker exec cardano-node sh -lc 'test -S /ipc/node.socket'
+      register: cardano_socket_check
+      until: cardano_socket_check.rc == 0
+      retries: 24
+      delay: 5
+      changed_when: false
+
+    - name: Wait for initial cardano tip query to succeed
+      shell: |
+        docker exec cardano-node cardano-cli query tip \
+          --socket-path /ipc/node.socket \
+          --{{ network }}
+      register: cardano_tip_raw
+      until: cardano_tip_raw.rc == 0
+      retries: 24
+      delay: 5
+      changed_when: false
+
+    - name: Parse initial cardano tip observation
+      set_fact:
+        cardano_tip_observation: "{{ cardano_tip_raw.stdout | from_json }}"
+
+    - name: Record initial cardano tip observation
+      debug:
+        msg:
+          block: "{{ cardano_tip_observation.block | default('unknown') }}"
+          syncProgress: "{{ cardano_tip_observation.syncProgress | default('unknown') }}"
+          era: "{{ cardano_tip_observation.era | default('unknown') }}"
+          hash: "{{ cardano_tip_observation.hash | default('unknown') }}"
+      changed_when: false
+
+  rescue:
+    - name: Capture failed cardano container status
+      ansible.builtin.shell: "docker inspect cardano-node"
+      register: cardano_failed_inspect
+      changed_when: false
+      failed_when: false
+
+    - name: Capture failed cardano container logs
+      ansible.builtin.shell: "docker logs --tail 200 cardano-node"
+      register: cardano_failed_logs
+      changed_when: false
+      failed_when: false
+
+    - name: Remove failed new cardano-node container
+      community.docker.docker_container:
+        name: cardano-node
+        state: absent
+      failed_when: false
+
+    - name: Restore legacy container name after failed takeover
+      ansible.builtin.shell: "docker rename {{ takeover_legacy_container_name }} cardano-node"
+      when: takeover_switch_enabled
+      failed_when: false
+
+    - name: Restart restored legacy container
+      community.docker.docker_container:
+        name: cardano-node
+        state: started
+      when: takeover_switch_enabled
+      failed_when: false
+
+    - name: Fail deployment after takeover rollback
+      fail:
+        msg: >-
+          cardano-node start or health-check failed; legacy container was restored when possible
+          (takeover={{ takeover_switch_enabled }}).
+          inspect={{ cardano_failed_inspect.stdout | default('n/a') }}
+          logs={{ cardano_failed_logs.stderr | default(cardano_failed_logs.stdout | default('n/a')) }}

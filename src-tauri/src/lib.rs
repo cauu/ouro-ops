@@ -63,9 +63,11 @@ pub fn run() {
             commands::machine::ssh_agent_list_keys,
             commands::machine::ssh_agent_add_key,
             commands::machine::machine_preflight,
+            commands::machine::machine_runtime_probe,
             commands::deploy::deploy_start,
             commands::deploy::deploy_status,
             commands::deploy::deploy_cancel,
+            commands::monitor::monitor_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -106,8 +108,9 @@ mod frontend_tests {
         let deploy = include_str!("../../src/pages/DeployWizard.tsx");
         assert!(app.contains("path=\"/deploy\""));
         assert!(deploy.contains("deployStart("));
-        assert!(deploy.contains("useState(\"latest\")"));
+        assert!(deploy.contains("useState(\"10.5.4-1\")"));
         assert!(deploy.contains("ghcr.io/blinklabs-io/cardano-node"));
+        assert!(deploy.contains("takeover_existing_node"));
         assert!(deploy.contains("step === 1"));
         assert!(deploy.contains("step === 2"));
         assert!(deploy.contains("step === 3"));
@@ -118,5 +121,23 @@ mod frontend_tests {
         let mm = include_str!("../../src/pages/MachineManager.tsx");
         assert!(mm.contains("sshAgentAddKey("));
         assert!(mm.contains("Add Key to ssh-agent"));
+        assert!(mm.contains("machineRuntimeProbe("));
+        assert!(mm.contains("Runtime Probe"));
+    }
+
+    #[test]
+    fn tc_fe_006_dashboard_sync_monitor_exists() {
+        let dashboard = include_str!("../../src/pages/Dashboard.tsx");
+        assert!(dashboard.contains("monitorSnapshot("));
+        assert!(dashboard.contains("Blocks/min"));
+        assert!(dashboard.contains("Sync Progress"));
+    }
+
+    #[test]
+    fn tc_dep_006_playbook_no_longer_waits_for_full_sync_completion() {
+        let playbook = include_str!("../../ansible/roles/cardano-node/tasks/main.yml");
+        assert!(playbook.contains("Wait for initial cardano tip query to succeed"));
+        assert!(playbook.contains("Record initial cardano tip observation"));
+        assert!(!playbook.contains("sync_progress.stdout == \"100.00\""));
     }
 }

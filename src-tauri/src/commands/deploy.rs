@@ -15,7 +15,7 @@ use crate::error::AppError;
 use crate::sidecar::{run_playbook, spawn_sidecar, SidecarState};
 
 const DEFAULT_IMAGE_REGISTRY: &str = "ghcr.io/blinklabs-io/cardano-node";
-const DEFAULT_IMAGE_TAG: &str = "latest";
+const DEFAULT_IMAGE_TAG: &str = "10.5.4-1";
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct DeployPayload {
@@ -30,6 +30,10 @@ pub struct DeployPayload {
     pub enable_hardening: bool,
     #[serde(default)]
     pub safe_validation_mode: bool,
+    #[serde(default)]
+    pub takeover_existing_node: bool,
+    #[serde(default)]
+    pub restore_snapshot: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -491,7 +495,9 @@ fn build_extra_vars(payload: &DeployPayload) -> Value {
         "swap_size_gb": payload.swap_size_gb,
         "enable_chrony": payload.enable_chrony,
         "enable_hardening": payload.enable_hardening,
-        "safe_validation_mode": payload.safe_validation_mode
+        "safe_validation_mode": payload.safe_validation_mode,
+        "takeover_existing_node": payload.takeover_existing_node,
+        "restore_snapshot": payload.restore_snapshot
     })
 }
 
@@ -624,7 +630,9 @@ pub async fn deploy_start(
                 "machine_ids": payload.machine_ids,
                 "cardano_version": payload.cardano_version,
                 "network": payload.network,
-                "safe_validation_mode": payload.safe_validation_mode
+                "safe_validation_mode": payload.safe_validation_mode,
+                "takeover_existing_node": payload.takeover_existing_node,
+                "restore_snapshot": payload.restore_snapshot
             }),
         )?;
     }
@@ -768,6 +776,8 @@ mod tests {
             enable_chrony: true,
             enable_hardening: true,
             safe_validation_mode: false,
+            takeover_existing_node: false,
+            restore_snapshot: false,
         };
         assert!(validate_deploy_payload(&base).is_ok());
 
@@ -825,6 +835,8 @@ mod tests {
             enable_chrony: true,
             enable_hardening: true,
             safe_validation_mode: false,
+            takeover_existing_node: false,
+            restore_snapshot: false,
         };
         insert_task_with_machines(&conn, "task-1", &payload).expect("insert task");
 
@@ -969,10 +981,17 @@ mod tests {
             enable_chrony: false,
             enable_hardening: false,
             safe_validation_mode: true,
+            takeover_existing_node: true,
+            restore_snapshot: false,
         };
         let extra_vars = build_extra_vars(&payload);
         assert_eq!(extra_vars["safe_validation_mode"], Value::Bool(true));
-        assert_eq!(extra_vars["image_digest"], Value::String("sha256:abc123".into()));
+        assert_eq!(extra_vars["takeover_existing_node"], Value::Bool(true));
+        assert_eq!(extra_vars["restore_snapshot"], Value::Bool(false));
+        assert_eq!(
+            extra_vars["image_digest"],
+            Value::String("sha256:abc123".into())
+        );
     }
 
     #[test]
@@ -989,6 +1008,8 @@ mod tests {
         }))
         .expect("deserialize payload");
         assert!(!payload.safe_validation_mode);
+        assert!(!payload.takeover_existing_node);
+        assert!(!payload.restore_snapshot);
     }
 
     #[test]
@@ -1004,6 +1025,8 @@ mod tests {
             enable_chrony: true,
             enable_hardening: false,
             safe_validation_mode: false,
+            takeover_existing_node: false,
+            restore_snapshot: false,
         };
         let normalized = normalize_deploy_payload(&payload);
         assert_eq!(normalized.cardano_version, DEFAULT_IMAGE_TAG);
@@ -1025,6 +1048,8 @@ mod tests {
             enable_chrony: true,
             enable_hardening: true,
             safe_validation_mode: false,
+            takeover_existing_node: false,
+            restore_snapshot: false,
         };
         let normalized = normalize_deploy_payload(&payload);
         assert_eq!(normalized.cardano_version, "10.5.1");

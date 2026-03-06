@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import ConfirmModal from "../components/ConfirmModal";
 import TaskLogStream from "../components/TaskLogStream";
-import { deployCancel, deployStart, deployStatus, machineList } from "../lib/ipc";
-import type { DeployPayload, DeployTaskStatus, Machine, Pool } from "../lib/types";
+import { deployCancel, deployStart, deployStatus, machineList, machineRuntimeProbe } from "../lib/ipc";
+import type { DeployPayload, DeployTaskStatus, Machine, Pool, RuntimeProbe } from "../lib/types";
 
 interface DeployWizardProps {
   pool: Pool;
@@ -20,7 +20,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
   const [step, setStep] = useState(1);
   const [selectedMachineIds, setSelectedMachineIds] = useState<number[]>([]);
 
-  const [cardanoVersion, setCardanoVersion] = useState("latest");
+  const [cardanoVersion, setCardanoVersion] = useState("10.5.4-1");
   const [imageRegistry, setImageRegistry] = useState("ghcr.io/blinklabs-io/cardano-node");
   const [network, setNetwork] = useState<Pool["network"]>(pool.network);
   const [enableSwap, setEnableSwap] = useState(true);
@@ -28,6 +28,9 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
   const [enableChrony, setEnableChrony] = useState(true);
   const [enableHardening, setEnableHardening] = useState(true);
   const [safeValidationMode, setSafeValidationMode] = useState(false);
+  const [takeoverExistingNode, setTakeoverExistingNode] = useState(false);
+  const [runtimeProbeMap, setRuntimeProbeMap] = useState<Record<number, RuntimeProbe>>({});
+  const [probingRuntime, setProbingRuntime] = useState(false);
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -83,6 +86,10 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
     () => machines.filter((m) => selectedMachineIds.includes(m.id)),
     [machines, selectedMachineIds],
   );
+  const selectedWithRuntime = useMemo(
+    () => selectedMachines.filter((m) => runtimeProbeMap[m.id]?.container_present),
+    [selectedMachines, runtimeProbeMap],
+  );
 
   const canNextFromStep1 = selectedMachineIds.length > 0;
   const canNextFromStep2 = cardanoVersion.trim().length > 0 && swapSizeGb >= 8 && swapSizeGb <= 16;
@@ -103,7 +110,49 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
     enable_chrony: enableChrony,
     enable_hardening: enableHardening,
     safe_validation_mode: safeValidationMode,
+    takeover_existing_node: takeoverExistingNode,
+    restore_snapshot: false,
   });
+
+  useEffect(() => {
+    let active = true;
+    const runProbe = async () => {
+      if (selectedMachineIds.length === 0) {
+        setRuntimeProbeMap({});
+        setTakeoverExistingNode(false);
+        return;
+      }
+      setProbingRuntime(true);
+      const pairs = await Promise.all(
+        selectedMachineIds.map(async (machineId) => {
+          try {
+            const probe = await machineRuntimeProbe(machineId);
+            return [machineId, probe] as const;
+          } catch {
+            return [machineId, undefined] as const;
+          }
+        }),
+      );
+      if (!active) {
+        return;
+      }
+      const next: Record<number, RuntimeProbe> = {};
+      pairs.forEach(([machineId, probe]) => {
+        if (probe) {
+          next[machineId] = probe;
+        }
+      });
+      setRuntimeProbeMap(next);
+      if (!Object.values(next).some((probe) => probe.container_present)) {
+        setTakeoverExistingNode(false);
+      }
+      setProbingRuntime(false);
+    };
+    void runProbe();
+    return () => {
+      active = false;
+    };
+  }, [selectedMachineIds]);
 
   const handleStart = async () => {
     setStarting(true);
@@ -182,6 +231,23 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
           {step === 2 && (
             <div className="space-y-3">
               <h2 className="text-lg font-medium">2. Configure Parameters</h2>
+              {probingRuntime && (
+                <p className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300">
+                  Probing runtime containers on selected machines...
+                </p>
+              )}
+              {selectedWithRuntime.length > 0 && (
+                <div className="rounded-md border border-amber-700/60 bg-amber-950/20 p-3 text-xs text-amber-200">
+                  <p>
+                    Detected running <code>cardano-node</code> on:{" "}
+                    {selectedWithRuntime.map((m) => m.name).join(", ")}
+                  </p>
+                  <p className="mt-1">
+                    Enabling takeover will migrate DB/keys to <code>/opt/cardano/*</code> and switch to app-managed
+                    runtime with automatic rollback on health-check failure.
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <input
                   className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
@@ -249,6 +315,16 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                   />
                   safe_validation_mode (read-only)
                 </label>
+                {selectedWithRuntime.length > 0 && (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={takeoverExistingNode}
+                      onChange={(e) => setTakeoverExistingNode(e.target.checked)}
+                    />
+                    takeover_existing_node
+                  </label>
+                )}
               </div>
             </div>
           )}
@@ -261,12 +337,13 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
               </p>
               <p className="text-sm text-zinc-300">Version: {cardanoVersion}</p>
               <p className="text-sm text-zinc-300">Network: {network}</p>
-              <p className="text-sm text-zinc-300">Image: {imageRegistry} (default tag: latest, overridable)</p>
+              <p className="text-sm text-zinc-300">Image: {imageRegistry} (default tag: 10.5.4-1, overridable)</p>
               <p className="text-sm text-zinc-300">
                 swap={String(enableSwap)} ({swapSizeGb}G) · chrony={String(enableChrony)} · hardening=
                 {String(enableHardening)}
               </p>
               <p className="text-sm text-zinc-300">safe_validation_mode={String(safeValidationMode)}</p>
+              <p className="text-sm text-zinc-300">takeover_existing_node={String(takeoverExistingNode)}</p>
               <button
                 type="button"
                 onClick={() => setShowConfirm(true)}

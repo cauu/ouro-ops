@@ -2,6 +2,7 @@
 
 pub mod deploy;
 pub mod machine;
+pub mod monitor;
 pub mod pool;
 
 use crate::db::{get_user_version, table_exists, DbState};
