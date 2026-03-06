@@ -44,6 +44,21 @@ fn classify_ssh_error(target: &str, stderr: &str) -> AppError {
     AppError::Internal(format!("ssh command failed: {stderr}"))
 }
 
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn wrap_remote_command(remote_cmd: &str) -> String {
+    if !remote_cmd.trim_start().starts_with("docker ") {
+        return remote_cmd.to_string();
+    }
+    let wrapped = format!(
+        "if [ \"$(id -u)\" -eq 0 ]; then {cmd}; else {cmd} || sudo -n {cmd}; fi",
+        cmd = remote_cmd
+    );
+    format!("sh -lc {}", shell_single_quote(wrapped.as_str()))
+}
+
 fn ssh_exec(machine: &MachineRow, remote_cmd: &str) -> Result<String, AppError> {
     let target = format!("{}@{}", machine.ssh_user, machine.ip);
     let output = Command::new("ssh")
@@ -58,7 +73,7 @@ fn ssh_exec(machine: &MachineRow, remote_cmd: &str) -> Result<String, AppError> 
         ])
         .arg(machine.ssh_port.to_string())
         .arg(target.as_str())
-        .arg(remote_cmd)
+        .arg(wrap_remote_command(remote_cmd))
         .output()?;
     if output.status.success() {
         return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
@@ -331,5 +346,12 @@ mod tests {
         };
         assert!(determine_stalled(Some(&previous), Some(1_000), Some(12.5), 1_301));
         assert!(!determine_stalled(Some(&previous), Some(1_001), Some(12.5), 1_301));
+    }
+
+    #[test]
+    fn tc_mon_004_wrap_remote_command_uses_sudo_for_docker() {
+        let wrapped = wrap_remote_command("docker exec cardano-node cardano-cli query tip");
+        assert!(wrapped.contains("sudo -n docker exec cardano-node cardano-cli query tip"));
+        assert!(wrapped.starts_with("sh -lc "));
     }
 }

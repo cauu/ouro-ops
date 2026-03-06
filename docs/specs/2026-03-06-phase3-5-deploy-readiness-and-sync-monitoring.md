@@ -47,6 +47,7 @@
 - [x] `p35-4` 增加同步速度计算逻辑，输出基础速率指标与异常判断依据
 - [x] `p35-5` 在前端展示同步速度、同步进度与基础同步状态
 - [x] `p35-6` 为部署完成判定和同步监控补充自动化或脚本化验证
+- [x] `p35-7` 修复 SSH 监控与运行时探测在非 root 用户下访问 Docker daemon socket 的权限问题
 
 ## 4. 测试与验收标准
 
@@ -55,6 +56,7 @@
 - `TC-P35-003` 监控链路可记录并展示 `syncProgress`、区块高度与采样时间。
 - `TC-P35-004` 系统可计算并展示同步速度，至少包含一个稳定可读的速率指标。
 - `TC-P35-005` 若节点已启动但同步无进展，监控侧能暴露“速度异常或停滞”的基础判断信息。
+- `TC-P35-006` 当 SSH 用户依赖无密码 sudo 访问 Docker 时，运行时探测与同步监控仍可成功执行 Docker 命令。
 
 ## 5. 执行日志（仅追加）
 
@@ -67,6 +69,8 @@
 - `2026-03-06` `p35-4` 完成：基于连续采样的区块高度差与时间差计算 `blocks_per_minute`，并增加 5 分钟无进展的停滞判断。
 - `2026-03-06` `p35-5` 完成：Dashboard 增加同步监控区域，展示同步进度、块高、速度、状态与异常说明。
 - `2026-03-06` `p35-6` 完成：补充 Rust 单测、前端静态断言、Ansible 语法检查与前端构建验证。
+- `2026-03-06` `p35-7` 开始：修复 `machine_runtime_probe` 与 `monitor_snapshot` 通过 SSH 执行 Docker 命令时未回退到 `sudo -n` 的权限问题。
+- `2026-03-06` `p35-7` 完成：SSH 侧 Docker 命令统一增加 `sudo -n` 回退，覆盖运行时探测与同步监控对 Docker daemon socket 的访问。
 
 ## 6. 验证证据（仅追加）
 
@@ -77,6 +81,9 @@
 - `2026-03-06` `TC-P35-004 | stack: rust | command: cargo test -q | result: pass | note: tc_mon_002 覆盖 blocks_per_minute 计算；Dashboard 展示 Blocks/min`
 - `2026-03-06` `TC-P35-005 | stack: rust | command: cargo test -q | result: pass | note: tc_mon_003 覆盖 5 分钟无块高增长的 stalled 判断；Dashboard 展示 stalled/unreachable 状态`
 - `2026-03-06` `TC-P35-003 | stack: node | command: pnpm build | result: pass | note: Dashboard 同步监控 UI 编译通过`
+- `2026-03-06` `TC-P35-006 | stack: rust | command: cargo test -q | result: pass | note: tc_mch_012/tc_mch_013/tc_mon_004 断言 SSH 侧 Docker 命令会包装为 sudo -n 回退，非 Docker 命令保持不变`
+- `2026-03-06` `TC-P35-006 | stack: node | command: pnpm build | result: pass | note: 修复后前端监控入口保持可构建`
+- `2026-03-06` `TC-P35-006 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: 本次修复未破坏部署 playbook 语法`
 
 ## 7. 变更记录（仅追加）
 

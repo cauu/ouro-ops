@@ -137,7 +137,7 @@ fn run_ssh_command(
         ])
         .arg(port.to_string())
         .arg(target.as_str())
-        .arg(remote_cmd)
+        .arg(wrap_remote_command(remote_cmd))
         .output()?;
     if output.status.success() {
         return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
@@ -155,6 +155,17 @@ fn parse_i64(value: &str) -> i64 {
 
 fn shell_single_quote(path: &str) -> String {
     format!("'{}'", path.replace('\'', "'\"'\"'"))
+}
+
+fn wrap_remote_command(remote_cmd: &str) -> String {
+    if !remote_cmd.trim_start().starts_with("docker ") {
+        return remote_cmd.to_string();
+    }
+    let wrapped = format!(
+        "if [ \"$(id -u)\" -eq 0 ]; then {cmd}; else {cmd} || sudo -n {cmd}; fi",
+        cmd = remote_cmd
+    );
+    format!("sh -lc {}", shell_single_quote(wrapped.as_str()))
 }
 
 fn parse_runtime_mounts(mounts_json: &str) -> Result<Vec<RuntimeProbeMount>, AppError> {
@@ -962,5 +973,20 @@ mod tests {
         assert_eq!(probe.container_name, "cardano-node");
         assert!(probe.image_ref.is_none());
         assert!(probe.mounts.is_empty());
+    }
+
+    #[test]
+    fn tc_mch_012_wrap_remote_command_uses_sudo_for_docker() {
+        let wrapped = wrap_remote_command("docker ps -a");
+        assert!(wrapped.contains("sudo -n docker ps -a"));
+        assert!(wrapped.starts_with("sh -lc "));
+    }
+
+    #[test]
+    fn tc_mch_013_wrap_remote_command_keeps_non_docker_command() {
+        assert_eq!(
+            wrap_remote_command("echo preflight-ok >/dev/null"),
+            "echo preflight-ok >/dev/null"
+        );
     }
 }
