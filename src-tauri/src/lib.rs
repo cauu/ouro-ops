@@ -140,4 +140,14 @@ mod frontend_tests {
         assert!(playbook.contains("Record initial cardano tip observation"));
         assert!(!playbook.contains("sync_progress.stdout == \"100.00\""));
     }
+
+    #[test]
+    fn tc_dep_007_mainnet_topology_includes_bootstrap_peers() {
+        let topology = include_str!("../../ansible/roles/cardano-node/templates/topology-p2p.json.j2");
+        assert!(topology.contains("\"bootstrapPeers\""));
+        assert!(topology.contains("backbone.cardano.iog.io"));
+        assert!(topology.contains("backbone.mainnet.emurgornd.com"));
+        assert!(topology.contains("backbone.mainnet.cardanofoundation.org"));
+        assert!(topology.contains("\"publicRoots\": ["));
+    }
 }

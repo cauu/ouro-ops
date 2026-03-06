@@ -1,5 +1,19 @@
+{% if network == "mainnet" %}
+{% set bootstrap_peers = [
+  {"address": "backbone.cardano.iog.io", "port": 3001},
+  {"address": "backbone.mainnet.emurgornd.com", "port": 3001},
+  {"address": "backbone.mainnet.cardanofoundation.org", "port": 3001}
+] %}
+{% else %}
+{% set bootstrap_peers = [] %}
+{% endif %}
 {% if role == "bp" %}
 {
+  "bootstrapPeers": [
+    {% for peer in bootstrap_peers %}
+    { "address": "{{ peer.address }}", "port": {{ peer.port }} }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ],
   "localRoots": [
     {
       "accessPoints": [
@@ -9,14 +23,24 @@
       ],
       "advertise": false,
       "valency": {{ relay_nodes | length }},
-      "trustable": true
+      "trustable": false
     }
   ],
-  "publicRoots": [],
+  "publicRoots": [
+    {
+      "accessPoints": [],
+      "advertise": false
+    }
+  ],
   "useLedgerAfterSlot": -1
 }
 {% else %}
 {
+  "bootstrapPeers": [
+    {% for peer in bootstrap_peers %}
+    { "address": "{{ peer.address }}", "port": {{ peer.port }} }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ],
   "localRoots": [
     {
       "accessPoints": [
@@ -26,10 +50,15 @@
       ],
       "advertise": false,
       "valency": {{ bp_nodes | length }},
-      "trustable": true
+      "trustable": false
     }
   ],
-  "publicRoots": [],
+  "publicRoots": [
+    {
+      "accessPoints": [],
+      "advertise": false
+    }
+  ],
   "useLedgerAfterSlot": {{ use_ledger_after_slot | default(128908821) }}
 }
 {% endif %}
