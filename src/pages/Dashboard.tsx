@@ -37,7 +37,10 @@ function stageTone(stage: string): string {
     case "snapshot_restoring":
       return "text-sky-300";
     case "restore_failed":
+    case "restore_timeout":
       return "text-red-300";
+    case "fallback_syncing":
+      return "text-orange-300";
     case "synced":
       return "text-emerald-300";
     case "syncing":
@@ -53,6 +56,10 @@ function formatStage(stage: string): string {
       return "snapshot restoring";
     case "restore_failed":
       return "restore failed";
+    case "restore_timeout":
+      return "restore timeout";
+    case "fallback_syncing":
+      return "fallback syncing";
     default:
       return stage.split("_").join(" ");
   }
@@ -219,6 +226,16 @@ export default function Dashboard() {
                 {snapshot.sync_stage === "snapshot_restoring" && (
                   <p className="mt-3 rounded-md border border-sky-900 bg-sky-950/30 px-3 py-2 text-xs text-sky-200">
                     Mithril snapshot restore is still initializing the database. Full chain sync has not started yet.
+                  </p>
+                )}
+                {snapshot.sync_stage === "restore_timeout" && (
+                  <p className="mt-3 rounded-md border border-red-900 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+                    Mithril restore has been stuck for too long. Inspect logs or allow the node to continue with regular sync.
+                  </p>
+                )}
+                {snapshot.sync_stage === "fallback_syncing" && (
+                  <p className="mt-3 rounded-md border border-orange-900 bg-orange-950/30 px-3 py-2 text-xs text-orange-200">
+                    Mithril restore failed earlier, but the node is now continuing with regular sync.
                   </p>
                 )}
                 {snapshot.stalled && !snapshot.note && (

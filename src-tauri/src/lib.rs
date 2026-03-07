@@ -136,6 +136,8 @@ mod frontend_tests {
         assert!(dashboard.contains("Snapshot Restore"));
         assert!(dashboard.contains("Sync Stage"));
         assert!(dashboard.contains("snapshot restoring"));
+        assert!(dashboard.contains("restore timeout"));
+        assert!(dashboard.contains("fallback syncing"));
     }
 
     #[test]

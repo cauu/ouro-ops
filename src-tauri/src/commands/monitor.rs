@@ -28,6 +28,7 @@ pub struct MonitorSnapshot {
 #[derive(Debug)]
 struct PreviousHealthSample {
     block_height: Option<i64>,
+    sync_stage: Option<String>,
     collected_at_epoch: i64,
 }
 
@@ -166,7 +167,7 @@ fn get_previous_health_sample(
     machine_id: i64,
 ) -> Result<Option<PreviousHealthSample>, AppError> {
     let mut stmt = conn.prepare(
-        "SELECT block_height, CAST(strftime('%s', collected_at) AS INTEGER)
+        "SELECT block_height, sync_stage, CAST(strftime('%s', collected_at) AS INTEGER)
          FROM machine_health
          WHERE machine_id = ?1
          ORDER BY collected_at DESC, id DESC
@@ -176,7 +177,8 @@ fn get_previous_health_sample(
     if let Some(row) = rows.next()? {
         Ok(Some(PreviousHealthSample {
             block_height: row.get(0)?,
-            collected_at_epoch: row.get(1)?,
+            sync_stage: row.get(1)?,
+            collected_at_epoch: row.get(2)?,
         }))
     } else {
         Ok(None)
@@ -253,11 +255,17 @@ fn determine_status(sync_progress: Option<f64>, stalled: bool, note: Option<&str
     }
 }
 
+fn is_zero_progress(block_height: Option<i64>, sync_progress: Option<f64>) -> bool {
+    block_height.unwrap_or_default() == 0 && sync_progress.unwrap_or_default() <= 0.0
+}
+
 fn determine_sync_stage(
     block_height: Option<i64>,
     sync_progress: Option<f64>,
+    previous: Option<&PreviousHealthSample>,
     runtime: Option<&RuntimeMonitorContext>,
     note: Option<&str>,
+    current_epoch_seconds: i64,
 ) -> (String, Option<String>) {
     if let Some(note) = note {
         return ("unreachable".into(), Some(note.to_string()));
@@ -265,6 +273,20 @@ fn determine_sync_stage(
 
     if let Some(runtime) = runtime {
         if runtime.restore_snapshot_requested {
+            let zero_progress = is_zero_progress(block_height, sync_progress);
+
+            if has_restore_failure(runtime.recent_logs.as_str()) && !zero_progress {
+                return (
+                    "fallback_syncing".into(),
+                    last_restore_related_log_line(runtime.recent_logs.as_str()).or_else(|| {
+                        Some(
+                            "Mithril restore failed earlier; node is continuing with regular sync."
+                                .into(),
+                        )
+                    }),
+                );
+            }
+
             if has_restore_failure(runtime.recent_logs.as_str()) {
                 return (
                     "restore_failed".into(),
@@ -273,10 +295,24 @@ fn determine_sync_stage(
                 );
             }
 
-            if !runtime.protocol_magic_id_present
-                && block_height.unwrap_or_default() == 0
-                && sync_progress.unwrap_or_default() <= 0.0
-            {
+            if !runtime.protocol_magic_id_present && zero_progress {
+                if previous
+                    .and_then(|sample| sample.sync_stage.as_deref())
+                    .map(|stage| stage == "snapshot_restoring")
+                    .unwrap_or(false)
+                    && previous
+                        .map(|sample| current_epoch_seconds - sample.collected_at_epoch >= 900)
+                        .unwrap_or(false)
+                {
+                    return (
+                        "restore_timeout".into(),
+                        Some(
+                            "Mithril restore has not initialized the database for at least 15 minutes; inspect logs or allow fallback to normal sync."
+                                .into(),
+                        ),
+                    );
+                }
+
                 return (
                     "snapshot_restoring".into(),
                     last_restore_related_log_line(runtime.recent_logs.as_str()).or_else(|| {
@@ -392,10 +428,16 @@ fn collect_machine_snapshot(
     let (sync_stage, sync_note) = determine_sync_stage(
         block_height,
         sync_progress,
+        previous.as_ref(),
         runtime_context.as_ref(),
         None,
+        collected_at_epoch,
     );
-    let status = determine_status(sync_progress, stalled, None);
+    let status = match sync_stage.as_str() {
+        "restore_failed" | "restore_timeout" => "stalled".into(),
+        "fallback_syncing" => "syncing".into(),
+        _ => determine_status(sync_progress, stalled, None),
+    };
     insert_health_sample(
         conn,
         machine.id,
@@ -466,6 +508,7 @@ mod tests {
     fn tc_mon_002_compute_blocks_per_minute() {
         let previous = PreviousHealthSample {
             block_height: Some(1_000),
+            sync_stage: None,
             collected_at_epoch: 1_000,
         };
         let blocks_per_minute =
@@ -477,6 +520,7 @@ mod tests {
     fn tc_mon_003_stalled_when_height_not_moving_for_five_minutes() {
         let previous = PreviousHealthSample {
             block_height: Some(1_000),
+            sync_stage: None,
             collected_at_epoch: 1_000,
         };
         assert!(determine_stalled(Some(&previous), Some(1_000), Some(12.5), 1_301));
@@ -497,7 +541,8 @@ mod tests {
             protocol_magic_id_present: false,
             recent_logs: "Mithril: restoring snapshot chunk 1/42".into(),
         };
-        let (stage, note) = determine_sync_stage(Some(0), Some(0.0), Some(&runtime), None);
+        let (stage, note) =
+            determine_sync_stage(Some(0), Some(0.0), None, Some(&runtime), None, 0);
         assert_eq!(stage, "snapshot_restoring");
         assert!(note.expect("note").contains("Mithril"));
     }
@@ -509,7 +554,8 @@ mod tests {
             protocol_magic_id_present: false,
             recent_logs: "mithril restore failed: checksum mismatch".into(),
         };
-        let (stage, note) = determine_sync_stage(Some(0), Some(0.0), Some(&runtime), None);
+        let (stage, note) =
+            determine_sync_stage(Some(0), Some(0.0), None, Some(&runtime), None, 0);
         assert_eq!(stage, "restore_failed");
         assert!(note.expect("note").contains("failed"));
     }
@@ -520,5 +566,48 @@ mod tests {
         assert!(parse_restore_snapshot_requested(raw.as_str()));
         let raw = json!(["FOO=bar", "RESTORE_SNAPSHOT=false"]).to_string();
         assert!(!parse_restore_snapshot_requested(raw.as_str()));
+    }
+
+    #[test]
+    fn tc_mon_008_restore_timeout_after_fifteen_minutes_without_progress() {
+        let previous = PreviousHealthSample {
+            block_height: Some(0),
+            sync_stage: Some("snapshot_restoring".into()),
+            collected_at_epoch: 1_000,
+        };
+        let runtime = RuntimeMonitorContext {
+            restore_snapshot_requested: true,
+            protocol_magic_id_present: false,
+            recent_logs: "Mithril: restoring snapshot chunk 1/42".into(),
+        };
+        let (stage, note) = determine_sync_stage(
+            Some(0),
+            Some(0.0),
+            Some(&previous),
+            Some(&runtime),
+            None,
+            1_901,
+        );
+        assert_eq!(stage, "restore_timeout");
+        assert!(note.expect("note").contains("15 minutes"));
+    }
+
+    #[test]
+    fn tc_mon_009_fallback_syncing_after_restore_failure_when_blocks_move() {
+        let runtime = RuntimeMonitorContext {
+            restore_snapshot_requested: true,
+            protocol_magic_id_present: false,
+            recent_logs: "mithril restore failed: checksum mismatch".into(),
+        };
+        let (stage, note) = determine_sync_stage(
+            Some(12),
+            Some(0.1),
+            None,
+            Some(&runtime),
+            None,
+            0,
+        );
+        assert_eq!(stage, "fallback_syncing");
+        assert!(note.expect("note").contains("failed"));
     }
 }

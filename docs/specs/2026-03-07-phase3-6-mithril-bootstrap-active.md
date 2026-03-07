@@ -47,7 +47,7 @@
 - [x] `p36-2` 在 deploy 链路中区分“空数据库触发 restore”和“已有数据库跳过 restore”
 - [x] `p36-3` 增加 Mithril 初始化状态采集与任务日志输出
 - [x] `p36-4` 在监控与 Dashboard 中展示 snapshot restore / 回退同步状态
-- [ ] `p36-5` 为 Mithril 失败、超时与回退普通同步补齐错误处理
+- [x] `p36-5` 为 Mithril 失败、超时与回退普通同步补齐错误处理
 - [ ] `p36-6` 补充自动化验证与联调验收记录
 
 ## 4. 测试与验收标准
@@ -68,6 +68,7 @@
 - `2026-03-07` `p36-2` 完成：Ansible 通过 `/opt/cardano/db/protocolMagicId` 判断数据库是否已初始化，仅在“支持 Mithril 的网络 + payload 允许 + DB 未初始化”时才有效开启 `RESTORE_SNAPSHOT`，并输出决策原因。
 - `2026-03-07` `p36-3` 完成：monitor 增加对 `RESTORE_SNAPSHOT` 环境变量、`protocolMagicId` 和最近日志的采集，推断 `snapshot_restoring` / `restore_failed` 等阶段，并将 `sync_stage`、`sync_note` 落库到 `machine_health`。
 - `2026-03-07` `p36-4` 完成：Dashboard 新增 `Snapshot Restore` 和 `Sync Stage` 展示，支持把 `snapshot_restoring` / `restore_failed` / `syncing` 等阶段直接呈现给用户。
+- `2026-03-07` `p36-5` 完成：monitor 新增 `restore_timeout` 和 `fallback_syncing`，分别用于表达 Mithril 长时间无进展和 restore 失败后退回普通同步；Dashboard 对这两类状态给出明确提示。
 
 ## 6. 验证证据（仅追加）
 
@@ -79,6 +80,8 @@
 - `2026-03-07` `TC-P36-003 | stack: rust | command: cargo test -q | result: pass | note: tc_mon_005/tc_mon_006/tc_mon_007 覆盖 snapshot_restoring、restore_failed 与 RESTORE_SNAPSHOT env 解析；machine_health 新增 sync_stage/sync_note 落库`
 - `2026-03-07` `TC-P36-005 | stack: rust | command: cargo test -q | result: pass | note: tc_fe_006 断言 Dashboard 展示 Snapshot Restore 与 Sync Stage`
 - `2026-03-07` `TC-P36-005 | stack: node | command: pnpm build | result: pass | note: Dashboard 可构建并消费新的 sync_stage / restore_snapshot_requested 字段`
+- `2026-03-07` `TC-P36-004 | stack: rust | command: cargo test -q | result: pass | note: tc_mon_008/tc_mon_009 覆盖 restore_timeout 与 fallback_syncing 的推断逻辑`
+- `2026-03-07` `TC-P36-004 | stack: node | command: pnpm build | result: pass | note: Dashboard 能展示 restore timeout 与 fallback syncing 的明确提示`
 
 ## 7. 变更记录（仅追加）
 
