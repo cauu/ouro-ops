@@ -165,5 +165,14 @@ mod frontend_tests {
         assert!(topology.contains("\"bootstrapPeers\": []"));
         assert!(topology.contains("{% if role == \"bp\" %}"));
         assert!(topology.contains("{% for relay in relay_nodes %}"));
+        assert!(topology.contains("\"trustable\": true"));
+    }
+
+    #[test]
+    fn tc_dep_010_config_changes_restart_cardano_container() {
+        let playbook = include_str!("../../ansible/roles/cardano-node/tasks/main.yml");
+        assert!(playbook.contains("Determine whether runtime config changed"));
+        assert!(playbook.contains("cardano_runtime_config_changed"));
+        assert!(playbook.contains("restart: \"{{ cardano_runtime_config_changed | default(false) }}\""));
     }
 }

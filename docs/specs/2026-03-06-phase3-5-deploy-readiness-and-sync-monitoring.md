@@ -51,6 +51,7 @@
 - [x] `p35-8` 修复 mainnet topology 生成逻辑，给 relay/BP 注入 bootstrap peers，避免节点孤岛启动后停在 block 0
 - [x] `p35-9` 修复 relay topology 误将 BP 作为 local root peer 的问题；单 relay 场景下 relay 的 `localRoots` 应为空
 - [x] `p35-10` 修复 BP topology 不应包含 bootstrap peers 的问题，避免 BP 绕过 relay 直接从公网同步
+- [x] `p35-11` 修复 BP bootstrap mode 下 relay peer 必须为 `trustable` 且部署重新下发 `config/topology` 后必须显式重启容器使新配置生效
 
 ## 4. 测试与验收标准
 
@@ -63,6 +64,8 @@
 - `TC-P35-007` mainnet 部署生成的 topology 必须包含有效 bootstrap peers，relay 不得以空上游拓扑启动。
 - `TC-P35-008` relay topology 不得将 BP 写入 `localRoots`；单 relay 场景下 `localRoots` 应为空数组，仅通过 bootstrap peers 接入主网。
 - `TC-P35-009` BP topology 不得包含 bootstrap peers；BP 只能通过 relay 的 `localRoots` 获取链数据。
+- `TC-P35-010` BP topology 中 relay `localRoots` 必须标记为 `trustable: true`，使 BP 在 bootstrap mode 下可通过 relay 推进同步。
+- `TC-P35-011` 当部署重新渲染 `config.json`、genesis 或 `topology.json` 时，`cardano-node` 容器必须自动重启，避免新配置未生效。
 
 ## 5. 执行日志（仅追加）
 
@@ -83,6 +86,8 @@
 - `2026-03-07` `p35-9` 完成：relay topology 改为仅连接其他 relay；单 relay 场景下 `localRoots` 为空数组，不再把 BP 作为 relay 的 local root peer。
 - `2026-03-07` `p35-10` 开始：根据运行态观察修复 BP topology 仍携带 bootstrap peers 的问题；该错误会让 BP 绕过 relay 直接从公网同步，破坏 `1 relay + 1 bp` 的预期链路。
 - `2026-03-07` `p35-10` 完成：BP topology 的 `bootstrapPeers` 改为空数组，BP 仅通过 relay 的 `localRoots` 获取链数据。
+- `2026-03-07` `p35-11` 开始：根据 BP 手动重启后的报错修复 bootstrap mode 下“缺少 trustable peers”问题，并补上 deploy 重新下发配置后未显式重启容器导致新 topology 未生效的问题。
+- `2026-03-07` `p35-11` 完成：BP topology 中 relay `localRoots` 改为 `trustable: true`；部署链路为 `config/genesis/topology` 的变更计算 `cardano_runtime_config_changed`，并在启动 `cardano-node` 时显式 `restart` 使配置变更即时生效。
 
 ## 6. 验证证据（仅追加）
 
@@ -105,6 +110,11 @@
 - `2026-03-07` `TC-P35-009 | stack: rust | command: cargo test -q | result: pass | note: tc_dep_009 断言 BP topology 的 bootstrapPeers 为 [] 且仍通过 relay_nodes 生成 localRoots`
 - `2026-03-07` `TC-P35-009 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: BP topology 去除 bootstrap peers 后 playbook 语法仍有效`
 - `2026-03-07` `TC-P35-009 | stack: node | command: pnpm build | result: pass | note: 本次 BP topology 修复未影响前端构建`
+- `2026-03-07` `TC-P35-010 | stack: rust | command: cargo test -q | result: pass | note: tc_dep_009 断言 BP topology 仍仅通过 relay_nodes 生成 localRoots，且 relay peer 被标记为 trustable`
+- `2026-03-07` `TC-P35-010 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: BP relay peer 标记为 trustable 后 playbook 语法仍有效`
+- `2026-03-07` `TC-P35-011 | stack: rust | command: cargo test -q | result: pass | note: tc_dep_010 断言 playbook 会在 config/genesis/topology 变化时设置 cardano_runtime_config_changed 并显式 restart 容器`
+- `2026-03-07` `TC-P35-011 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: 显式 restart cardano-node 容器后 playbook 语法仍有效`
+- `2026-03-07` `TC-P35-011 | stack: node | command: pnpm build | result: pass | note: 本次 deploy restart 逻辑修复未影响前端构建`
 
 ## 7. 变更记录（仅追加）
 
