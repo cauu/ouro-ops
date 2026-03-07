@@ -4,21 +4,22 @@ The project now uses the immutable-spec workflow for active delivery.
 
 ## Current Active Spec
 
-- [2026-03-06-phase3-5-deploy-readiness-and-sync-monitoring.md](./specs/2026-03-06-phase3-5-deploy-readiness-and-sync-monitoring.md)
+- [2026-03-07-phase3-6-mithril-bootstrap-active.md](./specs/2026-03-07-phase3-6-mithril-bootstrap-active.md)
 
 Read the active spec first for current requirements, outline design, execution plan, and acceptance criteria.
 
 ## 已完成归档 Spec
 
 - [2026-03-06-phase1-phase3-completed.md](./specs/2026-03-06-phase1-phase3-completed.md)
+- [2026-03-06-phase3-5-deploy-readiness-and-sync-monitoring.md](./specs/2026-03-06-phase3-5-deploy-readiness-and-sync-monitoring.md)
 
-This completed spec archives the already delivered Phase 1 to Phase 3 scope.
+These completed specs archive the already delivered Phase 1 to Phase 3 scope, and the completed Phase 3.5 deploy readiness / sync monitoring work.
 
 ## 下一阶段草稿 Spec
 
 - [2026-03-06-phase4-active.md](./specs/2026-03-06-phase4-active.md)
 
-This draft spec remains the next planned scope after the current active Phase 3.5 work is complete.
+This draft spec remains the next planned scope after the current active Mithril bootstrap work is complete.
 
 ## Document Layout
 

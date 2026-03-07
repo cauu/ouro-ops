@@ -1,6 +1,6 @@
 # Cardano Stake Pool 控制平面 Phase 3.5 部署就绪与同步监控规范
 
-状态：`active`  
+状态：`completed`  
 日期：`2026-03-06`
 
 ## 1. 需求详情
@@ -119,3 +119,4 @@
 ## 7. 变更记录（仅追加）
 
 - `2026-03-06` 本 spec 插入在已完成的 Phase 1 至 Phase 3 归档与下一阶段 Phase 4 草稿之间，作为新的唯一活动 spec。
+- `2026-03-07` 用户确认 Phase 3.5 达成目标：deploy 完成判定与同步监控已稳定，`1 relay + 1 bp` 拓扑可正常建立并同步；当前 spec 结项为 `completed`，新的活动 spec 切换到 Mithril 初始化主题。
