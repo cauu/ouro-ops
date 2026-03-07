@@ -10,11 +10,7 @@
 {% set relay_upstreams = relay_nodes | rejectattr("name", "equalto", inventory_hostname) | list %}
 {% if role == "bp" %}
 {
-  "bootstrapPeers": [
-    {% for peer in bootstrap_peers %}
-    { "address": "{{ peer.address }}", "port": {{ peer.port }} }{% if not loop.last %},{% endif %}
-    {% endfor %}
-  ],
+  "bootstrapPeers": [],
   "localRoots": [
     {
       "accessPoints": [

@@ -158,4 +158,12 @@ mod frontend_tests {
         assert!(!topology.contains("{% for bp in bp_nodes %}"));
         assert!(topology.contains("relay_upstreams | length"));
     }
+
+    #[test]
+    fn tc_dep_009_bp_topology_uses_relay_only() {
+        let topology = include_str!("../../ansible/roles/cardano-node/templates/topology-p2p.json.j2");
+        assert!(topology.contains("\"bootstrapPeers\": []"));
+        assert!(topology.contains("{% if role == \"bp\" %}"));
+        assert!(topology.contains("{% for relay in relay_nodes %}"));
+    }
 }

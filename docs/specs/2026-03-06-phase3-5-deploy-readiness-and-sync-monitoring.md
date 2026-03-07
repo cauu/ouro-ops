@@ -50,6 +50,7 @@
 - [x] `p35-7` 修复 SSH 监控与运行时探测在非 root 用户下访问 Docker daemon socket 的权限问题
 - [x] `p35-8` 修复 mainnet topology 生成逻辑，给 relay/BP 注入 bootstrap peers，避免节点孤岛启动后停在 block 0
 - [x] `p35-9` 修复 relay topology 误将 BP 作为 local root peer 的问题；单 relay 场景下 relay 的 `localRoots` 应为空
+- [x] `p35-10` 修复 BP topology 不应包含 bootstrap peers 的问题，避免 BP 绕过 relay 直接从公网同步
 
 ## 4. 测试与验收标准
 
@@ -61,6 +62,7 @@
 - `TC-P35-006` 当 SSH 用户依赖无密码 sudo 访问 Docker 时，运行时探测与同步监控仍可成功执行 Docker 命令。
 - `TC-P35-007` mainnet 部署生成的 topology 必须包含有效 bootstrap peers，relay 不得以空上游拓扑启动。
 - `TC-P35-008` relay topology 不得将 BP 写入 `localRoots`；单 relay 场景下 `localRoots` 应为空数组，仅通过 bootstrap peers 接入主网。
+- `TC-P35-009` BP topology 不得包含 bootstrap peers；BP 只能通过 relay 的 `localRoots` 获取链数据。
 
 ## 5. 执行日志（仅追加）
 
@@ -79,6 +81,8 @@
 - `2026-03-07` `p35-8` 完成：mainnet topology 模板增加 backbone bootstrap peers，relay/BP 都生成非空 `bootstrapPeers`，并将 `publicRoots` 收敛为显式空 accessPoints 结构。
 - `2026-03-07` `p35-9` 开始：根据 relay 实际日志修复 topology 仍将 BP 写入 relay `localRoots` 的问题；该错误会让 relay 只与 BP 建立 hot connection，无法真正接入主网。
 - `2026-03-07` `p35-9` 完成：relay topology 改为仅连接其他 relay；单 relay 场景下 `localRoots` 为空数组，不再把 BP 作为 relay 的 local root peer。
+- `2026-03-07` `p35-10` 开始：根据运行态观察修复 BP topology 仍携带 bootstrap peers 的问题；该错误会让 BP 绕过 relay 直接从公网同步，破坏 `1 relay + 1 bp` 的预期链路。
+- `2026-03-07` `p35-10` 完成：BP topology 的 `bootstrapPeers` 改为空数组，BP 仅通过 relay 的 `localRoots` 获取链数据。
 
 ## 6. 验证证据（仅追加）
 
@@ -98,6 +102,9 @@
 - `2026-03-07` `TC-P35-008 | stack: rust | command: cargo test -q | result: pass | note: tc_dep_008 断言 relay topology 使用 relay_upstreams 且不再遍历 bp_nodes 生成 localRoots`
 - `2026-03-07` `TC-P35-008 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: relay localRoots 改为空数组/其他 relay 后 playbook 语法仍有效`
 - `2026-03-07` `TC-P35-008 | stack: node | command: pnpm build | result: pass | note: 本次 relay topology 修复未影响前端构建`
+- `2026-03-07` `TC-P35-009 | stack: rust | command: cargo test -q | result: pass | note: tc_dep_009 断言 BP topology 的 bootstrapPeers 为 [] 且仍通过 relay_nodes 生成 localRoots`
+- `2026-03-07` `TC-P35-009 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: BP topology 去除 bootstrap peers 后 playbook 语法仍有效`
+- `2026-03-07` `TC-P35-009 | stack: node | command: pnpm build | result: pass | note: 本次 BP topology 修复未影响前端构建`
 
 ## 7. 变更记录（仅追加）
 
