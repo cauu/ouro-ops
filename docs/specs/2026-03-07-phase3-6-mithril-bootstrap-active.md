@@ -51,6 +51,7 @@
 - [x] `p36-6` 补充自动化验证与联调验收记录
 - [x] `p36-7` 补充 machine_health migration 自动化覆盖，并整理真实环境 Mithril 联调步骤
 - [x] `p36-8` 为前端机器加载与 runtime probe 增加阶段状态和耗时提示
+- [x] `p36-9` 修复 Mithril 启动缺少验证密钥参数导致容器重启的问题
 
 ## 4. 测试与验收标准
 
@@ -62,6 +63,7 @@
 - `TC-P36-005` Dashboard 可展示 Mithril 初始化阶段及恢复后的同步进度。
 - `TC-P36-006` 自动化测试与联调记录覆盖默认策略、跳过恢复、失败处理和 UI 展示。
 - `TC-P36-007` DeployWizard 与 MachineManager 在 `machineList` / runtime probe 期间显示明确状态和耗时，避免停留在单一 `Loading machines...` 文案。
+- `TC-P36-008` 当 `RESTORE_SNAPSHOT=true` 时，deploy 会准备 Mithril 所需的 verification keys 和 aggregator endpoint，容器不会因缺少 `genesis_verification_key` 直接重启失败。
 
 ## 5. 执行日志（仅追加）
 
@@ -75,6 +77,7 @@
 - `2026-03-07` `p36-6` 完成：新增 `make phase3-6-verify` 收口本地自动化验证，并在 spec 中补充 relay / bp 的远端采证命令；同时修复 sidecar mock success 测试夹具对本机 `ansible_runner` 安装状态敏感的问题，使验证入口可稳定重复执行。Phase 3.6 的实现与验收路径已完整，但 spec 继续保持 `active`，等待用户明确确认结项。
 - `2026-03-07` `p36-7` 完成：补充 `machine_health` migration 002 的自动化断言，确认 `sync_stage`/`sync_note` 字段被正确创建；同时在 spec 中写入真实环境 Mithril 联调步骤，保持 `p36-6` 继续等待用户执行后的真实结果。
 - `2026-03-07` `p36-8` 完成：DeployWizard 与 MachineManager 在加载机器列表时显示 `machine_list` 请求阶段、已等待秒数和长时间等待提示；runtime probe 改为显示 `x/y` 进度，避免用户只看到静态 `Loading machines...`。
+- `2026-03-07` `p36-9` 完成：根据真实环境日志补齐 Mithril 启动所需参数；在 `mainnet/preprod` 下载 `genesis.vkey` 与 `ancillary.vkey`，并在冷启动 restore 生效时显式注入 `GENESIS_VERIFICATION_KEY`、`ANCILLARY_VERIFICATION_KEY`、`AGGREGATOR_ENDPOINT`，避免容器因缺少 `genesis_verification_key` 重启失败。
 
 ## 6. 验证证据（仅追加）
 
@@ -95,6 +98,8 @@
 - `2026-03-07` `TC-P36-006 | stack: other | command: manual test plan authored in this spec | result: pass | note: 已补充真实环境联调步骤；待用户在实际机器执行并追加结果`
 - `2026-03-07` `TC-P36-007 | stack: rust | command: cargo test -q | result: pass | note: tc_fe_004 与 tc_fe_machine_add_key_flow_exists 断言前端包含 machine_list 加载状态、等待提示与 runtime probe 进度文案`
 - `2026-03-07` `TC-P36-007 | stack: node | command: pnpm build | result: pass | note: DeployWizard / MachineManager 新增加载状态和耗时显示后前端仍可构建`
+- `2026-03-07` `TC-P36-008 | stack: rust | command: cargo test -q | result: pass | note: tc_dep_011 断言 playbook 在 cold-start Mithril 路径下显式准备 GENESIS_VERIFICATION_KEY、ANCILLARY_VERIFICATION_KEY、AGGREGATOR_ENDPOINT，并下载 genesis.vkey/ancillary.vkey`
+- `2026-03-07` `TC-P36-008 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: 新增 Mithril verification key 下载、slurp 与 env 注入后 playbook 语法仍有效`
 
 ## 6.1 联调验收步骤（待追加真实结果）
 

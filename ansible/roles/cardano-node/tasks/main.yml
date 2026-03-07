@@ -115,6 +115,28 @@
     mode: "0644"
   register: cardano_conway_genesis_result
 
+- name: Define Mithril network configuration
+  set_fact:
+    cardano_mithril_release_name: "{{ 'release-mainnet' if network == 'mainnet' else 'release-preprod' }}"
+    cardano_mithril_aggregator_endpoint: "https://aggregator.{{ 'release-mainnet' if network == 'mainnet' else 'release-preprod' }}.api.mithril.network/aggregator"
+  when: network in ['mainnet', 'preprod']
+
+- name: Download Mithril genesis verification key
+  get_url:
+    url: "https://raw.githubusercontent.com/input-output-hk/mithril/main/mithril-infra/configuration/{{ cardano_mithril_release_name }}/genesis.vkey"
+    dest: "/opt/cardano/config/{{ network }}/genesis.vkey"
+    mode: "0644"
+  register: cardano_mithril_genesis_vkey_result
+  when: network in ['mainnet', 'preprod']
+
+- name: Download Mithril ancillary verification key
+  get_url:
+    url: "https://raw.githubusercontent.com/input-output-hk/mithril/main/mithril-infra/configuration/{{ cardano_mithril_release_name }}/ancillary.vkey"
+    dest: "/opt/cardano/config/{{ network }}/ancillary.vkey"
+    mode: "0644"
+  register: cardano_mithril_ancillary_vkey_result
+  when: network in ['mainnet', 'preprod']
+
 - name: Render topology template
   template:
     src: topology-p2p.json.j2
@@ -132,6 +154,8 @@
         or (cardano_shelley_genesis_result.changed | default(false))
         or (cardano_alonzo_genesis_result.changed | default(false))
         or (cardano_conway_genesis_result.changed | default(false))
+        or (cardano_mithril_genesis_vkey_result is defined and (cardano_mithril_genesis_vkey_result.changed | default(false)))
+        or (cardano_mithril_ancillary_vkey_result is defined and (cardano_mithril_ancillary_vkey_result.changed | default(false)))
         or (cardano_topology_result.changed | default(false))
       }}
 
@@ -202,6 +226,18 @@
       reason: "{{ cardano_restore_snapshot_reason }}"
   changed_when: false
 
+- name: Read Mithril genesis verification key content
+  slurp:
+    src: "/opt/cardano/config/{{ network }}/genesis.vkey"
+  register: cardano_mithril_genesis_vkey_raw
+  when: cardano_restore_snapshot_effective | default(false) | bool
+
+- name: Read Mithril ancillary verification key content
+  slurp:
+    src: "/opt/cardano/config/{{ network }}/ancillary.vkey"
+  register: cardano_mithril_ancillary_vkey_raw
+  when: cardano_restore_snapshot_effective | default(false) | bool
+
 - name: Resolve cardano image reference (digest preferred)
   set_fact:
     cardano_image_ref: >-
@@ -259,6 +295,17 @@
               'CARDANO_PORT': '3001',
               'RESTORE_SNAPSHOT': ('true' if (cardano_restore_snapshot_effective | default(false) | bool) else 'false')
             }
+            | combine(
+              (cardano_restore_snapshot_effective | default(false) | bool)
+              | ternary(
+                {
+                  'AGGREGATOR_ENDPOINT': cardano_mithril_aggregator_endpoint,
+                  'GENESIS_VERIFICATION_KEY': (cardano_mithril_genesis_vkey_raw.content | b64decode | trim),
+                  'ANCILLARY_VERIFICATION_KEY': (cardano_mithril_ancillary_vkey_raw.content | b64decode | trim)
+                },
+                {}
+              )
+            )
             | combine(
               (role == 'bp')
               | ternary(

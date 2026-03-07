@@ -196,5 +196,10 @@ mod frontend_tests {
         assert!(playbook.contains("cardano_restore_snapshot_effective"));
         assert!(playbook.contains("db already initialized"));
         assert!(playbook.contains("RESTORE_SNAPSHOT': ('true' if (cardano_restore_snapshot_effective | default(false) | bool) else 'false')"));
+        assert!(playbook.contains("GENESIS_VERIFICATION_KEY"));
+        assert!(playbook.contains("ANCILLARY_VERIFICATION_KEY"));
+        assert!(playbook.contains("AGGREGATOR_ENDPOINT"));
+        assert!(playbook.contains("genesis.vkey"));
+        assert!(playbook.contains("ancillary.vkey"));
     }
 }
