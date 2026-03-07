@@ -33,7 +33,7 @@ pub struct DeployPayload {
     #[serde(default)]
     pub takeover_existing_node: bool,
     #[serde(default)]
-    pub restore_snapshot: bool,
+    pub restore_snapshot: Option<bool>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -69,6 +69,14 @@ struct TaskRow {
 
 type SshExecFn = dyn Fn(&MachineRow, &str) -> Result<String, AppError>;
 
+fn network_supports_mithril_restore(network: &str) -> bool {
+    matches!(network, "mainnet" | "preprod")
+}
+
+fn default_restore_snapshot_for_network(network: &str) -> bool {
+    network_supports_mithril_restore(network)
+}
+
 fn normalize_deploy_payload(payload: &DeployPayload) -> DeployPayload {
     let mut next = payload.clone();
 
@@ -94,6 +102,10 @@ fn normalize_deploy_payload(payload: &DeployPayload) -> DeployPayload {
         .map(ToString::to_string);
 
     next.network = next.network.trim().to_string();
+    next.restore_snapshot = Some(
+        next.restore_snapshot
+            .unwrap_or_else(|| default_restore_snapshot_for_network(next.network.as_str())),
+    );
     next
 }
 
@@ -497,7 +509,7 @@ fn build_extra_vars(payload: &DeployPayload) -> Value {
         "enable_hardening": payload.enable_hardening,
         "safe_validation_mode": payload.safe_validation_mode,
         "takeover_existing_node": payload.takeover_existing_node,
-        "restore_snapshot": payload.restore_snapshot
+        "restore_snapshot": payload.restore_snapshot.unwrap_or_else(|| default_restore_snapshot_for_network(payload.network.as_str()))
     })
 }
 
@@ -777,7 +789,7 @@ mod tests {
             enable_hardening: true,
             safe_validation_mode: false,
             takeover_existing_node: false,
-            restore_snapshot: false,
+            restore_snapshot: Some(true),
         };
         assert!(validate_deploy_payload(&base).is_ok());
 
@@ -836,7 +848,7 @@ mod tests {
             enable_hardening: true,
             safe_validation_mode: false,
             takeover_existing_node: false,
-            restore_snapshot: false,
+            restore_snapshot: Some(true),
         };
         insert_task_with_machines(&conn, "task-1", &payload).expect("insert task");
 
@@ -982,7 +994,7 @@ mod tests {
             enable_hardening: false,
             safe_validation_mode: true,
             takeover_existing_node: true,
-            restore_snapshot: false,
+            restore_snapshot: Some(false),
         };
         let extra_vars = build_extra_vars(&payload);
         assert_eq!(extra_vars["safe_validation_mode"], Value::Bool(true));
@@ -1009,7 +1021,7 @@ mod tests {
         .expect("deserialize payload");
         assert!(!payload.safe_validation_mode);
         assert!(!payload.takeover_existing_node);
-        assert!(!payload.restore_snapshot);
+        assert_eq!(payload.restore_snapshot, None);
     }
 
     #[test]
@@ -1026,13 +1038,14 @@ mod tests {
             enable_hardening: false,
             safe_validation_mode: false,
             takeover_existing_node: false,
-            restore_snapshot: false,
+            restore_snapshot: None,
         };
         let normalized = normalize_deploy_payload(&payload);
         assert_eq!(normalized.cardano_version, DEFAULT_IMAGE_TAG);
         assert_eq!(normalized.image_registry, DEFAULT_IMAGE_REGISTRY);
         assert_eq!(normalized.image_digest, None);
         assert_eq!(normalized.network, "preprod");
+        assert_eq!(normalized.restore_snapshot, Some(true));
     }
 
     #[test]
@@ -1049,11 +1062,32 @@ mod tests {
             enable_hardening: true,
             safe_validation_mode: false,
             takeover_existing_node: false,
-            restore_snapshot: false,
+            restore_snapshot: Some(false),
         };
         let normalized = normalize_deploy_payload(&payload);
         assert_eq!(normalized.cardano_version, "10.5.1");
         assert_eq!(normalized.image_registry, "ghcr.io/custom/cardano-node");
         assert_eq!(normalized.image_digest.as_deref(), Some("sha256:def456"));
+        assert_eq!(normalized.restore_snapshot, Some(false));
+    }
+
+    #[test]
+    fn tc_dep_012_preview_defaults_restore_snapshot_false() {
+        let payload = DeployPayload {
+            machine_ids: vec![1],
+            cardano_version: DEFAULT_IMAGE_TAG.into(),
+            image_registry: DEFAULT_IMAGE_REGISTRY.into(),
+            image_digest: None,
+            network: "preview".into(),
+            enable_swap: true,
+            swap_size_gb: 8,
+            enable_chrony: true,
+            enable_hardening: true,
+            safe_validation_mode: false,
+            takeover_existing_node: false,
+            restore_snapshot: None,
+        };
+        let normalized = normalize_deploy_payload(&payload);
+        assert_eq!(normalized.restore_snapshot, Some(false));
     }
 }

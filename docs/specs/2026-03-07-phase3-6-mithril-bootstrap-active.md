@@ -43,7 +43,7 @@
 ## 3. 执行计划
 
 - [x] `p36-0` 初始化 Mithril active spec，切换文档入口，并将 Phase 3.5 结转为 completed
-- [ ] `p36-1` 明确 Mithril 默认策略，并在 deploy payload / UI / Ansible 之间统一 relay 与 bp 的默认值
+- [x] `p36-1` 明确 Mithril 默认策略，并在 deploy payload / UI / Ansible 之间统一 relay 与 bp 的默认值
 - [ ] `p36-2` 在 deploy 链路中区分“空数据库触发 restore”和“已有数据库跳过 restore”
 - [ ] `p36-3` 增加 Mithril 初始化状态采集与任务日志输出
 - [ ] `p36-4` 在监控与 Dashboard 中展示 snapshot restore / 回退同步状态
@@ -64,10 +64,13 @@
 
 - `2026-03-07` 基于用户确认的下一步需求创建本 spec，用于把镜像内置 Mithril 能力收敛成可配置、可观测、可验收的产品能力。
 - `2026-03-07` `p36-0` 完成：新建 Mithril active spec，切换 `docs/README.md` 入口，并将 Phase 3.5 spec 标记为 `completed`。
+- `2026-03-07` `p36-1` 完成：`restore_snapshot` 调整为可缺省并由后端按网络兜底默认；DeployWizard 新增 Mithril 冷启动恢复开关，默认在 `mainnet/preprod` 启用、在 `preview` 关闭。
 
 ## 6. 验证证据（仅追加）
 
 - `2026-03-07` `TC-P36-000 | stack: other | command: manual inspection of docs/specs and docs/README.md | result: pass | note: README 当前入口已切换到 2026-03-07-phase3-6-mithril-bootstrap-active.md，Phase 3.5 已标记为 completed`
+- `2026-03-07` `TC-P36-001 | stack: rust | command: cargo test -q | result: pass | note: deploy payload 归一化会在 mainnet/preprod 默认启用 restore_snapshot，在 preview 默认关闭，并保留显式覆盖值`
+- `2026-03-07` `TC-P36-001 | stack: node | command: pnpm build | result: pass | note: DeployWizard 新增 Mithril 冷启动恢复开关，默认值随网络变化且前端构建通过`
 
 ## 7. 变更记录（仅追加）
 

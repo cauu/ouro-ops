@@ -111,6 +111,8 @@ mod frontend_tests {
         assert!(deploy.contains("useState(\"10.5.4-1\")"));
         assert!(deploy.contains("ghcr.io/blinklabs-io/cardano-node"));
         assert!(deploy.contains("takeover_existing_node"));
+        assert!(deploy.contains("restore_snapshot (Mithril cold-start restore)"));
+        assert!(deploy.contains("networkSupportsMithril"));
         assert!(deploy.contains("step === 1"));
         assert!(deploy.contains("step === 2"));
         assert!(deploy.contains("step === 3"));
