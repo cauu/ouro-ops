@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use crate::error::AppError;
 
-const MIGRATIONS: &[&str] = &[schema::MIGRATION_001];
+const MIGRATIONS: &[&str] = &[schema::MIGRATION_001, schema::MIGRATION_002];
 
 /// 执行迁移：user_version 递增，仅执行未执行的迁移
 pub fn run_migrations(conn: &Connection) -> Result<(), AppError> {

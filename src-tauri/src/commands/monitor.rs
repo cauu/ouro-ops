@@ -18,6 +18,8 @@ pub struct MonitorSnapshot {
     pub sync_progress: Option<f64>,
     pub blocks_per_minute: Option<f64>,
     pub status: String,
+    pub sync_stage: String,
+    pub restore_snapshot_requested: bool,
     pub stalled: bool,
     pub collected_at: String,
     pub note: Option<String>,
@@ -27,6 +29,13 @@ pub struct MonitorSnapshot {
 struct PreviousHealthSample {
     block_height: Option<i64>,
     collected_at_epoch: i64,
+}
+
+#[derive(Debug, Clone)]
+struct RuntimeMonitorContext {
+    restore_snapshot_requested: bool,
+    protocol_magic_id_present: bool,
+    recent_logs: String,
 }
 
 fn classify_ssh_error(target: &str, stderr: &str) -> AppError {
@@ -101,6 +110,41 @@ fn parse_tip(raw: &str) -> Result<(Option<i64>, Option<f64>), AppError> {
     Ok((block_height, sync_progress))
 }
 
+fn parse_restore_snapshot_requested(raw: &str) -> bool {
+    serde_json::from_str::<Vec<String>>(raw)
+        .ok()
+        .and_then(|envs| {
+            envs.into_iter()
+                .find(|entry| entry.starts_with("RESTORE_SNAPSHOT="))
+                .map(|entry| entry.eq_ignore_ascii_case("RESTORE_SNAPSHOT=true"))
+        })
+        .unwrap_or(false)
+}
+
+fn parse_protocol_magic_id_present(raw: &str) -> bool {
+    matches!(raw.trim(), "yes" | "true" | "1")
+}
+
+fn last_restore_related_log_line(raw: &str) -> Option<String> {
+    raw.lines()
+        .rev()
+        .find(|line| {
+            let lower = line.to_ascii_lowercase();
+            lower.contains("mithril")
+                || lower.contains("snapshot")
+                || lower.contains("restore")
+        })
+        .map(|line| line.trim().to_string())
+}
+
+fn has_restore_failure(raw: &str) -> bool {
+    raw.lines().rev().any(|line| {
+        let lower = line.to_ascii_lowercase();
+        (lower.contains("mithril") || lower.contains("snapshot") || lower.contains("restore"))
+            && (lower.contains("error") || lower.contains("failed") || lower.contains("exception"))
+    })
+}
+
 fn current_epoch_seconds() -> Result<i64, AppError> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -144,12 +188,14 @@ fn insert_health_sample(
     machine_id: i64,
     block_height: Option<i64>,
     sync_progress: Option<f64>,
+    sync_stage: &str,
+    sync_note: Option<&str>,
     collected_at_epoch: i64,
 ) -> Result<(), AppError> {
     conn.execute(
-        "INSERT INTO machine_health (machine_id, block_height, sync_progress, collected_at)
-         VALUES (?1, ?2, ?3, datetime(?4, 'unixepoch'))",
-        params![machine_id, block_height, sync_progress, collected_at_epoch],
+        "INSERT INTO machine_health (machine_id, block_height, sync_progress, sync_stage, sync_note, collected_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, datetime(?6, 'unixepoch'))",
+        params![machine_id, block_height, sync_progress, sync_stage, sync_note, collected_at_epoch],
     )?;
     Ok(())
 }
@@ -207,6 +253,71 @@ fn determine_status(sync_progress: Option<f64>, stalled: bool, note: Option<&str
     }
 }
 
+fn determine_sync_stage(
+    block_height: Option<i64>,
+    sync_progress: Option<f64>,
+    runtime: Option<&RuntimeMonitorContext>,
+    note: Option<&str>,
+) -> (String, Option<String>) {
+    if let Some(note) = note {
+        return ("unreachable".into(), Some(note.to_string()));
+    }
+
+    if let Some(runtime) = runtime {
+        if runtime.restore_snapshot_requested {
+            if has_restore_failure(runtime.recent_logs.as_str()) {
+                return (
+                    "restore_failed".into(),
+                    last_restore_related_log_line(runtime.recent_logs.as_str())
+                        .or_else(|| Some("Mithril restore failed; check container logs.".into())),
+                );
+            }
+
+            if !runtime.protocol_magic_id_present
+                && block_height.unwrap_or_default() == 0
+                && sync_progress.unwrap_or_default() <= 0.0
+            {
+                return (
+                    "snapshot_restoring".into(),
+                    last_restore_related_log_line(runtime.recent_logs.as_str()).or_else(|| {
+                        Some("Mithril restore requested; database is still being initialized.".into())
+                    }),
+                );
+            }
+        }
+    }
+
+    match sync_progress {
+        Some(progress) if progress >= 100.0 => ("synced".into(), None),
+        Some(_) => ("syncing".into(), None),
+        None if block_height.unwrap_or_default() > 0 => ("syncing".into(), None),
+        _ => ("unknown".into(), None),
+    }
+}
+
+fn collect_runtime_monitor_context(machine: &MachineRow) -> Option<RuntimeMonitorContext> {
+    let env_raw = ssh_exec(
+        machine,
+        "docker inspect cardano-node --format '{{json .Config.Env}}'",
+    )
+    .ok()?;
+    let protocol_magic_raw = ssh_exec(
+        machine,
+        "docker exec cardano-node sh -lc '[ -f /data/db/protocolMagicId ] && echo yes || echo no'",
+    )
+    .ok()
+    .unwrap_or_else(|| "no".into());
+    let recent_logs = ssh_exec(machine, "docker logs --tail 120 cardano-node 2>&1")
+        .ok()
+        .unwrap_or_default();
+
+    Some(RuntimeMonitorContext {
+        restore_snapshot_requested: parse_restore_snapshot_requested(env_raw.as_str()),
+        protocol_magic_id_present: parse_protocol_magic_id_present(protocol_magic_raw.as_str()),
+        recent_logs,
+    })
+}
+
 fn collect_machine_snapshot(
     conn: &Connection,
     machine: &MachineRow,
@@ -214,6 +325,7 @@ fn collect_machine_snapshot(
     let collected_at_epoch = current_epoch_seconds()?;
     let collected_at = sqlite_datetime(conn, collected_at_epoch)?;
     let previous = get_previous_health_sample(conn, machine.id)?;
+    let runtime_context = collect_runtime_monitor_context(machine);
     let remote_cmd = format!(
         "docker exec cardano-node cardano-cli query tip --socket-path /ipc/node.socket --{}",
         machine.network
@@ -232,6 +344,11 @@ fn collect_machine_snapshot(
                 sync_progress: None,
                 blocks_per_minute: None,
                 status: determine_status(None, false, Some(note.as_str())),
+                sync_stage: "unreachable".into(),
+                restore_snapshot_requested: runtime_context
+                    .as_ref()
+                    .map(|ctx| ctx.restore_snapshot_requested)
+                    .unwrap_or(false),
                 stalled: false,
                 collected_at,
                 note: Some(note),
@@ -252,20 +369,17 @@ fn collect_machine_snapshot(
                 sync_progress: None,
                 blocks_per_minute: None,
                 status: determine_status(None, false, Some(note.as_str())),
+                sync_stage: "unreachable".into(),
+                restore_snapshot_requested: runtime_context
+                    .as_ref()
+                    .map(|ctx| ctx.restore_snapshot_requested)
+                    .unwrap_or(false),
                 stalled: false,
                 collected_at,
                 note: Some(note),
             });
         }
     };
-
-    insert_health_sample(
-        conn,
-        machine.id,
-        block_height,
-        sync_progress,
-        collected_at_epoch,
-    )?;
 
     let blocks_per_minute =
         compute_blocks_per_minute(previous.as_ref(), block_height, collected_at_epoch);
@@ -275,7 +389,22 @@ fn collect_machine_snapshot(
         sync_progress,
         collected_at_epoch,
     );
+    let (sync_stage, sync_note) = determine_sync_stage(
+        block_height,
+        sync_progress,
+        runtime_context.as_ref(),
+        None,
+    );
     let status = determine_status(sync_progress, stalled, None);
+    insert_health_sample(
+        conn,
+        machine.id,
+        block_height,
+        sync_progress,
+        sync_stage.as_str(),
+        sync_note.as_deref(),
+        collected_at_epoch,
+    )?;
 
     Ok(MonitorSnapshot {
         machine_id: machine.id,
@@ -286,9 +415,14 @@ fn collect_machine_snapshot(
         sync_progress,
         blocks_per_minute,
         status,
+        sync_stage,
+        restore_snapshot_requested: runtime_context
+            .as_ref()
+            .map(|ctx| ctx.restore_snapshot_requested)
+            .unwrap_or(false),
         stalled,
         collected_at,
-        note: None,
+        note: sync_note,
     })
 }
 
@@ -318,6 +452,7 @@ pub async fn monitor_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn tc_mon_001_parse_tip_supports_string_progress() {
@@ -353,5 +488,37 @@ mod tests {
         let wrapped = wrap_remote_command("docker exec cardano-node cardano-cli query tip");
         assert!(wrapped.contains("sudo -n docker exec cardano-node cardano-cli query tip"));
         assert!(wrapped.starts_with("sh -lc "));
+    }
+
+    #[test]
+    fn tc_mon_005_snapshot_restoring_stage_when_restore_requested_and_db_not_initialized() {
+        let runtime = RuntimeMonitorContext {
+            restore_snapshot_requested: true,
+            protocol_magic_id_present: false,
+            recent_logs: "Mithril: restoring snapshot chunk 1/42".into(),
+        };
+        let (stage, note) = determine_sync_stage(Some(0), Some(0.0), Some(&runtime), None);
+        assert_eq!(stage, "snapshot_restoring");
+        assert!(note.expect("note").contains("Mithril"));
+    }
+
+    #[test]
+    fn tc_mon_006_restore_failed_stage_when_logs_show_failure() {
+        let runtime = RuntimeMonitorContext {
+            restore_snapshot_requested: true,
+            protocol_magic_id_present: false,
+            recent_logs: "mithril restore failed: checksum mismatch".into(),
+        };
+        let (stage, note) = determine_sync_stage(Some(0), Some(0.0), Some(&runtime), None);
+        assert_eq!(stage, "restore_failed");
+        assert!(note.expect("note").contains("failed"));
+    }
+
+    #[test]
+    fn tc_mon_007_parse_restore_snapshot_requested_from_env_json() {
+        let raw = json!(["FOO=bar", "RESTORE_SNAPSHOT=true"]).to_string();
+        assert!(parse_restore_snapshot_requested(raw.as_str()));
+        let raw = json!(["FOO=bar", "RESTORE_SNAPSHOT=false"]).to_string();
+        assert!(!parse_restore_snapshot_requested(raw.as_str()));
     }
 }
