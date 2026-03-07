@@ -150,4 +150,12 @@ mod frontend_tests {
         assert!(topology.contains("backbone.mainnet.cardanofoundation.org"));
         assert!(topology.contains("\"publicRoots\": ["));
     }
+
+    #[test]
+    fn tc_dep_008_relay_topology_excludes_bp_local_roots() {
+        let topology = include_str!("../../ansible/roles/cardano-node/templates/topology-p2p.json.j2");
+        assert!(topology.contains("rejectattr(\"name\", \"equalto\", inventory_hostname)"));
+        assert!(!topology.contains("{% for bp in bp_nodes %}"));
+        assert!(topology.contains("relay_upstreams | length"));
+    }
 }

@@ -7,6 +7,7 @@
 {% else %}
 {% set bootstrap_peers = [] %}
 {% endif %}
+{% set relay_upstreams = relay_nodes | rejectattr("name", "equalto", inventory_hostname) | list %}
 {% if role == "bp" %}
 {
   "bootstrapPeers": [
@@ -42,16 +43,18 @@
     {% endfor %}
   ],
   "localRoots": [
+    {% if relay_upstreams | length > 0 %}
     {
       "accessPoints": [
-        {% for bp in bp_nodes %}
-        { "address": "{{ bp.ip }}", "port": 3001 }{% if not loop.last %},{% endif %}
+        {% for relay in relay_upstreams %}
+        { "address": "{{ relay.ip }}", "port": 3001 }{% if not loop.last %},{% endif %}
         {% endfor %}
       ],
       "advertise": false,
-      "valency": {{ bp_nodes | length }},
+      "valency": {{ relay_upstreams | length }},
       "trustable": false
     }
+    {% endif %}
   ],
   "publicRoots": [
     {
