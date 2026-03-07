@@ -32,6 +32,32 @@ function statusTone(status: string): string {
   }
 }
 
+function stageTone(stage: string): string {
+  switch (stage) {
+    case "snapshot_restoring":
+      return "text-sky-300";
+    case "restore_failed":
+      return "text-red-300";
+    case "synced":
+      return "text-emerald-300";
+    case "syncing":
+      return "text-amber-300";
+    default:
+      return "text-zinc-300";
+  }
+}
+
+function formatStage(stage: string): string {
+  switch (stage) {
+    case "snapshot_restoring":
+      return "snapshot restoring";
+    case "restore_failed":
+      return "restore failed";
+    default:
+      return stage.split("_").join(" ");
+  }
+}
+
 export default function Dashboard() {
   const [status, setStatus] = useState<string>("loading");
   const [dbInfo, setDbInfo] = useState<DbVersionResult | null>(null);
@@ -140,9 +166,14 @@ export default function Dashboard() {
                       {snapshot.role} · {snapshot.network}
                     </p>
                   </div>
-                  <span className={`text-xs font-medium uppercase ${statusTone(snapshot.status)}`}>
-                    {snapshot.status}
-                  </span>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={`text-xs font-medium uppercase ${statusTone(snapshot.status)}`}>
+                      {snapshot.status}
+                    </span>
+                    <span className={`text-[11px] font-medium uppercase ${stageTone(snapshot.sync_stage)}`}>
+                      {formatStage(snapshot.sync_stage)}
+                    </span>
+                  </div>
                 </div>
                 <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                   <div>
@@ -167,10 +198,27 @@ export default function Dashboard() {
                     <dt className="text-zinc-500">Collected At</dt>
                     <dd className="mt-1 font-medium text-zinc-100">{snapshot.collected_at}</dd>
                   </div>
+                  <div>
+                    <dt className="text-zinc-500">Snapshot Restore</dt>
+                    <dd className="mt-1 font-medium text-zinc-100">
+                      {snapshot.restore_snapshot_requested ? "requested" : "not requested"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">Sync Stage</dt>
+                    <dd className={`mt-1 font-medium ${stageTone(snapshot.sync_stage)}`}>
+                      {formatStage(snapshot.sync_stage)}
+                    </dd>
+                  </div>
                 </dl>
                 {snapshot.note && (
                   <p className="mt-3 rounded-md border border-red-950 bg-red-950/30 px-3 py-2 text-xs text-red-200">
                     {snapshot.note}
+                  </p>
+                )}
+                {snapshot.sync_stage === "snapshot_restoring" && (
+                  <p className="mt-3 rounded-md border border-sky-900 bg-sky-950/30 px-3 py-2 text-xs text-sky-200">
+                    Mithril snapshot restore is still initializing the database. Full chain sync has not started yet.
                   </p>
                 )}
                 {snapshot.stalled && !snapshot.note && (

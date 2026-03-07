@@ -133,6 +133,9 @@ mod frontend_tests {
         assert!(dashboard.contains("monitorSnapshot("));
         assert!(dashboard.contains("Blocks/min"));
         assert!(dashboard.contains("Sync Progress"));
+        assert!(dashboard.contains("Snapshot Restore"));
+        assert!(dashboard.contains("Sync Stage"));
+        assert!(dashboard.contains("snapshot restoring"));
     }
 
     #[test]

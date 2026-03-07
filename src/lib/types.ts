@@ -142,6 +142,8 @@ export interface MonitorSnapshot {
   sync_progress: number | null;
   blocks_per_minute: number | null;
   status: "syncing" | "synced" | "stalled" | "unreachable" | "unknown" | string;
+  sync_stage: "snapshot_restoring" | "restore_failed" | "syncing" | "synced" | "unknown" | "unreachable" | string;
+  restore_snapshot_requested: boolean;
   stalled: boolean;
   collected_at: string;
   note: string | null;

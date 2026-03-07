@@ -46,7 +46,7 @@
 - [x] `p36-1` 明确 Mithril 默认策略，并在 deploy payload / UI / Ansible 之间统一 relay 与 bp 的默认值
 - [x] `p36-2` 在 deploy 链路中区分“空数据库触发 restore”和“已有数据库跳过 restore”
 - [x] `p36-3` 增加 Mithril 初始化状态采集与任务日志输出
-- [ ] `p36-4` 在监控与 Dashboard 中展示 snapshot restore / 回退同步状态
+- [x] `p36-4` 在监控与 Dashboard 中展示 snapshot restore / 回退同步状态
 - [ ] `p36-5` 为 Mithril 失败、超时与回退普通同步补齐错误处理
 - [ ] `p36-6` 补充自动化验证与联调验收记录
 
@@ -67,6 +67,7 @@
 - `2026-03-07` `p36-1` 完成：`restore_snapshot` 调整为可缺省并由后端按网络兜底默认；DeployWizard 新增 Mithril 冷启动恢复开关，默认在 `mainnet/preprod` 启用、在 `preview` 关闭。
 - `2026-03-07` `p36-2` 完成：Ansible 通过 `/opt/cardano/db/protocolMagicId` 判断数据库是否已初始化，仅在“支持 Mithril 的网络 + payload 允许 + DB 未初始化”时才有效开启 `RESTORE_SNAPSHOT`，并输出决策原因。
 - `2026-03-07` `p36-3` 完成：monitor 增加对 `RESTORE_SNAPSHOT` 环境变量、`protocolMagicId` 和最近日志的采集，推断 `snapshot_restoring` / `restore_failed` 等阶段，并将 `sync_stage`、`sync_note` 落库到 `machine_health`。
+- `2026-03-07` `p36-4` 完成：Dashboard 新增 `Snapshot Restore` 和 `Sync Stage` 展示，支持把 `snapshot_restoring` / `restore_failed` / `syncing` 等阶段直接呈现给用户。
 
 ## 6. 验证证据（仅追加）
 
@@ -76,6 +77,8 @@
 - `2026-03-07` `TC-P36-002 | stack: rust | command: cargo test -q | result: pass | note: tc_dep_011 断言 playbook 基于 protocolMagicId 计算 cardano_restore_snapshot_effective，避免已有数据库误触发 restore`
 - `2026-03-07` `TC-P36-002 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: 新增 Mithril 决策分支后 deploy playbook 语法仍有效`
 - `2026-03-07` `TC-P36-003 | stack: rust | command: cargo test -q | result: pass | note: tc_mon_005/tc_mon_006/tc_mon_007 覆盖 snapshot_restoring、restore_failed 与 RESTORE_SNAPSHOT env 解析；machine_health 新增 sync_stage/sync_note 落库`
+- `2026-03-07` `TC-P36-005 | stack: rust | command: cargo test -q | result: pass | note: tc_fe_006 断言 Dashboard 展示 Snapshot Restore 与 Sync Stage`
+- `2026-03-07` `TC-P36-005 | stack: node | command: pnpm build | result: pass | note: Dashboard 可构建并消费新的 sync_stage / restore_snapshot_requested 字段`
 
 ## 7. 变更记录（仅追加）
 
