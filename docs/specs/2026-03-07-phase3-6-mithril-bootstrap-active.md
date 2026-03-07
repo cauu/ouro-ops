@@ -50,6 +50,7 @@
 - [x] `p36-5` 为 Mithril 失败、超时与回退普通同步补齐错误处理
 - [x] `p36-6` 补充自动化验证与联调验收记录
 - [x] `p36-7` 补充 machine_health migration 自动化覆盖，并整理真实环境 Mithril 联调步骤
+- [x] `p36-8` 为前端机器加载与 runtime probe 增加阶段状态和耗时提示
 
 ## 4. 测试与验收标准
 
@@ -60,6 +61,7 @@
 - `TC-P36-004` Mithril restore 失败时，用户能看到明确错误或状态，而不是仅看到长期 `0%`。
 - `TC-P36-005` Dashboard 可展示 Mithril 初始化阶段及恢复后的同步进度。
 - `TC-P36-006` 自动化测试与联调记录覆盖默认策略、跳过恢复、失败处理和 UI 展示。
+- `TC-P36-007` DeployWizard 与 MachineManager 在 `machineList` / runtime probe 期间显示明确状态和耗时，避免停留在单一 `Loading machines...` 文案。
 
 ## 5. 执行日志（仅追加）
 
@@ -72,6 +74,7 @@
 - `2026-03-07` `p36-5` 完成：monitor 新增 `restore_timeout` 和 `fallback_syncing`，分别用于表达 Mithril 长时间无进展和 restore 失败后退回普通同步；Dashboard 对这两类状态给出明确提示。
 - `2026-03-07` `p36-6` 完成：新增 `make phase3-6-verify` 收口本地自动化验证，并在 spec 中补充 relay / bp 的远端采证命令；同时修复 sidecar mock success 测试夹具对本机 `ansible_runner` 安装状态敏感的问题，使验证入口可稳定重复执行。Phase 3.6 的实现与验收路径已完整，但 spec 继续保持 `active`，等待用户明确确认结项。
 - `2026-03-07` `p36-7` 完成：补充 `machine_health` migration 002 的自动化断言，确认 `sync_stage`/`sync_note` 字段被正确创建；同时在 spec 中写入真实环境 Mithril 联调步骤，保持 `p36-6` 继续等待用户执行后的真实结果。
+- `2026-03-07` `p36-8` 完成：DeployWizard 与 MachineManager 在加载机器列表时显示 `machine_list` 请求阶段、已等待秒数和长时间等待提示；runtime probe 改为显示 `x/y` 进度，避免用户只看到静态 `Loading machines...`。
 
 ## 6. 验证证据（仅追加）
 
@@ -90,6 +93,8 @@
 - `2026-03-07` `TC-P36-006 | stack: node | command: pnpm build | result: pass | note: 前端在新增 Mithril 开关、Sync Stage、错误提示后仍可构建`
 - `2026-03-07` `TC-P36-006 | stack: other | command: make phase3-6-verify | result: pass | note: Makefile 已收口 Rust 测试、前端构建与 Ansible syntax check，便于重复执行本地 Mithril 验收`
 - `2026-03-07` `TC-P36-006 | stack: other | command: manual test plan authored in this spec | result: pass | note: 已补充真实环境联调步骤；待用户在实际机器执行并追加结果`
+- `2026-03-07` `TC-P36-007 | stack: rust | command: cargo test -q | result: pass | note: tc_fe_004 与 tc_fe_machine_add_key_flow_exists 断言前端包含 machine_list 加载状态、等待提示与 runtime probe 进度文案`
+- `2026-03-07` `TC-P36-007 | stack: node | command: pnpm build | result: pass | note: DeployWizard / MachineManager 新增加载状态和耗时显示后前端仍可构建`
 
 ## 6.1 联调验收步骤（待追加真实结果）
 

@@ -16,8 +16,19 @@ function networkSupportsMithril(network: Pool["network"]): boolean {
   return network === "mainnet" || network === "preprod";
 }
 
+function formatMachineLoadStatus(elapsedSeconds: number): string {
+  if (elapsedSeconds < 3) {
+    return "Requesting machine list from local app...";
+  }
+  if (elapsedSeconds < 10) {
+    return `Still waiting for machine_list response (${elapsedSeconds}s)...`;
+  }
+  return `Still waiting for machine_list response (${elapsedSeconds}s). Local DB or Tauri command may be blocked.`;
+}
+
 export default function DeployWizard({ pool }: DeployWizardProps) {
   const [loading, setLoading] = useState(true);
+  const [loadingElapsedSeconds, setLoadingElapsedSeconds] = useState(0);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +48,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
   const [restoreSnapshotTouched, setRestoreSnapshotTouched] = useState(false);
   const [runtimeProbeMap, setRuntimeProbeMap] = useState<Record<number, RuntimeProbe>>({});
   const [probingRuntime, setProbingRuntime] = useState(false);
+  const [runtimeProbeStatus, setRuntimeProbeStatus] = useState<string | null>(null);
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -47,6 +59,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      setLoadingElapsedSeconds(0);
       setError(null);
       try {
         const rows = await machineList();
@@ -59,6 +72,19 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
     };
     void load();
   }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setLoadingElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [loading]);
 
   useEffect(() => {
     if (!taskId) {
@@ -138,9 +164,12 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
       if (selectedMachineIds.length === 0) {
         setRuntimeProbeMap({});
         setTakeoverExistingNode(false);
+        setRuntimeProbeStatus(null);
         return;
       }
       setProbingRuntime(true);
+      setRuntimeProbeStatus(`Resolving runtime state (0/${selectedMachineIds.length})...`);
+      let completed = 0;
       const pairs = await Promise.all(
         selectedMachineIds.map(async (machineId) => {
           try {
@@ -148,6 +177,11 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
             return [machineId, probe] as const;
           } catch {
             return [machineId, undefined] as const;
+          } finally {
+            completed += 1;
+            if (active) {
+              setRuntimeProbeStatus(`Resolving runtime state (${completed}/${selectedMachineIds.length})...`);
+            }
           }
         }),
       );
@@ -164,6 +198,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
       if (!Object.values(next).some((probe) => probe.container_present)) {
         setTakeoverExistingNode(false);
       }
+      setRuntimeProbeStatus(`Resolved runtime state for ${Object.keys(next).length}/${selectedMachineIds.length} machines.`);
       setProbingRuntime(false);
     };
     void runProbe();
@@ -219,7 +254,11 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
       )}
 
       {loading ? (
-        <p className="text-sm text-zinc-400">Loading machines...</p>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-300">
+          <p className="font-medium text-zinc-100">Loading machines...</p>
+          <p className="mt-2 text-zinc-400">{formatMachineLoadStatus(loadingElapsedSeconds)}</p>
+          <p className="mt-1 text-xs text-zinc-500">Elapsed: {loadingElapsedSeconds}s</p>
+        </div>
       ) : (
         <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
           {step === 1 && (
@@ -251,7 +290,12 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
               <h2 className="text-lg font-medium">2. Configure Parameters</h2>
               {probingRuntime && (
                 <p className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300">
-                  Probing runtime containers on selected machines...
+                  {runtimeProbeStatus ?? "Probing runtime containers on selected machines..."}
+                </p>
+              )}
+              {!probingRuntime && runtimeProbeStatus && (
+                <p className="rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs text-zinc-400">
+                  {runtimeProbeStatus}
                 </p>
               )}
               {selectedWithRuntime.length > 0 && (

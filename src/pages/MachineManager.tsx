@@ -25,8 +25,19 @@ type Role = MachineAddPayload["role"];
 
 const roleOptions: Role[] = ["relay", "bp", "archive"];
 
+function formatMachineLoadStatus(elapsedSeconds: number): string {
+  if (elapsedSeconds < 3) {
+    return "Requesting machine list from local app...";
+  }
+  if (elapsedSeconds < 10) {
+    return `Still waiting for machine_list response (${elapsedSeconds}s)...`;
+  }
+  return `Still waiting for machine_list response (${elapsedSeconds}s). Local DB or Tauri command may be blocked.`;
+}
+
 export default function MachineManager({ pool }: MachineManagerProps) {
   const [loading, setLoading] = useState(true);
+  const [loadingElapsedSeconds, setLoadingElapsedSeconds] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -49,6 +60,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
 
   const loadData = async () => {
     setLoading(true);
+    setLoadingElapsedSeconds(0);
     setError(null);
     try {
       const [machineRows, keyRows] = await Promise.all([machineList(), sshAgentListKeys()]);
@@ -68,6 +80,19 @@ export default function MachineManager({ pool }: MachineManagerProps) {
     void loadData();
     // only on mount
   }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setLoadingElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [loading]);
 
   const handleAdd = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -276,7 +301,11 @@ export default function MachineManager({ pool }: MachineManagerProps) {
       <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
         <h2 className="mb-4 text-lg font-medium">Machines</h2>
         {loading ? (
-          <p className="text-sm text-zinc-400">Loading...</p>
+          <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-4 text-sm text-zinc-300">
+            <p className="font-medium text-zinc-100">Loading machines...</p>
+            <p className="mt-2 text-zinc-400">{formatMachineLoadStatus(loadingElapsedSeconds)}</p>
+            <p className="mt-1 text-xs text-zinc-500">Elapsed: {loadingElapsedSeconds}s</p>
+          </div>
         ) : machines.length === 0 ? (
           <p className="text-sm text-zinc-400">No machines added.</p>
         ) : (

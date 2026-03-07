@@ -116,6 +116,10 @@ mod frontend_tests {
         assert!(deploy.contains("step === 1"));
         assert!(deploy.contains("step === 2"));
         assert!(deploy.contains("step === 3"));
+        assert!(deploy.contains("Loading machines..."));
+        assert!(deploy.contains("Requesting machine list from local app"));
+        assert!(deploy.contains("Still waiting for machine_list response"));
+        assert!(deploy.contains("Resolving runtime state"));
     }
 
     #[test]
@@ -125,6 +129,8 @@ mod frontend_tests {
         assert!(mm.contains("Add Key to ssh-agent"));
         assert!(mm.contains("machineRuntimeProbe("));
         assert!(mm.contains("Runtime Probe"));
+        assert!(mm.contains("Loading machines..."));
+        assert!(mm.contains("Requesting machine list from local app"));
     }
 
     #[test]
