@@ -177,4 +177,13 @@ mod frontend_tests {
         assert!(playbook.contains("cardano_runtime_config_changed"));
         assert!(playbook.contains("restart: \"{{ cardano_runtime_config_changed | default(false) }}\""));
     }
+
+    #[test]
+    fn tc_dep_011_restore_snapshot_only_runs_for_cold_start_db() {
+        let playbook = include_str!("../../ansible/roles/cardano-node/tasks/main.yml");
+        assert!(playbook.contains("protocolMagicId"));
+        assert!(playbook.contains("cardano_restore_snapshot_effective"));
+        assert!(playbook.contains("db already initialized"));
+        assert!(playbook.contains("RESTORE_SNAPSHOT': ('true' if (cardano_restore_snapshot_effective | default(false) | bool) else 'false')"));
+    }
 }

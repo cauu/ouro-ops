@@ -160,6 +160,48 @@
     - role == "bp"
     - (bp_key_stats.results | rejectattr('stat.exists') | list | length) > 0
 
+- name: Check whether cardano DB already contains protocolMagicId
+  stat:
+    path: /opt/cardano/db/protocolMagicId
+  register: cardano_db_protocol_magic_id
+
+- name: Determine whether Mithril snapshot restore should run
+  set_fact:
+    cardano_restore_snapshot_effective: >-
+      {{
+        (restore_snapshot | default(false) | bool)
+        and (network in ['mainnet', 'preprod'])
+        and not (cardano_db_protocol_magic_id.stat.exists | default(false))
+      }}
+    cardano_restore_snapshot_reason: >-
+      {{
+        'cold-start db without protocolMagicId'
+        if (
+          (restore_snapshot | default(false) | bool)
+          and (network in ['mainnet', 'preprod'])
+          and not (cardano_db_protocol_magic_id.stat.exists | default(false))
+        )
+        else
+        (
+          'db already initialized'
+          if (cardano_db_protocol_magic_id.stat.exists | default(false))
+          else
+          (
+            'network does not support Mithril restore'
+            if (network not in ['mainnet', 'preprod'])
+            else 'restore_snapshot disabled by payload'
+          )
+        )
+      }}
+
+- name: Report Mithril restore decision
+  debug:
+    msg:
+      requested: "{{ restore_snapshot | default(false) | bool }}"
+      effective: "{{ cardano_restore_snapshot_effective | default(false) | bool }}"
+      reason: "{{ cardano_restore_snapshot_reason }}"
+  changed_when: false
+
 - name: Resolve cardano image reference (digest preferred)
   set_fact:
     cardano_image_ref: >-
@@ -215,7 +257,7 @@
               'CARDANO_DATABASE_PATH': '/data/db',
               'CARDANO_SOCKET_PATH': '/ipc/node.socket',
               'CARDANO_PORT': '3001',
-              'RESTORE_SNAPSHOT': ('true' if (restore_snapshot | default(false) | bool) else 'false')
+              'RESTORE_SNAPSHOT': ('true' if (cardano_restore_snapshot_effective | default(false) | bool) else 'false')
             }
             | combine(
               (role == 'bp')

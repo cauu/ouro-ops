@@ -44,7 +44,7 @@
 
 - [x] `p36-0` 初始化 Mithril active spec，切换文档入口，并将 Phase 3.5 结转为 completed
 - [x] `p36-1` 明确 Mithril 默认策略，并在 deploy payload / UI / Ansible 之间统一 relay 与 bp 的默认值
-- [ ] `p36-2` 在 deploy 链路中区分“空数据库触发 restore”和“已有数据库跳过 restore”
+- [x] `p36-2` 在 deploy 链路中区分“空数据库触发 restore”和“已有数据库跳过 restore”
 - [ ] `p36-3` 增加 Mithril 初始化状态采集与任务日志输出
 - [ ] `p36-4` 在监控与 Dashboard 中展示 snapshot restore / 回退同步状态
 - [ ] `p36-5` 为 Mithril 失败、超时与回退普通同步补齐错误处理
@@ -65,12 +65,15 @@
 - `2026-03-07` 基于用户确认的下一步需求创建本 spec，用于把镜像内置 Mithril 能力收敛成可配置、可观测、可验收的产品能力。
 - `2026-03-07` `p36-0` 完成：新建 Mithril active spec，切换 `docs/README.md` 入口，并将 Phase 3.5 spec 标记为 `completed`。
 - `2026-03-07` `p36-1` 完成：`restore_snapshot` 调整为可缺省并由后端按网络兜底默认；DeployWizard 新增 Mithril 冷启动恢复开关，默认在 `mainnet/preprod` 启用、在 `preview` 关闭。
+- `2026-03-07` `p36-2` 完成：Ansible 通过 `/opt/cardano/db/protocolMagicId` 判断数据库是否已初始化，仅在“支持 Mithril 的网络 + payload 允许 + DB 未初始化”时才有效开启 `RESTORE_SNAPSHOT`，并输出决策原因。
 
 ## 6. 验证证据（仅追加）
 
 - `2026-03-07` `TC-P36-000 | stack: other | command: manual inspection of docs/specs and docs/README.md | result: pass | note: README 当前入口已切换到 2026-03-07-phase3-6-mithril-bootstrap-active.md，Phase 3.5 已标记为 completed`
 - `2026-03-07` `TC-P36-001 | stack: rust | command: cargo test -q | result: pass | note: deploy payload 归一化会在 mainnet/preprod 默认启用 restore_snapshot，在 preview 默认关闭，并保留显式覆盖值`
 - `2026-03-07` `TC-P36-001 | stack: node | command: pnpm build | result: pass | note: DeployWizard 新增 Mithril 冷启动恢复开关，默认值随网络变化且前端构建通过`
+- `2026-03-07` `TC-P36-002 | stack: rust | command: cargo test -q | result: pass | note: tc_dep_011 断言 playbook 基于 protocolMagicId 计算 cardano_restore_snapshot_effective，避免已有数据库误触发 restore`
+- `2026-03-07` `TC-P36-002 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: 新增 Mithril 决策分支后 deploy playbook 语法仍有效`
 
 ## 7. 变更记录（仅追加）
 
