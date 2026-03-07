@@ -594,7 +594,7 @@ mod tests {
                     "run_id": run_id.clone(),
                     "playbook": "deploy.yml",
                     "inventory": {"_meta": {"hostvars": {}}},
-                    "extra_vars": {}
+                    "extra_vars": {"_mock_success": true}
                 }),
                 Some(Duration::from_secs(20)),
             )

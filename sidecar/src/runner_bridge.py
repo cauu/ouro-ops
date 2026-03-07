@@ -129,6 +129,7 @@ def main() -> None:
             inventory = normalize_inventory(params.get("inventory", {}))
             extra_vars = params.get("extra_vars", {})
             mock_fail = bool(extra_vars.get("_mock_fail", False))
+            mock_success = bool(extra_vars.get("_mock_success", False))
             private_data_dir = tempfile.mkdtemp(prefix="ouro_runner_")
             try:
                 inv_path = os.path.join(private_data_dir, "inventory")
@@ -199,6 +200,12 @@ def main() -> None:
                             "message": summarize_failure(failure_data),
                         },
                     })
+                    continue
+
+                if mock_success:
+                    send({"event": "runner_on_ok", "id": run_id, "data": {"host": "local", "task": "mock", "result": "ok", "progress_percent": 100}})
+                    send({"event": "log", "id": run_id, "data": {"stream": "stdout", "line": "mock playbook executed", "timestamp": now_iso()}})
+                    send({"event": "playbook_complete", "id": run_id, "data": {"status": "successful", "rc": 0}})
                     continue
 
                 last_failure_message = None

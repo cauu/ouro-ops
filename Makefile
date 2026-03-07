@@ -6,7 +6,8 @@ SHELL := /bin/bash
 	fmt fmt-rust fmt-rust-check \
 	test test-rust test-rust-quiet \
 	check check-rust \
-	phase1-verify phase2-verify phase3-verify \
+	ansible-syntax-check \
+	phase1-verify phase2-verify phase3-verify phase3-6-verify \
 	status
 
 help: ## Show available commands
@@ -51,11 +52,17 @@ check: check-rust ## Run default checks
 check-rust: ## Run Rust compile checks
 	cd src-tauri && cargo check
 
+ansible-syntax-check: ## Run deploy playbook syntax check
+	mkdir -p /tmp/ansible-local
+	ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml
+
 phase1-verify: test-rust ## Verify Phase 1 baseline tests
 
 phase2-verify: test-rust ## Verify Phase 2 backend tests
 
 phase3-verify: test-rust build ## Verify Phase 3 backend + frontend baseline
+
+phase3-6-verify: test-rust-quiet build ansible-syntax-check ## Verify Phase 3.6 Mithril local checks
 
 status: ## Show concise git status
 	git status --short
