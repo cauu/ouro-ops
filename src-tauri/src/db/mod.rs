@@ -208,4 +208,24 @@ mod tests {
         assert!(machine_get(&conn, relay_id).expect("query relay").is_none());
         assert!(machine_get(&conn, bp_id).expect("query bp").is_some());
     }
+
+    #[test]
+    fn tc_db_003_machine_health_migration_adds_mithril_columns() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+
+        let version = get_user_version(&conn).expect("user version");
+        assert!(version >= 2);
+
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(machine_health)")
+            .expect("prepare pragma");
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("query pragma");
+        let columns: Vec<String> = rows.map(|row| row.expect("column")).collect();
+
+        assert!(columns.iter().any(|column| column == "sync_stage"));
+        assert!(columns.iter().any(|column| column == "sync_note"));
+    }
 }

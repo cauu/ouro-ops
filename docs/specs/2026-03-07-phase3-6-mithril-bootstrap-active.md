@@ -49,6 +49,7 @@
 - [x] `p36-4` 在监控与 Dashboard 中展示 snapshot restore / 回退同步状态
 - [x] `p36-5` 为 Mithril 失败、超时与回退普通同步补齐错误处理
 - [ ] `p36-6` 补充自动化验证与联调验收记录
+- [x] `p36-7` 补充 machine_health migration 自动化覆盖，并整理真实环境 Mithril 联调步骤
 
 ## 4. 测试与验收标准
 
@@ -69,6 +70,7 @@
 - `2026-03-07` `p36-3` 完成：monitor 增加对 `RESTORE_SNAPSHOT` 环境变量、`protocolMagicId` 和最近日志的采集，推断 `snapshot_restoring` / `restore_failed` 等阶段，并将 `sync_stage`、`sync_note` 落库到 `machine_health`。
 - `2026-03-07` `p36-4` 完成：Dashboard 新增 `Snapshot Restore` 和 `Sync Stage` 展示，支持把 `snapshot_restoring` / `restore_failed` / `syncing` 等阶段直接呈现给用户。
 - `2026-03-07` `p36-5` 完成：monitor 新增 `restore_timeout` 和 `fallback_syncing`，分别用于表达 Mithril 长时间无进展和 restore 失败后退回普通同步；Dashboard 对这两类状态给出明确提示。
+- `2026-03-07` `p36-7` 完成：补充 `machine_health` migration 002 的自动化断言，确认 `sync_stage`/`sync_note` 字段被正确创建；同时在 spec 中写入真实环境 Mithril 联调步骤，保持 `p36-6` 继续等待用户执行后的真实结果。
 
 ## 6. 验证证据（仅追加）
 
@@ -82,6 +84,31 @@
 - `2026-03-07` `TC-P36-005 | stack: node | command: pnpm build | result: pass | note: Dashboard 可构建并消费新的 sync_stage / restore_snapshot_requested 字段`
 - `2026-03-07` `TC-P36-004 | stack: rust | command: cargo test -q | result: pass | note: tc_mon_008/tc_mon_009 覆盖 restore_timeout 与 fallback_syncing 的推断逻辑`
 - `2026-03-07` `TC-P36-004 | stack: node | command: pnpm build | result: pass | note: Dashboard 能展示 restore timeout 与 fallback syncing 的明确提示`
+- `2026-03-07` `TC-P36-006 | stack: rust | command: cargo test -q | result: pass | note: tc_db_003 断言 migration 002 已为 machine_health 增加 sync_stage/sync_note；本地自动化覆盖默认策略、跳过恢复、状态推断与 UI 展示`
+- `2026-03-07` `TC-P36-006 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: deploy playbook 语法在引入 Mithril 默认策略与空库门控后保持有效`
+- `2026-03-07` `TC-P36-006 | stack: node | command: pnpm build | result: pass | note: 前端在新增 Mithril 开关、Sync Stage、错误提示后仍可构建`
+- `2026-03-07` `TC-P36-006 | stack: other | command: manual test plan authored in this spec | result: pass | note: 已补充真实环境联调步骤；待用户在实际机器执行并追加结果`
+
+## 6.1 联调验收步骤（待追加真实结果）
+
+1. 空数据库冷启动，`mainnet` 或 `preprod`，保持 `restore_snapshot=true`
+   - 预期：
+   - deploy 完成后 Dashboard 显示 `Snapshot Restore=requested`
+   - 初始阶段显示 `snapshot restoring`
+   - 数据库初始化后切换为 `syncing`
+2. 已有数据库的机器再次 deploy
+   - 预期：
+   - Dashboard 显示 `Snapshot Restore=requested` 或 payload 请求值
+   - 但 `sync_stage` 不应进入 `snapshot restoring`
+   - 节点直接进入普通 `syncing` 或 `synced`
+3. 人为制造 Mithril 失败或错误日志
+   - 预期：
+   - Dashboard 显示 `restore failed`
+   - 若随后节点开始普通同步，则转为 `fallback syncing`
+4. 空数据库且长时间无进展
+   - 预期：
+   - 超过 15 分钟后出现 `restore timeout`
+   - note 中给出检查日志或允许普通同步的提示
 
 ## 7. 变更记录（仅追加）
 
