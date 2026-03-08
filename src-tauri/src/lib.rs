@@ -144,11 +144,14 @@ mod frontend_tests {
     #[test]
     fn tc_fe_006_dashboard_sync_monitor_exists() {
         let dashboard = include_str!("../../src/pages/Dashboard.tsx");
-        assert!(dashboard.contains("monitorSnapshot("));
+        assert!(dashboard.contains("useMonitorStore()"));
+        assert!(dashboard.contains("startMonitorStore(30)"));
+        assert!(dashboard.contains("stopMonitorStore()"));
         assert!(dashboard.contains("Blocks/min"));
         assert!(dashboard.contains("Sync Progress"));
         assert!(dashboard.contains("Snapshot Restore"));
         assert!(dashboard.contains("Sync Stage"));
+        assert!(dashboard.contains("snapshot.health_level"));
         assert!(dashboard.contains("snapshot restoring"));
         assert!(dashboard.contains("restore timeout"));
         assert!(dashboard.contains("fallback syncing"));
@@ -159,6 +162,16 @@ mod frontend_tests {
         let ipc = include_str!("../../src/lib/ipc.ts");
         assert!(ipc.contains("monitorStartPolling"));
         assert!(ipc.contains("monitorStopPolling"));
+    }
+
+    #[test]
+    fn tc_fe_008_monitor_store_subscribes_to_monitor_events() {
+        let store = include_str!("../../src/lib/monitorStore.ts");
+        assert!(store.contains("listen<MonitorSnapshot[]>(\"monitor:snapshot\""));
+        assert!(store.contains("listen<{ message?: string }>(\"monitor:error\""));
+        assert!(store.contains("monitorStartPolling("));
+        assert!(store.contains("monitorStopPolling("));
+        assert!(store.contains("useSyncExternalStore"));
     }
 
     #[test]

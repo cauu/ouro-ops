@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { dbVersion, monitorSnapshot, ping, runPlaybookTest } from "../lib/ipc";
-import type { DbVersionResult, MonitorSnapshot } from "../lib/types";
+import { dbVersion, ping, runPlaybookTest } from "../lib/ipc";
+import {
+  refreshMonitorStore,
+  startMonitorStore,
+  stopMonitorStore,
+  useMonitorStore,
+} from "../lib/monitorStore";
+import type { DbVersionResult } from "../lib/types";
 
 function formatProgress(value: number | null): string {
   if (value === null) {
@@ -50,6 +56,17 @@ function stageTone(stage: string): string {
   }
 }
 
+function healthTone(level: string): string {
+  switch (level) {
+    case "healthy":
+      return "text-emerald-300";
+    case "critical":
+      return "text-red-300";
+    default:
+      return "text-amber-300";
+  }
+}
+
 function formatStage(stage: string): string {
   switch (stage) {
     case "snapshot_restoring":
@@ -70,17 +87,10 @@ export default function Dashboard() {
   const [dbInfo, setDbInfo] = useState<DbVersionResult | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
-  const [snapshots, setSnapshots] = useState<MonitorSnapshot[]>([]);
-  const [monitorStatus, setMonitorStatus] = useState<string>("loading");
+  const { snapshots, status: monitorStatus } = useMonitorStore();
 
   const refreshMonitor = useCallback(async () => {
-    try {
-      const data = await monitorSnapshot();
-      setSnapshots(data);
-      setMonitorStatus(`Updated ${new Date().toLocaleTimeString()}`);
-    } catch (error) {
-      setMonitorStatus(`Monitor error: ${String(error)}`);
-    }
+    await refreshMonitorStore();
   }, []);
 
   useEffect(() => {
@@ -90,11 +100,14 @@ export default function Dashboard() {
         setStatus("Sidecar OK");
         const version = await dbVersion();
         setDbInfo(version);
-        await refreshMonitor();
+        await startMonitorStore(30);
       } catch (error) {
         setStatus(`Error: ${String(error)}`);
       }
     })();
+    return () => {
+      void stopMonitorStore();
+    };
   }, [refreshMonitor]);
 
   useEffect(() => {
@@ -111,16 +124,6 @@ export default function Dashboard() {
       unlisteners.forEach((unlisten) => unlisten());
     };
   }, []);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      void refreshMonitor();
-    }, 30_000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [refreshMonitor]);
-
   const handleRunTest = async () => {
     try {
       const id = await runPlaybookTest();
@@ -174,6 +177,9 @@ export default function Dashboard() {
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
+                    <span className={`text-[11px] font-medium uppercase ${healthTone(snapshot.health_level)}`}>
+                      {snapshot.health_level}
+                    </span>
                     <span className={`text-xs font-medium uppercase ${statusTone(snapshot.status)}`}>
                       {snapshot.status}
                     </span>
