@@ -53,6 +53,7 @@
 - [x] `p36-8` 为前端机器加载与 runtime probe 增加阶段状态和耗时提示
 - [x] `p36-9` 修复 Mithril 启动缺少验证密钥参数导致容器重启的问题
 - [x] `p36-10` 修复 Mithril cold-start 前未清空残留 DB 内容导致 restore 失败的问题
+- [x] `p36-11` 修复 Mithril restore 进行中被 deploy 健康检查误判为启动失败的问题
 
 ## 4. 测试与验收标准
 
@@ -66,6 +67,7 @@
 - `TC-P36-007` DeployWizard 与 MachineManager 在 `machineList` / runtime probe 期间显示明确状态和耗时，避免停留在单一 `Loading machines...` 文案。
 - `TC-P36-008` 当 `RESTORE_SNAPSHOT=true` 时，deploy 会准备 Mithril 所需的 verification keys 和 aggregator endpoint，容器不会因缺少 `genesis_verification_key` 直接重启失败。
 - `TC-P36-009` 当 `RESTORE_SNAPSHOT=true` 且数据库目录没有 `protocolMagicId` 但残留旧文件时，deploy 会先清理冷启动目录，再触发 Mithril restore，避免 `Unpack directory 'db' is not empty`。
+- `TC-P36-010` 当 `RESTORE_SNAPSHOT=true` 且容器已稳定运行但 Mithril 仍在恢复时，deploy 不应因暂时缺少 socket 或 `query tip` 结果而将任务判定为失败。
 
 ## 5. 执行日志（仅追加）
 
@@ -81,6 +83,7 @@
 - `2026-03-07` `p36-8` 完成：DeployWizard 与 MachineManager 在加载机器列表时显示 `machine_list` 请求阶段、已等待秒数和长时间等待提示；runtime probe 改为显示 `x/y` 进度，避免用户只看到静态 `Loading machines...`。
 - `2026-03-07` `p36-9` 完成：根据真实环境日志补齐 Mithril 启动所需参数；在 `mainnet/preprod` 下载 `genesis.vkey` 与 `ancillary.vkey`，并在冷启动 restore 生效时显式注入 `GENESIS_VERIFICATION_KEY`、`ANCILLARY_VERIFICATION_KEY`、`AGGREGATOR_ENDPOINT`，避免容器因缺少 `genesis_verification_key` 重启失败。
 - `2026-03-08` `p36-10` 完成：根据真实环境日志补齐 cold-start 目录清理逻辑；当 `RESTORE_SNAPSHOT=true` 且 `/opt/cardano/db` 没有 `protocolMagicId` 但目录非空时，deploy 先清理残留文件，再触发 Mithril restore，避免 `Unpack directory 'db' is not empty`。
+- `2026-03-08` `p36-11` 完成：根据真实环境日志把 Mithril readiness 改为“两段判定”；当 `RESTORE_SNAPSHOT=true` 且容器已稳定运行时，deploy 记录 `restore-in-progress` 并放行，不再强制等待 socket 和 tip，后续状态交给 monitor 链路追踪。
 
 ## 6. 验证证据（仅追加）
 
@@ -105,6 +108,8 @@
 - `2026-03-07` `TC-P36-008 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: 新增 Mithril verification key 下载、slurp 与 env 注入后 playbook 语法仍有效`
 - `2026-03-08` `TC-P36-009 | stack: rust | command: cargo test -q | result: pass | note: tc_dep_011 断言 playbook 在 cold-start Mithril 路径下会探测 db 目录残留内容并执行清理步骤`
 - `2026-03-08` `TC-P36-009 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: 新增 cold-start db 清理分支后 deploy playbook 语法仍有效`
+- `2026-03-08` `TC-P36-010 | stack: rust | command: cargo test -q | result: pass | note: tc_dep_012 断言 playbook 对 Mithril restore 使用 running-container readiness，并跳过立即 socket/tip 检查`
+- `2026-03-08` `TC-P36-010 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: Mithril restore readiness 分支加入后 deploy playbook 语法仍有效`
 
 ## 6.1 联调验收步骤（待追加真实结果）
 

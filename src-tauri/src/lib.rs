@@ -204,4 +204,13 @@ mod frontend_tests {
         assert!(playbook.contains("genesis.vkey"));
         assert!(playbook.contains("ancillary.vkey"));
     }
+
+    #[test]
+    fn tc_dep_012_mithril_restore_readiness_accepts_running_container() {
+        let playbook = include_str!("../../ansible/roles/cardano-node/tasks/main.yml");
+        assert!(playbook.contains("Wait for cardano container to stay running"));
+        assert!(playbook.contains("Capture Mithril startup logs"));
+        assert!(playbook.contains("readiness: restore-in-progress"));
+        assert!(playbook.contains("when: not (cardano_restore_snapshot_effective | default(false) | bool)"));
+    }
 }

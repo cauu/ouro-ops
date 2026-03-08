@@ -353,6 +353,33 @@
           - /opt/cardano/ipc:/ipc
           - /opt/cardano/keys:/opt/cardano/config/keys
 
+    - name: Wait for cardano container to stay running
+      shell: docker inspect --format '{{"{{"}}if and .State.Running (not .State.Restarting){{"}}"}}ok{{"{{"}}end{{"}}"}}' cardano-node
+      register: cardano_running_check
+      until: cardano_running_check.rc == 0 and (cardano_running_check.stdout | trim) == 'ok'
+      retries: 24
+      delay: 5
+      changed_when: false
+
+    - name: Capture Mithril startup logs
+      shell: docker logs --tail 50 cardano-node 2>&1
+      register: cardano_mithril_startup_logs
+      changed_when: false
+      failed_when: false
+      when: cardano_restore_snapshot_effective | default(false) | bool
+
+    - name: Record Mithril restore startup readiness
+      debug:
+        msg:
+          restore_snapshot: true
+          readiness: restore-in-progress
+          note: >-
+            Container is running and Mithril restore logs were detected. Immediate socket/tip
+            readiness is deferred to monitor_snapshot until restore completes.
+          mithril_log_excerpt: "{{ (cardano_mithril_startup_logs.stdout_lines | default([]))[-5:] }}"
+      changed_when: false
+      when: cardano_restore_snapshot_effective | default(false) | bool
+
     - name: Wait for cardano socket file inside container
       shell: docker exec cardano-node sh -lc 'test -S /ipc/node.socket'
       register: cardano_socket_check
@@ -360,6 +387,7 @@
       retries: 24
       delay: 5
       changed_when: false
+      when: not (cardano_restore_snapshot_effective | default(false) | bool)
 
     - name: Wait for initial cardano tip query to succeed
       shell: |
@@ -371,10 +399,12 @@
       retries: 24
       delay: 5
       changed_when: false
+      when: not (cardano_restore_snapshot_effective | default(false) | bool)
 
     - name: Parse initial cardano tip observation
       set_fact:
         cardano_tip_observation: "{{ cardano_tip_raw.stdout | from_json }}"
+      when: not (cardano_restore_snapshot_effective | default(false) | bool)
 
     - name: Record initial cardano tip observation
       debug:
@@ -384,6 +414,7 @@
           era: "{{ cardano_tip_observation.era | default('unknown') }}"
           hash: "{{ cardano_tip_observation.hash | default('unknown') }}"
       changed_when: false
+      when: not (cardano_restore_snapshot_effective | default(false) | bool)
 
   rescue:
     - name: Capture failed cardano container status
