@@ -52,6 +52,7 @@
 - [ ] `p4-11` 实现 Dashboard 卡片、KES 倒计时与最近任务视图
 - [ ] `p4-12` 为 BP 升级与 KES 推送补齐 ticker 确认的高危确认能力
 - [ ] `p4-13` 运行并记录完整的 Phase 4 验证
+- [x] `p4-14` 整理已完成 Phase 3.6 spec 的文件名与归档入口
 - [ ] `x-1` 统一前端对 `AppError` 的处理与用户可读错误展示
 - [ ] `x-2` 确保所有关键操作写入 `audit_log`
 
@@ -62,15 +63,18 @@
 - `TC-P4-003` 升级流程覆盖 relay 逐台推进、BP 确认门控、回退参数与状态转换。
 - `TC-P4-004` 前端流程覆盖 Dashboard 卡片、升级门控确认与 KES 工作流页面。
 - `TC-P4-005` 安全确认与回退集成覆盖 dangerous 确认、ticker 确认与 rollback inventory 使用。
+- `TC-P4-006` 已完成 spec 的文件名、状态与 `docs/README.md` 入口应一致；Phase 3.6 归档文件应使用 completed 形态文件名，且活动入口保持指向 Phase 4。
 
 ## 5. 执行日志（仅追加）
 
 - `2026-03-06` 从 `docs/development-plan/v1.0.md` 与 `docs/detail-design/v1.0.md` 中提取剩余范围，初始化本 Phase 4 活动 spec。
 - `2026-03-06` 当前尚未在本 spec 下启动任何实现项。
+- `2026-03-08` `p4-14` 完成：将已完成的 Phase 3.6 归档 spec 文件名从 `2026-03-07-phase3-6-mithril-bootstrap-active.md` 调整为 completed 形态，并同步更新 `docs/README.md` 与相关入口引用。
 
 ## 6. 验证证据（仅追加）
 
 - `2026-03-06` 暂无验证证据。后续会在 Phase 4 各事项实现并验证后逐条追加。
+- `2026-03-08` `TC-P4-006 | stack: other | command: manual inspection of docs/specs and docs/README.md | result: pass | note: Phase 3.6 归档文件已重命名为 completed 形态，README 当前活动入口仍为 Phase 4，归档入口已更新`
 
 ## 7. 变更记录（仅追加）
 

@@ -12,7 +12,7 @@ Read the active spec first for current requirements, outline design, execution p
 
 - [2026-03-06-phase1-phase3-completed.md](./specs/2026-03-06-phase1-phase3-completed.md)
 - [2026-03-06-phase3-5-deploy-readiness-and-sync-monitoring.md](./specs/2026-03-06-phase3-5-deploy-readiness-and-sync-monitoring.md)
-- [2026-03-07-phase3-6-mithril-bootstrap-active.md](./specs/2026-03-07-phase3-6-mithril-bootstrap-active.md)
+- [2026-03-07-phase3-6-mithril-bootstrap-completed.md](./specs/2026-03-07-phase3-6-mithril-bootstrap-completed.md)
 
 These completed specs archive the already delivered Phase 1 to Phase 3 scope, the completed Phase 3.5 deploy readiness / sync monitoring work, and the completed Phase 3.6 Mithril bootstrap work.
 
