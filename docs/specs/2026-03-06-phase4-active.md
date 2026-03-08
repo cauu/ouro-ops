@@ -1,6 +1,6 @@
 # Cardano Stake Pool 控制平面 Phase 4 活动规范
 
-状态：`draft`  
+状态：`active`  
 日期：`2026-03-06`
 
 ## 1. 需求详情
@@ -76,3 +76,4 @@
 
 - `2026-03-06` 当前活动范围已从早期文档收敛记录中拆分出来，后续仅追踪已归档 Phase 1 至 Phase 3 之后的前向工作。
 - `2026-03-06` 因新增“部署成功判定解耦与同步速度监控”中间范围，当前文档降为 `draft`。新的执行入口为 `docs/specs/2026-03-06-phase3-5-deploy-readiness-and-sync-monitoring.md`。
+- `2026-03-08` 用户确认 Phase 3.6 结项后，本 spec 恢复为唯一活动 spec，继续承接 Phase 4 与跨阶段质量项。
