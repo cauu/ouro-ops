@@ -146,6 +146,17 @@ fn has_restore_failure(raw: &str) -> bool {
     })
 }
 
+fn has_restore_activity(raw: &str) -> bool {
+    raw.lines().rev().any(|line| {
+        let lower = line.to_ascii_lowercase();
+        lower.contains("mithril")
+            || lower.contains("snapshot")
+            || lower.contains("restore")
+            || lower.contains("replayed block")
+            || lower.contains("ledger state")
+    })
+}
+
 fn current_epoch_seconds() -> Result<i64, AppError> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -337,6 +348,16 @@ fn recover_restore_stage_from_tip_error(
     current_epoch_seconds: i64,
 ) -> Option<(String, String, Option<String>)> {
     let runtime = runtime?;
+    if runtime.restore_snapshot_requested && has_restore_activity(runtime.recent_logs.as_str()) {
+        return Some((
+            "snapshot_restoring".into(),
+            "syncing".into(),
+            last_restore_related_log_line(runtime.recent_logs.as_str()).or_else(|| {
+                Some("Mithril restore is still replaying the database; tip is not ready yet.".into())
+            }),
+        ));
+    }
+
     let (sync_stage, sync_note) = determine_sync_stage(
         None,
         None,
@@ -679,5 +700,20 @@ mod tests {
         assert_eq!(recovered.0, "snapshot_restoring");
         assert_eq!(recovered.1, "syncing");
         assert!(recovered.2.expect("note").contains("Mithril"));
+    }
+
+    #[test]
+    fn tc_mon_011_tip_error_during_replay_is_not_unreachable() {
+        let runtime = RuntimeMonitorContext {
+            restore_snapshot_requested: true,
+            protocol_magic_id_present: true,
+            recent_logs:
+                "[cardano.node.ChainDB:Info:5] Replayed block: slot 2116799 out of 181310513. Progress: 1.17%"
+                    .into(),
+        };
+        let recovered = recover_restore_stage_from_tip_error(None, Some(&runtime), 0)
+            .expect("recover replay stage");
+        assert_eq!(recovered.0, "snapshot_restoring");
+        assert_eq!(recovered.1, "syncing");
     }
 }
