@@ -159,3 +159,8 @@ export interface MonitorSnapshot {
   collected_at: string;
   note: string | null;
 }
+
+export interface MonitorPollingStatus {
+  running: boolean;
+  interval_seconds: number;
+}

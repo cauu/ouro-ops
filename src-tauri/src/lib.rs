@@ -11,6 +11,7 @@ use std::sync::Mutex;
 use tauri::Manager;
 
 pub use db::DbState;
+use crate::commands::monitor::MonitorPollingState;
 
 pub fn run() {
     tauri::Builder::default()
@@ -22,6 +23,7 @@ pub fn run() {
             let db_path = path.join("ouro_ops.sqlite");
             let conn = db::open_and_migrate(&db_path).map_err(|e| e.to_string())?;
             app.manage(DbState(Mutex::new(conn)));
+            app.manage(MonitorPollingState(Mutex::new(None)));
 
             let sidecar_state =
                 sidecar::spawn_sidecar(app_handle.clone()).map_err(|e| e.to_string())?;
@@ -68,6 +70,8 @@ pub fn run() {
             commands::deploy::deploy_status,
             commands::deploy::deploy_cancel,
             commands::monitor::monitor_snapshot,
+            commands::monitor::monitor_start_polling,
+            commands::monitor::monitor_stop_polling,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -148,6 +152,13 @@ mod frontend_tests {
         assert!(dashboard.contains("snapshot restoring"));
         assert!(dashboard.contains("restore timeout"));
         assert!(dashboard.contains("fallback syncing"));
+    }
+
+    #[test]
+    fn tc_fe_007_ipc_exposes_monitor_polling_commands() {
+        let ipc = include_str!("../../src/lib/ipc.ts");
+        assert!(ipc.contains("monitorStartPolling"));
+        assert!(ipc.contains("monitorStopPolling"));
     }
 
     #[test]

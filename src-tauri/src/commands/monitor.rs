@@ -1,12 +1,23 @@
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection};
 use serde_json::Value;
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::db::{machine_list as repo_machine_list, DbState, MachineRow};
 use crate::error::AppError;
+
+pub struct MonitorPollingState(pub Mutex<Option<MonitorPollingHandle>>);
+
+pub struct MonitorPollingHandle {
+    stop: Arc<AtomicBool>,
+    join: tauri::async_runtime::JoinHandle<()>,
+}
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MonitorSnapshot {
@@ -23,6 +34,12 @@ pub struct MonitorSnapshot {
     pub stalled: bool,
     pub collected_at: String,
     pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MonitorPollingStatus {
+    pub running: bool,
+    pub interval_seconds: u64,
 }
 
 #[derive(Debug)]
@@ -559,6 +576,13 @@ pub async fn monitor_snapshot(
     machine_ids: Option<Vec<i64>>,
     db: State<'_, DbState>,
 ) -> Result<Vec<MonitorSnapshot>, AppError> {
+    collect_snapshots_from_db_state(&db, machine_ids).await
+}
+
+async fn collect_snapshots_from_db_state(
+    db: &DbState,
+    machine_ids: Option<Vec<i64>>,
+) -> Result<Vec<MonitorSnapshot>, AppError> {
     let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
     let selected = repo_machine_list(&conn, None, None)?
         .into_iter()
@@ -575,6 +599,93 @@ pub async fn monitor_snapshot(
         snapshots.push(collect_machine_snapshot(&conn, &machine)?);
     }
     Ok(snapshots)
+}
+
+#[tauri::command]
+pub async fn monitor_start_polling(
+    machine_ids: Option<Vec<i64>>,
+    interval_seconds: Option<u64>,
+    db: State<'_, DbState>,
+    polling: State<'_, MonitorPollingState>,
+    app_handle: AppHandle,
+) -> Result<MonitorPollingStatus, AppError> {
+    let interval_seconds = interval_seconds.unwrap_or(30).clamp(5, 300);
+
+    {
+        let mut guard = polling
+            .0
+            .lock()
+            .map_err(|_| AppError::Internal("lock".into()))?;
+        if let Some(existing) = guard.take() {
+            existing.stop.store(true, Ordering::SeqCst);
+            existing.join.abort();
+        }
+    }
+
+    let initial = collect_snapshots_from_db_state(&db, machine_ids.clone()).await?;
+    let _ = app_handle.emit("monitor:snapshot", &initial);
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop_for_task = Arc::clone(&stop);
+    let app_handle_for_task = app_handle.clone();
+    let join = tauri::async_runtime::spawn(async move {
+        loop {
+            if stop_for_task.load(Ordering::SeqCst) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_secs(interval_seconds)).await;
+            if stop_for_task.load(Ordering::SeqCst) {
+                break;
+            }
+            let Some(db_state) = app_handle_for_task.try_state::<DbState>() else {
+                let _ = app_handle_for_task.emit(
+                    "monitor:error",
+                    serde_json::json!({ "message": "monitor db state unavailable" }),
+                );
+                break;
+            };
+            match collect_snapshots_from_db_state(&db_state, machine_ids.clone()).await {
+                Ok(snapshots) => {
+                    let _ = app_handle_for_task.emit("monitor:snapshot", &snapshots);
+                }
+                Err(err) => {
+                    let _ = app_handle_for_task.emit(
+                        "monitor:error",
+                        serde_json::json!({ "message": err.to_string() }),
+                    );
+                }
+            }
+        }
+    });
+
+    let mut guard = polling
+        .0
+        .lock()
+        .map_err(|_| AppError::Internal("lock".into()))?;
+    *guard = Some(MonitorPollingHandle { stop, join });
+
+    Ok(MonitorPollingStatus {
+        running: true,
+        interval_seconds,
+    })
+}
+
+#[tauri::command]
+pub async fn monitor_stop_polling(
+    polling: State<'_, MonitorPollingState>,
+) -> Result<MonitorPollingStatus, AppError> {
+    let mut guard = polling
+        .0
+        .lock()
+        .map_err(|_| AppError::Internal("lock".into()))?;
+    if let Some(existing) = guard.take() {
+        existing.stop.store(true, Ordering::SeqCst);
+        existing.join.abort();
+    }
+    Ok(MonitorPollingStatus {
+        running: false,
+        interval_seconds: 0,
+    })
 }
 
 #[cfg(test)]
@@ -732,5 +843,12 @@ mod tests {
     fn tc_mon_012_parse_restore_progress_from_logs() {
         let raw = "[cardano.node.ChainDB:Info:5] Replayed block: slot 2116799 out of 181310513. Progress: 1.17%";
         assert_eq!(parse_restore_progress_from_logs(raw), Some(1.17));
+    }
+
+    #[test]
+    fn tc_mon_013_monitor_polling_interval_is_clamped() {
+        assert_eq!(1_u64.clamp(5, 300), 5);
+        assert_eq!(30_u64.clamp(5, 300), 30);
+        assert_eq!(600_u64.clamp(5, 300), 300);
     }
 }

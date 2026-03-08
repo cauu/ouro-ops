@@ -82,3 +82,17 @@ export async function deployCancel(taskId: string): Promise<void> {
 export async function monitorSnapshot(machineIds?: number[]): Promise<MonitorSnapshot[]> {
   return invoke("monitor_snapshot", { machineIds: machineIds ?? null });
 }
+
+export async function monitorStartPolling(
+  machineIds?: number[],
+  intervalSeconds?: number,
+): Promise<{ running: boolean; interval_seconds: number }> {
+  return invoke("monitor_start_polling", {
+    machineIds: machineIds ?? null,
+    intervalSeconds: intervalSeconds ?? null,
+  });
+}
+
+export async function monitorStopPolling(): Promise<{ running: boolean; interval_seconds: number }> {
+  return invoke("monitor_stop_polling");
+}
