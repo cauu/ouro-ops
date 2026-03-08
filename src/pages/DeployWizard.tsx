@@ -44,7 +44,8 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
   const [enableHardening, setEnableHardening] = useState(true);
   const [safeValidationMode, setSafeValidationMode] = useState(false);
   const [takeoverExistingNode, setTakeoverExistingNode] = useState(false);
-  const [restoreSnapshot, setRestoreSnapshot] = useState(networkSupportsMithril(pool.network));
+  const [restoreSnapshotRelay, setRestoreSnapshotRelay] = useState(networkSupportsMithril(pool.network));
+  const [restoreSnapshotBp, setRestoreSnapshotBp] = useState(networkSupportsMithril(pool.network));
   const [restoreSnapshotTouched, setRestoreSnapshotTouched] = useState(false);
   const [runtimeProbeMap, setRuntimeProbeMap] = useState<Record<number, RuntimeProbe>>({});
   const [probingRuntime, setProbingRuntime] = useState(false);
@@ -118,6 +119,14 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
     () => machines.filter((m) => selectedMachineIds.includes(m.id)),
     [machines, selectedMachineIds],
   );
+  const selectedRelayCount = useMemo(
+    () => selectedMachines.filter((m) => m.role === "relay").length,
+    [selectedMachines],
+  );
+  const selectedBpCount = useMemo(
+    () => selectedMachines.filter((m) => m.role === "bp").length,
+    [selectedMachines],
+  );
   const mithrilSupported = useMemo(() => networkSupportsMithril(network), [network]);
   const selectedWithRuntime = useMemo(
     () => selectedMachines.filter((m) => runtimeProbeMap[m.id]?.container_present),
@@ -144,17 +153,20 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
     enable_hardening: enableHardening,
     safe_validation_mode: safeValidationMode,
     takeover_existing_node: takeoverExistingNode,
-    restore_snapshot: restoreSnapshot,
+    restore_snapshot_relay: restoreSnapshotRelay,
+    restore_snapshot_bp: restoreSnapshotBp,
   });
 
   useEffect(() => {
     if (!mithrilSupported) {
-      setRestoreSnapshot(false);
+      setRestoreSnapshotRelay(false);
+      setRestoreSnapshotBp(false);
       setRestoreSnapshotTouched(false);
       return;
     }
     if (!restoreSnapshotTouched) {
-      setRestoreSnapshot(true);
+      setRestoreSnapshotRelay(true);
+      setRestoreSnapshotBp(true);
     }
   }, [mithrilSupported, restoreSnapshotTouched]);
 
@@ -390,19 +402,31 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    checked={restoreSnapshot}
-                    disabled={!mithrilSupported}
+                    checked={restoreSnapshotRelay}
+                    disabled={!mithrilSupported || selectedRelayCount === 0}
                     onChange={(e) => {
-                      setRestoreSnapshot(e.target.checked);
+                      setRestoreSnapshotRelay(e.target.checked);
                       setRestoreSnapshotTouched(true);
                     }}
                   />
-                  restore_snapshot (Mithril cold-start restore)
+                  restore_snapshot_relay (Mithril cold-start restore)
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={restoreSnapshotBp}
+                    disabled={!mithrilSupported || selectedBpCount === 0}
+                    onChange={(e) => {
+                      setRestoreSnapshotBp(e.target.checked);
+                      setRestoreSnapshotTouched(true);
+                    }}
+                  />
+                  restore_snapshot_bp (Mithril cold-start restore)
                 </label>
               </div>
               <p className="text-xs text-zinc-400">
                 Default is enabled for <code>mainnet</code>/<code>preprod</code> cold-starts and disabled for{" "}
-                <code>preview</code>. Existing DB will be handled by deploy-side checks.
+                <code>preview</code>. Relay and bp can now be configured independently; existing DB will still be handled by deploy-side checks.
               </p>
             </div>
           )}
@@ -422,7 +446,8 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
               </p>
               <p className="text-sm text-zinc-300">safe_validation_mode={String(safeValidationMode)}</p>
               <p className="text-sm text-zinc-300">takeover_existing_node={String(takeoverExistingNode)}</p>
-              <p className="text-sm text-zinc-300">restore_snapshot={String(restoreSnapshot)}</p>
+              <p className="text-sm text-zinc-300">restore_snapshot_relay={String(restoreSnapshotRelay)}</p>
+              <p className="text-sm text-zinc-300">restore_snapshot_bp={String(restoreSnapshotBp)}</p>
               <button
                 type="button"
                 onClick={() => setShowConfirm(true)}

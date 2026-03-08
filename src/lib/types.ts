@@ -107,6 +107,8 @@ export interface DeployPayload {
   safe_validation_mode?: boolean;
   takeover_existing_node?: boolean;
   restore_snapshot?: boolean;
+  restore_snapshot_relay?: boolean;
+  restore_snapshot_bp?: boolean;
 }
 
 export interface TaskMachineStatus {

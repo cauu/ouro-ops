@@ -57,6 +57,7 @@
 - [x] `p36-12` 修复 Mithril restore 进行中 monitor 将 relay 误显示为 unreachable 的问题
 - [x] `p36-13` 修复 Mithril replay 阶段 tip 未就绪时 monitor 仍回落 unreachable 的问题
 - [x] `p36-14` 为 Mithril snapshot restoring 阶段提取并展示 replay 进度百分比
+- [x] `p36-15` 允许用户按角色分别配置 relay 和 bp 的 restore 策略
 
 ## 4. 测试与验收标准
 
@@ -74,6 +75,7 @@
 - `TC-P36-011` 当 `RESTORE_SNAPSHOT=true` 且 Mithril 正在恢复、`query tip` 尚不可用时，monitor 应展示 `snapshot_restoring` 或相关恢复阶段，而不是 `unreachable`。
 - `TC-P36-012` 当 Mithril 已进入 replay 数据库阶段且日志出现 `Replayed block`，但 `query tip` 仍暂不可用时，monitor 仍应展示 `snapshot_restoring`，不能回退为 `unreachable`。
 - `TC-P36-013` 当 Mithril replay 日志包含 `Progress: x%` 时，Dashboard 的 `Sync Progress` 应展示该百分比，而不是 `--`。
+- `TC-P36-014` DeployWizard、DeployPayload 和 Ansible 应支持 `restore_snapshot_relay` 与 `restore_snapshot_bp` 两个独立开关；relay 和 bp 的 Mithril 策略可以分开配置，且默认值与旧全局策略保持兼容。
 
 ## 5. 执行日志（仅追加）
 
@@ -93,6 +95,7 @@
 - `2026-03-08` `p36-12` 完成：根据真实环境日志修正 monitor 的错误分支；当 Mithril restore 正在进行、容器已运行但 `query tip` 暂时不可用时，monitor 改为根据 runtime context 推断 `snapshot_restoring`，不再把 relay 标成 `unreachable`。
 - `2026-03-08` `p36-13` 完成：根据真实环境日志补齐 Mithril replay 阶段识别；当日志已出现 `Replayed block` 但 socket/tip 尚未 ready 时，monitor 仍按 `snapshot_restoring` 处理，避免 relay 在恢复中继续显示 `unreachable`。
 - `2026-03-08` `p36-14` 完成：从 Mithril replay 日志中提取 `Progress: x%` 百分比，并在 tip 暂不可用的恢复阶段回填到 `sync_progress`，让 Dashboard 在 `snapshot restoring` 期间直接展示恢复进度。
+- `2026-03-08` `p36-15` 完成：将 Mithril restore 策略拆成 `restore_snapshot_relay` 和 `restore_snapshot_bp` 两个角色级开关；前端允许分别配置，后端与 Ansible 保持对旧全局 `restore_snapshot` 的兼容回退。
 
 ## 6. 验证证据（仅追加）
 
@@ -122,6 +125,9 @@
 - `2026-03-08` `TC-P36-011 | stack: rust | command: cargo test -q | result: pass | note: tc_mon_010 断言 Mithril restore 期间 tip 暂时不可用时 monitor 会回退到 snapshot_restoring/syncing，而不是 unreachable`
 - `2026-03-08` `TC-P36-012 | stack: rust | command: cargo test -q | result: pass | note: tc_mon_011 断言日志已出现 Replayed block 时 monitor 仍保持 snapshot_restoring/syncing，不再把 relay 误标为 unreachable`
 - `2026-03-08` `TC-P36-013 | stack: rust | command: cargo test -q | result: pass | note: tc_mon_011/tc_mon_012 断言 replay 日志中的 Progress 百分比会回填到 sync_progress，供 Dashboard 在 snapshot restoring 阶段展示`
+- `2026-03-08` `TC-P36-014 | stack: rust | command: cargo test -q | result: pass | note: deploy payload 归一化和 extra_vars 现在同时覆盖 restore_snapshot_relay/restore_snapshot_bp，并保留旧 restore_snapshot 兼容回退`
+- `2026-03-08` `TC-P36-014 | stack: node | command: pnpm build | result: pass | note: DeployWizard 已支持分别配置 relay 和 bp 的 Mithril restore 开关，前端构建通过`
+- `2026-03-08` `TC-P36-014 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: cardano-node role 已按当前主机角色读取 restore_snapshot_relay/restore_snapshot_bp，playbook 语法有效`
 
 ## 6.1 联调验收步骤（待追加真实结果）
 

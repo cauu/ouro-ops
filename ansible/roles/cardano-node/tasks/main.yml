@@ -197,9 +197,23 @@
 
 - name: Determine whether Mithril snapshot restore should run
   set_fact:
+    cardano_restore_snapshot_requested: >-
+      {{
+        (
+          restore_snapshot_relay
+          if role == 'relay'
+          else (
+            restore_snapshot_bp
+            if role == 'bp'
+            else restore_snapshot
+          )
+        )
+        | default(restore_snapshot | default(false), true)
+        | bool
+      }}
     cardano_restore_snapshot_effective: >-
       {{
-        (restore_snapshot | default(false) | bool)
+        (cardano_restore_snapshot_requested | default(false) | bool)
         and (network in ['mainnet', 'preprod'])
         and not (cardano_db_protocol_magic_id.stat.exists | default(false))
       }}
@@ -207,7 +221,7 @@
       {{
         'cold-start db without protocolMagicId'
         if (
-          (restore_snapshot | default(false) | bool)
+          (cardano_restore_snapshot_requested | default(false) | bool)
           and (network in ['mainnet', 'preprod'])
           and not (cardano_db_protocol_magic_id.stat.exists | default(false))
         )
@@ -219,7 +233,7 @@
           (
             'network does not support Mithril restore'
             if (network not in ['mainnet', 'preprod'])
-            else 'restore_snapshot disabled by payload'
+            else 'restore_snapshot disabled for current role'
           )
         )
       }}
@@ -227,9 +241,10 @@
 - name: Report Mithril restore decision
   debug:
     msg:
-      requested: "{{ restore_snapshot | default(false) | bool }}"
+      requested: "{{ cardano_restore_snapshot_requested | default(false) | bool }}"
       effective: "{{ cardano_restore_snapshot_effective | default(false) | bool }}"
       reason: "{{ cardano_restore_snapshot_reason }}"
+      role: "{{ role }}"
   changed_when: false
 
 - name: Clean residual cold-start DB contents before Mithril restore

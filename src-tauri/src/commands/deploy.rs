@@ -34,6 +34,10 @@ pub struct DeployPayload {
     pub takeover_existing_node: bool,
     #[serde(default)]
     pub restore_snapshot: Option<bool>,
+    #[serde(default)]
+    pub restore_snapshot_relay: Option<bool>,
+    #[serde(default)]
+    pub restore_snapshot_bp: Option<bool>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -102,10 +106,12 @@ fn normalize_deploy_payload(payload: &DeployPayload) -> DeployPayload {
         .map(ToString::to_string);
 
     next.network = next.network.trim().to_string();
-    next.restore_snapshot = Some(
-        next.restore_snapshot
-            .unwrap_or_else(|| default_restore_snapshot_for_network(next.network.as_str())),
-    );
+    let restore_default = next
+        .restore_snapshot
+        .unwrap_or_else(|| default_restore_snapshot_for_network(next.network.as_str()));
+    next.restore_snapshot = Some(restore_default);
+    next.restore_snapshot_relay = Some(next.restore_snapshot_relay.unwrap_or(restore_default));
+    next.restore_snapshot_bp = Some(next.restore_snapshot_bp.unwrap_or(restore_default));
     next
 }
 
@@ -509,7 +515,9 @@ fn build_extra_vars(payload: &DeployPayload) -> Value {
         "enable_hardening": payload.enable_hardening,
         "safe_validation_mode": payload.safe_validation_mode,
         "takeover_existing_node": payload.takeover_existing_node,
-        "restore_snapshot": payload.restore_snapshot.unwrap_or_else(|| default_restore_snapshot_for_network(payload.network.as_str()))
+        "restore_snapshot": payload.restore_snapshot.unwrap_or_else(|| default_restore_snapshot_for_network(payload.network.as_str())),
+        "restore_snapshot_relay": payload.restore_snapshot_relay.unwrap_or_else(|| payload.restore_snapshot.unwrap_or_else(|| default_restore_snapshot_for_network(payload.network.as_str()))),
+        "restore_snapshot_bp": payload.restore_snapshot_bp.unwrap_or_else(|| payload.restore_snapshot.unwrap_or_else(|| default_restore_snapshot_for_network(payload.network.as_str())))
     })
 }
 
@@ -644,7 +652,9 @@ pub async fn deploy_start(
                 "network": payload.network,
                 "safe_validation_mode": payload.safe_validation_mode,
                 "takeover_existing_node": payload.takeover_existing_node,
-                "restore_snapshot": payload.restore_snapshot
+                "restore_snapshot": payload.restore_snapshot,
+                "restore_snapshot_relay": payload.restore_snapshot_relay,
+                "restore_snapshot_bp": payload.restore_snapshot_bp
             }),
         )?;
     }
@@ -790,6 +800,8 @@ mod tests {
             safe_validation_mode: false,
             takeover_existing_node: false,
             restore_snapshot: Some(true),
+            restore_snapshot_relay: Some(true),
+            restore_snapshot_bp: Some(true),
         };
         assert!(validate_deploy_payload(&base).is_ok());
 
@@ -849,6 +861,8 @@ mod tests {
             safe_validation_mode: false,
             takeover_existing_node: false,
             restore_snapshot: Some(true),
+            restore_snapshot_relay: Some(true),
+            restore_snapshot_bp: Some(true),
         };
         insert_task_with_machines(&conn, "task-1", &payload).expect("insert task");
 
@@ -995,11 +1009,15 @@ mod tests {
             safe_validation_mode: true,
             takeover_existing_node: true,
             restore_snapshot: Some(false),
+            restore_snapshot_relay: Some(true),
+            restore_snapshot_bp: Some(false),
         };
         let extra_vars = build_extra_vars(&payload);
         assert_eq!(extra_vars["safe_validation_mode"], Value::Bool(true));
         assert_eq!(extra_vars["takeover_existing_node"], Value::Bool(true));
         assert_eq!(extra_vars["restore_snapshot"], Value::Bool(false));
+        assert_eq!(extra_vars["restore_snapshot_relay"], Value::Bool(true));
+        assert_eq!(extra_vars["restore_snapshot_bp"], Value::Bool(false));
         assert_eq!(
             extra_vars["image_digest"],
             Value::String("sha256:abc123".into())
@@ -1022,6 +1040,8 @@ mod tests {
         assert!(!payload.safe_validation_mode);
         assert!(!payload.takeover_existing_node);
         assert_eq!(payload.restore_snapshot, None);
+        assert_eq!(payload.restore_snapshot_relay, None);
+        assert_eq!(payload.restore_snapshot_bp, None);
     }
 
     #[test]
@@ -1039,6 +1059,8 @@ mod tests {
             safe_validation_mode: false,
             takeover_existing_node: false,
             restore_snapshot: None,
+            restore_snapshot_relay: None,
+            restore_snapshot_bp: None,
         };
         let normalized = normalize_deploy_payload(&payload);
         assert_eq!(normalized.cardano_version, DEFAULT_IMAGE_TAG);
@@ -1046,6 +1068,8 @@ mod tests {
         assert_eq!(normalized.image_digest, None);
         assert_eq!(normalized.network, "preprod");
         assert_eq!(normalized.restore_snapshot, Some(true));
+        assert_eq!(normalized.restore_snapshot_relay, Some(true));
+        assert_eq!(normalized.restore_snapshot_bp, Some(true));
     }
 
     #[test]
@@ -1063,12 +1087,16 @@ mod tests {
             safe_validation_mode: false,
             takeover_existing_node: false,
             restore_snapshot: Some(false),
+            restore_snapshot_relay: Some(true),
+            restore_snapshot_bp: Some(false),
         };
         let normalized = normalize_deploy_payload(&payload);
         assert_eq!(normalized.cardano_version, "10.5.1");
         assert_eq!(normalized.image_registry, "ghcr.io/custom/cardano-node");
         assert_eq!(normalized.image_digest.as_deref(), Some("sha256:def456"));
         assert_eq!(normalized.restore_snapshot, Some(false));
+        assert_eq!(normalized.restore_snapshot_relay, Some(true));
+        assert_eq!(normalized.restore_snapshot_bp, Some(false));
     }
 
     #[test]
@@ -1086,8 +1114,12 @@ mod tests {
             safe_validation_mode: false,
             takeover_existing_node: false,
             restore_snapshot: None,
+            restore_snapshot_relay: None,
+            restore_snapshot_bp: None,
         };
         let normalized = normalize_deploy_payload(&payload);
         assert_eq!(normalized.restore_snapshot, Some(false));
+        assert_eq!(normalized.restore_snapshot_relay, Some(false));
+        assert_eq!(normalized.restore_snapshot_bp, Some(false));
     }
 }

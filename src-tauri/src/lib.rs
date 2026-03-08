@@ -111,7 +111,8 @@ mod frontend_tests {
         assert!(deploy.contains("useState(\"10.5.4-1\")"));
         assert!(deploy.contains("ghcr.io/blinklabs-io/cardano-node"));
         assert!(deploy.contains("takeover_existing_node"));
-        assert!(deploy.contains("restore_snapshot (Mithril cold-start restore)"));
+        assert!(deploy.contains("restore_snapshot_relay (Mithril cold-start restore)"));
+        assert!(deploy.contains("restore_snapshot_bp (Mithril cold-start restore)"));
         assert!(deploy.contains("networkSupportsMithril"));
         assert!(deploy.contains("step === 1"));
         assert!(deploy.contains("step === 2"));
@@ -194,7 +195,10 @@ mod frontend_tests {
         let playbook = include_str!("../../ansible/roles/cardano-node/tasks/main.yml");
         assert!(playbook.contains("protocolMagicId"));
         assert!(playbook.contains("cardano_db_content_probe"));
+        assert!(playbook.contains("cardano_restore_snapshot_requested"));
         assert!(playbook.contains("cardano_restore_snapshot_effective"));
+        assert!(playbook.contains("restore_snapshot_relay"));
+        assert!(playbook.contains("restore_snapshot_bp"));
         assert!(playbook.contains("db already initialized"));
         assert!(playbook.contains("Clean residual cold-start DB contents before Mithril restore"));
         assert!(playbook.contains("RESTORE_SNAPSHOT': ('true' if (cardano_restore_snapshot_effective | default(false) | bool) else 'false')"));
