@@ -56,6 +56,7 @@
 - [x] `p36-11` 修复 Mithril restore 进行中被 deploy 健康检查误判为启动失败的问题
 - [x] `p36-12` 修复 Mithril restore 进行中 monitor 将 relay 误显示为 unreachable 的问题
 - [x] `p36-13` 修复 Mithril replay 阶段 tip 未就绪时 monitor 仍回落 unreachable 的问题
+- [x] `p36-14` 为 Mithril snapshot restoring 阶段提取并展示 replay 进度百分比
 
 ## 4. 测试与验收标准
 
@@ -72,6 +73,7 @@
 - `TC-P36-010` 当 `RESTORE_SNAPSHOT=true` 且容器已稳定运行但 Mithril 仍在恢复时，deploy 不应因暂时缺少 socket 或 `query tip` 结果而将任务判定为失败。
 - `TC-P36-011` 当 `RESTORE_SNAPSHOT=true` 且 Mithril 正在恢复、`query tip` 尚不可用时，monitor 应展示 `snapshot_restoring` 或相关恢复阶段，而不是 `unreachable`。
 - `TC-P36-012` 当 Mithril 已进入 replay 数据库阶段且日志出现 `Replayed block`，但 `query tip` 仍暂不可用时，monitor 仍应展示 `snapshot_restoring`，不能回退为 `unreachable`。
+- `TC-P36-013` 当 Mithril replay 日志包含 `Progress: x%` 时，Dashboard 的 `Sync Progress` 应展示该百分比，而不是 `--`。
 
 ## 5. 执行日志（仅追加）
 
@@ -90,6 +92,7 @@
 - `2026-03-08` `p36-11` 完成：根据真实环境日志把 Mithril readiness 改为“两段判定”；当 `RESTORE_SNAPSHOT=true` 且容器已稳定运行时，deploy 记录 `restore-in-progress` 并放行，不再强制等待 socket 和 tip，后续状态交给 monitor 链路追踪。
 - `2026-03-08` `p36-12` 完成：根据真实环境日志修正 monitor 的错误分支；当 Mithril restore 正在进行、容器已运行但 `query tip` 暂时不可用时，monitor 改为根据 runtime context 推断 `snapshot_restoring`，不再把 relay 标成 `unreachable`。
 - `2026-03-08` `p36-13` 完成：根据真实环境日志补齐 Mithril replay 阶段识别；当日志已出现 `Replayed block` 但 socket/tip 尚未 ready 时，monitor 仍按 `snapshot_restoring` 处理，避免 relay 在恢复中继续显示 `unreachable`。
+- `2026-03-08` `p36-14` 完成：从 Mithril replay 日志中提取 `Progress: x%` 百分比，并在 tip 暂不可用的恢复阶段回填到 `sync_progress`，让 Dashboard 在 `snapshot restoring` 期间直接展示恢复进度。
 
 ## 6. 验证证据（仅追加）
 
@@ -118,6 +121,7 @@
 - `2026-03-08` `TC-P36-010 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: Mithril restore readiness 分支加入后 deploy playbook 语法仍有效`
 - `2026-03-08` `TC-P36-011 | stack: rust | command: cargo test -q | result: pass | note: tc_mon_010 断言 Mithril restore 期间 tip 暂时不可用时 monitor 会回退到 snapshot_restoring/syncing，而不是 unreachable`
 - `2026-03-08` `TC-P36-012 | stack: rust | command: cargo test -q | result: pass | note: tc_mon_011 断言日志已出现 Replayed block 时 monitor 仍保持 snapshot_restoring/syncing，不再把 relay 误标为 unreachable`
+- `2026-03-08` `TC-P36-013 | stack: rust | command: cargo test -q | result: pass | note: tc_mon_011/tc_mon_012 断言 replay 日志中的 Progress 百分比会回填到 sync_progress，供 Dashboard 在 snapshot restoring 阶段展示`
 
 ## 6.1 联调验收步骤（待追加真实结果）
 

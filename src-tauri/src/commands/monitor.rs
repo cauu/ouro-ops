@@ -157,6 +157,14 @@ fn has_restore_activity(raw: &str) -> bool {
     })
 }
 
+fn parse_restore_progress_from_logs(raw: &str) -> Option<f64> {
+    raw.lines().rev().find_map(|line| {
+        let (_, tail) = line.split_once("Progress:")?;
+        let value = tail.trim().trim_end_matches('%').trim();
+        value.parse::<f64>().ok()
+    })
+}
+
 fn current_epoch_seconds() -> Result<i64, AppError> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -346,12 +354,13 @@ fn recover_restore_stage_from_tip_error(
     previous: Option<&PreviousHealthSample>,
     runtime: Option<&RuntimeMonitorContext>,
     current_epoch_seconds: i64,
-) -> Option<(String, String, Option<String>)> {
+) -> Option<(String, String, Option<f64>, Option<String>)> {
     let runtime = runtime?;
     if runtime.restore_snapshot_requested && has_restore_activity(runtime.recent_logs.as_str()) {
         return Some((
             "snapshot_restoring".into(),
             "syncing".into(),
+            parse_restore_progress_from_logs(runtime.recent_logs.as_str()),
             last_restore_related_log_line(runtime.recent_logs.as_str()).or_else(|| {
                 Some("Mithril restore is still replaying the database; tip is not ready yet.".into())
             }),
@@ -371,7 +380,7 @@ fn recover_restore_stage_from_tip_error(
         "fallback_syncing" | "snapshot_restoring" => "syncing".into(),
         _ => return None,
     };
-    Some((sync_stage, status, sync_note))
+    Some((sync_stage, status, None, sync_note))
 }
 
 fn collect_runtime_monitor_context(machine: &MachineRow) -> Option<RuntimeMonitorContext> {
@@ -413,7 +422,7 @@ fn collect_machine_snapshot(
     let tip_raw = match ssh_exec(machine, remote_cmd.as_str()) {
         Ok(output) => output,
         Err(err) => {
-            if let Some((sync_stage, status, sync_note)) = recover_restore_stage_from_tip_error(
+            if let Some((sync_stage, status, recovered_sync_progress, sync_note)) = recover_restore_stage_from_tip_error(
                 previous.as_ref(),
                 runtime_context.as_ref(),
                 collected_at_epoch,
@@ -422,7 +431,7 @@ fn collect_machine_snapshot(
                     conn,
                     machine.id,
                     None,
-                    None,
+                    recovered_sync_progress,
                     sync_stage.as_str(),
                     sync_note.as_deref(),
                     collected_at_epoch,
@@ -433,7 +442,7 @@ fn collect_machine_snapshot(
                     role: machine.role.clone(),
                     network: machine.network.clone(),
                     block_height: None,
-                    sync_progress: None,
+                    sync_progress: recovered_sync_progress,
                     blocks_per_minute: None,
                     status,
                     sync_stage,
@@ -699,7 +708,8 @@ mod tests {
             .expect("recover restore stage");
         assert_eq!(recovered.0, "snapshot_restoring");
         assert_eq!(recovered.1, "syncing");
-        assert!(recovered.2.expect("note").contains("Mithril"));
+        assert_eq!(recovered.2, None);
+        assert!(recovered.3.expect("note").contains("Mithril"));
     }
 
     #[test]
@@ -715,5 +725,12 @@ mod tests {
             .expect("recover replay stage");
         assert_eq!(recovered.0, "snapshot_restoring");
         assert_eq!(recovered.1, "syncing");
+        assert_eq!(recovered.2, Some(1.17));
+    }
+
+    #[test]
+    fn tc_mon_012_parse_restore_progress_from_logs() {
+        let raw = "[cardano.node.ChainDB:Info:5] Replayed block: slot 2116799 out of 181310513. Progress: 1.17%";
+        assert_eq!(parse_restore_progress_from_logs(raw), Some(1.17));
     }
 }
