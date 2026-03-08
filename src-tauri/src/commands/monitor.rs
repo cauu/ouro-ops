@@ -331,6 +331,28 @@ fn determine_sync_stage(
     }
 }
 
+fn recover_restore_stage_from_tip_error(
+    previous: Option<&PreviousHealthSample>,
+    runtime: Option<&RuntimeMonitorContext>,
+    current_epoch_seconds: i64,
+) -> Option<(String, String, Option<String>)> {
+    let runtime = runtime?;
+    let (sync_stage, sync_note) = determine_sync_stage(
+        None,
+        None,
+        previous,
+        Some(runtime),
+        None,
+        current_epoch_seconds,
+    );
+    let status = match sync_stage.as_str() {
+        "restore_failed" | "restore_timeout" => "stalled".into(),
+        "fallback_syncing" | "snapshot_restoring" => "syncing".into(),
+        _ => return None,
+    };
+    Some((sync_stage, status, sync_note))
+}
+
 fn collect_runtime_monitor_context(machine: &MachineRow) -> Option<RuntimeMonitorContext> {
     let env_raw = ssh_exec(
         machine,
@@ -370,6 +392,40 @@ fn collect_machine_snapshot(
     let tip_raw = match ssh_exec(machine, remote_cmd.as_str()) {
         Ok(output) => output,
         Err(err) => {
+            if let Some((sync_stage, status, sync_note)) = recover_restore_stage_from_tip_error(
+                previous.as_ref(),
+                runtime_context.as_ref(),
+                collected_at_epoch,
+            ) {
+                insert_health_sample(
+                    conn,
+                    machine.id,
+                    None,
+                    None,
+                    sync_stage.as_str(),
+                    sync_note.as_deref(),
+                    collected_at_epoch,
+                )?;
+                return Ok(MonitorSnapshot {
+                    machine_id: machine.id,
+                    machine_name: machine.name.clone(),
+                    role: machine.role.clone(),
+                    network: machine.network.clone(),
+                    block_height: None,
+                    sync_progress: None,
+                    blocks_per_minute: None,
+                    status,
+                    sync_stage,
+                    restore_snapshot_requested: runtime_context
+                        .as_ref()
+                        .map(|ctx| ctx.restore_snapshot_requested)
+                        .unwrap_or(false),
+                    stalled: false,
+                    collected_at,
+                    note: sync_note,
+                });
+            }
+
             let note = err.to_string();
             return Ok(MonitorSnapshot {
                 machine_id: machine.id,
@@ -609,5 +665,19 @@ mod tests {
         );
         assert_eq!(stage, "fallback_syncing");
         assert!(note.expect("note").contains("failed"));
+    }
+
+    #[test]
+    fn tc_mon_010_tip_error_during_restore_is_not_unreachable() {
+        let runtime = RuntimeMonitorContext {
+            restore_snapshot_requested: true,
+            protocol_magic_id_present: false,
+            recent_logs: "Mithril: restoring snapshot chunk 3/42".into(),
+        };
+        let recovered = recover_restore_stage_from_tip_error(None, Some(&runtime), 0)
+            .expect("recover restore stage");
+        assert_eq!(recovered.0, "snapshot_restoring");
+        assert_eq!(recovered.1, "syncing");
+        assert!(recovered.2.expect("note").contains("Mithril"));
     }
 }
