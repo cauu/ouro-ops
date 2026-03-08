@@ -193,8 +193,10 @@ mod frontend_tests {
     fn tc_dep_011_restore_snapshot_only_runs_for_cold_start_db() {
         let playbook = include_str!("../../ansible/roles/cardano-node/tasks/main.yml");
         assert!(playbook.contains("protocolMagicId"));
+        assert!(playbook.contains("cardano_db_content_probe"));
         assert!(playbook.contains("cardano_restore_snapshot_effective"));
         assert!(playbook.contains("db already initialized"));
+        assert!(playbook.contains("Clean residual cold-start DB contents before Mithril restore"));
         assert!(playbook.contains("RESTORE_SNAPSHOT': ('true' if (cardano_restore_snapshot_effective | default(false) | bool) else 'false')"));
         assert!(playbook.contains("GENESIS_VERIFICATION_KEY"));
         assert!(playbook.contains("ANCILLARY_VERIFICATION_KEY"));

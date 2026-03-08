@@ -189,6 +189,12 @@
     path: /opt/cardano/db/protocolMagicId
   register: cardano_db_protocol_magic_id
 
+- name: Probe whether cardano DB directory contains residual files
+  shell: "find /opt/cardano/db -mindepth 1 -maxdepth 1 -print -quit"
+  register: cardano_db_content_probe
+  changed_when: false
+  failed_when: false
+
 - name: Determine whether Mithril snapshot restore should run
   set_fact:
     cardano_restore_snapshot_effective: >-
@@ -225,6 +231,17 @@
       effective: "{{ cardano_restore_snapshot_effective | default(false) | bool }}"
       reason: "{{ cardano_restore_snapshot_reason }}"
   changed_when: false
+
+- name: Clean residual cold-start DB contents before Mithril restore
+  shell: |
+    set -euo pipefail
+    find /opt/cardano/db -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  args:
+    executable: /bin/bash
+  when:
+    - cardano_restore_snapshot_effective | default(false) | bool
+    - not (cardano_db_protocol_magic_id.stat.exists | default(false))
+    - (cardano_db_content_probe.stdout | trim | length) > 0
 
 - name: Read Mithril genesis verification key content
   slurp:
