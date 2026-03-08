@@ -81,6 +81,14 @@ fn default_restore_snapshot_for_network(network: &str) -> bool {
     network_supports_mithril_restore(network)
 }
 
+fn default_restore_snapshot_relay_for_network(network: &str) -> bool {
+    network_supports_mithril_restore(network)
+}
+
+fn default_restore_snapshot_bp_for_network(_network: &str) -> bool {
+    false
+}
+
 fn normalize_deploy_payload(payload: &DeployPayload) -> DeployPayload {
     let mut next = payload.clone();
 
@@ -106,12 +114,20 @@ fn normalize_deploy_payload(payload: &DeployPayload) -> DeployPayload {
         .map(ToString::to_string);
 
     next.network = next.network.trim().to_string();
-    let restore_default = next
-        .restore_snapshot
-        .unwrap_or_else(|| default_restore_snapshot_for_network(next.network.as_str()));
-    next.restore_snapshot = Some(restore_default);
-    next.restore_snapshot_relay = Some(next.restore_snapshot_relay.unwrap_or(restore_default));
-    next.restore_snapshot_bp = Some(next.restore_snapshot_bp.unwrap_or(restore_default));
+    let explicit_global_restore = next.restore_snapshot;
+    next.restore_snapshot = Some(
+        explicit_global_restore
+            .unwrap_or_else(|| default_restore_snapshot_for_network(next.network.as_str())),
+    );
+    next.restore_snapshot_relay = Some(next.restore_snapshot_relay.unwrap_or_else(|| {
+        explicit_global_restore.unwrap_or_else(|| {
+            default_restore_snapshot_relay_for_network(next.network.as_str())
+        })
+    }));
+    next.restore_snapshot_bp = Some(next.restore_snapshot_bp.unwrap_or_else(|| {
+        explicit_global_restore
+            .unwrap_or_else(|| default_restore_snapshot_bp_for_network(next.network.as_str()))
+    }));
     next
 }
 
@@ -516,8 +532,8 @@ fn build_extra_vars(payload: &DeployPayload) -> Value {
         "safe_validation_mode": payload.safe_validation_mode,
         "takeover_existing_node": payload.takeover_existing_node,
         "restore_snapshot": payload.restore_snapshot.unwrap_or_else(|| default_restore_snapshot_for_network(payload.network.as_str())),
-        "restore_snapshot_relay": payload.restore_snapshot_relay.unwrap_or_else(|| payload.restore_snapshot.unwrap_or_else(|| default_restore_snapshot_for_network(payload.network.as_str()))),
-        "restore_snapshot_bp": payload.restore_snapshot_bp.unwrap_or_else(|| payload.restore_snapshot.unwrap_or_else(|| default_restore_snapshot_for_network(payload.network.as_str())))
+        "restore_snapshot_relay": payload.restore_snapshot_relay.unwrap_or_else(|| payload.restore_snapshot.unwrap_or_else(|| default_restore_snapshot_relay_for_network(payload.network.as_str()))),
+        "restore_snapshot_bp": payload.restore_snapshot_bp.unwrap_or_else(|| payload.restore_snapshot.unwrap_or_else(|| default_restore_snapshot_bp_for_network(payload.network.as_str())))
     })
 }
 
@@ -1069,7 +1085,7 @@ mod tests {
         assert_eq!(normalized.network, "preprod");
         assert_eq!(normalized.restore_snapshot, Some(true));
         assert_eq!(normalized.restore_snapshot_relay, Some(true));
-        assert_eq!(normalized.restore_snapshot_bp, Some(true));
+        assert_eq!(normalized.restore_snapshot_bp, Some(false));
     }
 
     #[test]
@@ -1121,5 +1137,29 @@ mod tests {
         assert_eq!(normalized.restore_snapshot, Some(false));
         assert_eq!(normalized.restore_snapshot_relay, Some(false));
         assert_eq!(normalized.restore_snapshot_bp, Some(false));
+    }
+
+    #[test]
+    fn tc_dep_013_role_restore_defaults_follow_explicit_legacy_global_toggle() {
+        let payload = DeployPayload {
+            machine_ids: vec![1],
+            cardano_version: DEFAULT_IMAGE_TAG.into(),
+            image_registry: DEFAULT_IMAGE_REGISTRY.into(),
+            image_digest: None,
+            network: "mainnet".into(),
+            enable_swap: true,
+            swap_size_gb: 8,
+            enable_chrony: true,
+            enable_hardening: true,
+            safe_validation_mode: false,
+            takeover_existing_node: false,
+            restore_snapshot: Some(true),
+            restore_snapshot_relay: None,
+            restore_snapshot_bp: None,
+        };
+        let normalized = normalize_deploy_payload(&payload);
+        assert_eq!(normalized.restore_snapshot, Some(true));
+        assert_eq!(normalized.restore_snapshot_relay, Some(true));
+        assert_eq!(normalized.restore_snapshot_bp, Some(true));
     }
 }

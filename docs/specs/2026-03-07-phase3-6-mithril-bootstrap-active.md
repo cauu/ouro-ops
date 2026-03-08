@@ -58,6 +58,7 @@
 - [x] `p36-13` 修复 Mithril replay 阶段 tip 未就绪时 monitor 仍回落 unreachable 的问题
 - [x] `p36-14` 为 Mithril snapshot restoring 阶段提取并展示 replay 进度百分比
 - [x] `p36-15` 允许用户按角色分别配置 relay 和 bp 的 restore 策略
+- [x] `p36-16` 将默认 restore 策略收敛为 relay 默认开启、bp 默认关闭，并在用户确认后结转 Phase 3.6
 
 ## 4. 测试与验收标准
 
@@ -76,6 +77,7 @@
 - `TC-P36-012` 当 Mithril 已进入 replay 数据库阶段且日志出现 `Replayed block`，但 `query tip` 仍暂不可用时，monitor 仍应展示 `snapshot_restoring`，不能回退为 `unreachable`。
 - `TC-P36-013` 当 Mithril replay 日志包含 `Progress: x%` 时，Dashboard 的 `Sync Progress` 应展示该百分比，而不是 `--`。
 - `TC-P36-014` DeployWizard、DeployPayload 和 Ansible 应支持 `restore_snapshot_relay` 与 `restore_snapshot_bp` 两个独立开关；relay 和 bp 的 Mithril 策略可以分开配置，且默认值与旧全局策略保持兼容。
+- `TC-P36-015` 当用户未显式覆盖角色级策略时，`mainnet/preprod` 上的默认值应为 `restore_snapshot_relay=true`、`restore_snapshot_bp=false`；若旧客户端仅提供全局 `restore_snapshot`，角色级默认值仍应回退到该全局值以保持兼容。
 
 ## 5. 执行日志（仅追加）
 
@@ -96,6 +98,7 @@
 - `2026-03-08` `p36-13` 完成：根据真实环境日志补齐 Mithril replay 阶段识别；当日志已出现 `Replayed block` 但 socket/tip 尚未 ready 时，monitor 仍按 `snapshot_restoring` 处理，避免 relay 在恢复中继续显示 `unreachable`。
 - `2026-03-08` `p36-14` 完成：从 Mithril replay 日志中提取 `Progress: x%` 百分比，并在 tip 暂不可用的恢复阶段回填到 `sync_progress`，让 Dashboard 在 `snapshot restoring` 期间直接展示恢复进度。
 - `2026-03-08` `p36-15` 完成：将 Mithril restore 策略拆成 `restore_snapshot_relay` 和 `restore_snapshot_bp` 两个角色级开关；前端允许分别配置，后端与 Ansible 保持对旧全局 `restore_snapshot` 的兼容回退。
+- `2026-03-08` `p36-16` 完成：将默认角色策略收敛为 relay 在 `mainnet/preprod` 冷启动时默认启用 Mithril，bp 默认关闭；若旧客户端仅透传全局 `restore_snapshot`，角色级默认值仍跟随该全局值。用户已确认以此作为 Phase 3.6 的结项默认策略。
 
 ## 6. 验证证据（仅追加）
 
@@ -128,6 +131,9 @@
 - `2026-03-08` `TC-P36-014 | stack: rust | command: cargo test -q | result: pass | note: deploy payload 归一化和 extra_vars 现在同时覆盖 restore_snapshot_relay/restore_snapshot_bp，并保留旧 restore_snapshot 兼容回退`
 - `2026-03-08` `TC-P36-014 | stack: node | command: pnpm build | result: pass | note: DeployWizard 已支持分别配置 relay 和 bp 的 Mithril restore 开关，前端构建通过`
 - `2026-03-08` `TC-P36-014 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: cardano-node role 已按当前主机角色读取 restore_snapshot_relay/restore_snapshot_bp，playbook 语法有效`
+- `2026-03-08` `TC-P36-015 | stack: rust | command: cargo test -q | result: pass | note: deploy payload 归一化默认收敛为 relay=true、bp=false；旧全局 restore_snapshot=true 仍会把两侧默认值一起打开，保持兼容`
+- `2026-03-08` `TC-P36-015 | stack: node | command: pnpm build | result: pass | note: DeployWizard 默认勾选已改为 relay 开启、bp 关闭，前端构建通过`
+- `2026-03-08` `TC-P36-015 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml | result: pass | note: 角色级 restore 默认策略调整后 playbook 语法仍有效`
 
 ## 6.1 联调验收步骤（待追加真实结果）
 

@@ -27,6 +27,8 @@ function formatMachineLoadStatus(elapsedSeconds: number): string {
 }
 
 export default function DeployWizard({ pool }: DeployWizardProps) {
+  const defaultRelayRestore = networkSupportsMithril(pool.network);
+  const defaultBpRestore = false;
   const [loading, setLoading] = useState(true);
   const [loadingElapsedSeconds, setLoadingElapsedSeconds] = useState(0);
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -44,8 +46,8 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
   const [enableHardening, setEnableHardening] = useState(true);
   const [safeValidationMode, setSafeValidationMode] = useState(false);
   const [takeoverExistingNode, setTakeoverExistingNode] = useState(false);
-  const [restoreSnapshotRelay, setRestoreSnapshotRelay] = useState(networkSupportsMithril(pool.network));
-  const [restoreSnapshotBp, setRestoreSnapshotBp] = useState(networkSupportsMithril(pool.network));
+  const [restoreSnapshotRelay, setRestoreSnapshotRelay] = useState(defaultRelayRestore);
+  const [restoreSnapshotBp, setRestoreSnapshotBp] = useState(defaultBpRestore);
   const [restoreSnapshotTouched, setRestoreSnapshotTouched] = useState(false);
   const [runtimeProbeMap, setRuntimeProbeMap] = useState<Record<number, RuntimeProbe>>({});
   const [probingRuntime, setProbingRuntime] = useState(false);
@@ -166,7 +168,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
     }
     if (!restoreSnapshotTouched) {
       setRestoreSnapshotRelay(true);
-      setRestoreSnapshotBp(true);
+      setRestoreSnapshotBp(false);
     }
   }, [mithrilSupported, restoreSnapshotTouched]);
 
@@ -425,8 +427,8 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                 </label>
               </div>
               <p className="text-xs text-zinc-400">
-                Default is enabled for <code>mainnet</code>/<code>preprod</code> cold-starts and disabled for{" "}
-                <code>preview</code>. Relay and bp can now be configured independently; existing DB will still be handled by deploy-side checks.
+                Default is enabled for relay cold-starts on <code>mainnet</code>/<code>preprod</code>, disabled for bp and{" "}
+                <code>preview</code>. Relay and bp can be configured independently; existing DB will still be handled by deploy-side checks.
               </p>
             </div>
           )}
