@@ -1,7 +1,12 @@
 # Cardano Stake Pool 控制平面项目基线
 
-状态：`superseded`  
-日期：`2026-03-06`
+Spec-ID：`S0001`
+状态：`completed`
+创建时间：`2026-03-06`
+开始时间：`2026-03-06T0000`
+完成时间：`2026-03-06T0010`
+前一个 Spec-ID：`NONE`
+结项原因：`replaced`
 
 ## 1. 需求详情
 
@@ -80,11 +85,11 @@
 
 ## 6. 验证证据（仅追加）
 
-- `TC-DOC-001 | stack: other | command: manual inspection of docs/specs/2026-03-06-project-baseline.md | result: pass | note: active spec contains all required immutable-spec sections`
+- `TC-DOC-001 | stack: other | command: manual inspection of docs/specs/completed/20260306T0000-S0001-project-baseline.md | result: pass | note: active spec contains all required immutable-spec sections`
 - `TC-DOC-002 | stack: other | command: manual inspection of docs/README.md | result: pass | note: docs entrypoint points to active spec and classifies legacy docs as historical references`
 
 ## 7. 变更记录（仅追加）
 
 - `2026-03-06` 基线来源：`docs/prd/v1.0.md`、`docs/high-level-design/v1.0.md`、`docs/detail-design/v1.0.md`、`docs/development-plan/v1.0.md`、`docs/test-cases/v1.0.md`、`docs/test-results/phase2-v1.0.md`、`docs/test-results/phase3-v1.0.md`、`docs/review/v1.0.md`。
-- `2026-03-06` 引导期范围已拆分为 `docs/specs/2026-03-06-phase1-phase3-completed.md`（已完成历史工作）与 `docs/specs/2026-03-06-phase4-active.md`（后续活动范围）。本基线记录仅为可追溯性保留。
-- `2026-03-06` 本文档已退役，不再作为执行入口。后续执行只使用 `docs/specs/2026-03-06-phase4-active.md`，历史完成范围只查看 `docs/specs/2026-03-06-phase1-phase3-completed.md`。
+- `2026-03-06` 引导期范围已拆分为 `docs/specs/completed/20260306T0010-S0002-phase1-phase3.md`（已完成历史工作）与 `docs/specs/20260308T0000-S0005-phase4.md`（后续活动范围）。本基线记录仅为可追溯性保留。
+- `2026-03-06` 本文档已退役，不再作为执行入口。后续执行只使用 `docs/specs/20260308T0000-S0005-phase4.md`，历史完成范围只查看 `docs/specs/completed/20260306T0010-S0002-phase1-phase3.md`。

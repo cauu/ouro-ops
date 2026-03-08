@@ -4,28 +4,31 @@ The project now uses the immutable-spec workflow for active delivery.
 
 ## Current Active Spec
 
-- [2026-03-06-phase4-active.md](./specs/2026-03-06-phase4-active.md)
+- [20260308T0000-S0005-phase4.md](./specs/20260308T0000-S0005-phase4.md)
 
 Read the active spec first for current requirements, outline design, execution plan, and acceptance criteria.
 
-## 已完成归档 Spec
+## Draft Specs
 
-- [2026-03-06-phase1-phase3-completed.md](./specs/2026-03-06-phase1-phase3-completed.md)
-- [2026-03-06-phase3-5-deploy-readiness-and-sync-monitoring.md](./specs/2026-03-06-phase3-5-deploy-readiness-and-sync-monitoring.md)
-- [2026-03-07-phase3-6-mithril-bootstrap-completed.md](./specs/2026-03-07-phase3-6-mithril-bootstrap-completed.md)
+- 暂无。下一份 draft spec 会创建在 `docs/specs/draft/` 下，并使用稳定 `Spec-ID` 文件名。
 
-These completed specs archive the already delivered Phase 1 to Phase 3 scope, the completed Phase 3.5 deploy readiness / sync monitoring work, and the completed Phase 3.6 Mithril bootstrap work.
+## Completed Specs
 
-## 下一阶段草稿 Spec
+- [20260306T0010-S0002-phase1-phase3.md](./specs/completed/20260306T0010-S0002-phase1-phase3.md)
+- [20260306T0020-S0003-phase3-5-deploy-readiness-and-sync-monitoring.md](./specs/completed/20260306T0020-S0003-phase3-5-deploy-readiness-and-sync-monitoring.md)
+- [20260307T0000-S0004-phase3-6-mithril-bootstrap.md](./specs/completed/20260307T0000-S0004-phase3-6-mithril-bootstrap.md)
+- [20260306T0000-S0001-project-baseline.md](./specs/completed/20260306T0000-S0001-project-baseline.md)
 
-- 暂无。下一份草稿 spec 将在新增范围时创建。
-
-Phase 4 已切回当前活动 spec。
+These completed specs archive the delivered Phase 1 to Phase 3 scope, the completed Phase 3.5 deploy readiness / sync monitoring work, the completed Phase 3.6 Mithril bootstrap work, and the baseline bootstrap record kept for traceability.
 
 ## Document Layout
 
 - `docs/specs/`
-  - Active and historical immutable specs. Only one spec may be active at a time.
+  - Current active spec only. This directory root should contain exactly one active spec.
+- `docs/specs/draft/`
+  - Not-started specs. Draft specs are mutable and use stable `Spec-ID` filenames.
+- `docs/specs/completed/`
+  - Closed specs. Completed specs retain their start-time-prefixed filenames and record a terminal completion reason.
 - `docs/immutable-spec.md`
   - External-facing explanation of the immutable-spec approach used by this repository.
 - `docs/prd/`
@@ -45,7 +48,8 @@ Phase 4 已切回当前活动 spec。
 
 ## Usage Rules
 
-- Start all new work from the current active spec under `docs/specs/`.
-- If scope changes materially, create a new dated spec under `docs/specs/` and record the transition in the old spec change log.
+- Start all active work from the current root spec under `docs/specs/`.
+- Create new not-started specs under `docs/specs/draft/` with stable `Spec-ID` filenames.
+- When a draft starts execution, move it to `docs/specs/`, rename it with the start-time prefix, and record `开始时间` plus `前一个 Spec-ID`.
+- When a spec ends, move it to `docs/specs/completed/` without renaming it again, and fill `完成时间` plus `结项原因`.
 - Keep legacy documents unchanged unless they are explicitly being preserved as historical evidence.
-- Do not use `2026-03-06-project-baseline.md` as an execution spec. It is a superseded bootstrap record kept only for traceability.

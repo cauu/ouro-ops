@@ -1,7 +1,12 @@
 # Cardano Stake Pool 控制平面 Phase 3.6 Mithril 初始化与冷启动加速规范
 
-状态：`completed`  
-日期：`2026-03-07`
+Spec-ID：`S0004`
+状态：`completed`
+创建时间：`2026-03-07`
+开始时间：`2026-03-07T0000`
+完成时间：`2026-03-08T0000`
+前一个 Spec-ID：`S0003`
+结项原因：`delivered`
 
 ## 1. 需求详情
 
@@ -105,7 +110,7 @@
 
 ## 6. 验证证据（仅追加）
 
-- `2026-03-07` `TC-P36-000 | stack: other | command: manual inspection of docs/specs and docs/README.md | result: pass | note: README 当前入口已切换到 2026-03-07-phase3-6-mithril-bootstrap-completed.md，Phase 3.5 已标记为 completed`
+- `2026-03-07` `TC-P36-000 | stack: other | command: manual inspection of docs/specs and docs/README.md | result: pass | note: README 当前入口已切换到 docs/specs/completed/20260307T0000-S0004-phase3-6-mithril-bootstrap.md，Phase 3.5 已标记为 completed`
 - `2026-03-07` `TC-P36-001 | stack: rust | command: cargo test -q | result: pass | note: deploy payload 归一化会在 mainnet/preprod 默认启用 restore_snapshot，在 preview 默认关闭，并保留显式覆盖值`
 - `2026-03-07` `TC-P36-001 | stack: node | command: pnpm build | result: pass | note: DeployWizard 新增 Mithril 冷启动恢复开关，默认值随网络变化且前端构建通过`
 - `2026-03-07` `TC-P36-002 | stack: rust | command: cargo test -q | result: pass | note: tc_dep_011 断言 playbook 基于 protocolMagicId 计算 cardano_restore_snapshot_effective，避免已有数据库误触发 restore`
@@ -173,6 +178,6 @@
 
 ## 7. 变更记录（仅追加）
 
-- `2026-03-07` 新建本 spec 作为 Phase 3.5 之后的唯一活动 spec；`docs/specs/2026-03-06-phase3-5-deploy-readiness-and-sync-monitoring.md` 结转为 `completed`。
-- `2026-03-08` 用户已明确确认 Phase 3.6 结项；下一份活动 spec 切换到 `docs/specs/2026-03-06-phase4-active.md`。
-- `2026-03-08` 为避免 completed 状态与文件名不一致，归档文件从 `docs/specs/2026-03-07-phase3-6-mithril-bootstrap-active.md` 重命名为 `docs/specs/2026-03-07-phase3-6-mithril-bootstrap-completed.md`。
+- `2026-03-07` 新建本 spec 作为 Phase 3.5 之后的唯一活动 spec；`docs/specs/completed/20260306T0020-S0003-phase3-5-deploy-readiness-and-sync-monitoring.md` 结转为 `completed`。
+- `2026-03-08` 用户已明确确认 Phase 3.6 结项；下一份活动 spec 切换到 `docs/specs/20260308T0000-S0005-phase4.md`。
+- `2026-03-08` 为避免 completed 状态与文件名不一致，归档文件从 `docs/specs/2026-03-07-phase3-6-mithril-bootstrap-active.md` 重命名为 `docs/specs/completed/20260307T0000-S0004-phase3-6-mithril-bootstrap.md`。
