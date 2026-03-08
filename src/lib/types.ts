@@ -143,6 +143,7 @@ export interface MonitorSnapshot {
   block_height: number | null;
   sync_progress: number | null;
   blocks_per_minute: number | null;
+  health_level: "healthy" | "warning" | "critical" | string;
   status: "syncing" | "synced" | "stalled" | "unreachable" | "unknown" | string;
   sync_stage:
     | "snapshot_restoring"

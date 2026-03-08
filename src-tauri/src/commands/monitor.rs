@@ -28,6 +28,7 @@ pub struct MonitorSnapshot {
     pub block_height: Option<i64>,
     pub sync_progress: Option<f64>,
     pub blocks_per_minute: Option<f64>,
+    pub health_level: String,
     pub status: String,
     pub sync_stage: String,
     pub restore_snapshot_requested: bool,
@@ -291,6 +292,32 @@ fn determine_status(sync_progress: Option<f64>, stalled: bool, note: Option<&str
     }
 }
 
+fn determine_health_level(
+    status: &str,
+    sync_stage: &str,
+    blocks_per_minute: Option<f64>,
+    stalled: bool,
+) -> String {
+    if stalled
+        || status == "unreachable"
+        || matches!(sync_stage, "restore_failed" | "restore_timeout" | "unreachable")
+    {
+        return "critical".into();
+    }
+
+    if status == "synced" && sync_stage == "synced" {
+        return "healthy".into();
+    }
+
+    match blocks_per_minute {
+        Some(value) if value >= 30.0 && status == "syncing" && sync_stage == "syncing" => {
+            "healthy".into()
+        }
+        Some(value) if value > 0.0 => "warning".into(),
+        _ => "warning".into(),
+    }
+}
+
 fn is_zero_progress(block_height: Option<i64>, sync_progress: Option<f64>) -> bool {
     block_height.unwrap_or_default() == 0 && sync_progress.unwrap_or_default() <= 0.0
 }
@@ -461,6 +488,7 @@ fn collect_machine_snapshot(
                     block_height: None,
                     sync_progress: recovered_sync_progress,
                     blocks_per_minute: None,
+                    health_level: "warning".into(),
                     status,
                     sync_stage,
                     restore_snapshot_requested: runtime_context
@@ -482,6 +510,7 @@ fn collect_machine_snapshot(
                 block_height: None,
                 sync_progress: None,
                 blocks_per_minute: None,
+                health_level: "critical".into(),
                 status: determine_status(None, false, Some(note.as_str())),
                 sync_stage: "unreachable".into(),
                 restore_snapshot_requested: runtime_context
@@ -507,6 +536,7 @@ fn collect_machine_snapshot(
                 block_height: None,
                 sync_progress: None,
                 blocks_per_minute: None,
+                health_level: "critical".into(),
                 status: determine_status(None, false, Some(note.as_str())),
                 sync_stage: "unreachable".into(),
                 restore_snapshot_requested: runtime_context
@@ -541,6 +571,8 @@ fn collect_machine_snapshot(
         "fallback_syncing" => "syncing".into(),
         _ => determine_status(sync_progress, stalled, None),
     };
+    let health_level =
+        determine_health_level(status.as_str(), sync_stage.as_str(), blocks_per_minute, stalled);
     insert_health_sample(
         conn,
         machine.id,
@@ -559,6 +591,7 @@ fn collect_machine_snapshot(
         block_height,
         sync_progress,
         blocks_per_minute,
+        health_level,
         status,
         sync_stage,
         restore_snapshot_requested: runtime_context
@@ -850,5 +883,38 @@ mod tests {
         assert_eq!(1_u64.clamp(5, 300), 5);
         assert_eq!(30_u64.clamp(5, 300), 30);
         assert_eq!(600_u64.clamp(5, 300), 300);
+    }
+
+    #[test]
+    fn tc_mon_014_health_level_is_healthy_for_fast_sync_or_synced() {
+        assert_eq!(determine_health_level("synced", "synced", None, false), "healthy");
+        assert_eq!(
+            determine_health_level("syncing", "syncing", Some(45.0), false),
+            "healthy"
+        );
+    }
+
+    #[test]
+    fn tc_mon_015_health_level_is_warning_for_restore_or_slow_sync() {
+        assert_eq!(
+            determine_health_level("syncing", "snapshot_restoring", None, false),
+            "warning"
+        );
+        assert_eq!(
+            determine_health_level("syncing", "syncing", Some(5.0), false),
+            "warning"
+        );
+    }
+
+    #[test]
+    fn tc_mon_016_health_level_is_critical_for_unreachable_or_stalled() {
+        assert_eq!(
+            determine_health_level("unreachable", "unreachable", None, false),
+            "critical"
+        );
+        assert_eq!(
+            determine_health_level("stalled", "syncing", Some(0.0), true),
+            "critical"
+        );
     }
 }
