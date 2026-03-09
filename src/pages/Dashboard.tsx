@@ -114,7 +114,7 @@ function formatTaskLabel(value: string): string {
   return value.split("_").join(" ");
 }
 
-function truncateTaskError(value: string, maxLength = 180): string {
+function truncatePreview(value: string, maxLength = 180): string {
   if (value.length <= maxLength) {
     return value;
   }
@@ -187,8 +187,8 @@ export default function Dashboard() {
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-      <p className="text-sm text-zinc-300">
-        <span className="font-medium text-zinc-100">Sidecar:</span> {status}
+      <p title={status} className="text-sm text-zinc-300 break-words">
+        <span className="font-medium text-zinc-100">Sidecar:</span> {truncatePreview(status, 160)}
       </p>
       {dbInfo && (
         <p className="text-sm text-zinc-300">
@@ -268,7 +268,7 @@ export default function Dashboard() {
                         title={taskError}
                         className="mt-2 max-h-20 overflow-hidden rounded-md border border-red-950 bg-red-950/30 px-2 py-1 text-xs text-red-200 break-words"
                       >
-                        {truncateTaskError(taskError)}
+                        {truncatePreview(taskError)}
                       </p>
                     )}
                   </div>
@@ -359,8 +359,11 @@ export default function Dashboard() {
                   </div>
                 </dl>
                 {snapshot.note && (
-                  <p className="mt-3 rounded-md border border-red-950 bg-red-950/30 px-3 py-2 text-xs text-red-200">
-                    {snapshot.note}
+                  <p
+                    title={snapshot.note}
+                    className="mt-3 max-h-20 overflow-hidden rounded-md border border-red-950 bg-red-950/30 px-3 py-2 text-xs text-red-200 break-words"
+                  >
+                    {truncatePreview(snapshot.note, 220)}
                   </p>
                 )}
                 {snapshot.sync_stage === "snapshot_restoring" && (

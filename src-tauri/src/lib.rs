@@ -466,9 +466,18 @@ mod frontend_tests {
     #[test]
     fn tc_fe_019_dashboard_truncates_recent_task_errors() {
         let dashboard = include_str!("../../src/pages/Dashboard.tsx");
-        assert!(dashboard.contains("truncateTaskError("));
+        assert!(dashboard.contains("truncatePreview("));
         assert!(dashboard.contains("max-h-20 overflow-hidden"));
         assert!(dashboard.contains("title={taskError}"));
+    }
+
+    #[test]
+    fn tc_fe_020_dashboard_guards_other_long_text_blocks() {
+        let dashboard = include_str!("../../src/pages/Dashboard.tsx");
+        assert!(dashboard.contains("title={status}"));
+        assert!(dashboard.contains("truncatePreview(status, 160)"));
+        assert!(dashboard.contains("title={snapshot.note}"));
+        assert!(dashboard.contains("truncatePreview(snapshot.note, 220)"));
     }
 
     #[test]
