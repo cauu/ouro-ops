@@ -5,8 +5,8 @@ use serde_json::Value;
 use tauri::State;
 
 use crate::db::{
-    audit_log_insert, machine_get, pool_get_single, pool_insert, pool_update_single, DbState,
-    PoolRow,
+    audit_log_insert, machine_get, machine_list as repo_machine_list, pool_get_single, pool_insert,
+    pool_update_single, DbState, MachineRow, PoolRow,
 };
 use crate::error::AppError;
 
@@ -609,14 +609,53 @@ fn pool_onchain_status_with_conn_and_ssh(
         (None, None) => unreachable!("missing requirements handled above"),
     };
 
-    let registration =
-        query_pool_registration_details(&machine, pool.network.as_str(), resolved_pool_id.as_str(), ssh_exec)?;
+    let mut note = String::new();
+    let registration = match query_pool_registration_details(
+        &machine,
+        pool.network.as_str(),
+        resolved_pool_id.as_str(),
+        ssh_exec,
+    ) {
+        Ok(details) => details,
+        Err(err)
+            if machine.role == "bp" && is_pool_query_unsupported_error(err.to_string().as_str()) =>
+        {
+            if let Some(relay_machine) = find_pool_relay_fallback(conn, &machine, pool.network.as_str())? {
+                note = format!(
+                    "Primary bp query path is not supported by the current cardano-cli era handling; fell back to relay {}.",
+                    relay_machine.name
+                );
+                query_pool_registration_details(
+                    &relay_machine,
+                    pool.network.as_str(),
+                    resolved_pool_id.as_str(),
+                    ssh_exec,
+                )?
+            } else {
+                return Err(err);
+            }
+        }
+        Err(err) => return Err(err),
+    };
     let registered_onchain = registration.is_some();
 
     let note = if registered_onchain {
-        "Pool is registered on-chain; registration details were loaded from cardano-cli query output.".into()
+        if note.is_empty() {
+            "Pool is registered on-chain; registration details were loaded from cardano-cli query output.".into()
+        } else {
+            format!(
+                "Pool is registered on-chain; registration details were loaded from cardano-cli query output. {note}"
+            )
+        }
     } else {
-        "Pool is not registered on-chain according to cardano-cli pool-state / pool-params query output.".into()
+        if note.is_empty() {
+            "Pool is not registered on-chain according to cardano-cli pool-state / pool-params query output."
+                .into()
+        } else {
+            format!(
+                "Pool is not registered on-chain according to cardano-cli pool-state / pool-params query output. {note}"
+            )
+        }
     };
 
     Ok(PoolOnchainStatus {
@@ -631,6 +670,22 @@ fn pool_onchain_status_with_conn_and_ssh(
         missing_requirements: Vec::new(),
         note,
     })
+}
+
+fn is_pool_query_unsupported_error(error: &str) -> bool {
+    error.contains("This query is not supported in the era")
+        || error.contains("query pool-state Error:")
+        || error.contains("query pool-params Error:")
+}
+
+fn find_pool_relay_fallback(
+    conn: &Connection,
+    machine: &MachineRow,
+    network: &str,
+) -> Result<Option<MachineRow>, AppError> {
+    Ok(repo_machine_list(conn, Some("relay"), Some(network))?
+        .into_iter()
+        .find(|candidate| candidate.pool_id == machine.pool_id && candidate.id != machine.id))
 }
 
 fn pool_onchain_status_with_conn(
@@ -1297,5 +1352,91 @@ mod tests {
             registration.metadata_hash.as_deref(),
             Some("0ad6ff2157b5d574095f7286cf1ff93ed263a75519860e5779a97f356a4df443")
         );
+    }
+
+    #[test]
+    fn tc_pool_014_onchain_query_falls_back_from_bp_to_relay_when_era_query_is_unsupported() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+        let pool_id = pool_insert(&conn, "OURO", "mainnet", Some(0.02), Some(340000000))
+            .expect("insert pool");
+        let bp_id = crate::db::machine_insert(
+            &conn,
+            pool_id,
+            "bp-1",
+            "10.0.0.20",
+            22,
+            "root",
+            "bp",
+            Some("SHA256:bp"),
+        )
+        .expect("insert bp");
+        let _relay_id = crate::db::machine_insert(
+            &conn,
+            pool_id,
+            "relay-1",
+            "10.0.0.10",
+            22,
+            "root",
+            "relay",
+            Some("SHA256:relay"),
+        )
+        .expect("insert relay");
+
+        let ssh = |_: &str, ip: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
+            if ip == "10.0.0.20"
+                && (remote_cmd.contains("query pool-state") || remote_cmd.contains("query pool-params"))
+            {
+                return Err(AppError::Internal(
+                    "ssh command failed: Command failed: query pool-state Error: This query is not supported in the era: Babbage.".into(),
+                ));
+            }
+            if ip == "10.0.0.10" && remote_cmd.contains("query pool-state") {
+                return Ok(
+                    r#"{
+                        "pool1fallback": {
+                            "poolParams": {
+                                "spsCost": 170000000,
+                                "spsMargin": 3.0e-2,
+                                "spsPledge": 500000000,
+                                "spsOwners": ["owner1"],
+                                "spsRelays": [
+                                    {
+                                        "single host name": {
+                                            "dnsName": "pool-relay-1.bubble-studio.xyz",
+                                            "port": 3001
+                                        }
+                                    }
+                                ],
+                                "spsMetadata": {
+                                    "hash": "abcd",
+                                    "url": "https://example.com/md.json"
+                                }
+                            }
+                        }
+                    }"#
+                    .into(),
+                );
+            }
+            Err(AppError::Internal(format!("unexpected ssh command: {ip} {remote_cmd}")))
+        };
+
+        let status = pool_onchain_status_with_conn_and_ssh(
+            &conn,
+            PoolOnchainQueryPayload {
+                machine_id: bp_id,
+                pool_id: Some("pool1fallback".into()),
+                cold_vkey_path: None,
+            },
+            &ssh,
+        )
+        .expect("query onchain");
+
+        assert!(status.registered_onchain);
+        assert!(status.note.contains("fell back to relay relay-1"));
+        let registration = status.registration.expect("registration");
+        assert_eq!(registration.fixed_cost, Some(170000000));
+        assert_eq!(registration.margin, Some(0.03));
+        assert_eq!(registration.pledge, Some(500000000));
     }
 }
