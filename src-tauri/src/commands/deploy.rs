@@ -461,6 +461,18 @@ fn cancel_task_with_conn(conn: &Connection, task_id: &str) -> Result<bool, AppEr
     Ok(true)
 }
 
+fn audit_deploy_cancel(conn: &Connection, task_id: &str) -> Result<(), AppError> {
+    audit_log_insert(
+        conn,
+        "deploy_cancel",
+        &json!({
+            "task_id": task_id,
+            "status": "cancelled",
+            "error": "cancelled by user"
+        }),
+    )
+}
+
 fn deploy_status_with_conn(conn: &Connection, task_id: &str) -> Result<DeployTaskStatus, AppError> {
     let task = get_task_row(conn, task_id)?
         .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
@@ -708,7 +720,11 @@ pub async fn deploy_cancel(
 ) -> Result<(), AppError> {
     let should_interrupt = {
         let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
-        cancel_task_with_conn(&conn, task_id.as_str())?
+        let should_interrupt = cancel_task_with_conn(&conn, task_id.as_str())?;
+        if should_interrupt {
+            audit_deploy_cancel(&conn, task_id.as_str())?;
+        }
+        should_interrupt
     };
 
     if !should_interrupt {
@@ -946,6 +962,35 @@ mod tests {
             .expect("task")
             .expect("exists");
         assert_eq!(task.status, "cancelled");
+    }
+
+    #[test]
+    fn tc_dep_021_deploy_cancel_writes_audit_log() {
+        let conn = new_db();
+        let (relay_1, _, _) = seed_pool_with_nodes(&conn);
+        conn.execute(
+            "INSERT INTO task (id, task_type, status) VALUES ('task-audit', 'deploy', 'running')",
+            [],
+        )
+        .expect("insert task");
+        conn.execute(
+            "INSERT INTO task_machine (task_id, machine_id, status) VALUES ('task-audit', ?1, 'running')",
+            rusqlite::params![relay_1],
+        )
+        .expect("insert task_machine");
+
+        let cancelled = cancel_task_with_conn(&conn, "task-audit").expect("cancel");
+        assert!(cancelled);
+        audit_deploy_cancel(&conn, "task-audit").expect("audit");
+
+        let count_audit: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'deploy_cancel'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("count audit");
+        assert_eq!(count_audit, 1);
     }
 
     #[test]

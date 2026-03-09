@@ -470,4 +470,26 @@ mod frontend_tests {
         assert!(commands.contains("pub mod task;"));
         assert!(lib.contains("commands::task::task_recent_list"));
     }
+
+    #[test]
+    fn tc_audit_001_key_operations_write_audit_log() {
+        let pool = include_str!("commands/pool.rs");
+        let deploy = include_str!("commands/deploy.rs");
+        let runtime = include_str!("commands/runtime.rs");
+        let kes = include_str!("commands/kes.rs");
+        let upgrade = include_str!("commands/upgrade.rs");
+
+        assert!(pool.contains("\"pool_init\""));
+        assert!(pool.contains("\"pool_update\""));
+        assert!(deploy.contains("\"deploy_start\""));
+        assert!(deploy.contains("\"deploy_cancel\""));
+        assert!(runtime.contains("\"runtime_apply_config_start\""));
+        assert!(runtime.contains("\"runtime_restart_start\""));
+        assert!(kes.contains("\"kes_generate\""));
+        assert!(kes.contains("\"kes_import_cert\""));
+        assert!(kes.contains("\"kes_push_start\""));
+        assert!(upgrade.contains("\"upgrade_start\""));
+        assert!(upgrade.contains("\"upgrade_confirm_next\""));
+        assert!(upgrade.contains("\"upgrade_rollback\""));
+    }
 }

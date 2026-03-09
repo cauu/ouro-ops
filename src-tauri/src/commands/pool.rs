@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use tauri::State;
 
-use crate::db::{pool_get_single, pool_insert, pool_update_single, DbState, PoolRow};
+use crate::db::{audit_log_insert, pool_get_single, pool_insert, pool_update_single, DbState, PoolRow};
 use crate::error::AppError;
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -98,7 +98,19 @@ fn pool_init_with_conn(conn: &Connection, payload: PoolInitPayload) -> Result<Po
     )?;
     let row =
         pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool init failed".into()))?;
-    Ok(into_pool(row))
+    let pool = into_pool(row);
+    audit_log_insert(
+        conn,
+        "pool_init",
+        &serde_json::json!({
+            "pool_id": pool.id,
+            "ticker": pool.ticker,
+            "network": pool.network,
+            "margin": pool.margin,
+            "fixed_cost": pool.fixed_cost
+        }),
+    )?;
+    Ok(pool)
 }
 
 fn pool_get_with_conn(conn: &Connection) -> Result<Pool, AppError> {
@@ -108,6 +120,8 @@ fn pool_get_with_conn(conn: &Connection) -> Result<Pool, AppError> {
 }
 
 fn pool_update_with_conn(conn: &Connection, payload: PoolUpdatePayload) -> Result<Pool, AppError> {
+    let current =
+        pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
     if let Some(ticker) = payload.ticker.as_ref() {
         validate_ticker(ticker)?;
     }
@@ -120,7 +134,25 @@ fn pool_update_with_conn(conn: &Connection, payload: PoolUpdatePayload) -> Resul
         payload.margin,
         payload.fixed_cost,
     )?;
-    Ok(into_pool(row))
+    let pool = into_pool(row);
+    audit_log_insert(
+        conn,
+        "pool_update",
+        &serde_json::json!({
+            "pool_id": pool.id,
+            "previous": {
+                "ticker": current.ticker,
+                "margin": current.margin,
+                "fixed_cost": current.fixed_cost
+            },
+            "next": {
+                "ticker": pool.ticker,
+                "margin": pool.margin,
+                "fixed_cost": pool.fixed_cost
+            }
+        }),
+    )?;
+    Ok(pool)
 }
 
 #[tauri::command]
@@ -184,6 +216,14 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM pool", [], |r| r.get(0))
             .expect("count pool");
         assert_eq!(count, 1);
+        let count_audit: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'pool_init'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("count audit");
+        assert_eq!(count_audit, 1);
     }
 
     #[test]
@@ -271,5 +311,13 @@ mod tests {
         .expect("pool update");
         assert_eq!(pool.margin, Some(0.05));
         assert_eq!(pool.fixed_cost, Some(510000000));
+        let count_audit: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'pool_update'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("count audit");
+        assert_eq!(count_audit, 1);
     }
 }
