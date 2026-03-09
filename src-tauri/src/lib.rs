@@ -395,6 +395,8 @@ mod frontend_tests {
         assert!(page.contains("Generate KES"));
         assert!(page.contains("Import Cert"));
         assert!(page.contains("Push to BP"));
+        assert!(page.contains("Type pool ticker"));
+        assert!(page.contains("Confirm KES Push"));
     }
 
     #[test]
@@ -409,6 +411,7 @@ mod frontend_tests {
         assert!(page.contains("TaskLogStream"));
         assert!(page.contains("Confirm Next Step"));
         assert!(page.contains("Rollback"));
+        assert!(page.contains("unlock BP upgrade"));
     }
 
     #[test]

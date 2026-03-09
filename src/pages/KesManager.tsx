@@ -41,7 +41,11 @@ function formatTaskLabel(status: string): string {
   return status.split("_").join(" ");
 }
 
-export default function KesManager() {
+interface KesManagerProps {
+  poolTicker: string;
+}
+
+export default function KesManager({ poolTicker }: KesManagerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statuses, setStatuses] = useState<KesStatus[]>([]);
@@ -49,6 +53,8 @@ export default function KesManager() {
   const [certPaths, setCertPaths] = useState<Record<number, string>>({});
   const [rotationTasks, setRotationTasks] = useState<Record<number, DeployTaskStatus>>({});
   const [busyMachineId, setBusyMachineId] = useState<number | null>(null);
+  const [pushConfirmMachineId, setPushConfirmMachineId] = useState<number | null>(null);
+  const [pushConfirmValue, setPushConfirmValue] = useState("");
 
   const loadKes = async () => {
     setLoading(true);
@@ -170,6 +176,8 @@ export default function KesManager() {
     }
   };
 
+  const normalizedTicker = poolTicker.trim();
+
   return (
     <section className="space-y-6">
       <header>
@@ -200,6 +208,8 @@ export default function KesManager() {
             const task = rotationTasks[status.machine_id];
             const busy = busyMachineId === status.machine_id;
             const canPush = task?.status === "pending";
+            const pushConfirmArmed = pushConfirmMachineId === status.machine_id;
+            const pushUnlocked = pushConfirmValue.trim() === normalizedTicker;
             return (
               <article
                 key={status.machine_id}
@@ -315,13 +325,50 @@ export default function KesManager() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => void handlePush(status.machine_id)}
+                      onClick={() => {
+                        setPushConfirmMachineId(status.machine_id);
+                        setPushConfirmValue("");
+                      }}
                       disabled={busy || !canPush}
                       className="rounded-md border border-emerald-700/70 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-950/30 disabled:opacity-60"
                     >
                       Push to BP
                     </button>
                   </div>
+                  {canPush && pushConfirmArmed && (
+                    <div className="mt-3 rounded-md border border-red-800/60 bg-red-950/20 p-3 text-xs text-red-100">
+                      <p className="font-medium">Type pool ticker {normalizedTicker} to unlock KES push.</p>
+                      <div className="mt-3 flex flex-col gap-2 md:flex-row">
+                        <input
+                          value={pushConfirmValue}
+                          onChange={(event) => setPushConfirmValue(event.target.value)}
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          className="flex-1 rounded-md border border-red-800/70 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handlePush(status.machine_id)}
+                            disabled={busy || !pushUnlocked}
+                            className="rounded-md bg-red-400 px-3 py-2 text-sm font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Confirm KES Push
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPushConfirmMachineId(null);
+                              setPushConfirmValue("");
+                            }}
+                            className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:border-zinc-500"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {task && (
                     <div className="mt-3 rounded-md border border-zinc-700 bg-zinc-950/60 p-3 text-xs text-zinc-300">
                       <p className={`font-medium uppercase ${taskTone(task.status)}`}>

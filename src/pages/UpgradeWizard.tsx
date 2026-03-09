@@ -50,7 +50,11 @@ function readPhase(task: DeployTaskStatus | null): string {
   return typeof phase === "string" ? phase : "--";
 }
 
-export default function UpgradeWizard() {
+interface UpgradeWizardProps {
+  poolTicker: string;
+}
+
+export default function UpgradeWizard({ poolTicker }: UpgradeWizardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -66,6 +70,7 @@ export default function UpgradeWizard() {
   const [taskStatus, setTaskStatus] = useState<DeployTaskStatus | null>(null);
   const [gateEvent, setGateEvent] = useState<UpgradeGateEvent | null>(null);
   const [rollbackNotice, setRollbackNotice] = useState<string | null>(null);
+  const [bpConfirmValue, setBpConfirmValue] = useState("");
 
   const loadMachines = async () => {
     setLoading(true);
@@ -134,6 +139,7 @@ export default function UpgradeWizard() {
         return;
       }
       setGateEvent(event.payload);
+      setBpConfirmValue("");
     });
     return () => {
       active = false;
@@ -147,6 +153,8 @@ export default function UpgradeWizard() {
     () => machines.filter((machine) => selectedMachineIds.includes(machine.id)),
     [machines, selectedMachineIds],
   );
+  const normalizedTicker = poolTicker.trim();
+  const bpGateUnlocked = bpConfirmValue.trim() === normalizedTicker;
 
   const machineStatusMap = useMemo(() => {
     const entries =
@@ -181,6 +189,7 @@ export default function UpgradeWizard() {
       const status = await upgradeStatus(nextTaskId);
       setTaskId(nextTaskId);
       setTaskStatus(status);
+      setBpConfirmValue("");
     } catch (e) {
       setError(String(e));
     } finally {
@@ -199,6 +208,7 @@ export default function UpgradeWizard() {
       const next = await upgradeStatus(taskId);
       setTaskStatus(next);
       setGateEvent(null);
+      setBpConfirmValue("");
     } catch (e) {
       setError(String(e));
     } finally {
@@ -444,10 +454,22 @@ export default function UpgradeWizard() {
                     <dd className="mt-1 font-medium text-zinc-100">{gateEvent.next_machine}</dd>
                   </div>
                 </dl>
+                {gateEvent.is_bp && (
+                  <div className="rounded-md border border-red-800/60 bg-red-950/20 p-3 text-xs text-red-100">
+                    <p className="font-medium">Type pool ticker {normalizedTicker} to unlock BP upgrade.</p>
+                    <input
+                      value={bpConfirmValue}
+                      onChange={(event) => setBpConfirmValue(event.target.value)}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      className="mt-3 w-full rounded-md border border-red-800/70 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    />
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => void handleConfirmNext()}
-                  disabled={confirming}
+                  disabled={confirming || (gateEvent.is_bp && !bpGateUnlocked)}
                   className="rounded-md bg-amber-400 px-4 py-2 text-sm font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {confirming ? "Confirming..." : "Confirm Next Step"}
