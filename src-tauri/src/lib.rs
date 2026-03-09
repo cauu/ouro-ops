@@ -105,10 +105,12 @@ mod frontend_tests {
         let sidebar = include_str!("../../src/components/Sidebar.tsx");
         assert!(sidebar.contains("to=\"/\""));
         assert!(sidebar.contains("to=\"/machines\""));
+        assert!(sidebar.contains("to=\"/kes\""));
         assert!(sidebar.contains("to=\"/deploy\""));
         assert!(sidebar.contains("to=\"/settings\""));
         assert!(sidebar.contains("Dashboard"));
         assert!(sidebar.contains("Machines"));
+        assert!(sidebar.contains("KES"));
         assert!(sidebar.contains("Deploy"));
         assert!(sidebar.contains("Settings"));
     }
@@ -124,6 +126,7 @@ mod frontend_tests {
         let app = include_str!("../../src/App.tsx");
         let deploy = include_str!("../../src/pages/DeployWizard.tsx");
         assert!(app.contains("path=\"/deploy\""));
+        assert!(app.contains("path=\"/kes\""));
         assert!(deploy.contains("deployStart("));
         assert!(deploy.contains("useState(\"10.5.4-1\")"));
         assert!(deploy.contains("ghcr.io/blinklabs-io/cardano-node"));
@@ -372,6 +375,20 @@ mod frontend_tests {
         let ipc = include_str!("../../src/lib/ipc.ts");
         assert!(ipc.contains("kesPushStart"));
         assert!(ipc.contains("kesRotationStatus"));
+    }
+
+    #[test]
+    fn tc_fe_014_kes_manager_page_exists() {
+        let page = include_str!("../../src/pages/KesManager.tsx");
+        assert!(page.contains("KES Manager"));
+        assert!(page.contains("kesStatusAll()"));
+        assert!(page.contains("kesGenerate("));
+        assert!(page.contains("kesImportCert("));
+        assert!(page.contains("kesPushStart("));
+        assert!(page.contains("kesRotationStatus("));
+        assert!(page.contains("Generate KES"));
+        assert!(page.contains("Import Cert"));
+        assert!(page.contains("Push to BP"));
     }
 
     #[test]
