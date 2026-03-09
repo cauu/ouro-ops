@@ -295,4 +295,19 @@ mod frontend_tests {
         assert!(types.contains("export interface KesStatus"));
         assert!(types.contains("export interface KesSignRequest"));
     }
+
+    #[test]
+    fn tc_fe_011_machine_manager_exposes_runtime_actions() {
+        let mm = include_str!("../../src/pages/MachineManager.tsx");
+        let ipc = include_str!("../../src/lib/ipc.ts");
+        assert!(mm.contains("Apply Runtime Config"));
+        assert!(mm.contains("Restart Runtime"));
+        assert!(mm.contains("runtimeConfigTasks"));
+        assert!(mm.contains("runtimeRestartTasks"));
+        assert!(mm.contains("does not run deploy or Mithril flows"));
+        assert!(ipc.contains("runtimeApplyConfig"));
+        assert!(ipc.contains("runtimeConfigStatus"));
+        assert!(ipc.contains("runtimeRestart"));
+        assert!(ipc.contains("runtimeRestartStatus"));
+    }
 }

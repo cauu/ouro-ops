@@ -5,10 +5,15 @@ import {
   machinePreflight,
   machineRemove,
   machineRuntimeProbe,
+  runtimeApplyConfig,
+  runtimeConfigStatus,
+  runtimeRestart,
+  runtimeRestartStatus,
   sshAgentAddKey,
   sshAgentListKeys,
 } from "../lib/ipc";
 import type {
+  DeployTaskStatus,
   Machine,
   MachineAddPayload,
   Pool,
@@ -24,6 +29,10 @@ interface MachineManagerProps {
 type Role = MachineAddPayload["role"];
 
 const roleOptions: Role[] = ["relay", "bp", "archive"];
+
+function isTerminal(status: string): boolean {
+  return status === "success" || status === "failed" || status === "cancelled";
+}
 
 function formatMachineLoadStatus(elapsedSeconds: number): string {
   if (elapsedSeconds < 3) {
@@ -44,8 +53,12 @@ export default function MachineManager({ pool }: MachineManagerProps) {
   const [keys, setKeys] = useState<SshKeyInfo[]>([]);
   const [preflightMap, setPreflightMap] = useState<Record<number, PreflightReport>>({});
   const [runtimeProbeMap, setRuntimeProbeMap] = useState<Record<number, RuntimeProbe>>({});
+  const [runtimeConfigTasks, setRuntimeConfigTasks] = useState<Record<number, DeployTaskStatus>>({});
+  const [runtimeRestartTasks, setRuntimeRestartTasks] = useState<Record<number, DeployTaskStatus>>({});
   const [runningPreflight, setRunningPreflight] = useState<number | null>(null);
   const [runningProbe, setRunningProbe] = useState<number | null>(null);
+  const [runningRuntimeConfig, setRunningRuntimeConfig] = useState<number | null>(null);
+  const [runningRuntimeRestart, setRunningRuntimeRestart] = useState<number | null>(null);
   const [addingKey, setAddingKey] = useState(false);
 
   const [name, setName] = useState("");
@@ -93,6 +106,84 @@ export default function MachineManager({ pool }: MachineManagerProps) {
       window.clearInterval(timer);
     };
   }, [loading]);
+
+  useEffect(() => {
+    const activeTaskEntries = Object.entries(runtimeConfigTasks).filter(
+      ([, task]) => task && !isTerminal(task.status),
+    );
+    if (activeTaskEntries.length === 0) {
+      return;
+    }
+    let active = true;
+    const timer = window.setInterval(() => {
+      void Promise.all(
+        activeTaskEntries.map(async ([machineId, task]) => {
+          const next = await runtimeConfigStatus(task.task_id);
+          return [Number(machineId), next] as const;
+        }),
+      )
+        .then((rows) => {
+          if (!active) {
+            return;
+          }
+          setRuntimeConfigTasks((prev) => {
+            const next = { ...prev };
+            rows.forEach(([machineId, task]) => {
+              next[machineId] = task;
+            });
+            return next;
+          });
+        })
+        .catch((e) => {
+          if (active) {
+            setError(String(e));
+          }
+        });
+    }, 1500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [runtimeConfigTasks]);
+
+  useEffect(() => {
+    const activeTaskEntries = Object.entries(runtimeRestartTasks).filter(
+      ([, task]) => task && !isTerminal(task.status),
+    );
+    if (activeTaskEntries.length === 0) {
+      return;
+    }
+    let active = true;
+    const timer = window.setInterval(() => {
+      void Promise.all(
+        activeTaskEntries.map(async ([machineId, task]) => {
+          const next = await runtimeRestartStatus(task.task_id);
+          return [Number(machineId), next] as const;
+        }),
+      )
+        .then((rows) => {
+          if (!active) {
+            return;
+          }
+          setRuntimeRestartTasks((prev) => {
+            const next = { ...prev };
+            rows.forEach(([machineId, task]) => {
+              next[machineId] = task;
+            });
+            return next;
+          });
+        })
+        .catch((e) => {
+          if (active) {
+            setError(String(e));
+          }
+        });
+    }, 1500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [runtimeRestartTasks]);
 
   const handleAdd = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -176,6 +267,34 @@ export default function MachineManager({ pool }: MachineManagerProps) {
       setError(String(e));
     } finally {
       setAddingKey(false);
+    }
+  };
+
+  const handleRuntimeApplyConfig = async (machineId: number) => {
+    setRunningRuntimeConfig(machineId);
+    setError(null);
+    try {
+      const taskId = await runtimeApplyConfig(machineId);
+      const task = await runtimeConfigStatus(taskId);
+      setRuntimeConfigTasks((prev) => ({ ...prev, [machineId]: task }));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRunningRuntimeConfig(null);
+    }
+  };
+
+  const handleRuntimeRestart = async (machineId: number) => {
+    setRunningRuntimeRestart(machineId);
+    setError(null);
+    try {
+      const taskId = await runtimeRestart(machineId);
+      const task = await runtimeRestartStatus(taskId);
+      setRuntimeRestartTasks((prev) => ({ ...prev, [machineId]: task }));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRunningRuntimeRestart(null);
     }
   };
 
@@ -338,6 +457,30 @@ export default function MachineManager({ pool }: MachineManagerProps) {
                     >
                       {runningProbe === machine.id ? "Probing..." : "Runtime Probe"}
                     </button>
+                    {machine.role !== "archive" && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void handleRuntimeApplyConfig(machine.id)}
+                          className="rounded-md border border-blue-700/70 px-3 py-1 text-xs text-blue-200 hover:bg-blue-950/30"
+                          disabled={runningRuntimeConfig === machine.id}
+                        >
+                          {runningRuntimeConfig === machine.id
+                            ? "Applying Config..."
+                            : "Apply Runtime Config"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleRuntimeRestart(machine.id)}
+                          className="rounded-md border border-amber-700/70 px-3 py-1 text-xs text-amber-200 hover:bg-amber-950/30"
+                          disabled={runningRuntimeRestart === machine.id}
+                        >
+                          {runningRuntimeRestart === machine.id
+                            ? "Restarting..."
+                            : "Restart Runtime"}
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
                       onClick={() => void handleRemove(machine.id)}
@@ -371,6 +514,42 @@ export default function MachineManager({ pool }: MachineManagerProps) {
                     <p>db_mount_source: {runtimeProbeMap[machine.id].db_mount_source ?? "-"}</p>
                     <p>keys_mount_source: {runtimeProbeMap[machine.id].keys_mount_source ?? "-"}</p>
                     <p>bp_key_files_present: {String(runtimeProbeMap[machine.id].bp_key_files_present)}</p>
+                  </div>
+                )}
+                {machine.role !== "archive" && (
+                  <div className="mt-3 rounded-md border border-zinc-800 bg-black/20 p-2 text-xs text-zinc-300">
+                    <p className="font-medium text-zinc-100">Runtime Operations</p>
+                    <p className="mt-1 text-zinc-400">
+                      Apply Runtime Config will re-render role-aware config and restart the
+                      container if files changed. Restart Runtime only restarts the existing
+                      cardano-node container and does not run deploy or Mithril flows.
+                    </p>
+                    {runtimeConfigTasks[machine.id] && (
+                      <div className="mt-2">
+                        <p>
+                          config task: {runtimeConfigTasks[machine.id].status} (
+                          {runtimeConfigTasks[machine.id].task_id})
+                        </p>
+                        {runtimeConfigTasks[machine.id].error_msg && (
+                          <p className="text-red-300">
+                            {runtimeConfigTasks[machine.id].error_msg}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {runtimeRestartTasks[machine.id] && (
+                      <div className="mt-2">
+                        <p>
+                          restart task: {runtimeRestartTasks[machine.id].status} (
+                          {runtimeRestartTasks[machine.id].task_id})
+                        </p>
+                        {runtimeRestartTasks[machine.id].error_msg && (
+                          <p className="text-red-300">
+                            {runtimeRestartTasks[machine.id].error_msg}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </article>
