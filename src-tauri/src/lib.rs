@@ -581,6 +581,10 @@ mod frontend_tests {
         assert!(page.contains("Confirm Pool ID"));
         assert!(page.contains("offline_signing_required"));
         assert!(page.contains("confirm_pool_id"));
+        assert!(page.contains("Cold / Hot Workflow"));
+        assert!(page.contains("pool-registration.cert"));
+        assert!(page.contains("This file is not generated on the hot node"));
+        assert!(page.contains("Cold Environment Inputs"));
     }
 
     #[test]

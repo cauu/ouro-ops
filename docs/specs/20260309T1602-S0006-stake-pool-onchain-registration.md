@@ -81,6 +81,7 @@ Spec-ID：`S0006`
 - [x] `p6-18` 当 workspace 已初始化但尚未绑定链上 pool 时，在 Dashboard 中显式引导“绑定已有 `pool_id`”与“注册新 pool”两条路径
 - [x] `p6-19` 支持对已绑定 pool 执行 unbind，清空 workspace 的链上绑定关系和本地缓存的链上字段
 - [x] `p6-20` 纠正 registration 流程的安全模型：冷环境生成 registration certificate 与签名交易，热环境不再要求 `cold.skey/cold.vkey`
+- [x] `p6-21` 在注册向导中明确 `pool-registration.cert` 的来源、冷/热环境步骤与输入物边界，避免用户误以为热环境会生成证书或持有 cold key
 
 ## 4. 测试与验收标准
 
@@ -120,6 +121,7 @@ Spec-ID：`S0006`
 - `2026-03-09T23:58:00+0800` `p6-4` 回归修正：补齐 `pool_registration_prepare` 的审计写入，修正测试夹具对 docker shell 内层转义的匹配方式，并改为基于已解析的容器内 `cold.vkey` 路径推导 `pool_id`，确保 registration prepare 在真实命令拼装下仍能稳定返回证书和交易草稿。
 - `2026-03-09T21:54:25+0800` `p6-5` 完成：新增 `pool_registration_submit` 后端链路，支持显式确认 `pool_id`、校验 registration certificate / cold signing key / owner signing keys / payment signing key、查询付款地址 UTxO、构建 `cardano-cli latest transaction build`、执行签名与提交，并返回 `tx_body_path`、`tx_signed_path`、`tx_hash`、`tx_inputs` 与缺失材料清单；同时写入 `pool_registration_submit` 审计记录。 
 - `2026-03-10T00:28:00+0800` `p6-20` 完成：基于“热环境不得存放 `cold.skey/cold.vkey`”的安全约束，重构 registration flow：`pool_registration_prepare` 改为仅校验并消费冷环境预先生成的 registration certificate，在热环境构建 unsigned tx draft；`pool_registration_submit` 改为仅消费冷环境预先签名的 tx 文件并执行提交，彻底移除热环境对 `cold.skey/cold.vkey` 的依赖。 
+- `2026-03-10T09:18:00+0800` `p6-21` 完成：更新 Dashboard 内嵌注册向导，显式展示 cold/hot workflow、`pool-registration.cert` 的冷环境来源、热环境只接收 certificate 和 signed tx 的边界，并在 prepare 结果中追加冷环境输入物说明，降低用户对 registration flow 的误解成本。 
 - `2026-03-10T09:03:00+0800` `p6-7` 完成：将 registration submit 的高风险确认正式收敛到前端注册向导，要求用户在提交前显式重输 `pool_id`，并复用后端已有的 `pool_registration_prepare / pool_registration_submit` 审计日志作为提交链路的审计基线。 
 - `2026-03-10T09:03:00+0800` `p6-9` 完成：新增 Dashboard 内嵌的注册向导，串起 hot prepare、cold sign 提示、hot submit 三段式交互，不再要求用户跳转独立页面完成注册准备与提交。 
 
@@ -158,6 +160,8 @@ Spec-ID：`S0006`
 - `2026-03-10T00:28:00+0800` `TC-P6-003/004 | stack: node | command: pnpm build | result: pass | note: 前端类型与 IPC 已同步移除 hot cold key 依赖，后续注册向导将以离线证书和预签名交易作为输入。`
 - `2026-03-10T09:03:00+0800` `TC-P6-004 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_fe_027，断言 Dashboard 内嵌注册向导已接入 prepare/submit IPC、offline signing 提示和 confirm_pool_id 高风险确认字段；全量测试通过。`
 - `2026-03-10T09:03:00+0800` `TC-P6-004 | stack: node | command: pnpm build | result: pass | note: Dashboard 的 Register New Pool 卡片已接入注册向导，前端构建通过，用户可在同一页面完成 unsigned tx prepare、冷签说明和 signed tx submit。`
+- `2026-03-10T09:18:00+0800` `TC-P6-004 | stack: rust | command: cargo test -q | result: pass | note: 扩展 tc_fe_027，断言注册向导明确包含 “Cold / Hot Workflow”、`pool-registration.cert` 的冷环境来源说明，以及 “Cold Environment Inputs” 提示，避免用户误解证书和 cold key 的归属。`
+- `2026-03-10T09:18:00+0800` `TC-P6-004 | stack: node | command: pnpm build | result: pass | note: 注册向导前端构建通过，Dashboard 中现在能直接看到 cold/hot 步骤说明、certificate 来源说明和冷环境输入物清单。`
 
 ## 7. 变更记录（仅追加）
 
@@ -170,3 +174,4 @@ Spec-ID：`S0006`
 - `2026-03-09T22:10:00+0800` 基于用户确认，推进 `p6-3`：不再把 Settings 作为本地链上参数编辑入口，改为只读说明页，将链上参数展示统一收敛到 Dashboard 中的 bound on-chain pool 卡片。 
 - `2026-03-10T00:12:00+0800` 基于用户确认，“热环境不应存放 `cold.skey/cold.vkey`”被收敛为当前 active spec 的安全纠偏项；已完成的 `p6-4/p6-5` 不回写历史，改以追加事项的方式重构 registration flow。 
 - `2026-03-10T08:48:00+0800` 基于用户确认，将原本过大的前端注册能力拆成“只读注册状态页”和“注册向导”两部分；当前先补齐 Dashboard 内嵌注册向导与高风险确认，便于在不跳转页面的情况下完成 prepare / cold sign / submit 全链路验证。 
+- `2026-03-10T09:18:00+0800` 基于用户确认，继续产品化 registration flow：在不改变后端安全模型的前提下，把 `pool-registration.cert` 的冷环境来源、热环境输入边界和 cold/hot 步骤直接写进注册向导，避免用户继续把 cert 误认为热环境生成物。 

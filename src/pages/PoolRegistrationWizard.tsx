@@ -177,6 +177,30 @@ export default function PoolRegistrationWizard({ poolTicker }: PoolRegistrationW
         environment.
       </div>
 
+      <div className="rounded-md border border-zinc-800 bg-zinc-950/40 px-3 py-3 text-xs text-zinc-300">
+        <p className="font-medium text-zinc-100">Cold / Hot Workflow</p>
+        <ol className="mt-2 space-y-2">
+          <li>
+            1. In the cold environment, generate{" "}
+            <span className="font-medium text-zinc-100">pool-registration.cert</span> from the pool cold
+            signing material.
+          </li>
+          <li>
+            2. Copy only that certificate to the hot node. Do not copy{" "}
+            <span className="font-medium text-zinc-100">cold.skey</span> or{" "}
+            <span className="font-medium text-zinc-100">cold.vkey</span> to the running node.
+          </li>
+          <li>
+            3. Run <span className="font-medium text-zinc-100">Prepare Registration</span> on the hot node to
+            build an unsigned transaction body.
+          </li>
+          <li>
+            4. Move the unsigned tx body back to the cold environment, sign it offline, then copy only the
+            signed tx file back for submission.
+          </li>
+        </ol>
+      </div>
+
       {loading ? (
         <p className="text-sm text-zinc-300">Loading registration machines...</p>
       ) : machines.length === 0 ? (
@@ -217,6 +241,9 @@ export default function PoolRegistrationWizard({ poolTicker }: PoolRegistrationW
                 placeholder="/opt/cardano/config/registration/pool-registration.cert"
                 className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
               />
+              <span className="mt-1 block text-xs text-zinc-500">
+                Expected input from the cold environment. This file is not generated on the hot node.
+              </span>
             </label>
 
             <label className="block text-sm">
@@ -330,6 +357,15 @@ export default function PoolRegistrationWizard({ poolTicker }: PoolRegistrationW
           <div className="mt-4 rounded-md border border-zinc-800 bg-black/20 px-3 py-2 text-xs text-zinc-400 break-words">
             <p className="font-medium text-zinc-200">Command preview</p>
             <p className="mt-2">{prepareResult.tx_draft.command_preview}</p>
+          </div>
+
+          <div className="mt-4 rounded-md border border-zinc-800 bg-zinc-950/30 px-3 py-2 text-xs text-zinc-400">
+            <p className="font-medium text-zinc-200">Cold Environment Inputs</p>
+            <ul className="mt-2 space-y-1">
+              <li>- keep pool cold signing material offline</li>
+              <li>- sign the unsigned tx body shown above</li>
+              <li>- copy back only the signed transaction file</li>
+            </ul>
           </div>
         </article>
       )}
