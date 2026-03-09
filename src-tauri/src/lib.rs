@@ -588,6 +588,9 @@ mod frontend_tests {
         assert!(page.contains("stake-pool registration-certificate"));
         assert!(page.contains("transaction sign"));
         assert!(page.contains("--cold-verification-key-file cold.vkey"));
+        assert!(page.contains("networkFlag("));
+        assert!(page.contains("Copy the resulting certificate to the hot node path"));
+        assert!(page.contains("Copy the signed tx back to the hot node path"));
     }
 
     #[test]

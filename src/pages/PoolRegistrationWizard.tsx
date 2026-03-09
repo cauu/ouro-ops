@@ -29,6 +29,19 @@ function formatLovelace(value: number | null): string {
   return value.toLocaleString();
 }
 
+function networkFlag(network: Machine["network"] | string | null | undefined): string {
+  if (network === "mainnet") {
+    return "--mainnet";
+  }
+  if (network === "preprod") {
+    return "--testnet-magic 1";
+  }
+  if (network === "preview") {
+    return "--testnet-magic 2";
+  }
+  return "--mainnet";
+}
+
 export default function PoolRegistrationWizard({ poolTicker }: PoolRegistrationWizardProps) {
   const [loading, setLoading] = useState(true);
   const [preparing, setPreparing] = useState(false);
@@ -85,6 +98,55 @@ export default function PoolRegistrationWizard({ poolTicker }: PoolRegistrationW
     () => machines.find((row) => row.id === machineId) ?? null,
     [machineId, machines],
   );
+  const currentNetworkFlag = useMemo(
+    () => networkFlag(selectedMachine?.network),
+    [selectedMachine],
+  );
+  const coldCommandReference = useMemo(() => {
+    const relayLines =
+      prepareResult?.registration_relays && prepareResult.registration_relays.length > 0
+        ? prepareResult.registration_relays
+            .map(
+              (relay) =>
+                `  --single-host-pool-relay ${relay.address} \\\n  --pool-relay-port ${relay.port} \\`,
+            )
+            .join("\n")
+        : "  --single-host-pool-relay <relay-dns> \\\n  --pool-relay-port 3001 \\";
+    const txBodyName = prepareResult?.tx_draft.tx_body_path
+      ? prepareResult.tx_draft.tx_body_path.split("/").pop()
+      : "pool-registration.raw";
+    const txSignedName = txSignedPath.trim()
+      ? txSignedPath.trim().split("/").pop() ?? "pool-registration.signed"
+      : "pool-registration.signed";
+
+    return `cardano-cli latest stake-pool registration-certificate \\
+  --cold-verification-key-file cold.vkey \\
+  --vrf-verification-key-file vrf.vkey \\
+  --pool-pledge <pledge-lovelace> \\
+  --pool-cost <fixed-cost-lovelace> \\
+  --pool-margin <margin-decimal> \\
+  --pool-reward-account-verification-key-file reward.vkey \\
+  --pool-owner-stake-verification-key-file owner.vkey \\
+  ${currentNetworkFlag} \\
+${relayLines}
+  --metadata-url <metadata-url> \\
+  --metadata-hash <metadata-hash> \\
+  --out-file pool-registration.cert
+
+# Copy the resulting certificate to the hot node path:
+# ${certificatePath}
+
+cardano-cli latest transaction sign \\
+  --tx-body-file ${txBodyName} \\
+  --signing-key-file cold.skey \\
+  --signing-key-file owner.skey \\
+  --signing-key-file payment.skey \\
+  ${currentNetworkFlag} \\
+  --out-file ${txSignedName}
+
+# Copy the signed tx back to the hot node path:
+# ${txSignedPath}`;
+  }, [certificatePath, currentNetworkFlag, prepareResult, txSignedPath]);
 
   const handlePrepare = async () => {
     if (machineId == null) {
@@ -202,28 +264,7 @@ export default function PoolRegistrationWizard({ poolTicker }: PoolRegistrationW
         <div className="mt-3 rounded-md border border-zinc-800 bg-black/20 px-3 py-2 text-[11px] text-zinc-400 break-words">
           <p className="font-medium text-zinc-200">Cold Environment Reference Commands</p>
           <pre className="mt-2 overflow-x-auto whitespace-pre-wrap">
-{`cardano-cli latest stake-pool registration-certificate \\
-  --cold-verification-key-file cold.vkey \\
-  --vrf-verification-key-file vrf.vkey \\
-  --pool-pledge <pledge-lovelace> \\
-  --pool-cost <fixed-cost-lovelace> \\
-  --pool-margin <margin-decimal> \\
-  --pool-reward-account-verification-key-file reward.vkey \\
-  --pool-owner-stake-verification-key-file owner.vkey \\
-  --mainnet \\
-  --single-host-pool-relay <relay-dns> \\
-  --pool-relay-port 3001 \\
-  --metadata-url <metadata-url> \\
-  --metadata-hash <metadata-hash> \\
-  --out-file pool-registration.cert
-
-cardano-cli latest transaction sign \\
-  --tx-body-file pool-registration.raw \\
-  --signing-key-file cold.skey \\
-  --signing-key-file owner.skey \\
-  --signing-key-file payment.skey \\
-  --mainnet \\
-  --out-file pool-registration.signed`}
+            {coldCommandReference}
           </pre>
         </div>
       </div>
