@@ -282,23 +282,50 @@ fn parse_relay_list(value: Option<&Value>) -> Vec<PoolOnchainRelay> {
         let Some(map) = item.as_object() else {
             continue;
         };
-        let address = map
+        let relay_entry = map
+            .get("single host name")
+            .or_else(|| map.get("singleHostName"))
+            .or_else(|| map.get("single host addr"))
+            .or_else(|| map.get("singleHostAddr"))
+            .or_else(|| map.get("multi host name"))
+            .or_else(|| map.get("multiHostName"))
+            .unwrap_or(item);
+        let relay_map = relay_entry.as_object().unwrap_or(map);
+        let address = relay_map
             .get("address")
-            .or_else(|| map.get("ipv4"))
-            .or_else(|| map.get("ipv6"))
-            .or_else(|| map.get("dnsName"))
-            .or_else(|| map.get("hostname"))
+            .or_else(|| relay_map.get("ipv4"))
+            .or_else(|| relay_map.get("ipv6"))
+            .or_else(|| relay_map.get("dnsName"))
+            .or_else(|| relay_map.get("hostname"))
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
-        let port = parse_i64_field(map.get("port"))
-            .or_else(|| parse_i64_field(map.get("Port")))
+        let port = parse_i64_field(relay_map.get("port"))
+            .or_else(|| parse_i64_field(relay_map.get("Port")))
             .unwrap_or_default();
         if !address.is_empty() {
             relays.push(PoolOnchainRelay { address, port });
         }
     }
     relays
+}
+
+fn parse_reward_account_field(value: Option<&Value>) -> Option<String> {
+    match value {
+        Some(Value::String(s)) => Some(s.to_string()),
+        Some(Value::Object(map)) => {
+            if let Some(key_hash) = map
+                .get("credential")
+                .and_then(Value::as_object)
+                .and_then(|credential| credential.get("keyHash").or_else(|| credential.get("scriptHash")))
+                .and_then(Value::as_str)
+            {
+                return Some(key_hash.to_string());
+            }
+            Some(Value::Object(map.clone()).to_string())
+        }
+        _ => None,
+    }
 }
 
 fn has_pool_registration_fields(value: &Value) -> bool {
@@ -317,6 +344,13 @@ fn has_pool_registration_fields(value: &Value) -> bool {
                 "metadata",
                 "metadataUrl",
                 "metadataHash",
+                "spsCost",
+                "spsMargin",
+                "spsPledge",
+                "spsRewardAccount",
+                "spsOwners",
+                "spsRelays",
+                "spsMetadata",
                 "poolParams",
                 "poolParameters",
                 "pool_params",
@@ -419,24 +453,30 @@ fn parse_registration_details(
     Ok(Some(PoolOnchainRegistration {
         pool_id: Some(pool_id.to_string()),
         ticker: None,
-        margin: parse_f64_field(map.get("margin")),
-        fixed_cost: parse_i64_field(map.get("cost").or_else(|| map.get("fixed_cost"))),
-        pledge: parse_i64_field(map.get("pledge")),
-        reward_account: map
-            .get("rewardAccount")
-            .or_else(|| map.get("reward_account"))
-            .and_then(Value::as_str)
-            .map(ToString::to_string),
-        owners: extract_string_list(map.get("owners")),
-        relays: parse_relay_list(map.get("relays")),
+        margin: parse_f64_field(map.get("margin").or_else(|| map.get("spsMargin"))),
+        fixed_cost: parse_i64_field(
+            map.get("cost")
+                .or_else(|| map.get("fixed_cost"))
+                .or_else(|| map.get("spsCost")),
+        ),
+        pledge: parse_i64_field(map.get("pledge").or_else(|| map.get("spsPledge"))),
+        reward_account: parse_reward_account_field(
+            map.get("rewardAccount")
+                .or_else(|| map.get("reward_account"))
+                .or_else(|| map.get("spsRewardAccount")),
+        ),
+        owners: extract_string_list(map.get("owners").or_else(|| map.get("spsOwners"))),
+        relays: parse_relay_list(map.get("relays").or_else(|| map.get("spsRelays"))),
         metadata_url: map
             .get("metadataUrl")
             .or_else(|| metadata.and_then(|m| m.get("url")))
+            .or_else(|| map.get("spsMetadata").and_then(Value::as_object).and_then(|m| m.get("url")))
             .and_then(Value::as_str)
             .map(ToString::to_string),
         metadata_hash: map
             .get("metadataHash")
             .or_else(|| metadata.and_then(|m| m.get("hash")))
+            .or_else(|| map.get("spsMetadata").and_then(Value::as_object).and_then(|m| m.get("hash")))
             .and_then(Value::as_str)
             .map(ToString::to_string),
     }))
@@ -1155,5 +1195,107 @@ mod tests {
         assert_eq!(registration.metadata_url.as_deref(), Some("https://example.com/nested.json"));
         assert_eq!(registration.metadata_hash.as_deref(), Some("beadfeed"));
         assert_eq!(registration.relays.len(), 1);
+    }
+
+    #[test]
+    fn tc_pool_013_onchain_query_parses_sps_pool_params_shape() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+        let pool_id = pool_insert(&conn, "OURO", "mainnet", Some(0.02), Some(340000000))
+            .expect("insert pool");
+        let machine_id = crate::db::machine_insert(
+            &conn,
+            pool_id,
+            "relay-3",
+            "10.0.0.12",
+            22,
+            "root",
+            "relay",
+            Some("SHA256:relay3"),
+        )
+        .expect("insert machine");
+
+        let ssh = |_: &str, _: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
+            if remote_cmd.contains("query pool-state")
+                && remote_cmd.contains("95e81a695eb880668a5c5a73311e208782a02efdad9905c6f079d458")
+            {
+                return Ok(
+                    r#"{
+                        "95e81a695eb880668a5c5a73311e208782a02efdad9905c6f079d458": {
+                            "futurePoolParams": null,
+                            "poolParams": {
+                                "spsCost": 170000000,
+                                "spsDeposit": 500000000,
+                                "spsMargin": 3.0e-2,
+                                "spsMetadata": {
+                                    "hash": "0ad6ff2157b5d574095f7286cf1ff93ed263a75519860e5779a97f356a4df443",
+                                    "url": "https://www.bubble-studio.xyz/md.json"
+                                },
+                                "spsOwners": [
+                                    "8ccea9173f172483703057243e4abf4eca825a89c389e5636428993e"
+                                ],
+                                "spsPledge": 500000000,
+                                "spsRelays": [
+                                    {
+                                        "single host name": {
+                                            "dnsName": "pool-relay-1.bubble-studio.xyz",
+                                            "port": 3001
+                                        }
+                                    }
+                                ],
+                                "spsRewardAccount": {
+                                    "credential": {
+                                        "keyHash": "8ccea9173f172483703057243e4abf4eca825a89c389e5636428993e"
+                                    },
+                                    "network": "Mainnet"
+                                },
+                                "spsVrf": "04da16f2ed3fd5bae9b45fa6bbcbf7ad59b99de172382480af4fff4229bab903"
+                            },
+                            "retiring": null
+                        }
+                    }"#
+                    .into(),
+                );
+            }
+            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+        };
+
+        let status = pool_onchain_status_with_conn_and_ssh(
+            &conn,
+            PoolOnchainQueryPayload {
+                machine_id,
+                pool_id: Some("95e81a695eb880668a5c5a73311e208782a02efdad9905c6f079d458".into()),
+                cold_vkey_path: None,
+            },
+            &ssh,
+        )
+        .expect("query onchain");
+
+        assert!(status.registered_onchain);
+        let registration = status.registration.expect("registration");
+        assert_eq!(registration.margin, Some(0.03));
+        assert_eq!(registration.fixed_cost, Some(170000000));
+        assert_eq!(registration.pledge, Some(500000000));
+        assert_eq!(
+            registration.reward_account.as_deref(),
+            Some("8ccea9173f172483703057243e4abf4eca825a89c389e5636428993e")
+        );
+        assert_eq!(registration.owners.len(), 1);
+        assert_eq!(registration.relays.len(), 1);
+        assert_eq!(
+            registration.relays[0],
+            PoolOnchainRelay {
+                address: "pool-relay-1.bubble-studio.xyz".into(),
+                port: 3001
+            }
+        );
+        assert_eq!(
+            registration.metadata_url.as_deref(),
+            Some("https://www.bubble-studio.xyz/md.json")
+        );
+        assert_eq!(
+            registration.metadata_hash.as_deref(),
+            Some("0ad6ff2157b5d574095f7286cf1ff93ed263a75519860e5779a97f356a4df443")
+        );
     }
 }

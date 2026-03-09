@@ -72,6 +72,7 @@ Spec-ID：`S0006`
 - [ ] `p6-9` 增加前端注册向导，将 registration 准备与提交链路接入 UI
 - [x] `p6-10` 修复链上状态查询在 docker 无直连权限场景下的错误归因，避免第一次失败的 stderr 污染最终提示
 - [x] `p6-11` 修复链上注册状态查询在新 cardano-cli 下的兼容性：移除 `stake-snapshot` 依赖，并扩宽 `pool-state / pool-params` 的解析结构
+- [x] `p6-12` 兼容 `cardano-cli 10.14.0.0` 的 `sps*` pool 参数结构，确保 relay 查询能返回 registered parameters
 
 ## 4. 测试与验收标准
 
@@ -92,6 +93,7 @@ Spec-ID：`S0006`
 - `2026-03-09T17:05:00+0800` `p6-6` 完成：新增只读的前端注册状态页，接入 `poolOnchainStatus(...)` IPC，可按 relay/bp 机器查询链上注册状态与注册详情，先用于验证 `p6-2` 的链上查询能力，不引入交易提交或注册向导写路径。
 - `2026-03-09T17:20:00+0800` `p6-10` 完成：统一修复 pool / machine / monitor 的 docker SSH 包装器，在回退 `sudo -n docker ...` 前屏蔽第一次无权限直连的 stderr，避免把真实失败原因错误格式化成“当前 SSH 用户无法直接访问 Docker daemon”。 
 - `2026-03-09T17:32:00+0800` `p6-11` 完成：移除 `query stake-snapshot` 作为注册判定来源，改为直接使用 `query pool-state / pool-params` 读取注册详情并据此判定是否已链上注册；同时扩宽对嵌套 `poolParams / poolParameters / currentPoolParams` 等结构的解析，以兼容当前 `cardano-cli 10.14.0.0` 输出。 
+- `2026-03-09T17:40:00+0800` `p6-12` 完成：根据真实 relay 输出，补充 `spsCost / spsMargin / spsPledge / spsRewardAccount / spsOwners / spsRelays / spsMetadata` 字段解析，并兼容 `single host name` relay 结构，使 registered on-chain 状态下能正确返回 registered parameters。 
 
 ## 6. 验证证据（仅追加）
 
@@ -105,6 +107,7 @@ Spec-ID：`S0006`
 - `2026-03-09T17:05:00+0800` `TC-P6-002 | stack: node | command: pnpm build | result: pass | note: PoolRegistrationStatus 页面、App 路由和 Sidebar 入口已纳入构建，前端可只读展示链上注册状态与注册详情。`
 - `2026-03-09T17:20:00+0800` `TC-P6-001 | stack: rust | command: cargo test -q | result: pass | note: tc_pool_011、tc_mch_012、tc_mon_004 断言 docker SSH 包装器会屏蔽第一次无权限直连的 stderr，再回退到 sudo 执行，避免错误提示被 permission denied 污染。`
 - `2026-03-09T17:32:00+0800` `TC-P6-001/002 | stack: rust | command: cargo test -q | result: pass | note: tc_pool_009、tc_pool_010 已切换到 pool-state 判定路径；新增 tc_pool_012 覆盖嵌套 poolParams 结构解析，验证在不依赖 stake-snapshot 的情况下仍可识别已注册 pool 并读取详情。`
+- `2026-03-09T17:40:00+0800` `TC-P6-002 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_013 覆盖 relay 真实 `pool-state / pool-params` 返回的 `sps*` 字段和 `single host name` relay 结构，验证 registered parameters 可被正确映射到前端模型。`
 
 ## 7. 变更记录（仅追加）
 
