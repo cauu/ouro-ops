@@ -311,11 +311,18 @@ fn has_pool_registration_fields(value: &Value) -> bool {
                 "fixed_cost",
                 "pledge",
                 "rewardAccount",
+                "reward_account",
                 "owners",
                 "relays",
                 "metadata",
                 "metadataUrl",
                 "metadataHash",
+                "poolParams",
+                "poolParameters",
+                "pool_params",
+                "currentPoolParams",
+                "futurePoolParams",
+                "params",
             ]
             .iter()
             .any(|key| map.contains_key(*key))
@@ -323,9 +330,30 @@ fn has_pool_registration_fields(value: &Value) -> bool {
         .unwrap_or(false)
 }
 
+fn unwrap_pool_registration_fields<'a>(value: &'a Value) -> Option<&'a Value> {
+    let Value::Object(map) = value else {
+        return None;
+    };
+    for key in [
+        "currentPoolParams",
+        "futurePoolParams",
+        "poolParams",
+        "poolParameters",
+        "pool_params",
+        "params",
+    ] {
+        if let Some(entry) = map.get(key) {
+            if has_pool_registration_fields(entry) || entry.is_object() {
+                return Some(entry);
+            }
+        }
+    }
+    Some(value)
+}
+
 fn find_pool_registration_value<'a>(value: &'a Value, pool_id: &str) -> Option<&'a Value> {
     if has_pool_registration_fields(value) {
-        return Some(value);
+        return unwrap_pool_registration_fields(value);
     }
     match value {
         Value::Object(map) => {
@@ -334,10 +362,24 @@ fn find_pool_registration_value<'a>(value: &'a Value, pool_id: &str) -> Option<&
                     return Some(found);
                 }
             }
+            let object_pool_id = map
+                .get("poolId")
+                .or_else(|| map.get("pool_id"))
+                .or_else(|| map.get("stakePoolId"))
+                .or_else(|| map.get("stake_pool_id"))
+                .and_then(Value::as_str);
+            if object_pool_id == Some(pool_id) {
+                if let Some(found) = unwrap_pool_registration_fields(value) {
+                    if has_pool_registration_fields(found) {
+                        return Some(found);
+                    }
+                }
+            }
             for key in [
                 "currentPoolParams",
                 "futurePoolParams",
                 "poolParams",
+                "poolParameters",
                 "pool_params",
                 "params",
             ] {
@@ -439,6 +481,7 @@ fn query_pool_registration_details(
 ) -> Result<Option<PoolOnchainRegistration>, AppError> {
     let network_args = cli_network_args(network)?;
     let mut last_error = None;
+    let mut parse_failures = 0usize;
     for cli in [
         format!(
             "latest query pool-state --stake-pool-id {pool_id} {network_args} --socket-path /ipc/node.socket"
@@ -461,11 +504,17 @@ fn query_pool_registration_details(
         ) {
             Ok(output) => match parse_registration_details(pool_id, output.as_str()) {
                 Ok(Some(details)) => return Ok(Some(details)),
-                Ok(None) => last_error = Some("onchain details command returned no pool fields".into()),
+                Ok(None) => {
+                    parse_failures += 1;
+                    last_error = Some("onchain details command returned no pool fields".into());
+                }
                 Err(err) => last_error = Some(err.to_string()),
             },
             Err(err) => last_error = Some(err.to_string()),
         }
+    }
+    if parse_failures > 0 {
+        return Ok(None);
     }
     if let Some(err) = last_error {
         return Err(AppError::Internal(format!(
@@ -520,34 +569,14 @@ fn pool_onchain_status_with_conn_and_ssh(
         (None, None) => unreachable!("missing requirements handled above"),
     };
 
-    let network_args = cli_network_args(pool.network.as_str())?;
-    let snapshot_output = ssh_exec(
-        machine.ssh_user.as_str(),
-        machine.ip.as_str(),
-        machine.ssh_port,
-        docker_cardano_cli(
-            format!(
-                "query stake-snapshot --stake-pool-id {resolved_pool_id} {network_args} --socket-path /ipc/node.socket"
-            )
-            .as_str(),
-        )
-        .as_str(),
-    )?;
-    let registered_onchain = !snapshot_output.trim().is_empty();
-    let registration = if registered_onchain {
-        query_pool_registration_details(&machine, pool.network.as_str(), resolved_pool_id.as_str(), ssh_exec)?
-    } else {
-        None
-    };
+    let registration =
+        query_pool_registration_details(&machine, pool.network.as_str(), resolved_pool_id.as_str(), ssh_exec)?;
+    let registered_onchain = registration.is_some();
 
     let note = if registered_onchain {
-        if registration.is_some() {
-            "Pool is registered on-chain; registration details were loaded from cardano-cli query output.".into()
-        } else {
-            "Pool is registered on-chain according to stake-snapshot; detailed registration fields could not be parsed from cardano-cli output.".into()
-        }
+        "Pool is registered on-chain; registration details were loaded from cardano-cli query output.".into()
     } else {
-        "Pool is not registered on-chain according to cardano-cli query stake-snapshot.".into()
+        "Pool is not registered on-chain according to cardano-cli pool-state / pool-params query output.".into()
     };
 
     Ok(PoolOnchainStatus {
@@ -840,10 +869,10 @@ mod tests {
         .expect("insert machine");
 
         let ssh = |_: &str, _: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
-            if remote_cmd.contains("query stake-snapshot")
-                && remote_cmd.contains("--stake-pool-id pool1xyz")
+            if remote_cmd.contains("--stake-pool-id pool1xyz")
+                && (remote_cmd.contains("query pool-state") || remote_cmd.contains("query pool-params"))
             {
-                return Ok(String::new());
+                return Ok("{}".into());
             }
             Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
         };
@@ -950,12 +979,6 @@ mod tests {
         .expect("insert machine");
 
         let ssh = |_: &str, _: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
-            if remote_cmd.contains("query stake-snapshot")
-                && remote_cmd.contains("--stake-pool-id pool1test")
-                && remote_cmd.contains("--mainnet")
-            {
-                return Ok("{\"poolStakeMark\":123}".into());
-            }
             if remote_cmd.contains("query pool-state") && remote_cmd.contains("pool1test") {
                 return Ok(
                     r#"{
@@ -1033,11 +1056,10 @@ mod tests {
             {
                 return Ok("pool1derived".into());
             }
-            if remote_cmd.contains("query stake-snapshot")
+            if remote_cmd.contains("query pool-state")
                 && remote_cmd.contains("--stake-pool-id pool1derived")
-                && remote_cmd.contains("--testnet-magic 1")
             {
-                return Ok(String::new());
+                return Ok("{}".into());
             }
             Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
         };
@@ -1064,5 +1086,74 @@ mod tests {
         let wrapped = wrap_remote_command("docker exec cardano-node cardano-cli query tip");
         assert!(wrapped.contains("docker exec cardano-node cardano-cli query tip"));
         assert!(wrapped.contains("2>/dev/null || sudo -n docker exec cardano-node cardano-cli query tip"));
+    }
+
+    #[test]
+    fn tc_pool_012_onchain_query_parses_nested_pool_params_shape() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+        let pool_id = pool_insert(&conn, "OURO", "mainnet", Some(0.02), Some(340000000))
+            .expect("insert pool");
+        let machine_id = crate::db::machine_insert(
+            &conn,
+            pool_id,
+            "relay-2",
+            "10.0.0.11",
+            22,
+            "root",
+            "relay",
+            Some("SHA256:relay2"),
+        )
+        .expect("insert machine");
+
+        let ssh = |_: &str, _: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
+            if remote_cmd.contains("query pool-state") && remote_cmd.contains("pool1nested") {
+                return Ok(
+                    r#"{
+                        "pools": [
+                            {
+                                "poolId": "pool1nested",
+                                "poolParams": {
+                                    "margin": {"numerator": 1, "denominator": 10},
+                                    "cost": 500000000,
+                                    "pledge": 900000000,
+                                    "reward_account": "stake1nestedreward",
+                                    "owners": ["stake1nestedowner"],
+                                    "relays": [{"hostname": "relay.nested.example", "port": 3001}],
+                                    "metadataUrl": "https://example.com/nested.json",
+                                    "metadataHash": "beadfeed"
+                                }
+                            }
+                        ]
+                    }"#
+                    .into(),
+                );
+            }
+            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+        };
+
+        let status = pool_onchain_status_with_conn_and_ssh(
+            &conn,
+            PoolOnchainQueryPayload {
+                machine_id,
+                pool_id: Some("pool1nested".into()),
+                cold_vkey_path: None,
+            },
+            &ssh,
+        )
+        .expect("query onchain");
+
+        assert!(status.registered_onchain);
+        let registration = status.registration.expect("registration");
+        assert_eq!(registration.margin, Some(0.1));
+        assert_eq!(registration.fixed_cost, Some(500000000));
+        assert_eq!(registration.pledge, Some(900000000));
+        assert_eq!(
+            registration.reward_account.as_deref(),
+            Some("stake1nestedreward")
+        );
+        assert_eq!(registration.metadata_url.as_deref(), Some("https://example.com/nested.json"));
+        assert_eq!(registration.metadata_hash.as_deref(), Some("beadfeed"));
+        assert_eq!(registration.relays.len(), 1);
     }
 }
