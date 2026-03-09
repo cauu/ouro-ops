@@ -81,6 +81,7 @@ pub fn run() {
             commands::runtime::runtime_config_status,
             commands::runtime::runtime_restart,
             commands::runtime::runtime_restart_status,
+            commands::task::task_recent_list,
             commands::upgrade::upgrade_start,
             commands::upgrade::upgrade_status,
             commands::upgrade::upgrade_confirm_next,
@@ -166,6 +167,8 @@ mod frontend_tests {
         assert!(dashboard.contains("useMonitorStore()"));
         assert!(dashboard.contains("startMonitorStore(30)"));
         assert!(dashboard.contains("stopMonitorStore()"));
+        assert!(dashboard.contains("Recent Tasks"));
+        assert!(dashboard.contains("KES Rotation Watch"));
         assert!(dashboard.contains("Blocks/min"));
         assert!(dashboard.contains("Sync Progress"));
         assert!(dashboard.contains("Snapshot Restore"));
@@ -425,5 +428,21 @@ mod frontend_tests {
         assert!(upgrade.contains("\"upgrade:gate\""));
         assert!(upgrade.contains("completed_machine"));
         assert!(upgrade.contains("next_machine"));
+    }
+
+    #[test]
+    fn tc_fe_016_ipc_exposes_recent_tasks() {
+        let ipc = include_str!("../../src/lib/ipc.ts");
+        let types = include_str!("../../src/lib/types.ts");
+        assert!(ipc.contains("taskRecentList"));
+        assert!(types.contains("export interface RecentTaskSummary"));
+    }
+
+    #[test]
+    fn tc_task_002_task_commands_registered() {
+        let commands = include_str!("commands/mod.rs");
+        let lib = include_str!("lib.rs");
+        assert!(commands.contains("pub mod task;"));
+        assert!(lib.contains("commands::task::task_recent_list"));
     }
 }

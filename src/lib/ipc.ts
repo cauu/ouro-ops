@@ -14,6 +14,7 @@ import type {
   PoolInitPayload,
   PoolUpdatePayload,
   PreflightReport,
+  RecentTaskSummary,
   RuntimeProbe,
   SshKeyInfo,
 } from "./types";
@@ -134,6 +135,10 @@ export async function runtimeRestart(machineId: number): Promise<string> {
 
 export async function runtimeRestartStatus(taskId: string): Promise<DeployTaskStatus> {
   return invoke("runtime_restart_status", { taskId });
+}
+
+export async function taskRecentList(limit?: number): Promise<RecentTaskSummary[]> {
+  return invoke("task_recent_list", { limit: limit ?? null });
 }
 
 export async function upgradeStart(payload: UpgradePayload): Promise<string> {

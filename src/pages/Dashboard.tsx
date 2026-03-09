@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { dbVersion, ping, runPlaybookTest } from "../lib/ipc";
+import { dbVersion, kesStatusAll, ping, runPlaybookTest, taskRecentList } from "../lib/ipc";
 import {
   refreshMonitorStore,
   startMonitorStore,
   stopMonitorStore,
   useMonitorStore,
 } from "../lib/monitorStore";
-import type { DbVersionResult } from "../lib/types";
+import type { DbVersionResult, KesStatus, RecentTaskSummary } from "../lib/types";
 
 function formatProgress(value: number | null): string {
   if (value === null) {
@@ -82,15 +82,51 @@ function formatStage(stage: string): string {
   }
 }
 
+function severityTone(severity: string): string {
+  switch (severity) {
+    case "healthy":
+      return "text-emerald-300";
+    case "critical":
+      return "text-red-300";
+    default:
+      return "text-amber-300";
+  }
+}
+
+function taskTone(status: string): string {
+  switch (status) {
+    case "success":
+      return "text-emerald-300";
+    case "failed":
+    case "cancelled":
+      return "text-red-300";
+    case "paused":
+      return "text-amber-300";
+    case "running":
+      return "text-sky-300";
+    default:
+      return "text-zinc-300";
+  }
+}
+
+function formatTaskLabel(value: string): string {
+  return value.split("_").join(" ");
+}
+
 export default function Dashboard() {
   const [status, setStatus] = useState<string>("loading");
   const [dbInfo, setDbInfo] = useState<DbVersionResult | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
+  const [kesStatuses, setKesStatuses] = useState<KesStatus[]>([]);
+  const [recentTasks, setRecentTasks] = useState<RecentTaskSummary[]>([]);
   const { snapshots, status: monitorStatus } = useMonitorStore();
 
   const refreshMonitor = useCallback(async () => {
     await refreshMonitorStore();
+    const [nextKes, nextTasks] = await Promise.all([kesStatusAll(), taskRecentList(8)]);
+    setKesStatuses(nextKes);
+    setRecentTasks(nextTasks);
   }, []);
 
   useEffect(() => {
@@ -101,6 +137,9 @@ export default function Dashboard() {
         const version = await dbVersion();
         setDbInfo(version);
         await startMonitorStore(30);
+        const [nextKes, nextTasks] = await Promise.all([kesStatusAll(), taskRecentList(8)]);
+        setKesStatuses(nextKes);
+        setRecentTasks(nextTasks);
       } catch (error) {
         setStatus(`Error: ${String(error)}`);
       }
@@ -133,6 +172,10 @@ export default function Dashboard() {
     }
   };
 
+  const healthyMachines = snapshots.filter((row) => row.health_level === "healthy").length;
+  const warningMachines = snapshots.filter((row) => row.health_level === "warning").length;
+  const criticalMachines = snapshots.filter((row) => row.health_level === "critical").length;
+
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
@@ -144,6 +187,83 @@ export default function Dashboard() {
           <span className="font-medium text-zinc-100">DB:</span> user_version={dbInfo.user_version}
         </p>
       )}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-4">
+          <h2 className="text-sm font-semibold text-zinc-100">Fleet Health</h2>
+          <dl className="mt-3 grid grid-cols-3 gap-3 text-sm">
+            <div>
+              <dt className="text-zinc-500">Healthy</dt>
+              <dd className="mt-1 font-medium text-emerald-300">{healthyMachines}</dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">Warning</dt>
+              <dd className="mt-1 font-medium text-amber-300">{warningMachines}</dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">Critical</dt>
+              <dd className="mt-1 font-medium text-red-300">{criticalMachines}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-4">
+          <h2 className="text-sm font-semibold text-zinc-100">KES Rotation Watch</h2>
+          <div className="mt-3 space-y-2">
+            {kesStatuses.length === 0 ? (
+              <p className="text-sm text-zinc-400">No BP KES status loaded.</p>
+            ) : (
+              kesStatuses.slice(0, 4).map((row) => (
+                <div
+                  key={row.machine_id}
+                  className="flex items-center justify-between rounded-md border border-zinc-800 bg-black/20 px-3 py-2 text-sm"
+                >
+                  <div>
+                    <p className="font-medium text-zinc-100">{row.machine_name}</p>
+                    <p className="text-xs text-zinc-500">
+                      {row.remaining_days ?? "--"} day(s) remaining
+                    </p>
+                  </div>
+                  <span className={`text-xs uppercase ${severityTone(row.severity)}`}>
+                    {row.severity}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-4">
+          <h2 className="text-sm font-semibold text-zinc-100">Recent Tasks</h2>
+          <div className="mt-3 space-y-2">
+            {recentTasks.length === 0 ? (
+              <p className="text-sm text-zinc-400">No tasks recorded yet.</p>
+            ) : (
+              recentTasks.slice(0, 5).map((task) => (
+                <div
+                  key={task.task_id}
+                  className="rounded-md border border-zinc-800 bg-black/20 px-3 py-2 text-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium text-zinc-100">{formatTaskLabel(task.task_type)}</p>
+                    <span className={`text-xs uppercase ${taskTone(task.status)}`}>
+                      {formatTaskLabel(task.status)}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {task.phase ? `${formatTaskLabel(task.phase)} · ` : ""}
+                    {task.machine_count} machine(s) · {task.created_at}
+                  </p>
+                  {task.error_msg && (
+                    <p className="mt-2 rounded-md border border-red-950 bg-red-950/30 px-2 py-1 text-xs text-red-200">
+                      {task.error_msg}
+                    </p>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
       <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>

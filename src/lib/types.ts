@@ -144,6 +144,18 @@ export interface DeployTaskStatus {
   machine_statuses: TaskMachineStatus[];
 }
 
+export interface RecentTaskSummary {
+  task_id: string;
+  task_type: string;
+  status: string;
+  phase: string | null;
+  error_msg: string | null;
+  machine_count: number;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
 export interface TaskLogEvent {
   task_id: string;
   stream: "stdout" | "stderr" | string;
