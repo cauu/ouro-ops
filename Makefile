@@ -7,7 +7,7 @@ SHELL := /bin/bash
 	test test-rust test-rust-quiet \
 	check check-rust \
 	ansible-syntax-check \
-	phase1-verify phase2-verify phase3-verify phase3-6-verify \
+	phase1-verify phase2-verify phase3-verify phase3-6-verify phase4-verify \
 	status
 
 help: ## Show available commands
@@ -63,6 +63,15 @@ phase2-verify: test-rust ## Verify Phase 2 backend tests
 phase3-verify: test-rust build ## Verify Phase 3 backend + frontend baseline
 
 phase3-6-verify: test-rust-quiet build ansible-syntax-check ## Verify Phase 3.6 Mithril local checks
+
+phase4-verify: test-rust-quiet build ## Verify Phase 4 local checks
+	mkdir -p /tmp/ansible-local
+	ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml
+	ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/runtime-config.yml
+	ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/runtime-restart.yml
+	ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/kes-push.yml
+	ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/upgrade.yml
+	ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/rollback.yml
 
 status: ## Show concise git status
 	git status --short
