@@ -27,6 +27,43 @@ export interface PoolUpdatePayload {
   fixed_cost?: number;
 }
 
+export interface PoolOnchainQueryPayload {
+  machine_id: number;
+  pool_id?: string;
+  cold_vkey_path?: string;
+}
+
+export interface PoolOnchainRelay {
+  address: string;
+  port: number;
+}
+
+export interface PoolOnchainRegistration {
+  pool_id: string | null;
+  ticker: string | null;
+  margin: number | null;
+  fixed_cost: number | null;
+  pledge: number | null;
+  reward_account: string | null;
+  owners: string[];
+  relays: PoolOnchainRelay[];
+  metadata_url: string | null;
+  metadata_hash: string | null;
+}
+
+export interface PoolOnchainStatus {
+  machine_id: number;
+  machine_name: string;
+  network: "mainnet" | "preprod" | "preview" | string;
+  query_source: "pool_id" | "cold_vkey" | "unresolved" | string;
+  pool_id: string | null;
+  cold_vkey_path: string | null;
+  registered_onchain: boolean;
+  registration: PoolOnchainRegistration | null;
+  missing_requirements: string[];
+  note: string;
+}
+
 export interface Machine {
   id: number;
   pool_id: number;

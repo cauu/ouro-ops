@@ -62,7 +62,7 @@ Spec-ID：`S0006`
 ## 3. 执行计划
 
 - [x] `p6-8` 将 `S0006` 提升为唯一 active spec，并承接 `S0005` 已交付的 Phase 4 基线
-- [ ] `p6-1` 定义链上注册状态查询接口与返回模型
+- [x] `p6-1` 定义链上注册状态查询接口与返回模型
 - [ ] `p6-2` 实现 stake pool 是否已注册的链上判断与详情读取
 - [ ] `p6-3` 将 Settings 中误导性的本地可编辑链上字段改为只读或迁移
 - [ ] `p6-4` 设计并实现 registration 准备流程：参数校验、证书生成、交易草稿
@@ -78,16 +78,20 @@ Spec-ID：`S0006`
 - `TC-P6-004` 注册提交流程具备显式确认、失败可见性和审计记录。
 - `TC-P6-005` 不再允许用户将仅本地可写的字段误认为链上已生效配置。
 - `TC-P6-006` spec 切换后，`docs/specs/` 根目录应仅保留 `S0006` 作为 active spec，`S0005` 应进入 `completed/`，且 `docs/README.md` 入口一致。
+- `TC-P6-007` 后端与前端应暴露统一的链上注册状态查询接口、请求模型与返回模型；在 `p6-2` 落地真实链上查询前，接口至少能完成本地校验并返回一致的占位结构。
 
 ## 5. 执行日志（仅追加）
 
 - `2026-03-09` `p6-0` 初始化 draft spec：将“stake pool 链上注册状态查询与注册流程”收敛为独立草案，等待后续启动执行。
 - `2026-03-09T16:02:09+0800` `p6-8` 完成：`S0006` 从 draft 提升为唯一 active spec，并显式承接 `S0005` 已交付的 Phase 4 运行时、监控、KES、升级与审计基线。
+- `2026-03-09T16:12:00+0800` `p6-1` 完成：新增 `pool_onchain_status` 查询契约、请求/返回模型和前端 IPC；当前实现先完成本地校验和占位返回，真实 `cardano-cli` 查询逻辑留待 `p6-2`。
 
 ## 6. 验证证据（仅追加）
 
 - `2026-03-09` `TC-P6-001/002/003/004/005 | stack: other | command: manual repository inspection | result: pass | note: 已确认当前仓库仅覆盖本地 pool 元数据与节点运维链路，尚未实现链上注册查询与注册提交；因此独立起草新 spec，避免继续误用 Settings 中的本地字段。`
 - `2026-03-09T16:02:09+0800` `TC-P6-006 | stack: other | command: manual inspection of docs/specs tree and docs/README.md | result: pass | note: S0006 已提升为根目录唯一 active spec，S0005 已转入 completed，README 当前活动入口已切换到 S0006。`
+- `2026-03-09T16:12:00+0800` `TC-P6-007 | stack: rust | command: cargo test -q | result: pass | note: tc_pool_006~008 覆盖链上查询契约的请求来源判定、缺失输入提示和机器角色限制；命令注册与静态接口断言通过。`
+- `2026-03-09T16:12:00+0800` `TC-P6-007 | stack: node | command: pnpm build | result: pass | note: 前端已暴露 PoolOnchainQueryPayload、PoolOnchainStatus 模型和 poolOnchainStatus IPC，构建通过。`
 
 ## 7. 变更记录（仅追加）
 

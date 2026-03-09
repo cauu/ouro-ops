@@ -59,6 +59,7 @@ pub fn run() {
             commands::pool::pool_init,
             commands::pool::pool_get,
             commands::pool::pool_update,
+            commands::pool::pool_onchain_status,
             commands::machine::machine_add,
             commands::machine::machine_remove,
             commands::machine::machine_list,
@@ -478,6 +479,23 @@ mod frontend_tests {
         assert!(dashboard.contains("truncatePreview(status, 160)"));
         assert!(dashboard.contains("title={snapshot.note}"));
         assert!(dashboard.contains("truncatePreview(snapshot.note, 220)"));
+    }
+
+    #[test]
+    fn tc_fe_021_ipc_exposes_pool_onchain_query() {
+        let ipc = include_str!("../../src/lib/ipc.ts");
+        assert!(ipc.contains("poolOnchainStatus"));
+        assert!(ipc.contains("pool_onchain_status"));
+    }
+
+    #[test]
+    fn tc_fe_022_types_expose_pool_onchain_models() {
+        let types = include_str!("../../src/lib/types.ts");
+        assert!(types.contains("export interface PoolOnchainQueryPayload"));
+        assert!(types.contains("export interface PoolOnchainRelay"));
+        assert!(types.contains("export interface PoolOnchainRegistration"));
+        assert!(types.contains("export interface PoolOnchainStatus"));
+        assert!(types.contains("missing_requirements: string[]"));
     }
 
     #[test]

@@ -1,7 +1,10 @@
 use rusqlite::Connection;
 use tauri::State;
 
-use crate::db::{audit_log_insert, pool_get_single, pool_insert, pool_update_single, DbState, PoolRow};
+use crate::db::{
+    audit_log_insert, machine_get, pool_get_single, pool_insert, pool_update_single, DbState,
+    PoolRow,
+};
 use crate::error::AppError;
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -19,6 +22,13 @@ pub struct PoolUpdatePayload {
     pub fixed_cost: Option<i64>,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct PoolOnchainQueryPayload {
+    pub machine_id: i64,
+    pub pool_id: Option<String>,
+    pub cold_vkey_path: Option<String>,
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct Pool {
     pub id: i64,
@@ -29,6 +39,40 @@ pub struct Pool {
     pub kes_expiry_date: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct PoolOnchainRelay {
+    pub address: String,
+    pub port: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct PoolOnchainRegistration {
+    pub pool_id: Option<String>,
+    pub ticker: Option<String>,
+    pub margin: Option<f64>,
+    pub fixed_cost: Option<i64>,
+    pub pledge: Option<i64>,
+    pub reward_account: Option<String>,
+    pub owners: Vec<String>,
+    pub relays: Vec<PoolOnchainRelay>,
+    pub metadata_url: Option<String>,
+    pub metadata_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct PoolOnchainStatus {
+    pub machine_id: i64,
+    pub machine_name: String,
+    pub network: String,
+    pub query_source: String,
+    pub pool_id: Option<String>,
+    pub cold_vkey_path: Option<String>,
+    pub registered_onchain: bool,
+    pub registration: Option<PoolOnchainRegistration>,
+    pub missing_requirements: Vec<String>,
+    pub note: String,
 }
 
 fn validate_network(network: &str) -> Result<(), AppError> {
@@ -78,6 +122,50 @@ fn into_pool(row: PoolRow) -> Pool {
         created_at: row.created_at,
         updated_at: row.updated_at,
     }
+}
+
+fn determine_query_source(payload: &PoolOnchainQueryPayload) -> String {
+    if payload.pool_id.is_some() {
+        "pool_id".into()
+    } else if payload.cold_vkey_path.is_some() {
+        "cold_vkey".into()
+    } else {
+        "unresolved".into()
+    }
+}
+
+fn pool_onchain_status_with_conn(
+    conn: &Connection,
+    payload: PoolOnchainQueryPayload,
+) -> Result<PoolOnchainStatus, AppError> {
+    let pool =
+        pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
+    let machine = machine_get(conn, payload.machine_id)?
+        .ok_or_else(|| AppError::Internal(format!("machine {} not found", payload.machine_id)))?;
+
+    if !matches!(machine.role.as_str(), "relay" | "bp") {
+        return Err(AppError::Internal(
+            "onchain query requires relay or bp machine".into(),
+        ));
+    }
+
+    let mut missing_requirements = Vec::new();
+    if payload.pool_id.is_none() && payload.cold_vkey_path.is_none() {
+        missing_requirements.push("pool_id or cold_vkey_path".into());
+    }
+
+    Ok(PoolOnchainStatus {
+        machine_id: machine.id,
+        machine_name: machine.name,
+        network: pool.network,
+        query_source: determine_query_source(&payload),
+        pool_id: payload.pool_id,
+        cold_vkey_path: payload.cold_vkey_path,
+        registered_onchain: false,
+        registration: None,
+        missing_requirements,
+        note: "On-chain registration query contract is defined; actual cardano-cli query will be implemented in p6-2.".into(),
+    })
 }
 
 fn pool_init_with_conn(conn: &Connection, payload: PoolInitPayload) -> Result<Pool, AppError> {
@@ -174,6 +262,15 @@ pub async fn pool_update(
 ) -> Result<Pool, AppError> {
     let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
     pool_update_with_conn(&conn, payload)
+}
+
+#[tauri::command]
+pub async fn pool_onchain_status(
+    payload: PoolOnchainQueryPayload,
+    db: State<'_, DbState>,
+) -> Result<PoolOnchainStatus, AppError> {
+    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    pool_onchain_status_with_conn(&conn, payload)
 }
 
 #[cfg(test)]
@@ -316,8 +413,108 @@ mod tests {
                 "SELECT COUNT(*) FROM audit_log WHERE action = 'pool_update'",
                 [],
                 |r| r.get(0),
-            )
-            .expect("count audit");
+        )
+        .expect("count audit");
         assert_eq!(count_audit, 1);
+    }
+
+    #[test]
+    fn tc_pool_006_onchain_query_contract_prefers_pool_id_source() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+        let pool_id = pool_insert(&conn, "OURO", "mainnet", Some(0.02), Some(340000000))
+            .expect("insert pool");
+        let machine_id = crate::db::machine_insert(
+            &conn,
+            pool_id,
+            "relay-1",
+            "10.0.0.1",
+            22,
+            "root",
+            "relay",
+            Some("SHA256:relay"),
+        )
+        .expect("insert machine");
+
+        let status = pool_onchain_status_with_conn(
+            &conn,
+            PoolOnchainQueryPayload {
+                machine_id,
+                pool_id: Some("pool1xyz".into()),
+                cold_vkey_path: Some("/tmp/cold.vkey".into()),
+            },
+        )
+        .expect("query contract");
+
+        assert_eq!(status.machine_name, "relay-1");
+        assert_eq!(status.network, "mainnet");
+        assert_eq!(status.query_source, "pool_id");
+        assert_eq!(status.pool_id.as_deref(), Some("pool1xyz"));
+        assert!(status.registration.is_none());
+        assert!(!status.registered_onchain);
+        assert!(status.missing_requirements.is_empty());
+    }
+
+    #[test]
+    fn tc_pool_007_onchain_query_contract_reports_missing_inputs() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+        let pool_id = pool_insert(&conn, "OURO", "preprod", Some(0.02), Some(340000000))
+            .expect("insert pool");
+        let machine_id = crate::db::machine_insert(
+            &conn,
+            pool_id,
+            "bp-1",
+            "10.0.0.2",
+            22,
+            "root",
+            "bp",
+            Some("SHA256:bp"),
+        )
+        .expect("insert machine");
+
+        let status = pool_onchain_status_with_conn(
+            &conn,
+            PoolOnchainQueryPayload {
+                machine_id,
+                pool_id: None,
+                cold_vkey_path: None,
+            },
+        )
+        .expect("query contract");
+
+        assert_eq!(status.query_source, "unresolved");
+        assert_eq!(status.missing_requirements, vec!["pool_id or cold_vkey_path"]);
+    }
+
+    #[test]
+    fn tc_pool_008_onchain_query_rejects_archive_machine() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+        let pool_id = pool_insert(&conn, "OURO", "mainnet", Some(0.02), Some(340000000))
+            .expect("insert pool");
+        let machine_id = crate::db::machine_insert(
+            &conn,
+            pool_id,
+            "archive-1",
+            "10.0.0.3",
+            22,
+            "root",
+            "archive",
+            Some("SHA256:archive"),
+        )
+        .expect("insert machine");
+
+        let err = pool_onchain_status_with_conn(
+            &conn,
+            PoolOnchainQueryPayload {
+                machine_id,
+                pool_id: Some("pool1xyz".into()),
+                cold_vkey_path: None,
+            },
+        )
+        .expect_err("archive should be rejected");
+
+        assert!(format!("{err}").contains("requires relay or bp machine"));
     }
 }
