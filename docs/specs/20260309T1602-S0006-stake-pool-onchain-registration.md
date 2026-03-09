@@ -68,8 +68,8 @@ Spec-ID：`S0006`
 - [x] `p6-4` 设计并实现 registration 准备流程：参数校验、证书生成、交易草稿
 - [x] `p6-5` 设计并实现 registration 提交流程：签名输入、交易提交与结果回执
 - [x] `p6-6` 增加前端注册状态页，支持对 `p6-2` 的链上查询能力进行可视化验证
-- [ ] `p6-7` 增加高风险确认、审计记录与验收验证
-- [ ] `p6-9` 增加前端注册向导，将 registration 准备与提交链路接入 UI
+- [x] `p6-7` 增加高风险确认、审计记录与验收验证
+- [x] `p6-9` 增加前端注册向导，将 registration 准备与提交链路接入 UI
 - [x] `p6-10` 修复链上状态查询在 docker 无直连权限场景下的错误归因，避免第一次失败的 stderr 污染最终提示
 - [x] `p6-11` 修复链上注册状态查询在新 cardano-cli 下的兼容性：移除 `stake-snapshot` 依赖，并扩宽 `pool-state / pool-params` 的解析结构
 - [x] `p6-12` 兼容 `cardano-cli 10.14.0.0` 的 `sps*` pool 参数结构，确保 relay 查询能返回 registered parameters
@@ -120,6 +120,8 @@ Spec-ID：`S0006`
 - `2026-03-09T23:58:00+0800` `p6-4` 回归修正：补齐 `pool_registration_prepare` 的审计写入，修正测试夹具对 docker shell 内层转义的匹配方式，并改为基于已解析的容器内 `cold.vkey` 路径推导 `pool_id`，确保 registration prepare 在真实命令拼装下仍能稳定返回证书和交易草稿。
 - `2026-03-09T21:54:25+0800` `p6-5` 完成：新增 `pool_registration_submit` 后端链路，支持显式确认 `pool_id`、校验 registration certificate / cold signing key / owner signing keys / payment signing key、查询付款地址 UTxO、构建 `cardano-cli latest transaction build`、执行签名与提交，并返回 `tx_body_path`、`tx_signed_path`、`tx_hash`、`tx_inputs` 与缺失材料清单；同时写入 `pool_registration_submit` 审计记录。 
 - `2026-03-10T00:28:00+0800` `p6-20` 完成：基于“热环境不得存放 `cold.skey/cold.vkey`”的安全约束，重构 registration flow：`pool_registration_prepare` 改为仅校验并消费冷环境预先生成的 registration certificate，在热环境构建 unsigned tx draft；`pool_registration_submit` 改为仅消费冷环境预先签名的 tx 文件并执行提交，彻底移除热环境对 `cold.skey/cold.vkey` 的依赖。 
+- `2026-03-10T09:03:00+0800` `p6-7` 完成：将 registration submit 的高风险确认正式收敛到前端注册向导，要求用户在提交前显式重输 `pool_id`，并复用后端已有的 `pool_registration_prepare / pool_registration_submit` 审计日志作为提交链路的审计基线。 
+- `2026-03-10T09:03:00+0800` `p6-9` 完成：新增 Dashboard 内嵌的注册向导，串起 hot prepare、cold sign 提示、hot submit 三段式交互，不再要求用户跳转独立页面完成注册准备与提交。 
 
 ## 6. 验证证据（仅追加）
 
@@ -154,6 +156,8 @@ Spec-ID：`S0006`
 - `2026-03-09T21:54:25+0800` `TC-P6-004 | stack: node | command: pnpm build | result: pass | note: 前端 IPC / 类型已补齐 PoolRegistrationSubmitPayload / PoolRegistrationSubmitResult，注册提交链路可供后续注册向导直接接入。`
 - `2026-03-10T00:28:00+0800` `TC-P6-003/004 | stack: rust | command: cargo test -q | result: pass | note: registration prepare/submit 契约已切换为“热 build/submit，冷 cert/sign”模型；新增回归测试确认热环境不再要求 cold.skey/cold.vkey，且 prepare 仅构建 unsigned tx，submit 仅提交预签名交易。`
 - `2026-03-10T00:28:00+0800` `TC-P6-003/004 | stack: node | command: pnpm build | result: pass | note: 前端类型与 IPC 已同步移除 hot cold key 依赖，后续注册向导将以离线证书和预签名交易作为输入。`
+- `2026-03-10T09:03:00+0800` `TC-P6-004 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_fe_027，断言 Dashboard 内嵌注册向导已接入 prepare/submit IPC、offline signing 提示和 confirm_pool_id 高风险确认字段；全量测试通过。`
+- `2026-03-10T09:03:00+0800` `TC-P6-004 | stack: node | command: pnpm build | result: pass | note: Dashboard 的 Register New Pool 卡片已接入注册向导，前端构建通过，用户可在同一页面完成 unsigned tx prepare、冷签说明和 signed tx submit。`
 
 ## 7. 变更记录（仅追加）
 
@@ -165,3 +169,4 @@ Spec-ID：`S0006`
 - `2026-03-09T21:10:00+0800` 基于用户确认，补充 pool 信息的 unbound 能力：已绑定 pool 需要支持解除绑定，并回到 Dashboard 的未绑定引导状态。
 - `2026-03-09T22:10:00+0800` 基于用户确认，推进 `p6-3`：不再把 Settings 作为本地链上参数编辑入口，改为只读说明页，将链上参数展示统一收敛到 Dashboard 中的 bound on-chain pool 卡片。 
 - `2026-03-10T00:12:00+0800` 基于用户确认，“热环境不应存放 `cold.skey/cold.vkey`”被收敛为当前 active spec 的安全纠偏项；已完成的 `p6-4/p6-5` 不回写历史，改以追加事项的方式重构 registration flow。 
+- `2026-03-10T08:48:00+0800` 基于用户确认，将原本过大的前端注册能力拆成“只读注册状态页”和“注册向导”两部分；当前先补齐 Dashboard 内嵌注册向导与高风险确认，便于在不跳转页面的情况下完成 prepare / cold sign / submit 全链路验证。 

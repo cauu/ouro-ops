@@ -565,9 +565,22 @@ mod frontend_tests {
         assert!(dashboard.contains("Bind Existing Pool"));
         assert!(dashboard.contains("Register New Pool"));
         assert!(dashboard.contains("<PoolRegistrationStatus"));
+        assert!(dashboard.contains("<PoolRegistrationWizard"));
         assert!(dashboard.contains("pool.onchain_registered && pool.onchain_pool_id"));
         assert!(dashboard.contains("Unbind Pool"));
         assert!(dashboard.contains("poolUnbindOnchain()"));
+    }
+
+    #[test]
+    fn tc_fe_027_registration_wizard_wires_prepare_and_submit() {
+        let page = include_str!("../../src/pages/PoolRegistrationWizard.tsx");
+        assert!(page.contains("poolRegistrationPrepare({"));
+        assert!(page.contains("poolRegistrationSubmit({"));
+        assert!(page.contains("Prepare Registration"));
+        assert!(page.contains("Submit Registration"));
+        assert!(page.contains("Confirm Pool ID"));
+        assert!(page.contains("offline_signing_required"));
+        assert!(page.contains("confirm_pool_id"));
     }
 
     #[test]

@@ -18,6 +18,7 @@ import {
 } from "../lib/monitorStore";
 import type { DbVersionResult, KesStatus, Pool, RecentTaskSummary } from "../lib/types";
 import PoolRegistrationStatus from "./PoolRegistrationStatus";
+import PoolRegistrationWizard from "./PoolRegistrationWizard";
 
 function formatProgress(value: number | null): string {
   if (value === null) {
@@ -361,12 +362,12 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
             <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-4">
               <h2 className="text-sm font-semibold text-zinc-100">Register New Pool</h2>
               <p className="mt-2 text-sm text-zinc-400">
-                If this workspace does not correspond to an existing on-chain `pool_id`, continue with the
-                upcoming registration flow. That flow will generate registration materials, drive signing,
-                and submit the transaction explicitly.
+                If this workspace does not correspond to an existing on-chain `pool_id`, use the
+                registration flow below. The hot node only prepares an unsigned transaction and submits a
+                pre-signed transaction; certificate generation and signing stay in the cold environment.
               </p>
-              <div className="mt-4 rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
-                Registration guidance is part of the remaining `S0006` items and is not wired into the UI yet.
+              <div className="mt-4">
+                <PoolRegistrationWizard poolTicker={pool.ticker} />
               </div>
             </div>
           </section>
