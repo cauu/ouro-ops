@@ -114,6 +114,13 @@ function formatTaskLabel(value: string): string {
   return value.split("_").join(" ");
 }
 
+function truncateTaskError(value: string, maxLength = 180): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength).trimEnd()}...`;
+}
+
 export default function Dashboard() {
   const [status, setStatus] = useState<string>("loading");
   const [dbInfo, setDbInfo] = useState<DbVersionResult | null>(null);
@@ -239,28 +246,34 @@ export default function Dashboard() {
             {recentTasks.length === 0 ? (
               <p className="text-sm text-zinc-400">No tasks recorded yet.</p>
             ) : (
-              recentTasks.slice(0, 5).map((task) => (
-                <div
-                  key={task.task_id}
-                  className="rounded-md border border-zinc-800 bg-black/20 px-3 py-2 text-sm"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-medium text-zinc-100">{formatTaskLabel(task.task_type)}</p>
-                    <span className={`text-xs uppercase ${taskTone(task.status)}`}>
-                      {formatTaskLabel(task.status)}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    {task.phase ? `${formatTaskLabel(task.phase)} · ` : ""}
-                    {task.machine_count} machine(s) · {task.created_at}
-                  </p>
-                  {formatTaskError(task.error_msg) && (
-                    <p className="mt-2 rounded-md border border-red-950 bg-red-950/30 px-2 py-1 text-xs text-red-200">
-                      {formatTaskError(task.error_msg)}
+              recentTasks.slice(0, 5).map((task) => {
+                const taskError = formatTaskError(task.error_msg);
+                return (
+                  <div
+                    key={task.task_id}
+                    className="rounded-md border border-zinc-800 bg-black/20 px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium text-zinc-100">{formatTaskLabel(task.task_type)}</p>
+                      <span className={`text-xs uppercase ${taskTone(task.status)}`}>
+                        {formatTaskLabel(task.status)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {task.phase ? `${formatTaskLabel(task.phase)} · ` : ""}
+                      {task.machine_count} machine(s) · {task.created_at}
                     </p>
-                  )}
-                </div>
-              ))
+                    {taskError && (
+                      <p
+                        title={taskError}
+                        className="mt-2 max-h-20 overflow-hidden rounded-md border border-red-950 bg-red-950/30 px-2 py-1 text-xs text-red-200 break-words"
+                      >
+                        {truncateTaskError(taskError)}
+                      </p>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>

@@ -464,6 +464,14 @@ mod frontend_tests {
     }
 
     #[test]
+    fn tc_fe_019_dashboard_truncates_recent_task_errors() {
+        let dashboard = include_str!("../../src/pages/Dashboard.tsx");
+        assert!(dashboard.contains("truncateTaskError("));
+        assert!(dashboard.contains("max-h-20 overflow-hidden"));
+        assert!(dashboard.contains("title={taskError}"));
+    }
+
+    #[test]
     fn tc_task_002_task_commands_registered() {
         let commands = include_str!("commands/mod.rs");
         let lib = include_str!("lib.rs");
