@@ -211,6 +211,29 @@ pub fn pool_bind_onchain_single(
     pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool disappeared after bind".into()))
 }
 
+pub fn pool_unbind_onchain_single(conn: &Connection) -> Result<PoolRow, AppError> {
+    let current =
+        pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
+
+    conn.execute(
+        "UPDATE pool
+         SET onchain_pool_id = NULL,
+             onchain_registered = 0,
+             pledge = NULL,
+             reward_account = NULL,
+             metadata_url = NULL,
+             metadata_hash = NULL,
+             owners_json = '[]',
+             relays_json = '[]',
+             onchain_synced_at = NULL,
+             updated_at = datetime('now')
+         WHERE id = ?1",
+        rusqlite::params![current.id],
+    )?;
+
+    pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool disappeared after unbind".into()))
+}
+
 /// Insert one machine.
 pub fn machine_insert(
     conn: &Connection,

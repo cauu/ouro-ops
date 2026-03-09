@@ -60,6 +60,10 @@ export async function poolRefreshBoundOnchain(): Promise<Pool> {
   return invoke("pool_refresh_bound_onchain");
 }
 
+export async function poolUnbindOnchain(): Promise<Pool> {
+  return invoke("pool_unbind_onchain");
+}
+
 export async function machineList(filter?: MachineFilter): Promise<Machine[]> {
   return invoke("machine_list", { filter: filter ?? null });
 }

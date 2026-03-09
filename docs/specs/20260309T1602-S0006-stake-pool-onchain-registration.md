@@ -79,6 +79,7 @@ Spec-ID：`S0006`
 - [x] `p6-16` 每次访问 Dashboard 时，在后台静默刷新已绑定 pool 的最新链上数据并更新本地缓存
 - [x] `p6-17` 将 pool 绑定与链上状态展示入口收敛到 Dashboard，移除独立的 on-chain status 导航入口
 - [x] `p6-18` 当 workspace 已初始化但尚未绑定链上 pool 时，在 Dashboard 中显式引导“绑定已有 `pool_id`”与“注册新 pool”两条路径
+- [x] `p6-19` 支持对已绑定 pool 执行 unbind，清空 workspace 的链上绑定关系和本地缓存的链上字段
 
 ## 4. 测试与验收标准
 
@@ -93,6 +94,7 @@ Spec-ID：`S0006`
 - `TC-P6-009` 每次访问 Dashboard 时，应 best-effort 静默刷新已绑定 pool 的链上数据；无已绑定 pool 或刷新失败时，不得阻塞 Dashboard 正常加载。
 - `TC-P6-010` Dashboard 应直接展示已绑定 pool 的链上信息；不再要求用户通过独立 on-chain status 页面查看当前 workspace 的绑定状态。
 - `TC-P6-011` 当 workspace 已初始化但尚未绑定链上 pool 时，Dashboard 应明确展示两条后续路径：绑定已有 `pool_id`，以及注册新 pool 的引导说明。
+- `TC-P6-012` Dashboard 应允许用户对已绑定 pool 执行 unbind；执行后应回到未绑定引导状态，且后台静默刷新不再尝试覆盖未绑定状态。
 
 ## 5. 执行日志（仅追加）
 
@@ -110,6 +112,7 @@ Spec-ID：`S0006`
 - `2026-03-09T20:14:27+0800` `p6-16` 完成：Dashboard 页面进入时会 best-effort 调用 `pool_refresh_bound_onchain`，在后台静默刷新已绑定 pool 的链上缓存；若尚未绑定或查询失败，则忽略错误，不影响页面加载。 
 - `2026-03-09T20:42:00+0800` `p6-17` 完成：将已绑定 pool 的链上信息展示与已注册 pool 的绑定入口收敛到 Dashboard，撤掉独立的 on-chain status 导航入口，避免用户在多个页面之间切换查看同一份 pool 状态。 
 - `2026-03-09T20:42:00+0800` `p6-18` 完成：当 workspace 已初始化但尚未绑定链上 pool 时，Dashboard 会同时展示“绑定已有 `pool_id`”的可执行面板，以及“注册新 pool”的下一步引导说明。 
+- `2026-03-09T21:18:00+0800` `p6-19` 完成：新增 `pool_unbind_onchain` 链路，允许用户在 Dashboard 对已绑定 pool 执行 unbind；该操作只清空 workspace 的链上绑定关系和缓存的链上字段，不影响运行中的 relay/bp 节点。 
 
 ## 6. 验证证据（仅追加）
 
@@ -130,6 +133,8 @@ Spec-ID：`S0006`
 - `2026-03-09T20:14:27+0800` `TC-P6-008/009 | stack: node | command: pnpm build | result: pass | note: PoolRegistrationStatus 的绑定入口、App 的 pool 状态回写，以及 Dashboard 的静默刷新链路均已纳入构建并通过。`
 - `2026-03-09T20:42:00+0800` `TC-P6-010/011 | stack: rust | command: cargo test -q | result: pass | note: 更新前端静态断言，确保 Sidebar 不再暴露 on-chain status 导航，App 不再挂载独立 route，Dashboard 接收 pool 并直接展示绑定信息与未绑定引导。`
 - `2026-03-09T20:42:00+0800` `TC-P6-010/011 | stack: node | command: pnpm build | result: pass | note: Dashboard 现在直接承载已绑定 pool 信息、绑定已有 pool_id 的入口以及注册新 pool 的引导说明，前端构建通过。`
+- `2026-03-09T21:18:00+0800` `TC-P6-012 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_016 覆盖 unbind 后 on-chain 绑定字段被清空且写入 audit_log；新增前端静态断言确认 Dashboard 暴露 Unbind Pool 按钮和 poolUnbindOnchain IPC。`
+- `2026-03-09T21:18:00+0800` `TC-P6-012 | stack: node | command: pnpm build | result: pass | note: Dashboard 上已绑定 pool 卡片可执行 unbind，并在解绑后自然回到未绑定引导态，前端构建通过。`
 
 ## 7. 变更记录（仅追加）
 
@@ -138,3 +143,4 @@ Spec-ID：`S0006`
 - `2026-03-09T16:50:00+0800` 基于用户确认，将原 `p6-6` 拆分为“前端注册状态页”和“前端注册向导”两个事项，先交付状态页以便直接验证 `p6-2` 的链上查询能力。
 - `2026-03-09T19:50:00+0800` 基于用户确认，增加“输入已注册 `pool_id` 后完成 workspace 绑定并持久化链上信息；Dashboard 每次访问时静默刷新最新链上数据”的需求，作为当前 active spec 的追加事项实现。
 - `2026-03-09T20:30:00+0800` 基于用户确认，收敛交互：不再保留独立的 on-chain status 页面；pool 绑定状态和链上信息统一回到 Dashboard 展示，并在未绑定时提供“绑定已有 `pool_id`”和“注册新 pool”的双路径引导。
+- `2026-03-09T21:10:00+0800` 基于用户确认，补充 pool 信息的 unbound 能力：已绑定 pool 需要支持解除绑定，并回到 Dashboard 的未绑定引导状态。

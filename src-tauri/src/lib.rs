@@ -62,6 +62,7 @@ pub fn run() {
             commands::pool::pool_onchain_status,
             commands::pool::pool_bind_onchain,
             commands::pool::pool_refresh_bound_onchain,
+            commands::pool::pool_unbind_onchain,
             commands::machine::machine_add,
             commands::machine::machine_remove,
             commands::machine::machine_list,
@@ -492,6 +493,8 @@ mod frontend_tests {
         assert!(ipc.contains("pool_onchain_status"));
         assert!(ipc.contains("poolBindOnchain"));
         assert!(ipc.contains("poolRefreshBoundOnchain"));
+        assert!(ipc.contains("poolUnbindOnchain"));
+        assert!(ipc.contains("pool_unbind_onchain"));
     }
 
     #[test]
@@ -538,6 +541,8 @@ mod frontend_tests {
         assert!(dashboard.contains("Register New Pool"));
         assert!(dashboard.contains("<PoolRegistrationStatus"));
         assert!(dashboard.contains("pool.onchain_registered && pool.onchain_pool_id"));
+        assert!(dashboard.contains("Unbind Pool"));
+        assert!(dashboard.contains("poolUnbindOnchain()"));
     }
 
     #[test]
@@ -558,6 +563,7 @@ mod frontend_tests {
 
         assert!(pool.contains("\"pool_init\""));
         assert!(pool.contains("\"pool_update\""));
+        assert!(pool.contains("\"pool_unbind_onchain\""));
         assert!(deploy.contains("\"deploy_start\""));
         assert!(deploy.contains("\"deploy_cancel\""));
         assert!(runtime.contains("\"runtime_apply_config_start\""));

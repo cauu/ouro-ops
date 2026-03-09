@@ -6,8 +6,8 @@ use tauri::State;
 
 use crate::db::{
     audit_log_insert, machine_get, machine_list as repo_machine_list, pool_bind_onchain_single,
-    pool_get_single, pool_insert, pool_update_single, DbState, MachineRow, PoolOnchainBindingUpdate,
-    PoolRow,
+    pool_get_single, pool_insert, pool_unbind_onchain_single, pool_update_single, DbState,
+    MachineRow, PoolOnchainBindingUpdate, PoolRow,
 };
 use crate::error::AppError;
 
@@ -873,6 +873,25 @@ fn pool_refresh_bound_onchain_with_conn(conn: &Connection) -> Result<Pool, AppEr
     persist_bound_pool_status(conn, &status)
 }
 
+fn pool_unbind_onchain_with_conn(conn: &Connection) -> Result<Pool, AppError> {
+    let current =
+        pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
+    let row = pool_unbind_onchain_single(conn)?;
+    let pool = into_pool(row);
+    audit_log_insert(
+        conn,
+        "pool_unbind_onchain",
+        &serde_json::json!({
+            "previous_onchain_pool_id": current.onchain_pool_id,
+            "previous_onchain_registered": current.onchain_registered,
+            "previous_metadata_url": current.metadata_url,
+            "previous_metadata_hash": current.metadata_hash,
+            "previous_onchain_synced_at": current.onchain_synced_at,
+        }),
+    )?;
+    Ok(pool)
+}
+
 fn pool_init_with_conn(conn: &Connection, payload: PoolInitPayload) -> Result<Pool, AppError> {
     validate_ticker(&payload.ticker)?;
     validate_network(&payload.network)?;
@@ -991,6 +1010,12 @@ pub async fn pool_bind_onchain(
 pub async fn pool_refresh_bound_onchain(db: State<'_, DbState>) -> Result<Pool, AppError> {
     let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
     pool_refresh_bound_onchain_with_conn(&conn)
+}
+
+#[tauri::command]
+pub async fn pool_unbind_onchain(db: State<'_, DbState>) -> Result<Pool, AppError> {
+    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    pool_unbind_onchain_with_conn(&conn)
 }
 
 #[cfg(test)]
@@ -1705,5 +1730,58 @@ mod tests {
             registration.metadata_url.as_deref(),
             Some("https://www.bubble-studio.xyz/md.json")
         );
+    }
+
+    #[test]
+    fn tc_pool_016_unbind_clears_onchain_binding_fields() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+        let _ = pool_init_with_conn(
+            &conn,
+            PoolInitPayload {
+                ticker: "BUBL".into(),
+                network: "mainnet".into(),
+                margin: Some(0.03),
+                fixed_cost: Some(170000000),
+            },
+        )
+        .expect("pool init");
+        let _ = pool_bind_onchain_single(
+            &conn,
+            PoolOnchainBindingUpdate {
+                pool_id: "pool1test",
+                ticker: Some("BUBL"),
+                margin: Some(0.03),
+                fixed_cost: Some(170000000),
+                pledge: Some(500000000),
+                reward_account: Some("stake1test"),
+                metadata_url: Some("https://example.com/md.json"),
+                metadata_hash: Some("abc"),
+                owners_json: "[\"owner1\"]",
+                relays_json: "[{\"address\":\"relay.example.com\",\"port\":3001}]",
+            },
+        )
+        .expect("pool bind");
+
+        let pool = pool_unbind_onchain_with_conn(&conn).expect("pool unbind");
+
+        assert_eq!(pool.onchain_pool_id, None);
+        assert!(!pool.onchain_registered);
+        assert_eq!(pool.pledge, None);
+        assert_eq!(pool.reward_account, None);
+        assert_eq!(pool.metadata_url, None);
+        assert_eq!(pool.metadata_hash, None);
+        assert!(pool.owners.is_empty());
+        assert!(pool.relays.is_empty());
+        assert_eq!(pool.onchain_synced_at, None);
+
+        let count_audit: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'pool_unbind_onchain'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("count audit");
+        assert_eq!(count_audit, 1);
     }
 }

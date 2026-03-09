@@ -5,6 +5,7 @@ import {
   dbVersion,
   kesStatusAll,
   ping,
+  poolUnbindOnchain,
   poolRefreshBoundOnchain,
   runPlaybookTest,
   taskRecentList,
@@ -155,6 +156,8 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
   const [events, setEvents] = useState<string[]>([]);
   const [kesStatuses, setKesStatuses] = useState<KesStatus[]>([]);
   const [recentTasks, setRecentTasks] = useState<RecentTaskSummary[]>([]);
+  const [unbindError, setUnbindError] = useState<string | null>(null);
+  const [unbinding, setUnbinding] = useState(false);
   const { snapshots, status: monitorStatus } = useMonitorStore();
 
   const refreshMonitor = useCallback(async () => {
@@ -224,6 +227,19 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
     }
   };
 
+  const handleUnbindPool = async () => {
+    setUnbindError(null);
+    setUnbinding(true);
+    try {
+      const nextPool = await poolUnbindOnchain();
+      onPoolRefreshed(nextPool);
+    } catch (error) {
+      setUnbindError(toUserError(error));
+    } finally {
+      setUnbinding(false);
+    }
+  };
+
   const healthyMachines = snapshots.filter((row) => row.health_level === "healthy").length;
   const warningMachines = snapshots.filter((row) => row.health_level === "warning").length;
   const criticalMachines = snapshots.filter((row) => row.health_level === "critical").length;
@@ -253,6 +269,24 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                 bound
               </span>
             </div>
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleUnbindPool}
+                disabled={unbinding}
+                className="rounded-md border border-red-800 bg-red-950/30 px-3 py-2 text-sm font-medium text-red-200 transition hover:border-red-700 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {unbinding ? "Unbinding..." : "Unbind Pool"}
+              </button>
+              <p className="text-xs text-zinc-500">
+                Clears the workspace&apos;s on-chain binding and cached on-chain fields. Running nodes are not changed.
+              </p>
+            </div>
+            {unbindError && (
+              <div className="mt-3 rounded-md border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+                {unbindError}
+              </div>
+            )}
             <dl className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
               <div>
                 <dt className="text-zinc-500">Pool ID</dt>
