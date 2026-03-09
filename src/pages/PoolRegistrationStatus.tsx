@@ -6,6 +6,7 @@ import type { Machine, Pool, PoolOnchainStatus } from "../lib/types";
 interface PoolRegistrationStatusProps {
   poolTicker: string;
   onBound: (pool: Pool) => void;
+  embedded?: boolean;
 }
 
 function formatLovelace(value: number | null): string {
@@ -22,7 +23,11 @@ function formatMargin(value: number | null): string {
   return `${(value * 100).toFixed(2)}%`;
 }
 
-export default function PoolRegistrationStatus({ poolTicker, onBound }: PoolRegistrationStatusProps) {
+export default function PoolRegistrationStatus({
+  poolTicker,
+  onBound,
+  embedded = false,
+}: PoolRegistrationStatusProps) {
   const [loading, setLoading] = useState(true);
   const [querying, setQuerying] = useState(false);
   const [binding, setBinding] = useState(false);
@@ -120,13 +125,15 @@ export default function PoolRegistrationStatus({ poolTicker, onBound }: PoolRegi
 
   return (
     <section className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">On-chain Pool Status</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Query the current stake pool registration state from a running relay or BP. This page is
-          read-only and is intended to validate on-chain data before the registration wizard lands.
-        </p>
-      </header>
+      {!embedded && (
+        <header>
+          <h1 className="text-2xl font-semibold tracking-tight">On-chain Pool Status</h1>
+          <p className="mt-1 text-sm text-zinc-400">
+            Query the current stake pool registration state from a running relay or BP. This page is
+            read-only and is intended to validate on-chain data before the registration wizard lands.
+          </p>
+        </header>
+      )}
 
       {error && (
         <p className="rounded-md border border-red-700/60 bg-red-900/20 px-3 py-2 text-sm text-red-300">

@@ -77,6 +77,8 @@ Spec-ID：`S0006`
 - [x] `p6-14` 根据链上注册参数中的 `metadata_url` 拉取 metadata JSON，并解析其中的 `ticker`
 - [x] `p6-15` 对已链上注册的 staking pool，允许用户输入 `pool_id` 完成 workspace 绑定，并将链上 pool 信息持久化到本地数据库
 - [x] `p6-16` 每次访问 Dashboard 时，在后台静默刷新已绑定 pool 的最新链上数据并更新本地缓存
+- [x] `p6-17` 将 pool 绑定与链上状态展示入口收敛到 Dashboard，移除独立的 on-chain status 导航入口
+- [x] `p6-18` 当 workspace 已初始化但尚未绑定链上 pool 时，在 Dashboard 中显式引导“绑定已有 `pool_id`”与“注册新 pool”两条路径
 
 ## 4. 测试与验收标准
 
@@ -89,6 +91,8 @@ Spec-ID：`S0006`
 - `TC-P6-007` 后端与前端应暴露统一的链上注册状态查询接口、请求模型与返回模型；在 `p6-2` 落地真实链上查询前，接口至少能完成本地校验并返回一致的占位结构。
 - `TC-P6-008` 对已链上注册的 pool，输入 `pool_id` 后应能完成绑定，并将 `pool_id`、ticker、margin、fixed_cost、pledge、reward_account、metadata、owners、relays 持久化到本地数据库。
 - `TC-P6-009` 每次访问 Dashboard 时，应 best-effort 静默刷新已绑定 pool 的链上数据；无已绑定 pool 或刷新失败时，不得阻塞 Dashboard 正常加载。
+- `TC-P6-010` Dashboard 应直接展示已绑定 pool 的链上信息；不再要求用户通过独立 on-chain status 页面查看当前 workspace 的绑定状态。
+- `TC-P6-011` 当 workspace 已初始化但尚未绑定链上 pool 时，Dashboard 应明确展示两条后续路径：绑定已有 `pool_id`，以及注册新 pool 的引导说明。
 
 ## 5. 执行日志（仅追加）
 
@@ -104,6 +108,8 @@ Spec-ID：`S0006`
 - `2026-03-09T18:22:00+0800` `p6-14` 完成：在链上注册参数已解析出 `metadata_url` 的前提下，额外发起 metadata JSON 拉取并提取 `ticker`；metadata 拉取为 best-effort，不影响主查询成功/失败判定。 
 - `2026-03-09T20:14:27+0800` `p6-15` 完成：新增 `pool_bind_onchain` 绑定链路，允许用户用已注册的 `pool_id` 将 workspace 绑定到真实链上 pool，并把 `pool_id`、ticker、margin、fixed_cost、pledge、reward_account、metadata、owners、relays 与同步时间持久化到本地 `pool` 表。 
 - `2026-03-09T20:14:27+0800` `p6-16` 完成：Dashboard 页面进入时会 best-effort 调用 `pool_refresh_bound_onchain`，在后台静默刷新已绑定 pool 的链上缓存；若尚未绑定或查询失败，则忽略错误，不影响页面加载。 
+- `2026-03-09T20:42:00+0800` `p6-17` 完成：将已绑定 pool 的链上信息展示与已注册 pool 的绑定入口收敛到 Dashboard，撤掉独立的 on-chain status 导航入口，避免用户在多个页面之间切换查看同一份 pool 状态。 
+- `2026-03-09T20:42:00+0800` `p6-18` 完成：当 workspace 已初始化但尚未绑定链上 pool 时，Dashboard 会同时展示“绑定已有 `pool_id`”的可执行面板，以及“注册新 pool”的下一步引导说明。 
 
 ## 6. 验证证据（仅追加）
 
@@ -122,6 +128,8 @@ Spec-ID：`S0006`
 - `2026-03-09T18:22:00+0800` `TC-P6-002 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_015，覆盖在已解析出 `metadata_url` 后拉取 metadata JSON 并读取 `ticker` 字段，验证前端可直接看到链上 metadata 中定义的 pool ticker。`
 - `2026-03-09T20:14:27+0800` `TC-P6-008/009 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_db_005 验证 pool 表 on-chain binding 字段迁移到位；新增 tc_fe_024 验证 App 已接入 pool 绑定回写与 Dashboard 的后台静默刷新入口。`
 - `2026-03-09T20:14:27+0800` `TC-P6-008/009 | stack: node | command: pnpm build | result: pass | note: PoolRegistrationStatus 的绑定入口、App 的 pool 状态回写，以及 Dashboard 的静默刷新链路均已纳入构建并通过。`
+- `2026-03-09T20:42:00+0800` `TC-P6-010/011 | stack: rust | command: cargo test -q | result: pass | note: 更新前端静态断言，确保 Sidebar 不再暴露 on-chain status 导航，App 不再挂载独立 route，Dashboard 接收 pool 并直接展示绑定信息与未绑定引导。`
+- `2026-03-09T20:42:00+0800` `TC-P6-010/011 | stack: node | command: pnpm build | result: pass | note: Dashboard 现在直接承载已绑定 pool 信息、绑定已有 pool_id 的入口以及注册新 pool 的引导说明，前端构建通过。`
 
 ## 7. 变更记录（仅追加）
 
@@ -129,3 +137,4 @@ Spec-ID：`S0006`
 - `2026-03-09T16:02:09+0800` 用户确认以链上注册能力为新的执行主线，当前 spec 从 draft 提升为 active，并以前序 spec `S0005` 作为已交付基线。
 - `2026-03-09T16:50:00+0800` 基于用户确认，将原 `p6-6` 拆分为“前端注册状态页”和“前端注册向导”两个事项，先交付状态页以便直接验证 `p6-2` 的链上查询能力。
 - `2026-03-09T19:50:00+0800` 基于用户确认，增加“输入已注册 `pool_id` 后完成 workspace 绑定并持久化链上信息；Dashboard 每次访问时静默刷新最新链上数据”的需求，作为当前 active spec 的追加事项实现。
+- `2026-03-09T20:30:00+0800` 基于用户确认，收敛交互：不再保留独立的 on-chain status 页面；pool 绑定状态和链上信息统一回到 Dashboard 展示，并在未绑定时提供“绑定已有 `pool_id`”和“注册新 pool”的双路径引导。

@@ -31,9 +31,6 @@ export default function Sidebar({ ticker }: SidebarProps) {
         <NavLink to="/kes" className={({ isActive }) => navClass(isActive)}>
           KES
         </NavLink>
-        <NavLink to="/pool-status" className={({ isActive }) => navClass(isActive)}>
-          On-chain Status
-        </NavLink>
         <NavLink to="/deploy" className={({ isActive }) => navClass(isActive)}>
           Deploy
         </NavLink>

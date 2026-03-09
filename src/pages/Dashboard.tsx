@@ -16,6 +16,7 @@ import {
   useMonitorStore,
 } from "../lib/monitorStore";
 import type { DbVersionResult, KesStatus, Pool, RecentTaskSummary } from "../lib/types";
+import PoolRegistrationStatus from "./PoolRegistrationStatus";
 
 function formatProgress(value: number | null): string {
   if (value === null) {
@@ -128,11 +129,26 @@ function truncatePreview(value: string, maxLength = 180): string {
   return `${value.slice(0, maxLength).trimEnd()}...`;
 }
 
+function formatLovelace(value: number | null): string {
+  if (value == null) {
+    return "--";
+  }
+  return value.toLocaleString();
+}
+
+function formatMargin(value: number | null): string {
+  if (value == null) {
+    return "--";
+  }
+  return `${(value * 100).toFixed(2)}%`;
+}
+
 interface DashboardProps {
+  pool: Pool;
   onPoolRefreshed: (pool: Pool) => void;
 }
 
-export default function Dashboard({ onPoolRefreshed }: DashboardProps) {
+export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
   const [status, setStatus] = useState<string>("loading");
   const [dbInfo, setDbInfo] = useState<DbVersionResult | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -223,6 +239,105 @@ export default function Dashboard({ onPoolRefreshed }: DashboardProps) {
           <span className="font-medium text-zinc-100">DB:</span> user_version={dbInfo.user_version}
         </p>
       )}
+      <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+        {pool.onchain_registered && pool.onchain_pool_id ? (
+          <section className="rounded-md border border-zinc-800 bg-zinc-900/70 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-zinc-100">Bound On-chain Pool</h2>
+                <p className="mt-1 text-xs text-zinc-400">
+                  Dashboard silently refreshes this data in the background on each visit.
+                </p>
+              </div>
+              <span className="rounded-full bg-emerald-900/40 px-2 py-1 text-xs font-medium text-emerald-300">
+                bound
+              </span>
+            </div>
+            <dl className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
+              <div>
+                <dt className="text-zinc-500">Pool ID</dt>
+                <dd className="mt-1 break-all font-medium text-zinc-100">{pool.onchain_pool_id}</dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Ticker</dt>
+                <dd className="mt-1 font-medium text-zinc-100">{pool.ticker}</dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Last Synced</dt>
+                <dd className="mt-1 font-medium text-zinc-100">{pool.onchain_synced_at ?? "--"}</dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Margin</dt>
+                <dd className="mt-1 font-medium text-zinc-100">{formatMargin(pool.margin)}</dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Fixed Cost</dt>
+                <dd className="mt-1 font-medium text-zinc-100">{formatLovelace(pool.fixed_cost)}</dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Pledge</dt>
+                <dd className="mt-1 font-medium text-zinc-100">{formatLovelace(pool.pledge)}</dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Reward Account</dt>
+                <dd className="mt-1 break-all font-medium text-zinc-100">{pool.reward_account ?? "--"}</dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Metadata URL</dt>
+                <dd className="mt-1 break-all font-medium text-zinc-100">{pool.metadata_url ?? "--"}</dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Metadata Hash</dt>
+                <dd className="mt-1 break-all font-medium text-zinc-100">{pool.metadata_hash ?? "--"}</dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Owners</dt>
+                <dd className="mt-1 font-medium text-zinc-100">
+                  {pool.owners.length > 0 ? pool.owners.join(", ") : "--"}
+                </dd>
+              </div>
+              <div className="md:col-span-2 xl:col-span-2">
+                <dt className="text-zinc-500">Relays</dt>
+                <dd className="mt-1 font-medium text-zinc-100">
+                  {pool.relays.length > 0
+                    ? pool.relays
+                        .map((relay) => `${relay.address}:${relay.port}`)
+                        .join(", ")
+                    : "--"}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        ) : (
+          <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+            <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-4">
+              <div className="mb-4">
+                <h2 className="text-sm font-semibold text-zinc-100">Bind Existing Pool</h2>
+                <p className="mt-1 text-sm text-zinc-400">
+                  This workspace has no on-chain pool binding yet. If the pool is already registered on-chain,
+                  query it by `pool_id` and bind it here.
+                </p>
+              </div>
+              <PoolRegistrationStatus
+                poolTicker={pool.ticker}
+                onBound={onPoolRefreshed}
+                embedded
+              />
+            </div>
+            <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-4">
+              <h2 className="text-sm font-semibold text-zinc-100">Register New Pool</h2>
+              <p className="mt-2 text-sm text-zinc-400">
+                If this workspace does not correspond to an existing on-chain `pool_id`, continue with the
+                upcoming registration flow. That flow will generate registration materials, drive signing,
+                and submit the transaction explicitly.
+              </p>
+              <div className="mt-4 rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+                Registration guidance is part of the remaining `S0006` items and is not wired into the UI yet.
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-4">
           <h2 className="text-sm font-semibold text-zinc-100">Fleet Health</h2>

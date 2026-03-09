@@ -110,14 +110,12 @@ mod frontend_tests {
         assert!(sidebar.contains("to=\"/\""));
         assert!(sidebar.contains("to=\"/machines\""));
         assert!(sidebar.contains("to=\"/kes\""));
-        assert!(sidebar.contains("to=\"/pool-status\""));
         assert!(sidebar.contains("to=\"/deploy\""));
         assert!(sidebar.contains("to=\"/upgrade\""));
         assert!(sidebar.contains("to=\"/settings\""));
         assert!(sidebar.contains("Dashboard"));
         assert!(sidebar.contains("Machines"));
         assert!(sidebar.contains("KES"));
-        assert!(sidebar.contains("On-chain Status"));
         assert!(sidebar.contains("Deploy"));
         assert!(sidebar.contains("Upgrade"));
         assert!(sidebar.contains("Settings"));
@@ -135,7 +133,6 @@ mod frontend_tests {
         let deploy = include_str!("../../src/pages/DeployWizard.tsx");
         assert!(app.contains("path=\"/deploy\""));
         assert!(app.contains("path=\"/kes\""));
-        assert!(app.contains("path=\"/pool-status\""));
         assert!(app.contains("path=\"/upgrade\""));
         assert!(deploy.contains("deployStart("));
         assert!(deploy.contains("useState(\"10.5.4-1\")"));
@@ -528,9 +525,19 @@ mod frontend_tests {
     fn tc_fe_024_app_wires_pool_binding_and_background_refresh() {
         let app = include_str!("../../src/App.tsx");
         assert!(app.contains("<Dashboard"));
+        assert!(app.contains("pool={pool}"));
         assert!(app.contains("onPoolRefreshed={(nextPool) => {"));
-        assert!(app.contains("<PoolRegistrationStatus"));
-        assert!(app.contains("onBound={(nextPool) => {"));
+        assert!(!app.contains("path=\"/pool-status\""));
+    }
+
+    #[test]
+    fn tc_fe_025_dashboard_owns_pool_binding_ui() {
+        let dashboard = include_str!("../../src/pages/Dashboard.tsx");
+        assert!(dashboard.contains("Bound On-chain Pool"));
+        assert!(dashboard.contains("Bind Existing Pool"));
+        assert!(dashboard.contains("Register New Pool"));
+        assert!(dashboard.contains("<PoolRegistrationStatus"));
+        assert!(dashboard.contains("pool.onchain_registered && pool.onchain_pool_id"));
     }
 
     #[test]
