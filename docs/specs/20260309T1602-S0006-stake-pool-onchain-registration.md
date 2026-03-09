@@ -74,6 +74,7 @@ Spec-ID：`S0006`
 - [x] `p6-11` 修复链上注册状态查询在新 cardano-cli 下的兼容性：移除 `stake-snapshot` 依赖，并扩宽 `pool-state / pool-params` 的解析结构
 - [x] `p6-12` 兼容 `cardano-cli 10.14.0.0` 的 `sps*` pool 参数结构，确保 relay 查询能返回 registered parameters
 - [x] `p6-13` 当 BP 上的 `cardano-cli` 无法执行 `pool-state / pool-params` 时，自动回退到同池 relay 查询链上注册状态
+- [x] `p6-14` 根据链上注册参数中的 `metadata_url` 拉取 metadata JSON，并解析其中的 `ticker`
 
 ## 4. 测试与验收标准
 
@@ -96,6 +97,7 @@ Spec-ID：`S0006`
 - `2026-03-09T17:32:00+0800` `p6-11` 完成：移除 `query stake-snapshot` 作为注册判定来源，改为直接使用 `query pool-state / pool-params` 读取注册详情并据此判定是否已链上注册；同时扩宽对嵌套 `poolParams / poolParameters / currentPoolParams` 等结构的解析，以兼容当前 `cardano-cli 10.14.0.0` 输出。 
 - `2026-03-09T17:40:00+0800` `p6-12` 完成：根据真实 relay 输出，补充 `spsCost / spsMargin / spsPledge / spsRewardAccount / spsOwners / spsRelays / spsMetadata` 字段解析，并兼容 `single host name` relay 结构，使 registered on-chain 状态下能正确返回 registered parameters。 
 - `2026-03-09T18:05:00+0800` `p6-13` 完成：将链上注册状态查询策略从“严格使用用户选中的机器”收敛为“优先使用选中机器；若是 BP 且本机 `cardano-cli` 对 `pool-state / pool-params` 报 era 不兼容，则自动回退到同池 relay 查询”，避免把 BP 的 era/CLI 能力差异暴露给用户。 
+- `2026-03-09T18:22:00+0800` `p6-14` 完成：在链上注册参数已解析出 `metadata_url` 的前提下，额外发起 metadata JSON 拉取并提取 `ticker`；metadata 拉取为 best-effort，不影响主查询成功/失败判定。 
 
 ## 6. 验证证据（仅追加）
 
@@ -111,6 +113,7 @@ Spec-ID：`S0006`
 - `2026-03-09T17:32:00+0800` `TC-P6-001/002 | stack: rust | command: cargo test -q | result: pass | note: tc_pool_009、tc_pool_010 已切换到 pool-state 判定路径；新增 tc_pool_012 覆盖嵌套 poolParams 结构解析，验证在不依赖 stake-snapshot 的情况下仍可识别已注册 pool 并读取详情。`
 - `2026-03-09T17:40:00+0800` `TC-P6-002 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_013 覆盖 relay 真实 `pool-state / pool-params` 返回的 `sps*` 字段和 `single host name` relay 结构，验证 registered parameters 可被正确映射到前端模型。`
 - `2026-03-09T18:05:00+0800` `TC-P6-001/002 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_014，覆盖 BP 上 `pool-state` 因 era 不兼容报错时，会自动回退到同池 relay 查询并返回完整 registered parameters。`
+- `2026-03-09T18:22:00+0800` `TC-P6-002 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_015，覆盖在已解析出 `metadata_url` 后拉取 metadata JSON 并读取 `ticker` 字段，验证前端可直接看到链上 metadata 中定义的 pool ticker。`
 
 ## 7. 变更记录（仅追加）
 

@@ -11,6 +11,7 @@ use crate::db::{
 use crate::error::AppError;
 
 type SshExecFn = dyn Fn(&str, &str, i64, &str) -> Result<String, AppError>;
+type MetadataTickerFetchFn = dyn Fn(&str) -> Result<Option<String>, AppError>;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct PoolInitPayload {
@@ -328,6 +329,38 @@ fn parse_reward_account_field(value: Option<&Value>) -> Option<String> {
     }
 }
 
+fn parse_pool_metadata_ticker(metadata_json: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(metadata_json).ok()?;
+    let ticker = value.get("ticker")?.as_str()?.trim();
+    if ticker.is_empty() || validate_ticker(ticker).is_err() {
+        return None;
+    }
+    Some(ticker.to_string())
+}
+
+fn fetch_pool_metadata_ticker(url: &str) -> Result<Option<String>, AppError> {
+    let output = Command::new("curl")
+        .args([
+            "-L",
+            "--max-time",
+            "8",
+            "--silent",
+            "--show-error",
+            "--fail",
+            url,
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Err(AppError::Internal(format!(
+            "metadata fetch failed for {url}: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    Ok(parse_pool_metadata_ticker(
+        String::from_utf8_lossy(&output.stdout).as_ref(),
+    ))
+}
+
 fn has_pool_registration_fields(value: &Value) -> bool {
     value
         .as_object()
@@ -569,6 +602,15 @@ fn pool_onchain_status_with_conn_and_ssh(
     payload: PoolOnchainQueryPayload,
     ssh_exec: &SshExecFn,
 ) -> Result<PoolOnchainStatus, AppError> {
+    pool_onchain_status_with_conn_ssh_and_metadata(conn, payload, ssh_exec, &|_| Ok(None))
+}
+
+fn pool_onchain_status_with_conn_ssh_and_metadata(
+    conn: &Connection,
+    payload: PoolOnchainQueryPayload,
+    ssh_exec: &SshExecFn,
+    metadata_fetch: &MetadataTickerFetchFn,
+) -> Result<PoolOnchainStatus, AppError> {
     let pool =
         pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
     let machine = machine_get(conn, payload.machine_id)?
@@ -637,6 +679,14 @@ fn pool_onchain_status_with_conn_and_ssh(
         }
         Err(err) => return Err(err),
     };
+    let mut registration = registration;
+    if let Some(reg) = registration.as_mut() {
+        if reg.ticker.is_none() {
+            if let Some(metadata_url) = reg.metadata_url.as_deref() {
+                reg.ticker = metadata_fetch(metadata_url).unwrap_or(None);
+            }
+        }
+    }
     let registered_onchain = registration.is_some();
 
     let note = if registered_onchain {
@@ -692,7 +742,12 @@ fn pool_onchain_status_with_conn(
     conn: &Connection,
     payload: PoolOnchainQueryPayload,
 ) -> Result<PoolOnchainStatus, AppError> {
-    pool_onchain_status_with_conn_and_ssh(conn, payload, &run_ssh_command)
+    pool_onchain_status_with_conn_ssh_and_metadata(
+        conn,
+        payload,
+        &run_ssh_command,
+        &fetch_pool_metadata_ticker,
+    )
 }
 
 fn pool_init_with_conn(conn: &Connection, payload: PoolInitPayload) -> Result<Pool, AppError> {
@@ -1438,5 +1493,79 @@ mod tests {
         assert_eq!(registration.fixed_cost, Some(170000000));
         assert_eq!(registration.margin, Some(0.03));
         assert_eq!(registration.pledge, Some(500000000));
+    }
+
+    #[test]
+    fn tc_pool_015_onchain_query_reads_ticker_from_metadata_url() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+        let pool_id = pool_insert(&conn, "OURO", "mainnet", Some(0.02), Some(340000000))
+            .expect("insert pool");
+        let machine_id = crate::db::machine_insert(
+            &conn,
+            pool_id,
+            "relay-4",
+            "10.0.0.13",
+            22,
+            "root",
+            "relay",
+            Some("SHA256:relay4"),
+        )
+        .expect("insert machine");
+
+        let ssh = |_: &str, _: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
+            if remote_cmd.contains("query pool-state") && remote_cmd.contains("pool1meta") {
+                return Ok(
+                    r#"{
+                        "pool1meta": {
+                            "poolParams": {
+                                "spsCost": 170000000,
+                                "spsMargin": 3.0e-2,
+                                "spsPledge": 500000000,
+                                "spsOwners": ["owner1"],
+                                "spsRelays": [
+                                    {
+                                        "single host name": {
+                                            "dnsName": "pool-relay-1.bubble-studio.xyz",
+                                            "port": 3001
+                                        }
+                                    }
+                                ],
+                                "spsMetadata": {
+                                    "hash": "0ad6ff2157b5d574095f7286cf1ff93ed263a75519860e5779a97f356a4df443",
+                                    "url": "https://www.bubble-studio.xyz/md.json"
+                                }
+                            }
+                        }
+                    }"#
+                    .into(),
+                );
+            }
+            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+        };
+        let fetch_ticker = |url: &str| -> Result<Option<String>, AppError> {
+            assert_eq!(url, "https://www.bubble-studio.xyz/md.json");
+            Ok(Some("BUB".into()))
+        };
+
+        let status = pool_onchain_status_with_conn_ssh_and_metadata(
+            &conn,
+            PoolOnchainQueryPayload {
+                machine_id,
+                pool_id: Some("pool1meta".into()),
+                cold_vkey_path: None,
+            },
+            &ssh,
+            &fetch_ticker,
+        )
+        .expect("query onchain");
+
+        assert!(status.registered_onchain);
+        let registration = status.registration.expect("registration");
+        assert_eq!(registration.ticker.as_deref(), Some("BUB"));
+        assert_eq!(
+            registration.metadata_url.as_deref(),
+            Some("https://www.bubble-studio.xyz/md.json")
+        );
     }
 }
