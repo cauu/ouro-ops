@@ -1,0 +1,10 @@
+---
+- name: Roll back Cardano runtime
+  hosts: "{{ target_host | default('all') }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Run cardano rollback role
+      ansible.builtin.include_role:
+        name: cardano-node
+        tasks_from: rollback

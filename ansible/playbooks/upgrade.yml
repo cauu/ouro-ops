@@ -1,0 +1,41 @@
+---
+- name: Upgrade backup phase
+  hosts: "{{ target_hosts | default('relay:bp') }}"
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Run cardano upgrade backup phase
+      ansible.builtin.include_role:
+        name: cardano-node
+        tasks_from: upgrade
+      vars:
+        upgrade_phase: BACKUP_CONFIG
+      when: (upgrade_phase | default('BACKUP_CONFIG')) == 'BACKUP_CONFIG'
+
+- name: Upgrade relay phase
+  hosts: relay
+  become: true
+  gather_facts: false
+  serial: 1
+  order: sorted
+  tasks:
+    - name: Run cardano relay upgrade phase
+      ansible.builtin.include_role:
+        name: cardano-node
+        tasks_from: upgrade
+      vars:
+        upgrade_phase: "{{ upgrade_phase | default('UPGRADING_RELAY_N') }}"
+      when: (upgrade_phase | default('UPGRADING_RELAY_N')) in ['UPGRADING_RELAY_N', 'HEALTH_GATE_RELAY']
+
+- name: Upgrade bp phase
+  hosts: bp
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Run cardano bp upgrade phase
+      ansible.builtin.include_role:
+        name: cardano-node
+        tasks_from: upgrade
+      vars:
+        upgrade_phase: "{{ upgrade_phase | default('UPGRADING_BP') }}"
+      when: (upgrade_phase | default('UPGRADING_BP')) in ['UPGRADING_BP', 'HEALTH_GATE_BP']

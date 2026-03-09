@@ -316,6 +316,24 @@ mod frontend_tests {
     }
 
     #[test]
+    fn tc_dep_017_upgrade_and_rollback_playbooks_exist() {
+        let upgrade = include_str!("../../ansible/playbooks/upgrade.yml");
+        let upgrade_tasks = include_str!("../../ansible/roles/cardano-node/tasks/upgrade.yml");
+        let rollback = include_str!("../../ansible/playbooks/rollback.yml");
+        let rollback_tasks = include_str!("../../ansible/roles/cardano-node/tasks/rollback.yml");
+        assert!(upgrade.contains("serial: 1"));
+        assert!(upgrade.contains("order: sorted"));
+        assert!(upgrade.contains("tasks_from: upgrade"));
+        assert!(upgrade_tasks.contains("upgrade_phase"));
+        assert!(upgrade_tasks.contains("cardano_upgrade_image_ref"));
+        assert!(upgrade_tasks.contains("backup_archive"));
+        assert!(rollback.contains("tasks_from: rollback"));
+        assert!(rollback_tasks.contains("previous_version"));
+        assert!(rollback_tasks.contains("backup_archive"));
+        assert!(rollback_tasks.contains("tar -xzf"));
+    }
+
+    #[test]
     fn tc_fe_009_ipc_exposes_kes_commands() {
         let ipc = include_str!("../../src/lib/ipc.ts");
         assert!(ipc.contains("kesStatusAll"));
