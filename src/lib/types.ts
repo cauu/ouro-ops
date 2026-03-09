@@ -64,6 +64,17 @@ export interface PoolRegistrationPreparePayload {
   metadata_hash?: string;
 }
 
+export interface PoolRegistrationSubmitPayload {
+  machine_id: number;
+  pool_id: string;
+  confirm_pool_id: string;
+  certificate_path: string;
+  cold_skey_path: string;
+  owner_skey_paths: string[];
+  payment_addr_path: string;
+  payment_skey_path: string;
+}
+
 export interface PoolOnchainRelay {
   address: string;
   port: number;
@@ -115,6 +126,21 @@ export interface PoolRegistrationPrepareResult {
   missing_requirements: string[];
   missing_signing_materials: string[];
   tx_draft: PoolRegistrationTxDraft;
+  note: string;
+}
+
+export interface PoolRegistrationSubmitResult {
+  machine_id: number;
+  machine_name: string;
+  network: "mainnet" | "preprod" | "preview" | string;
+  pool_id: string;
+  submitted: boolean;
+  tx_body_path: string | null;
+  tx_signed_path: string | null;
+  tx_hash: string | null;
+  tx_inputs: string[];
+  missing_requirements: string[];
+  missing_signing_materials: string[];
   note: string;
 }
 

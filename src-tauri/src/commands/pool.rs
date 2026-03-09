@@ -60,6 +60,18 @@ pub struct PoolRegistrationPreparePayload {
     pub metadata_hash: Option<String>,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct PoolRegistrationSubmitPayload {
+    pub machine_id: i64,
+    pub pool_id: String,
+    pub confirm_pool_id: String,
+    pub certificate_path: String,
+    pub cold_skey_path: String,
+    pub owner_skey_paths: Vec<String>,
+    pub payment_addr_path: String,
+    pub payment_skey_path: String,
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct Pool {
     pub id: i64,
@@ -137,6 +149,22 @@ pub struct PoolRegistrationPrepareResult {
     pub missing_requirements: Vec<String>,
     pub missing_signing_materials: Vec<String>,
     pub tx_draft: PoolRegistrationTxDraft,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct PoolRegistrationSubmitResult {
+    pub machine_id: i64,
+    pub machine_name: String,
+    pub network: String,
+    pub pool_id: String,
+    pub submitted: bool,
+    pub tx_body_path: Option<String>,
+    pub tx_signed_path: Option<String>,
+    pub tx_hash: Option<String>,
+    pub tx_inputs: Vec<String>,
+    pub missing_requirements: Vec<String>,
+    pub missing_signing_materials: Vec<String>,
     pub note: String,
 }
 
@@ -828,6 +856,179 @@ fn build_registration_draft_dir(pool_id: &str) -> String {
     format!("/opt/cardano/config/registration-drafts/{seconds}-{pool_id}")
 }
 
+fn build_registration_tx_paths(certificate_path: &str) -> (String, String) {
+    let draft_dir = certificate_path
+        .rsplit_once('/')
+        .map(|(dir, _)| dir)
+        .unwrap_or("/opt/cardano/config/registration-drafts");
+    (
+        format!("{draft_dir}/pool-registration.raw"),
+        format!("{draft_dir}/pool-registration.signed"),
+    )
+}
+
+fn parse_utxo_inputs(raw: &str) -> Result<Vec<String>, AppError> {
+    let value: Value = serde_json::from_str(raw)
+        .map_err(|e| AppError::Internal(format!("invalid utxo query json: {e}")))?;
+    let Value::Object(map) = value else {
+        return Err(AppError::Internal("invalid utxo query payload".into()));
+    };
+    Ok(map.keys().cloned().collect())
+}
+
+fn query_payment_utxo_inputs(
+    machine: &crate::db::MachineRow,
+    network: &str,
+    payment_address: &str,
+    ssh_exec: &SshExecFn,
+) -> Result<Vec<String>, AppError> {
+    let network_args = cli_network_args(network)?;
+    for cli in [
+        format!(
+            "latest query utxo --address {} {network_args} --socket-path /ipc/node.socket --out-file /dev/stdout",
+            shell_single_quote(payment_address),
+        ),
+        format!(
+            "query utxo --address {} {network_args} --socket-path /ipc/node.socket --out-file /dev/stdout",
+            shell_single_quote(payment_address),
+        ),
+    ] {
+        if let Ok(output) = ssh_exec(
+            machine.ssh_user.as_str(),
+            machine.ip.as_str(),
+            machine.ssh_port,
+            docker_cardano_cli(cli.as_str()).as_str(),
+        ) {
+            let inputs = parse_utxo_inputs(output.as_str())?;
+            return Ok(inputs);
+        }
+    }
+    Err(AppError::Internal(
+        "failed to query payment address utxo set".into(),
+    ))
+}
+
+fn build_registration_submit_build_command(
+    network: &str,
+    tx_inputs: &[String],
+    payment_address: &str,
+    certificate_path: &str,
+    tx_body_path: &str,
+    witness_count: usize,
+) -> Result<String, AppError> {
+    if tx_inputs.is_empty() {
+        return Err(AppError::Internal(
+            "registration submission requires at least one tx input".into(),
+        ));
+    }
+    let mut parts = vec!["cardano-cli latest transaction build".to_string()];
+    for tx_input in tx_inputs {
+        parts.push(format!("--tx-in {}", shell_single_quote(tx_input)));
+    }
+    parts.push(format!(
+        "--change-address {}",
+        shell_single_quote(payment_address)
+    ));
+    parts.push(format!(
+        "--certificate-file {}",
+        shell_single_quote(certificate_path)
+    ));
+    match network {
+        "mainnet" => parts.push("--mainnet".into()),
+        "preprod" => parts.push("--testnet-magic 1".into()),
+        "preview" => parts.push("--testnet-magic 2".into()),
+        other => return Err(AppError::Internal(format!("invalid network: {other}"))),
+    }
+    parts.push("--socket-path /ipc/node.socket".into());
+    parts.push(format!("--witness-override {}", witness_count.max(1)));
+    parts.push(format!("--out-file {}", shell_single_quote(tx_body_path)));
+    Ok(parts.join(" "))
+}
+
+fn build_registration_submit_sign_command(
+    network: &str,
+    tx_body_path: &str,
+    tx_signed_path: &str,
+    cold_skey_path: &str,
+    owner_skey_paths: &[String],
+    payment_skey_path: &str,
+) -> Result<String, AppError> {
+    let mut parts = vec![
+        "cardano-cli latest transaction sign".to_string(),
+        format!("--tx-body-file {}", shell_single_quote(tx_body_path)),
+        format!(
+            "--signing-key-file {}",
+            shell_single_quote(cold_skey_path)
+        ),
+    ];
+    for owner_skey_path in owner_skey_paths {
+        parts.push(format!(
+            "--signing-key-file {}",
+            shell_single_quote(owner_skey_path)
+        ));
+    }
+    parts.push(format!(
+        "--signing-key-file {}",
+        shell_single_quote(payment_skey_path)
+    ));
+    match network {
+        "mainnet" => parts.push("--mainnet".into()),
+        "preprod" => parts.push("--testnet-magic 1".into()),
+        "preview" => parts.push("--testnet-magic 2".into()),
+        other => return Err(AppError::Internal(format!("invalid network: {other}"))),
+    }
+    parts.push(format!("--out-file {}", shell_single_quote(tx_signed_path)));
+    Ok(parts.join(" "))
+}
+
+fn build_registration_submit_command(
+    network: &str,
+    tx_signed_path: &str,
+) -> Result<String, AppError> {
+    let mut parts = vec![
+        "cardano-cli latest transaction submit".to_string(),
+        format!("--tx-file {}", shell_single_quote(tx_signed_path)),
+        "--socket-path /ipc/node.socket".into(),
+    ];
+    match network {
+        "mainnet" => parts.push("--mainnet".into()),
+        "preprod" => parts.push("--testnet-magic 1".into()),
+        "preview" => parts.push("--testnet-magic 2".into()),
+        other => return Err(AppError::Internal(format!("invalid network: {other}"))),
+    }
+    Ok(parts.join(" "))
+}
+
+fn query_signed_tx_hash(
+    machine: &crate::db::MachineRow,
+    tx_signed_path: &str,
+    ssh_exec: &SshExecFn,
+) -> Result<String, AppError> {
+    for cli in [
+        format!(
+            "latest transaction txid --tx-file {}",
+            shell_single_quote(tx_signed_path)
+        ),
+        format!(
+            "transaction txid --tx-file {}",
+            shell_single_quote(tx_signed_path)
+        ),
+    ] {
+        let output = ssh_exec(
+            machine.ssh_user.as_str(),
+            machine.ip.as_str(),
+            machine.ssh_port,
+            docker_cardano_cli(cli.as_str()).as_str(),
+        )?;
+        if !output.trim().is_empty() {
+            return Ok(output.trim().to_string());
+        }
+    }
+    Err(AppError::Internal(
+        "failed to compute submitted transaction id".into(),
+    ))
+}
+
 fn pool_registration_prepare_with_conn_and_ssh(
     conn: &Connection,
     payload: PoolRegistrationPreparePayload,
@@ -1098,6 +1299,275 @@ fn pool_registration_prepare_with_conn(
     payload: PoolRegistrationPreparePayload,
 ) -> Result<PoolRegistrationPrepareResult, AppError> {
     pool_registration_prepare_with_conn_and_ssh(conn, payload, &run_ssh_command)
+}
+
+fn pool_registration_submit_with_conn_and_ssh(
+    conn: &Connection,
+    payload: PoolRegistrationSubmitPayload,
+    ssh_exec: &SshExecFn,
+) -> Result<PoolRegistrationSubmitResult, AppError> {
+    let pool =
+        pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
+    let machine = machine_get(conn, payload.machine_id)?
+        .ok_or_else(|| AppError::Internal(format!("machine {} not found", payload.machine_id)))?;
+
+    if !matches!(machine.role.as_str(), "relay" | "bp") {
+        return Err(AppError::Internal(
+            "registration submission requires relay or bp machine".into(),
+        ));
+    }
+
+    validate_network(pool.network.as_str())?;
+    let pool_id = payload.pool_id.trim().to_string();
+    if pool_id.is_empty() {
+        return Err(AppError::Internal("pool_id is required".into()));
+    }
+    if payload.confirm_pool_id.trim() != pool_id {
+        return Err(AppError::Internal(
+            "registration confirmation mismatch; re-enter the pool id to submit".into(),
+        ));
+    }
+
+    let owner_skey_paths = normalize_required_paths(&payload.owner_skey_paths);
+    let mut missing_requirements = Vec::new();
+    let mut missing_signing_materials = Vec::new();
+
+    let certificate_path =
+        resolve_remote_file_in_container(&machine, payload.certificate_path.as_str(), ssh_exec)
+            .map_err(|_| {
+                push_missing_once(
+                    &mut missing_requirements,
+                    format!(
+                        "certificate_path not accessible from runtime container: {}",
+                        payload.certificate_path
+                    ),
+                );
+                AppError::Internal("certificate missing".into())
+            })
+            .ok();
+    let cold_skey_path =
+        resolve_remote_file_in_container(&machine, payload.cold_skey_path.as_str(), ssh_exec)
+            .map_err(|_| {
+                push_missing_once(
+                    &mut missing_signing_materials,
+                    format!(
+                        "cold_skey_path not accessible from runtime container: {}",
+                        payload.cold_skey_path
+                    ),
+                );
+                AppError::Internal("cold signing key missing".into())
+            })
+            .ok();
+    let payment_skey_path =
+        resolve_remote_file_in_container(&machine, payload.payment_skey_path.as_str(), ssh_exec)
+            .map_err(|_| {
+                push_missing_once(
+                    &mut missing_signing_materials,
+                    format!(
+                        "payment_skey_path not accessible from runtime container: {}",
+                        payload.payment_skey_path
+                    ),
+                );
+                AppError::Internal("payment signing key missing".into())
+            })
+            .ok();
+
+    let mut resolved_owner_skeys = Vec::new();
+    for path in &owner_skey_paths {
+        match resolve_remote_file_in_container(&machine, path.as_str(), ssh_exec) {
+            Ok(resolved) => resolved_owner_skeys.push(resolved),
+            Err(_) => push_missing_once(
+                &mut missing_signing_materials,
+                format!("owner_skey_path not accessible from runtime container: {path}"),
+            ),
+        }
+    }
+
+    let payment_address = match read_remote_file_from_container(
+        &machine,
+        payload.payment_addr_path.as_str(),
+        ssh_exec,
+    ) {
+        Ok(address) if !address.trim().is_empty() => Some(address),
+        Ok(_) => {
+            push_missing_once(
+                &mut missing_requirements,
+                format!(
+                    "payment_addr_path resolved but file is empty: {}",
+                    payload.payment_addr_path
+                ),
+            );
+            None
+        }
+        Err(_) => {
+            push_missing_once(
+                &mut missing_requirements,
+                format!(
+                    "payment_addr_path not accessible from runtime container: {}",
+                    payload.payment_addr_path
+                ),
+            );
+            None
+        }
+    };
+
+    let tx_inputs = if let Some(payment_address) = payment_address.as_deref() {
+        match query_payment_utxo_inputs(&machine, pool.network.as_str(), payment_address, ssh_exec) {
+            Ok(inputs) if !inputs.is_empty() => inputs,
+            Ok(_) => {
+                push_missing_once(
+                    &mut missing_requirements,
+                    "payment address has no spendable UTxO for registration submission",
+                );
+                Vec::new()
+            }
+            Err(err) => {
+                push_missing_once(
+                    &mut missing_requirements,
+                    format!("failed to query payment UTxO set: {err}"),
+                );
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
+    let (tx_body_path, tx_signed_path) = match certificate_path.as_deref() {
+        Some(path) => {
+            let (body, signed) = build_registration_tx_paths(path);
+            (Some(body), Some(signed))
+        }
+        None => (None, None),
+    };
+
+    let mut submitted = false;
+    let mut tx_hash = None;
+
+    if missing_requirements.is_empty() && missing_signing_materials.is_empty() {
+        let build_cmd = build_registration_submit_build_command(
+            pool.network.as_str(),
+            tx_inputs.as_slice(),
+            payment_address
+                .as_deref()
+                .ok_or_else(|| AppError::Internal("payment address resolution failed".into()))?,
+            certificate_path
+                .as_deref()
+                .ok_or_else(|| AppError::Internal("certificate resolution failed".into()))?,
+            tx_body_path
+                .as_deref()
+                .ok_or_else(|| AppError::Internal("tx body path unavailable".into()))?,
+            2 + resolved_owner_skeys.len(),
+        )?;
+        ssh_exec(
+            machine.ssh_user.as_str(),
+            machine.ip.as_str(),
+            machine.ssh_port,
+            docker_exec_shell(build_cmd.as_str()).as_str(),
+        )?;
+
+        let sign_cmd = build_registration_submit_sign_command(
+            pool.network.as_str(),
+            tx_body_path
+                .as_deref()
+                .ok_or_else(|| AppError::Internal("tx body path unavailable".into()))?,
+            tx_signed_path
+                .as_deref()
+                .ok_or_else(|| AppError::Internal("tx signed path unavailable".into()))?,
+            cold_skey_path
+                .as_deref()
+                .ok_or_else(|| AppError::Internal("cold signing key resolution failed".into()))?,
+            resolved_owner_skeys.as_slice(),
+            payment_skey_path.as_deref().ok_or_else(|| {
+                AppError::Internal("payment signing key resolution failed".into())
+            })?,
+        )?;
+        ssh_exec(
+            machine.ssh_user.as_str(),
+            machine.ip.as_str(),
+            machine.ssh_port,
+            docker_exec_shell(sign_cmd.as_str()).as_str(),
+        )?;
+
+        tx_hash = Some(query_signed_tx_hash(
+            &machine,
+            tx_signed_path
+                .as_deref()
+                .ok_or_else(|| AppError::Internal("tx signed path unavailable".into()))?,
+            ssh_exec,
+        )?);
+
+        let submit_cmd = build_registration_submit_command(
+            pool.network.as_str(),
+            tx_signed_path
+                .as_deref()
+                .ok_or_else(|| AppError::Internal("tx signed path unavailable".into()))?,
+        )?;
+        ssh_exec(
+            machine.ssh_user.as_str(),
+            machine.ip.as_str(),
+            machine.ssh_port,
+            docker_exec_shell(submit_cmd.as_str()).as_str(),
+        )?;
+        submitted = true;
+    }
+
+    let note = if submitted {
+        format!(
+            "Registration transaction submitted to {} from {} using {} input(s).",
+            pool.network,
+            machine.name,
+            tx_inputs.len()
+        )
+    } else if !missing_requirements.is_empty() {
+        "Registration submission is blocked; provide the missing runtime inputs before signing and submission."
+            .into()
+    } else {
+        "Registration submission is blocked; provide the missing signing materials before signing and submission."
+            .into()
+    };
+
+    let result = PoolRegistrationSubmitResult {
+        machine_id: machine.id,
+        machine_name: machine.name.clone(),
+        network: pool.network,
+        pool_id: pool_id.clone(),
+        submitted,
+        tx_body_path,
+        tx_signed_path,
+        tx_hash: tx_hash.clone(),
+        tx_inputs: tx_inputs.clone(),
+        missing_requirements: missing_requirements.clone(),
+        missing_signing_materials: missing_signing_materials.clone(),
+        note,
+    };
+
+    audit_log_insert(
+        conn,
+        "pool_registration_submit",
+        &serde_json::json!({
+            "machine_id": result.machine_id,
+            "machine_name": result.machine_name,
+            "network": result.network,
+            "pool_id": result.pool_id,
+            "submitted": result.submitted,
+            "tx_hash": result.tx_hash,
+            "tx_body_path": result.tx_body_path,
+            "tx_signed_path": result.tx_signed_path,
+            "tx_input_count": result.tx_inputs.len(),
+            "missing_requirements": result.missing_requirements,
+            "missing_signing_materials": result.missing_signing_materials,
+        }),
+    )?;
+
+    Ok(result)
+}
+
+fn pool_registration_submit_with_conn(
+    conn: &Connection,
+    payload: PoolRegistrationSubmitPayload,
+) -> Result<PoolRegistrationSubmitResult, AppError> {
+    pool_registration_submit_with_conn_and_ssh(conn, payload, &run_ssh_command)
 }
 
 fn query_pool_registration_details(
@@ -1554,6 +2024,15 @@ pub async fn pool_registration_prepare(
 ) -> Result<PoolRegistrationPrepareResult, AppError> {
     let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
     pool_registration_prepare_with_conn(&conn, payload)
+}
+
+#[tauri::command]
+pub async fn pool_registration_submit(
+    payload: PoolRegistrationSubmitPayload,
+    db: State<'_, DbState>,
+) -> Result<PoolRegistrationSubmitResult, AppError> {
+    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    pool_registration_submit_with_conn(&conn, payload)
 }
 
 #[cfg(test)]
@@ -2511,5 +2990,166 @@ mod tests {
             .tx_draft
             .command_preview
             .contains("cardano-cli latest transaction build"));
+    }
+
+    #[test]
+    fn tc_pool_019_registration_submit_requires_matching_confirmation() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+        let pool_id = pool_insert(&conn, "OURO", "mainnet", Some(0.02), Some(340000000))
+            .expect("insert pool");
+        let machine_id = crate::db::machine_insert(
+            &conn,
+            pool_id,
+            "relay-submit",
+            "10.0.0.40",
+            22,
+            "root",
+            "relay",
+            Some("SHA256:relay-submit"),
+        )
+        .expect("insert relay");
+
+        let err = pool_registration_submit_with_conn_and_ssh(
+            &conn,
+            PoolRegistrationSubmitPayload {
+                machine_id,
+                pool_id: "pool1submit".into(),
+                confirm_pool_id: "pool1different".into(),
+                certificate_path: "/opt/cardano/config/registration-drafts/pool-registration.cert"
+                    .into(),
+                cold_skey_path: "/secure/cold.skey".into(),
+                owner_skey_paths: vec!["/secure/owner1.skey".into()],
+                payment_addr_path: "/opt/cardano/keys/payment.addr".into(),
+                payment_skey_path: "/secure/payment.skey".into(),
+            },
+            &|_, _, _, remote_cmd| {
+                Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+            },
+        )
+        .expect_err("confirmation mismatch should fail");
+
+        assert!(err
+            .to_string()
+            .contains("registration confirmation mismatch"));
+    }
+
+    #[test]
+    fn tc_pool_020_registration_submit_builds_signs_submits_and_audits() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+        let pool_id = pool_insert(&conn, "OURO", "mainnet", Some(0.02), Some(340000000))
+            .expect("insert pool");
+        let machine_id = crate::db::machine_insert(
+            &conn,
+            pool_id,
+            "relay-submit",
+            "10.0.0.41",
+            22,
+            "root",
+            "relay",
+            Some("SHA256:relay-submit"),
+        )
+        .expect("insert relay");
+
+        let ssh = |_: &str, _: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
+            if (remote_cmd.contains("test -f")
+                && remote_cmd.contains("pool-registration.cert"))
+                || (remote_cmd.contains("test -f") && remote_cmd.contains("/secure/cold.skey"))
+                || (remote_cmd.contains("test -f") && remote_cmd.contains("/secure/owner1.skey"))
+                || (remote_cmd.contains("test -f") && remote_cmd.contains("/secure/payment.skey"))
+                || (remote_cmd.contains("test -f")
+                    && remote_cmd.contains("/opt/cardano/config/keys/payment.addr"))
+            {
+                return Ok("found".into());
+            }
+            if remote_cmd.contains("cat")
+                && remote_cmd.contains("/opt/cardano/config/keys/payment.addr")
+            {
+                return Ok("addr1qxsubmitexample".into());
+            }
+            if remote_cmd.contains("query utxo")
+                && remote_cmd.contains("addr1qxsubmitexample")
+                && remote_cmd.contains("--out-file /dev/stdout")
+            {
+                return Ok(
+                    r#"{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0":{"value":{"lovelace":5000000000}}}"#
+                        .into(),
+                );
+            }
+            if remote_cmd.contains("transaction build")
+                && remote_cmd.contains("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0")
+                && remote_cmd.contains("pool-registration.cert")
+                && remote_cmd.contains("pool-registration.raw")
+            {
+                return Ok(String::new());
+            }
+            if remote_cmd.contains("transaction sign")
+                && remote_cmd.contains("/secure/cold.skey")
+                && remote_cmd.contains("/secure/owner1.skey")
+                && remote_cmd.contains("/secure/payment.skey")
+                && remote_cmd.contains("pool-registration.signed")
+            {
+                return Ok(String::new());
+            }
+            if remote_cmd.contains("transaction txid")
+                && remote_cmd.contains("pool-registration.signed")
+            {
+                return Ok("txhashsubmit123".into());
+            }
+            if remote_cmd.contains("transaction submit")
+                && remote_cmd.contains("pool-registration.signed")
+            {
+                return Ok(String::new());
+            }
+            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+        };
+
+        let result = pool_registration_submit_with_conn_and_ssh(
+            &conn,
+            PoolRegistrationSubmitPayload {
+                machine_id,
+                pool_id: "pool1submit".into(),
+                confirm_pool_id: "pool1submit".into(),
+                certificate_path: "/opt/cardano/config/registration-drafts/pool-registration.cert"
+                    .into(),
+                cold_skey_path: "/secure/cold.skey".into(),
+                owner_skey_paths: vec!["/secure/owner1.skey".into()],
+                payment_addr_path: "/opt/cardano/keys/payment.addr".into(),
+                payment_skey_path: "/secure/payment.skey".into(),
+            },
+            &ssh,
+        )
+        .expect("submit result");
+
+        assert!(result.submitted);
+        assert_eq!(result.pool_id, "pool1submit");
+        assert_eq!(result.machine_id, machine_id);
+        assert_eq!(result.tx_hash.as_deref(), Some("txhashsubmit123"));
+        assert_eq!(
+            result.tx_inputs,
+            vec!["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#0".to_string()]
+        );
+        assert!(result.missing_requirements.is_empty());
+        assert!(result.missing_signing_materials.is_empty());
+        assert!(result
+            .tx_body_path
+            .as_deref()
+            .unwrap_or_default()
+            .ends_with("pool-registration.raw"));
+        assert!(result
+            .tx_signed_path
+            .as_deref()
+            .unwrap_or_default()
+            .ends_with("pool-registration.signed"));
+
+        let count_audit: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'pool_registration_submit'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("count audit");
+        assert_eq!(count_audit, 1);
     }
 }

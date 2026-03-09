@@ -15,6 +15,8 @@ import type {
   PoolOnchainQueryPayload,
   PoolRegistrationPreparePayload,
   PoolRegistrationPrepareResult,
+  PoolRegistrationSubmitPayload,
+  PoolRegistrationSubmitResult,
   PoolOnchainStatus,
   PoolInitPayload,
   PoolUpdatePayload,
@@ -62,6 +64,12 @@ export async function poolRegistrationPrepare(
   payload: PoolRegistrationPreparePayload,
 ): Promise<PoolRegistrationPrepareResult> {
   return invoke("pool_registration_prepare", { payload });
+}
+
+export async function poolRegistrationSubmit(
+  payload: PoolRegistrationSubmitPayload,
+): Promise<PoolRegistrationSubmitResult> {
+  return invoke("pool_registration_submit", { payload });
 }
 
 export async function poolRefreshBoundOnchain(): Promise<Pool> {

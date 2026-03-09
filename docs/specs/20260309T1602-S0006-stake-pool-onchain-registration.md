@@ -66,7 +66,7 @@ Spec-ID：`S0006`
 - [x] `p6-2` 实现 stake pool 是否已注册的链上判断与详情读取
 - [x] `p6-3` 将 Settings 中误导性的本地可编辑链上字段改为只读或迁移
 - [x] `p6-4` 设计并实现 registration 准备流程：参数校验、证书生成、交易草稿
-- [ ] `p6-5` 设计并实现 registration 提交流程：签名输入、交易提交与结果回执
+- [x] `p6-5` 设计并实现 registration 提交流程：签名输入、交易提交与结果回执
 - [x] `p6-6` 增加前端注册状态页，支持对 `p6-2` 的链上查询能力进行可视化验证
 - [ ] `p6-7` 增加高风险确认、审计记录与验收验证
 - [ ] `p6-9` 增加前端注册向导，将 registration 准备与提交链路接入 UI
@@ -117,6 +117,7 @@ Spec-ID：`S0006`
 - `2026-03-09T21:18:00+0800` `p6-19` 完成：新增 `pool_unbind_onchain` 链路，允许用户在 Dashboard 对已绑定 pool 执行 unbind；该操作只清空 workspace 的链上绑定关系和缓存的链上字段，不影响运行中的 relay/bp 节点。 
 - `2026-03-09T23:45:00+0800` `p6-4` 完成：新增 `pool_registration_prepare` 后端链路，支持基于 relay/bp 机器生成 registration certificate、推导 `pool_id`、汇总 relay 列表、计算 stake pool deposit，并返回 transaction draft 与缺失签名材料清单；当公钥材料或 relay 条件不足时，返回一致的缺失要求而不直接失败。 
 - `2026-03-09T23:58:00+0800` `p6-4` 回归修正：补齐 `pool_registration_prepare` 的审计写入，修正测试夹具对 docker shell 内层转义的匹配方式，并改为基于已解析的容器内 `cold.vkey` 路径推导 `pool_id`，确保 registration prepare 在真实命令拼装下仍能稳定返回证书和交易草稿。
+- `2026-03-09T21:54:25+0800` `p6-5` 完成：新增 `pool_registration_submit` 后端链路，支持显式确认 `pool_id`、校验 registration certificate / cold signing key / owner signing keys / payment signing key、查询付款地址 UTxO、构建 `cardano-cli latest transaction build`、执行签名与提交，并返回 `tx_body_path`、`tx_signed_path`、`tx_hash`、`tx_inputs` 与缺失材料清单；同时写入 `pool_registration_submit` 审计记录。 
 
 ## 6. 验证证据（仅追加）
 
@@ -145,6 +146,8 @@ Spec-ID：`S0006`
 - `2026-03-09T23:45:00+0800` `TC-P6-003 | stack: node | command: pnpm build | result: pass | note: 前端 IPC 和类型已补齐 PoolRegistrationPreparePayload / PoolRegistrationPrepareResult，为后续注册向导接入准备链路。`
 - `2026-03-09T23:58:00+0800` `TC-P6-003 | stack: rust | command: cargo test -q | result: pass | note: p6-4 回归后全量 139/139 通过；tc_pool_017、tc_pool_018 现在在真实 docker shell 转义场景下也能稳定覆盖 pool_id 推导、证书生成和审计写入。`
 - `2026-03-09T23:58:00+0800` `TC-P6-003 | stack: node | command: pnpm build | result: pass | note: 前端 IPC / 类型保持兼容，注册准备结果模型在构建后可供后续注册向导直接复用。`
+- `2026-03-09T21:54:25+0800` `TC-P6-004 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_019 与 tc_pool_020，分别覆盖 registration submit 的 pool_id 显式确认不匹配时立即失败，以及材料齐全时完成 build/sign/submit、返回 tx hash/inputs 并写入 audit_log；全量 141/141 通过。`
+- `2026-03-09T21:54:25+0800` `TC-P6-004 | stack: node | command: pnpm build | result: pass | note: 前端 IPC / 类型已补齐 PoolRegistrationSubmitPayload / PoolRegistrationSubmitResult，注册提交链路可供后续注册向导直接接入。`
 
 ## 7. 变更记录（仅追加）
 
