@@ -199,6 +199,33 @@ export default function PoolRegistrationWizard({ poolTicker }: PoolRegistrationW
             signed tx file back for submission.
           </li>
         </ol>
+        <div className="mt-3 rounded-md border border-zinc-800 bg-black/20 px-3 py-2 text-[11px] text-zinc-400 break-words">
+          <p className="font-medium text-zinc-200">Cold Environment Reference Commands</p>
+          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap">
+{`cardano-cli latest stake-pool registration-certificate \\
+  --cold-verification-key-file cold.vkey \\
+  --vrf-verification-key-file vrf.vkey \\
+  --pool-pledge <pledge-lovelace> \\
+  --pool-cost <fixed-cost-lovelace> \\
+  --pool-margin <margin-decimal> \\
+  --pool-reward-account-verification-key-file reward.vkey \\
+  --pool-owner-stake-verification-key-file owner.vkey \\
+  --mainnet \\
+  --single-host-pool-relay <relay-dns> \\
+  --pool-relay-port 3001 \\
+  --metadata-url <metadata-url> \\
+  --metadata-hash <metadata-hash> \\
+  --out-file pool-registration.cert
+
+cardano-cli latest transaction sign \\
+  --tx-body-file pool-registration.raw \\
+  --signing-key-file cold.skey \\
+  --signing-key-file owner.skey \\
+  --signing-key-file payment.skey \\
+  --mainnet \\
+  --out-file pool-registration.signed`}
+          </pre>
+        </div>
       </div>
 
       {loading ? (

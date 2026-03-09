@@ -585,6 +585,9 @@ mod frontend_tests {
         assert!(page.contains("pool-registration.cert"));
         assert!(page.contains("This file is not generated on the hot node"));
         assert!(page.contains("Cold Environment Inputs"));
+        assert!(page.contains("stake-pool registration-certificate"));
+        assert!(page.contains("transaction sign"));
+        assert!(page.contains("--cold-verification-key-file cold.vkey"));
     }
 
     #[test]
