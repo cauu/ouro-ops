@@ -111,6 +111,14 @@ export interface DeployPayload {
   restore_snapshot_bp?: boolean;
 }
 
+export interface UpgradePayload {
+  target_version: string;
+  image_registry: string;
+  image_digest?: string;
+  machine_ids: number[];
+  auto_continue: boolean;
+}
+
 export interface TaskMachineStatus {
   machine_id: number;
   status: string;

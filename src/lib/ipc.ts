@@ -3,6 +3,7 @@ import type {
   DbVersionResult,
   DeployPayload,
   DeployTaskStatus,
+  UpgradePayload,
   Machine,
   MachineAddPayload,
   MachineFilter,
@@ -133,4 +134,16 @@ export async function runtimeRestart(machineId: number): Promise<string> {
 
 export async function runtimeRestartStatus(taskId: string): Promise<DeployTaskStatus> {
   return invoke("runtime_restart_status", { taskId });
+}
+
+export async function upgradeStart(payload: UpgradePayload): Promise<string> {
+  return invoke("upgrade_start", { payload });
+}
+
+export async function upgradeConfirmNext(taskId: string): Promise<void> {
+  await invoke("upgrade_confirm_next", { taskId });
+}
+
+export async function upgradeRollback(taskId: string, machineId: number): Promise<string> {
+  return invoke("upgrade_rollback", { taskId, machineId });
 }

@@ -10,8 +10,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::Manager;
 
-pub use db::DbState;
 use crate::commands::monitor::MonitorPollingState;
+pub use db::DbState;
 
 pub fn run() {
     tauri::Builder::default()
@@ -81,6 +81,9 @@ pub fn run() {
             commands::runtime::runtime_config_status,
             commands::runtime::runtime_restart,
             commands::runtime::runtime_restart_status,
+            commands::upgrade::upgrade_start,
+            commands::upgrade::upgrade_confirm_next,
+            commands::upgrade::upgrade_rollback,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -193,7 +196,8 @@ mod frontend_tests {
 
     #[test]
     fn tc_dep_007_mainnet_topology_includes_bootstrap_peers() {
-        let topology = include_str!("../../ansible/roles/cardano-node/templates/topology-p2p.json.j2");
+        let topology =
+            include_str!("../../ansible/roles/cardano-node/templates/topology-p2p.json.j2");
         assert!(topology.contains("\"bootstrapPeers\""));
         assert!(topology.contains("backbone.cardano.iog.io"));
         assert!(topology.contains("backbone.mainnet.emurgornd.com"));
@@ -203,7 +207,8 @@ mod frontend_tests {
 
     #[test]
     fn tc_dep_008_relay_topology_excludes_bp_local_roots() {
-        let topology = include_str!("../../ansible/roles/cardano-node/templates/topology-p2p.json.j2");
+        let topology =
+            include_str!("../../ansible/roles/cardano-node/templates/topology-p2p.json.j2");
         assert!(topology.contains("rejectattr(\"name\", \"equalto\", inventory_hostname)"));
         assert!(!topology.contains("{% for bp in bp_nodes %}"));
         assert!(topology.contains("relay_upstreams | length"));
@@ -211,7 +216,8 @@ mod frontend_tests {
 
     #[test]
     fn tc_dep_009_bp_topology_uses_relay_only() {
-        let topology = include_str!("../../ansible/roles/cardano-node/templates/topology-p2p.json.j2");
+        let topology =
+            include_str!("../../ansible/roles/cardano-node/templates/topology-p2p.json.j2");
         assert!(topology.contains("\"bootstrapPeers\": []"));
         assert!(topology.contains("{% if role == \"bp\" %}"));
         assert!(topology.contains("{% for relay in relay_nodes %}"));
@@ -223,7 +229,9 @@ mod frontend_tests {
         let playbook = include_str!("../../ansible/roles/cardano-node/tasks/main.yml");
         assert!(playbook.contains("Determine whether runtime config changed"));
         assert!(playbook.contains("cardano_runtime_config_changed"));
-        assert!(playbook.contains("restart: \"{{ cardano_runtime_config_changed | default(false) }}\""));
+        assert!(
+            playbook.contains("restart: \"{{ cardano_runtime_config_changed | default(false) }}\"")
+        );
     }
 
     #[test]
@@ -251,7 +259,8 @@ mod frontend_tests {
         assert!(playbook.contains("Wait for cardano container to stay running"));
         assert!(playbook.contains("Capture Mithril startup logs"));
         assert!(playbook.contains("readiness: restore-in-progress"));
-        assert!(playbook.contains("when: not (cardano_restore_snapshot_effective | default(false) | bool)"));
+        assert!(playbook
+            .contains("when: not (cardano_restore_snapshot_effective | default(false) | bool)"));
     }
 
     #[test]
@@ -266,7 +275,9 @@ mod frontend_tests {
 
     #[test]
     fn tc_dep_014_mainnet_config_template_is_role_aware() {
-        let template = include_str!("../../ansible/roles/cardano-node/templates/config-mainnet-10.5.4-1.json.j2");
+        let template = include_str!(
+            "../../ansible/roles/cardano-node/templates/config-mainnet-10.5.4-1.json.j2"
+        );
         assert!(template.contains("role == \"relay\""));
         assert!(template.contains("TargetNumberOfRootPeers"));
         assert!(template.contains("relay_nodes | default([]) | length"));
@@ -292,6 +303,16 @@ mod frontend_tests {
         assert!(tasks.contains("/opt/cardano/keys/node.cert"));
         assert!(tasks.contains("docker restart cardano-node"));
         assert!(tasks.contains("use deploy for initial provisioning"));
+    }
+
+    #[test]
+    fn tc_upg_005_upgrade_commands_registered() {
+        let commands = include_str!("commands/mod.rs");
+        let lib = include_str!("lib.rs");
+        assert!(commands.contains("pub mod upgrade;"));
+        assert!(lib.contains("commands::upgrade::upgrade_start"));
+        assert!(lib.contains("commands::upgrade::upgrade_confirm_next"));
+        assert!(lib.contains("commands::upgrade::upgrade_rollback"));
     }
 
     #[test]
@@ -331,5 +352,13 @@ mod frontend_tests {
         let ipc = include_str!("../../src/lib/ipc.ts");
         assert!(ipc.contains("kesPushStart"));
         assert!(ipc.contains("kesRotationStatus"));
+    }
+
+    #[test]
+    fn tc_fe_013_ipc_exposes_upgrade_commands() {
+        let ipc = include_str!("../../src/lib/ipc.ts");
+        assert!(ipc.contains("upgradeStart"));
+        assert!(ipc.contains("upgradeConfirmNext"));
+        assert!(ipc.contains("upgradeRollback"));
     }
 }

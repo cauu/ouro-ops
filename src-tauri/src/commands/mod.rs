@@ -6,6 +6,7 @@ pub mod machine;
 pub mod monitor;
 pub mod pool;
 pub mod runtime;
+pub mod upgrade;
 
 use crate::db::{get_user_version, table_exists, DbState};
 use crate::error::AppError;
