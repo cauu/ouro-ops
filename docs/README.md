@@ -4,22 +4,23 @@ The project now uses the immutable-spec workflow for active delivery.
 
 ## Current Active Spec
 
-- [20260308T0000-S0005-phase4.md](./specs/20260308T0000-S0005-phase4.md)
+- [20260309T1602-S0006-stake-pool-onchain-registration.md](./specs/20260309T1602-S0006-stake-pool-onchain-registration.md)
 
 Read the active spec first for current requirements, outline design, execution plan, and acceptance criteria.
 
 ## Draft Specs
 
-- [S0006-stake-pool-onchain-registration.md](./specs/draft/S0006-stake-pool-onchain-registration.md)
+- 暂无。
 
 ## Completed Specs
 
+- [20260308T0000-S0005-phase4.md](./specs/completed/20260308T0000-S0005-phase4.md)
 - [20260306T0010-S0002-phase1-phase3.md](./specs/completed/20260306T0010-S0002-phase1-phase3.md)
 - [20260306T0020-S0003-phase3-5-deploy-readiness-and-sync-monitoring.md](./specs/completed/20260306T0020-S0003-phase3-5-deploy-readiness-and-sync-monitoring.md)
 - [20260307T0000-S0004-phase3-6-mithril-bootstrap.md](./specs/completed/20260307T0000-S0004-phase3-6-mithril-bootstrap.md)
 - [20260306T0000-S0001-project-baseline.md](./specs/completed/20260306T0000-S0001-project-baseline.md)
 
-These completed specs archive the delivered Phase 1 to Phase 3 scope, the completed Phase 3.5 deploy readiness / sync monitoring work, the completed Phase 3.6 Mithril bootstrap work, and the baseline bootstrap record kept for traceability.
+These completed specs archive the delivered Phase 1 to Phase 4 scope that has been explicitly closed so far, including the Phase 4 runtime / monitor / KES / upgrade control-plane baseline and the earlier traceability records.
 
 ## Document Layout
 
