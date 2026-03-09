@@ -4,9 +4,9 @@ The project now uses the immutable-spec workflow for active delivery.
 
 ## Current Active Spec
 
-- [20260309T1602-S0006-stake-pool-onchain-registration.md](./specs/20260309T1602-S0006-stake-pool-onchain-registration.md)
+- 暂无。当前没有进行中的 active spec。
 
-Read the active spec first for current requirements, outline design, execution plan, and acceptance criteria.
+如需开始新需求，请先在 `docs/specs/draft/` 创建新的 draft spec，并在启动执行时提升为 `docs/specs/` 根目录中的唯一 active spec。
 
 ## Draft Specs
 
@@ -14,6 +14,7 @@ Read the active spec first for current requirements, outline design, execution p
 
 ## Completed Specs
 
+- [20260309T1602-S0006-stake-pool-onchain-registration.md](./specs/completed/20260309T1602-S0006-stake-pool-onchain-registration.md)
 - [20260308T0000-S0005-phase4.md](./specs/completed/20260308T0000-S0005-phase4.md)
 - [20260306T0010-S0002-phase1-phase3.md](./specs/completed/20260306T0010-S0002-phase1-phase3.md)
 - [20260306T0020-S0003-phase3-5-deploy-readiness-and-sync-monitoring.md](./specs/completed/20260306T0020-S0003-phase3-5-deploy-readiness-and-sync-monitoring.md)
@@ -25,7 +26,7 @@ These completed specs archive the delivered Phase 1 to Phase 4 scope that has be
 ## Document Layout
 
 - `docs/specs/`
-  - Current active spec only. This directory root should contain exactly one active spec.
+  - Current active spec only. When no delivery is in progress, this directory root can be temporarily empty.
 - `docs/specs/draft/`
   - Not-started specs. Draft specs are mutable and use stable `Spec-ID` filenames.
 - `docs/specs/completed/`

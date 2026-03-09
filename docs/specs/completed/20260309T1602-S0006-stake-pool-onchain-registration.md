@@ -1,12 +1,12 @@
 # Cardano Stake Pool 链上注册状态查询与注册流程
 
 Spec-ID：`S0006`
-状态：`active`
+状态：`completed`
 创建时间：`2026-03-09`
 开始时间：`2026-03-09T16:02:09+0800`
-完成时间：
+完成时间：`2026-03-10T10:18:00+0800`
 前一个 Spec-ID：`S0005`
-结项原因：
+结项原因：`delivered`
 
 ## 1. 需求详情
 
@@ -84,6 +84,7 @@ Spec-ID：`S0006`
 - [x] `p6-21` 在注册向导中明确 `pool-registration.cert` 的来源、冷/热环境步骤与输入物边界，避免用户误以为热环境会生成证书或持有 cold key
 - [x] `p6-22` 在注册向导中补充冷环境参考 `cardano-cli` 命令模板，为后续产品化的离线证书生成与签名流程做准备
 - [x] `p6-23` 将冷环境参考命令升级为带当前网络、relay 和热端目标路径的动态模板，降低人工执行时的替换成本
+- [x] `p6-24` 按 `delivered` 结项 `S0006`，并将文档入口切换为“当前无 active spec”的状态
 
 ## 4. 测试与验收标准
 
@@ -100,6 +101,7 @@ Spec-ID：`S0006`
 - `TC-P6-011` 当 workspace 已初始化但尚未绑定链上 pool 时，Dashboard 应明确展示两条后续路径：绑定已有 `pool_id`，以及注册新 pool 的引导说明。
 - `TC-P6-012` Dashboard 应允许用户对已绑定 pool 执行 unbind；执行后应回到未绑定引导状态，且后台静默刷新不再尝试覆盖未绑定状态。
 - `TC-P6-013` Settings 页面不得继续允许用户编辑 `ticker / margin / fixed_cost` 这类会被误认为链上已生效的字段；页面应明确声明链上参数以 Dashboard 中的 bound on-chain pool 为准。
+- `TC-P6-015` S0006 结项后，`docs/specs/` 根目录应不再保留 active spec；`docs/README.md` 应明确当前无 active spec，且 S0006 进入 `completed/` 列表。
 
 ## 5. 执行日志（仅追加）
 
@@ -126,6 +128,7 @@ Spec-ID：`S0006`
 - `2026-03-10T09:18:00+0800` `p6-21` 完成：更新 Dashboard 内嵌注册向导，显式展示 cold/hot workflow、`pool-registration.cert` 的冷环境来源、热环境只接收 certificate 和 signed tx 的边界，并在 prepare 结果中追加冷环境输入物说明，降低用户对 registration flow 的误解成本。 
 - `2026-03-10T09:24:00+0800` `p6-22` 完成：在注册向导中追加冷环境参考命令模板，显式给出 `stake-pool registration-certificate` 和 `transaction sign` 的 CLI 骨架，帮助用户理解离线证书生成与签名步骤，也为后续真正产品化这些步骤预留交互依据。 
 - `2026-03-10T09:31:00+0800` `p6-23` 完成：将冷环境参考命令从静态模板升级为动态模板；根据当前选中的网络自动切换 `--mainnet / --testnet-magic`，根据 prepare 结果填充 relay 地址列表，并明确显示热环境 certificate / signed tx 的目标路径，减少人工执行时的替换和误操作。 
+- `2026-03-10T10:18:00+0800` spec 结项：用户确认当前版本已完成 stake pool 链上注册状态查询、已注册 pool 绑定/解绑、Dashboard 展示、链上 metadata ticker 读取，以及热 build / 冷 sign / 热 submit 的注册主链路；后续工作转入前端优化和产品化。 
 - `2026-03-10T09:03:00+0800` `p6-7` 完成：将 registration submit 的高风险确认正式收敛到前端注册向导，要求用户在提交前显式重输 `pool_id`，并复用后端已有的 `pool_registration_prepare / pool_registration_submit` 审计日志作为提交链路的审计基线。 
 - `2026-03-10T09:03:00+0800` `p6-9` 完成：新增 Dashboard 内嵌的注册向导，串起 hot prepare、cold sign 提示、hot submit 三段式交互，不再要求用户跳转独立页面完成注册准备与提交。 
 
@@ -170,6 +173,7 @@ Spec-ID：`S0006`
 - `2026-03-10T09:24:00+0800` `TC-P6-004 | stack: node | command: pnpm build | result: pass | note: 注册向导前端构建通过，Dashboard 中现在直接显示冷环境 reference commands，便于后续产品化前的人工执行与验证。`
 - `2026-03-10T09:31:00+0800` `TC-P6-004 | stack: rust | command: cargo test -q | result: pass | note: 扩展 tc_fe_027，断言注册向导中的冷环境命令现在基于 `networkFlag(...)` 动态生成，并明确包含“Copy the resulting certificate to the hot node path”和“Copy the signed tx back to the hot node path”提示。`
 - `2026-03-10T09:31:00+0800` `TC-P6-004 | stack: node | command: pnpm build | result: pass | note: Dashboard 中的注册向导已将冷环境命令模板动态化，构建通过；后续产品化时可直接在此基础上补复制按钮和结构化参数表单。`
+- `2026-03-10T10:18:00+0800` `TC-P6-014 | stack: review | command: manual spec closure review | result: pass | note: 用户确认 S0006 覆盖的核心能力已基本完成，可按 delivered 结项，并为后续前端优化与产品化开启新的 spec。`
 
 ## 7. 变更记录（仅追加）
 
@@ -185,3 +189,4 @@ Spec-ID：`S0006`
 - `2026-03-10T09:18:00+0800` 基于用户确认，继续产品化 registration flow：在不改变后端安全模型的前提下，把 `pool-registration.cert` 的冷环境来源、热环境输入边界和 cold/hot 步骤直接写进注册向导，避免用户继续把 cert 误认为热环境生成物。 
 - `2026-03-10T09:24:00+0800` 基于用户确认，继续为产品化铺路：在注册向导中补充冷环境 `cardano-cli` 参考命令模板，让“生成 cert”和“离线签名”不再停留在口头说明层面。 
 - `2026-03-10T09:31:00+0800` 基于用户确认，继续将参考命令产品化：命令模板现在会反映当前网络、prepare 阶段解析出的 relay 列表，以及热环境目标路径，避免静态示例与真实执行上下文脱节。 
+- `2026-03-10T10:18:00+0800` 基于用户确认，当前 spec 以 `delivered` 结项：S0006 已完成链上注册状态查询、pool 绑定/解绑、Dashboard 展示、热 build / 冷 sign / 热 submit 和冷环境参考命令的基础产品化；后续前端优化和更深的产品化将进入新的 spec。 
