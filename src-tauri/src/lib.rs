@@ -77,6 +77,8 @@ pub fn run() {
             commands::kes::kes_import_cert,
             commands::runtime::runtime_apply_config,
             commands::runtime::runtime_config_status,
+            commands::runtime::runtime_restart,
+            commands::runtime::runtime_restart_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -267,6 +269,16 @@ mod frontend_tests {
         assert!(template.contains("TargetNumberOfRootPeers"));
         assert!(template.contains("relay_nodes | default([]) | length"));
         assert!(template.contains("PeerSharing"));
+    }
+
+    #[test]
+    fn tc_dep_015_runtime_restart_playbook_exists_and_avoids_deploy_flow() {
+        let playbook = include_str!("../../ansible/playbooks/runtime-restart.yml");
+        let tasks = include_str!("../../ansible/roles/cardano-node/tasks/runtime_restart.yml");
+        assert!(playbook.contains("tasks_from: runtime_restart"));
+        assert!(tasks.contains("docker restart cardano-node"));
+        assert!(tasks.contains("use deploy for initial provisioning"));
+        assert!(!tasks.contains("RESTORE_SNAPSHOT"));
     }
 
     #[test]

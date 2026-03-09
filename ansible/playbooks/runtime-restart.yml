@@ -1,0 +1,8 @@
+- name: Restart cardano-node runtime
+  hosts: relay:bp
+  become: true
+  tasks:
+    - name: Run cardano-node runtime restart tasks
+      ansible.builtin.include_role:
+        name: cardano-node
+        tasks_from: runtime_restart

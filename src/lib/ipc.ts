@@ -110,3 +110,19 @@ export async function kesGenerate(machineId: number): Promise<KesSignRequest> {
 export async function kesImportCert(machineId: number, certPath: string): Promise<string> {
   return invoke("kes_import_cert", { machineId, certPath });
 }
+
+export async function runtimeApplyConfig(machineId: number): Promise<string> {
+  return invoke("runtime_apply_config", { machineId });
+}
+
+export async function runtimeConfigStatus(taskId: string): Promise<DeployTaskStatus> {
+  return invoke("runtime_config_status", { taskId });
+}
+
+export async function runtimeRestart(machineId: number): Promise<string> {
+  return invoke("runtime_restart", { machineId });
+}
+
+export async function runtimeRestartStatus(taskId: string): Promise<DeployTaskStatus> {
+  return invoke("runtime_restart_status", { taskId });
+}

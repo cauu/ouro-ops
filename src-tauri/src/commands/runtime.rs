@@ -18,6 +18,11 @@ pub struct RuntimeApplyConfigPayload {
     pub machine_id: i64,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RuntimeRestartPayload {
+    pub machine_id: i64,
+}
+
 #[derive(Debug, Clone)]
 struct TaskRow {
     id: String,
@@ -39,6 +44,18 @@ fn runtime_config_playbook_path() -> Result<String, AppError> {
         .join("ansible")
         .join("playbooks")
         .join("runtime-config.yml");
+    Ok(path.display().to_string())
+}
+
+fn runtime_restart_playbook_path() -> Result<String, AppError> {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .map_err(|_| AppError::Internal("CARGO_MANIFEST_DIR not set".into()))?;
+    let path = std::path::PathBuf::from(manifest_dir)
+        .parent()
+        .ok_or_else(|| AppError::Internal("no parent dir".into()))?
+        .join("ansible")
+        .join("playbooks")
+        .join("runtime-restart.yml");
     Ok(path.display().to_string())
 }
 
@@ -158,22 +175,22 @@ fn get_task_machine_statuses(
     Ok(result)
 }
 
-fn insert_runtime_config_task(
+fn insert_runtime_task(
     conn: &Connection,
     task_id: &str,
-    payload: &RuntimeApplyConfigPayload,
+    task_type: &str,
+    machine_id: i64,
+    payload_json: &str,
 ) -> Result<(), AppError> {
-    let payload_json =
-        serde_json::to_string(payload).map_err(|e| AppError::Internal(e.to_string()))?;
     conn.execute(
         "INSERT INTO task (id, task_type, status, payload)
-         VALUES (?1, 'runtime_config', 'pending', ?2)",
-        rusqlite::params![task_id, payload_json],
+         VALUES (?1, ?2, 'pending', ?3)",
+        rusqlite::params![task_id, task_type, payload_json],
     )?;
     conn.execute(
         "INSERT INTO task_machine (task_id, machine_id, status)
          VALUES (?1, ?2, 'pending')",
-        rusqlite::params![task_id, payload.machine_id],
+        rusqlite::params![task_id, machine_id],
     )?;
     Ok(())
 }
@@ -215,11 +232,26 @@ fn runtime_config_status_with_conn(
     conn: &Connection,
     task_id: &str,
 ) -> Result<DeployTaskStatus, AppError> {
+    runtime_task_status_with_conn(conn, task_id, "runtime_config")
+}
+
+fn runtime_restart_status_with_conn(
+    conn: &Connection,
+    task_id: &str,
+) -> Result<DeployTaskStatus, AppError> {
+    runtime_task_status_with_conn(conn, task_id, "runtime_restart")
+}
+
+fn runtime_task_status_with_conn(
+    conn: &Connection,
+    task_id: &str,
+    expected_task_type: &str,
+) -> Result<DeployTaskStatus, AppError> {
     let task = get_task_row(conn, task_id)?
         .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
-    if task.task_type != "runtime_config" {
+    if task.task_type != expected_task_type {
         return Err(AppError::Internal(format!(
-            "task is not runtime_config: {task_id}"
+            "task is not {expected_task_type}: {task_id}"
         )));
     }
     let payload = task
@@ -291,6 +323,55 @@ fn run_runtime_config_worker(
     Ok(())
 }
 
+fn run_runtime_restart_worker(
+    app_handle: &tauri::AppHandle,
+    task_id: &str,
+    payload: &RuntimeRestartPayload,
+) -> Result<(), AppError> {
+    {
+        let db_state = app_handle.state::<DbState>();
+        let conn = db_state
+            .0
+            .lock()
+            .map_err(|_| AppError::Internal("lock".into()))?;
+        mark_task_running(&conn, task_id)?;
+    }
+
+    let inventory = {
+        let db_state = app_handle.state::<DbState>();
+        let conn = db_state
+            .0
+            .lock()
+            .map_err(|_| AppError::Internal("lock".into()))?;
+        build_runtime_inventory(&conn, payload.machine_id)?
+    };
+
+    let sidecar_state = {
+        let managed = app_handle.state::<Mutex<Option<Arc<SidecarState>>>>();
+        let guard = managed
+            .lock()
+            .map_err(|_| AppError::Internal("lock".into()))?;
+        guard.as_ref().cloned().ok_or(AppError::SidecarCrash)?
+    };
+
+    run_playbook(
+        sidecar_state.as_ref(),
+        app_handle,
+        task_id,
+        runtime_restart_playbook_path()?.as_str(),
+        inventory,
+        json!({}),
+    )?;
+
+    let db_state = app_handle.state::<DbState>();
+    let conn = db_state
+        .0
+        .lock()
+        .map_err(|_| AppError::Internal("lock".into()))?;
+    mark_task_terminal(&conn, task_id, "success", None)?;
+    Ok(())
+}
+
 fn mark_runtime_task_failed_if_needed(
     app_handle: &tauri::AppHandle,
     task_id: &str,
@@ -329,7 +410,9 @@ pub async fn runtime_apply_config(
     let payload = RuntimeApplyConfigPayload { machine_id };
     {
         let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
-        insert_runtime_config_task(&conn, &task_id, &payload)?;
+        let payload_json =
+            serde_json::to_string(&payload).map_err(|e| AppError::Internal(e.to_string()))?;
+        insert_runtime_task(&conn, &task_id, "runtime_config", payload.machine_id, &payload_json)?;
     }
 
     let task_id_for_worker = task_id.clone();
@@ -351,12 +434,74 @@ pub async fn runtime_apply_config(
 }
 
 #[tauri::command]
+pub async fn runtime_restart(
+    machine_id: i64,
+    db: State<'_, DbState>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, AppError> {
+    {
+        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let machine = selected_machine(&conn, machine_id)?;
+        audit_log_insert(
+            &conn,
+            "runtime_restart_start",
+            &json!({
+                "machine_id": machine_id,
+                "machine_name": machine.name,
+                "role": machine.role
+            }),
+        )?;
+    }
+
+    let task_id = uuid::Uuid::new_v4().to_string();
+    let payload = RuntimeRestartPayload { machine_id };
+    {
+        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let payload_json =
+            serde_json::to_string(&payload).map_err(|e| AppError::Internal(e.to_string()))?;
+        insert_runtime_task(
+            &conn,
+            &task_id,
+            "runtime_restart",
+            payload.machine_id,
+            &payload_json,
+        )?;
+    }
+
+    let task_id_for_worker = task_id.clone();
+    let payload_for_worker = payload.clone();
+    let app_for_worker = app_handle.clone();
+    thread::spawn(move || {
+        if let Err(err) =
+            run_runtime_restart_worker(&app_for_worker, &task_id_for_worker, &payload_for_worker)
+        {
+            let _ = mark_runtime_task_failed_if_needed(
+                &app_for_worker,
+                &task_id_for_worker,
+                &err.to_string(),
+            );
+        }
+    });
+
+    Ok(task_id)
+}
+
+#[tauri::command]
 pub async fn runtime_config_status(
     task_id: String,
     db: State<'_, DbState>,
 ) -> Result<DeployTaskStatus, AppError> {
     let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
     runtime_config_status_with_conn(&conn, task_id.as_str())
+}
+
+#[tauri::command]
+pub async fn runtime_restart_status(
+    task_id: String,
+    db: State<'_, DbState>,
+) -> Result<DeployTaskStatus, AppError> {
+    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    runtime_restart_status_with_conn(&conn, task_id.as_str())
 }
 
 #[cfg(test)]
@@ -458,12 +603,39 @@ mod tests {
         let (_relay_id, bp_id) = seed_pool(&conn);
         let task_id = uuid::Uuid::new_v4().to_string();
         let payload = RuntimeApplyConfigPayload { machine_id: bp_id };
-        insert_runtime_config_task(&conn, &task_id, &payload).expect("insert task");
+        let payload_json = serde_json::to_string(&payload).expect("payload");
+        insert_runtime_task(&conn, &task_id, "runtime_config", payload.machine_id, &payload_json)
+            .expect("insert task");
         mark_task_running(&conn, &task_id).expect("running");
         let status = runtime_config_status_with_conn(&conn, &task_id).expect("status");
         assert_eq!(status.task_type, "runtime_config");
         assert_eq!(status.status, "running");
         assert_eq!(status.machine_statuses.len(), 1);
         assert_eq!(status.machine_statuses[0].machine_id, bp_id);
+    }
+
+    #[test]
+    fn tc_cfg_004_runtime_restart_task_roundtrip_status() {
+        let conn = new_db();
+        let (relay_id, _bp_id) = seed_pool(&conn);
+        let task_id = uuid::Uuid::new_v4().to_string();
+        let payload = RuntimeRestartPayload {
+            machine_id: relay_id,
+        };
+        let payload_json = serde_json::to_string(&payload).expect("payload");
+        insert_runtime_task(
+            &conn,
+            &task_id,
+            "runtime_restart",
+            payload.machine_id,
+            &payload_json,
+        )
+        .expect("insert task");
+        mark_task_running(&conn, &task_id).expect("running");
+        let status = runtime_restart_status_with_conn(&conn, &task_id).expect("status");
+        assert_eq!(status.task_type, "runtime_restart");
+        assert_eq!(status.status, "running");
+        assert_eq!(status.machine_statuses.len(), 1);
+        assert_eq!(status.machine_statuses[0].machine_id, relay_id);
     }
 }
