@@ -1,13 +1,20 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, State};
 
-use crate::db::{audit_log_insert, machine_get, machine_list as repo_machine_list, DbState};
+use crate::commands::deploy::{DeployTaskStatus, TaskMachineStatus};
+use crate::db::{
+    audit_log_insert, machine_get, machine_list as repo_machine_list, pool_get_single, DbState,
+    MachineRow,
+};
 use crate::error::AppError;
+use crate::sidecar::{run_playbook, SidecarState};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct KesStatus {
@@ -29,6 +36,24 @@ pub struct KesSignRequest {
     pub instructions: String,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct KesRotationPayload {
+    machine_id: i64,
+    cert_path: String,
+}
+
+#[derive(Debug, Clone)]
+struct TaskRow {
+    id: String,
+    task_type: String,
+    status: String,
+    payload: Option<String>,
+    error_msg: Option<String>,
+    started_at: Option<String>,
+    finished_at: Option<String>,
+    created_at: String,
+}
+
 fn kes_staging_dir(app_handle: &AppHandle, machine_id: i64) -> Result<PathBuf, AppError> {
     let app_dir = app_handle
         .path()
@@ -46,7 +71,10 @@ fn severity_for_remaining_days(remaining_days: Option<i64>) -> String {
     }
 }
 
-fn remaining_days_from_expiry(conn: &Connection, expiry_date: Option<&str>) -> Result<Option<i64>, AppError> {
+fn remaining_days_from_expiry(
+    conn: &Connection,
+    expiry_date: Option<&str>,
+) -> Result<Option<i64>, AppError> {
     let Some(expiry_date) = expiry_date else {
         return Ok(None);
     };
@@ -102,7 +130,7 @@ fn read_kes_statuses(conn: &Connection) -> Result<Vec<KesStatus>, AppError> {
     Ok(results)
 }
 
-fn ensure_bp_machine(conn: &Connection, machine_id: i64) -> Result<crate::db::MachineRow, AppError> {
+fn ensure_bp_machine(conn: &Connection, machine_id: i64) -> Result<MachineRow, AppError> {
     let machine = machine_get(conn, machine_id)?
         .ok_or_else(|| AppError::Internal(format!("machine {machine_id} not found")))?;
     if machine.role != "bp" {
@@ -199,6 +227,240 @@ fn validate_operational_cert(cert_path: &Path) -> Result<Value, AppError> {
     Ok(parsed)
 }
 
+fn kes_push_playbook_path() -> Result<String, AppError> {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .map_err(|_| AppError::Internal("CARGO_MANIFEST_DIR not set".into()))?;
+    let path = PathBuf::from(manifest_dir)
+        .parent()
+        .ok_or_else(|| AppError::Internal("no parent dir".into()))?
+        .join("ansible")
+        .join("playbooks")
+        .join("kes-push.yml");
+    Ok(path.display().to_string())
+}
+
+fn get_task_row(conn: &Connection, task_id: &str) -> Result<Option<TaskRow>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, task_type, status, payload, error_msg, started_at, finished_at, created_at
+         FROM task
+         WHERE id = ?1
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query(params![task_id])?;
+    if let Some(row) = rows.next()? {
+        Ok(Some(TaskRow {
+            id: row.get(0)?,
+            task_type: row.get(1)?,
+            status: row.get(2)?,
+            payload: row.get(3)?,
+            error_msg: row.get(4)?,
+            started_at: row.get(5)?,
+            finished_at: row.get(6)?,
+            created_at: row.get(7)?,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+fn get_task_machine_statuses(
+    conn: &Connection,
+    task_id: &str,
+) -> Result<Vec<TaskMachineStatus>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT machine_id, status
+         FROM task_machine
+         WHERE task_id = ?1
+         ORDER BY machine_id ASC",
+    )?;
+    let rows = stmt.query_map(params![task_id], |row| {
+        Ok(TaskMachineStatus {
+            machine_id: row.get(0)?,
+            status: row.get(1)?,
+        })
+    })?;
+    let mut result = Vec::new();
+    for row in rows {
+        result.push(row?);
+    }
+    Ok(result)
+}
+
+fn build_kes_inventory(conn: &Connection, machine_id: i64) -> Result<Value, AppError> {
+    let machine = ensure_bp_machine(conn, machine_id)?;
+    let pool = pool_get_single(conn)?
+        .ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
+    let all_pool_machines: Vec<MachineRow> = repo_machine_list(conn, None, Some(pool.network.as_str()))?
+        .into_iter()
+        .filter(|m| m.pool_id == machine.pool_id)
+        .collect();
+    let relay_nodes: Vec<Value> = all_pool_machines
+        .iter()
+        .filter(|m| m.role == "relay")
+        .map(|m| json!({ "ip": m.ip, "name": m.name }))
+        .collect();
+    let bp_nodes: Vec<Value> = vec![json!({ "ip": machine.ip, "name": machine.name })];
+
+    if relay_nodes.is_empty() {
+        return Err(AppError::Internal(
+            "KES push for bp requires at least one relay in the pool".into(),
+        ));
+    }
+
+    let mut hostvars = serde_json::Map::new();
+    hostvars.insert(
+        machine.name.clone(),
+        json!({
+            "ansible_host": machine.ip,
+            "ansible_port": machine.ssh_port,
+            "ansible_user": machine.ssh_user,
+            "role": machine.role,
+            "network": machine.network,
+            "relay_nodes": relay_nodes,
+            "bp_nodes": bp_nodes,
+        }),
+    );
+
+    Ok(json!({
+        "_meta": { "hostvars": hostvars },
+        "bp": { "hosts": [machine.name] },
+        "relay": { "hosts": [] }
+    }))
+}
+
+fn mark_task_running(conn: &Connection, task_id: &str) -> Result<(), AppError> {
+    conn.execute(
+        "UPDATE task
+         SET status = 'running', started_at = COALESCE(started_at, datetime('now')), error_msg = NULL
+         WHERE id = ?1",
+        params![task_id],
+    )?;
+    conn.execute(
+        "UPDATE task_machine SET status = 'running' WHERE task_id = ?1 AND status = 'pending'",
+        params![task_id],
+    )?;
+    Ok(())
+}
+
+fn mark_task_terminal(
+    conn: &Connection,
+    task_id: &str,
+    status: &str,
+    error_msg: Option<&str>,
+) -> Result<(), AppError> {
+    conn.execute(
+        "UPDATE task
+         SET status = ?1, error_msg = ?2, finished_at = datetime('now')
+         WHERE id = ?3",
+        params![status, error_msg, task_id],
+    )?;
+    conn.execute(
+        "UPDATE task_machine SET status = ?1 WHERE task_id = ?2",
+        params![status, task_id],
+    )?;
+    Ok(())
+}
+
+fn kes_rotation_status_with_conn(
+    conn: &Connection,
+    task_id: &str,
+) -> Result<DeployTaskStatus, AppError> {
+    let task = get_task_row(conn, task_id)?
+        .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
+    if task.task_type != "kes_rotation" {
+        return Err(AppError::Internal(format!(
+            "task is not kes_rotation: {task_id}"
+        )));
+    }
+    let payload = task
+        .payload
+        .as_deref()
+        .map(serde_json::from_str::<Value>)
+        .transpose()
+        .map_err(|e| AppError::Internal(format!("task payload parse failed: {e}")))?
+        .unwrap_or(Value::Null);
+    Ok(DeployTaskStatus {
+        task_id: task.id,
+        task_type: task.task_type,
+        status: task.status,
+        payload,
+        error_msg: task.error_msg,
+        started_at: task.started_at,
+        finished_at: task.finished_at,
+        created_at: task.created_at,
+        machine_statuses: get_task_machine_statuses(conn, task_id)?,
+    })
+}
+
+fn run_kes_push_worker(
+    app_handle: &AppHandle,
+    task_id: &str,
+    payload: &KesRotationPayload,
+) -> Result<(), AppError> {
+    {
+        let db_state = app_handle.state::<DbState>();
+        let conn = db_state
+            .0
+            .lock()
+            .map_err(|_| AppError::Internal("lock".into()))?;
+        mark_task_running(&conn, task_id)?;
+    }
+
+    let inventory = {
+        let db_state = app_handle.state::<DbState>();
+        let conn = db_state
+            .0
+            .lock()
+            .map_err(|_| AppError::Internal("lock".into()))?;
+        build_kes_inventory(&conn, payload.machine_id)?
+    };
+
+    let sidecar_state = {
+        let managed = app_handle.state::<Mutex<Option<Arc<SidecarState>>>>();
+        let guard = managed
+            .lock()
+            .map_err(|_| AppError::Internal("lock".into()))?;
+        guard.as_ref().cloned().ok_or(AppError::SidecarCrash)?
+    };
+
+    run_playbook(
+        sidecar_state.as_ref(),
+        app_handle,
+        task_id,
+        kes_push_playbook_path()?.as_str(),
+        inventory,
+        json!({ "kes_cert_path": payload.cert_path }),
+    )?;
+
+    let db_state = app_handle.state::<DbState>();
+    let conn = db_state
+        .0
+        .lock()
+        .map_err(|_| AppError::Internal("lock".into()))?;
+    conn.execute(
+        "INSERT INTO kes_state (machine_id, last_checked_at)
+         VALUES (?1, datetime('now'))
+         ON CONFLICT(machine_id) DO UPDATE SET last_checked_at=datetime('now')",
+        params![payload.machine_id],
+    )?;
+    mark_task_terminal(&conn, task_id, "success", None)?;
+    Ok(())
+}
+
+fn mark_kes_task_failed_if_needed(
+    app_handle: &AppHandle,
+    task_id: &str,
+    message: &str,
+) -> Result<(), AppError> {
+    let db_state = app_handle.state::<DbState>();
+    let conn = db_state
+        .0
+        .lock()
+        .map_err(|_| AppError::Internal("lock".into()))?;
+    mark_task_terminal(&conn, task_id, "failed", Some(message))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn kes_status_all(db: State<'_, DbState>) -> Result<Vec<KesStatus>, AppError> {
     let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
@@ -215,7 +477,8 @@ pub async fn kes_generate(
     ensure_bp_machine(&conn, machine_id)?;
     let counter_value = current_op_cert_counter(&conn, machine_id)?;
     let staging_dir = kes_staging_dir(&app_handle, machine_id)?;
-    let mut sign_request = kes_generate_with_runner(staging_dir.as_path(), counter_value, run_command_checked)?;
+    let mut sign_request =
+        kes_generate_with_runner(staging_dir.as_path(), counter_value, run_command_checked)?;
     sign_request.machine_id = machine_id;
     audit_log_insert(
         &conn,
@@ -281,6 +544,75 @@ pub async fn kes_import_cert(
         }),
     )?;
     Ok(task_id)
+}
+
+#[tauri::command]
+pub async fn kes_push_start(
+    task_id: String,
+    db: State<'_, DbState>,
+    app_handle: AppHandle,
+) -> Result<String, AppError> {
+    let payload = {
+        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let task = get_task_row(&conn, task_id.as_str())?
+            .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
+        if task.task_type != "kes_rotation" {
+            return Err(AppError::Internal(format!(
+                "task is not kes_rotation: {task_id}"
+            )));
+        }
+        if task.status != "pending" {
+            return Err(AppError::Internal(format!("task is not pending: {task_id}")));
+        }
+        let payload: KesRotationPayload = serde_json::from_str(
+            task.payload
+                .as_deref()
+                .ok_or_else(|| AppError::Internal("task payload missing".into()))?,
+        )
+        .map_err(|e| AppError::Internal(format!("task payload parse failed: {e}")))?;
+        if !Path::new(payload.cert_path.as_str()).exists() {
+            return Err(AppError::Internal(format!(
+                "staged cert not found: {}",
+                payload.cert_path
+            )));
+        }
+        let machine = ensure_bp_machine(&conn, payload.machine_id)?;
+        audit_log_insert(
+            &conn,
+            "kes_push_start",
+            &json!({
+                "task_id": task_id,
+                "machine_id": payload.machine_id,
+                "machine_name": machine.name,
+                "cert_path": payload.cert_path
+            }),
+        )?;
+        payload
+    };
+
+    let task_id_for_worker = task_id.clone();
+    let payload_for_worker = payload.clone();
+    let app_for_worker = app_handle.clone();
+    thread::spawn(move || {
+        if let Err(err) = run_kes_push_worker(&app_for_worker, &task_id_for_worker, &payload_for_worker) {
+            let _ = mark_kes_task_failed_if_needed(
+                &app_for_worker,
+                &task_id_for_worker,
+                &err.to_string(),
+            );
+        }
+    });
+
+    Ok(task_id)
+}
+
+#[tauri::command]
+pub async fn kes_rotation_status(
+    task_id: String,
+    db: State<'_, DbState>,
+) -> Result<DeployTaskStatus, AppError> {
+    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    kes_rotation_status_with_conn(&conn, task_id.as_str())
 }
 
 #[cfg(test)]
@@ -364,5 +696,30 @@ mod tests {
         assert_eq!(statuses[0].machine_id, machine_id);
         assert_eq!(statuses[0].severity, "warning");
         assert_eq!(statuses[0].op_cert_counter, Some(3));
+    }
+
+    #[test]
+    fn tc_kes_005_rotation_status_roundtrip() {
+        let conn = new_db();
+        let machine_id = create_bp_machine(&conn);
+        let task_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO task (id, task_type, status, payload) VALUES (?1, 'kes_rotation', 'running', ?2)",
+            params![
+                task_id,
+                json!({"machine_id": machine_id, "cert_path": "/tmp/node.cert"}).to_string()
+            ],
+        )
+        .expect("insert task");
+        conn.execute(
+            "INSERT INTO task_machine (task_id, machine_id, status) VALUES (?1, ?2, 'running')",
+            params![task_id, machine_id],
+        )
+        .expect("insert task_machine");
+        let status = kes_rotation_status_with_conn(&conn, task_id.as_str()).expect("status");
+        assert_eq!(status.task_type, "kes_rotation");
+        assert_eq!(status.status, "running");
+        assert_eq!(status.machine_statuses.len(), 1);
+        assert_eq!(status.machine_statuses[0].machine_id, machine_id);
     }
 }

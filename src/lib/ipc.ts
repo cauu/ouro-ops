@@ -111,6 +111,14 @@ export async function kesImportCert(machineId: number, certPath: string): Promis
   return invoke("kes_import_cert", { machineId, certPath });
 }
 
+export async function kesPushStart(taskId: string): Promise<string> {
+  return invoke("kes_push_start", { taskId });
+}
+
+export async function kesRotationStatus(taskId: string): Promise<DeployTaskStatus> {
+  return invoke("kes_rotation_status", { taskId });
+}
+
 export async function runtimeApplyConfig(machineId: number): Promise<string> {
   return invoke("runtime_apply_config", { machineId });
 }

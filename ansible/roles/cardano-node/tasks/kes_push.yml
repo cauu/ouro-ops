@@ -1,0 +1,81 @@
+---
+- name: Validate KES push target inputs
+  ansible.builtin.assert:
+    that:
+      - kes_cert_path is defined
+      - role == "bp"
+    fail_msg: "kes push requires bp role and kes_cert_path"
+
+- name: Inspect existing cardano-node container before KES push
+  community.docker.docker_container_info:
+    name: cardano-node
+  register: kes_push_container_info
+  failed_when: false
+
+- name: Fail when cardano-node runtime does not exist
+  ansible.builtin.fail:
+    msg: "cardano-node runtime not found; use deploy for initial provisioning"
+  when: not (kes_push_container_info.exists | default(false))
+
+- name: Ensure required BP runtime key material exists
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: kes_push_key_stats
+  loop:
+    - /opt/cardano/keys/kes.skey
+    - /opt/cardano/keys/vrf.skey
+
+- name: Fail when BP key material is missing
+  ansible.builtin.fail:
+    msg: "missing bp key material under /opt/cardano/keys"
+  when: not item.stat.exists
+  loop: "{{ kes_push_key_stats.results }}"
+  loop_control:
+    label: "{{ item.stat.path | default('unknown') }}"
+
+- name: Install imported KES operational certificate
+  ansible.builtin.copy:
+    src: "{{ kes_cert_path }}"
+    dest: /opt/cardano/keys/node.cert
+    owner: "1000"
+    group: "1000"
+    mode: "0640"
+    remote_src: false
+    backup: true
+
+- name: Restart cardano-node after KES certificate update
+  ansible.builtin.command: docker restart cardano-node
+  register: kes_push_restart
+  changed_when: kes_push_restart.rc == 0
+
+- name: Wait for restarted container to be running
+  ansible.builtin.command: docker inspect -f '{{"{{.State.Running}}"}}' cardano-node
+  register: kes_push_running
+  changed_when: false
+  until: kes_push_running.stdout | trim == 'true'
+  retries: 20
+  delay: 3
+
+- name: Wait for node socket after KES push
+  ansible.builtin.wait_for:
+    path: /opt/cardano/ipc/node.socket
+    timeout: 120
+
+- name: Wait for cardano tip query after KES push
+  ansible.builtin.command: >-
+    docker exec cardano-node
+    cardano-cli query tip
+    --socket-path /ipc/node.socket
+    --{{ network }}
+  register: kes_push_tip
+  changed_when: false
+  retries: 20
+  delay: 6
+  until: kes_push_tip.rc == 0
+
+- name: Report KES push result
+  ansible.builtin.debug:
+    msg:
+      readiness: ready
+      restart_stdout: "{{ kes_push_restart.stdout | default('') | trim }}"
+      tip: "{{ kes_push_tip.stdout | default('') | trim }}"

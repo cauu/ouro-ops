@@ -75,6 +75,8 @@ pub fn run() {
             commands::kes::kes_status_all,
             commands::kes::kes_generate,
             commands::kes::kes_import_cert,
+            commands::kes::kes_push_start,
+            commands::kes::kes_rotation_status,
             commands::runtime::runtime_apply_config,
             commands::runtime::runtime_config_status,
             commands::runtime::runtime_restart,
@@ -282,11 +284,24 @@ mod frontend_tests {
     }
 
     #[test]
+    fn tc_dep_016_kes_push_playbook_exists_and_restarts_bp() {
+        let playbook = include_str!("../../ansible/playbooks/kes-push.yml");
+        let tasks = include_str!("../../ansible/roles/cardano-node/tasks/kes_push.yml");
+        assert!(playbook.contains("tasks_from: kes_push"));
+        assert!(tasks.contains("kes_cert_path"));
+        assert!(tasks.contains("/opt/cardano/keys/node.cert"));
+        assert!(tasks.contains("docker restart cardano-node"));
+        assert!(tasks.contains("use deploy for initial provisioning"));
+    }
+
+    #[test]
     fn tc_fe_009_ipc_exposes_kes_commands() {
         let ipc = include_str!("../../src/lib/ipc.ts");
         assert!(ipc.contains("kesStatusAll"));
         assert!(ipc.contains("kesGenerate"));
         assert!(ipc.contains("kesImportCert"));
+        assert!(ipc.contains("kesPushStart"));
+        assert!(ipc.contains("kesRotationStatus"));
     }
 
     #[test]
@@ -309,5 +324,12 @@ mod frontend_tests {
         assert!(ipc.contains("runtimeConfigStatus"));
         assert!(ipc.contains("runtimeRestart"));
         assert!(ipc.contains("runtimeRestartStatus"));
+    }
+
+    #[test]
+    fn tc_fe_012_ipc_exposes_kes_rotation_commands() {
+        let ipc = include_str!("../../src/lib/ipc.ts");
+        assert!(ipc.contains("kesPushStart"));
+        assert!(ipc.contains("kesRotationStatus"));
     }
 }
