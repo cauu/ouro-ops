@@ -140,6 +140,10 @@ export async function upgradeStart(payload: UpgradePayload): Promise<string> {
   return invoke("upgrade_start", { payload });
 }
 
+export async function upgradeStatus(taskId: string): Promise<DeployTaskStatus> {
+  return invoke("upgrade_status", { taskId });
+}
+
 export async function upgradeConfirmNext(taskId: string): Promise<void> {
   await invoke("upgrade_confirm_next", { taskId });
 }

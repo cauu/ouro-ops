@@ -119,6 +119,14 @@ export interface UpgradePayload {
   auto_continue: boolean;
 }
 
+export interface UpgradeGateEvent {
+  task_id: string;
+  completed_machine: string;
+  next_machine: string;
+  is_bp: boolean;
+  message: string;
+}
+
 export interface TaskMachineStatus {
   machine_id: number;
   status: string;

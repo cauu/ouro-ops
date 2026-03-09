@@ -82,6 +82,7 @@ pub fn run() {
             commands::runtime::runtime_restart,
             commands::runtime::runtime_restart_status,
             commands::upgrade::upgrade_start,
+            commands::upgrade::upgrade_status,
             commands::upgrade::upgrade_confirm_next,
             commands::upgrade::upgrade_rollback,
         ])
@@ -311,6 +312,7 @@ mod frontend_tests {
         let lib = include_str!("lib.rs");
         assert!(commands.contains("pub mod upgrade;"));
         assert!(lib.contains("commands::upgrade::upgrade_start"));
+        assert!(lib.contains("commands::upgrade::upgrade_status"));
         assert!(lib.contains("commands::upgrade::upgrade_confirm_next"));
         assert!(lib.contains("commands::upgrade::upgrade_rollback"));
     }
@@ -376,7 +378,18 @@ mod frontend_tests {
     fn tc_fe_013_ipc_exposes_upgrade_commands() {
         let ipc = include_str!("../../src/lib/ipc.ts");
         assert!(ipc.contains("upgradeStart"));
+        assert!(ipc.contains("upgradeStatus"));
         assert!(ipc.contains("upgradeConfirmNext"));
         assert!(ipc.contains("upgradeRollback"));
+    }
+
+    #[test]
+    fn tc_evt_004_upgrade_gate_contract_exposed() {
+        let types = include_str!("../../src/lib/types.ts");
+        let upgrade = include_str!("commands/upgrade.rs");
+        assert!(types.contains("export interface UpgradeGateEvent"));
+        assert!(upgrade.contains("\"upgrade:gate\""));
+        assert!(upgrade.contains("completed_machine"));
+        assert!(upgrade.contains("next_machine"));
     }
 }
