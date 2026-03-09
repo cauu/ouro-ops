@@ -61,6 +61,7 @@ pub fn run() {
             commands::pool::pool_update,
             commands::pool::pool_onchain_status,
             commands::pool::pool_bind_onchain,
+            commands::pool::pool_registration_prepare,
             commands::pool::pool_refresh_bound_onchain,
             commands::pool::pool_unbind_onchain,
             commands::machine::machine_add,
@@ -507,6 +508,8 @@ mod frontend_tests {
         assert!(ipc.contains("poolOnchainStatus"));
         assert!(ipc.contains("pool_onchain_status"));
         assert!(ipc.contains("poolBindOnchain"));
+        assert!(ipc.contains("poolRegistrationPrepare"));
+        assert!(ipc.contains("pool_registration_prepare"));
         assert!(ipc.contains("poolRefreshBoundOnchain"));
         assert!(ipc.contains("poolUnbindOnchain"));
         assert!(ipc.contains("pool_unbind_onchain"));
@@ -520,6 +523,8 @@ mod frontend_tests {
         assert!(types.contains("onchain_registered: boolean;"));
         assert!(types.contains("export interface PoolOnchainQueryPayload"));
         assert!(types.contains("export interface PoolBindOnchainPayload"));
+        assert!(types.contains("export interface PoolRegistrationPreparePayload"));
+        assert!(types.contains("export interface PoolRegistrationPrepareResult"));
         assert!(types.contains("export interface PoolOnchainRelay"));
         assert!(types.contains("export interface PoolOnchainRegistration"));
         assert!(types.contains("export interface PoolOnchainStatus"));
@@ -578,6 +583,7 @@ mod frontend_tests {
 
         assert!(pool.contains("\"pool_init\""));
         assert!(pool.contains("\"pool_update\""));
+        assert!(pool.contains("\"pool_registration_prepare\""));
         assert!(pool.contains("\"pool_unbind_onchain\""));
         assert!(deploy.contains("\"deploy_start\""));
         assert!(deploy.contains("\"deploy_cancel\""));

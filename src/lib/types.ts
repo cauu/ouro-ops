@@ -47,6 +47,23 @@ export interface PoolBindOnchainPayload {
   pool_id: string;
 }
 
+export interface PoolRegistrationPreparePayload {
+  machine_id: number;
+  cold_vkey_path: string;
+  cold_skey_path?: string;
+  vrf_vkey_path: string;
+  reward_vkey_path: string;
+  owner_vkey_paths: string[];
+  owner_skey_paths: string[];
+  payment_addr_path?: string;
+  payment_skey_path?: string;
+  pledge: number;
+  margin: number;
+  fixed_cost: number;
+  metadata_url?: string;
+  metadata_hash?: string;
+}
+
 export interface PoolOnchainRelay {
   address: string;
   port: number;
@@ -75,6 +92,29 @@ export interface PoolOnchainStatus {
   registered_onchain: boolean;
   registration: PoolOnchainRegistration | null;
   missing_requirements: string[];
+  note: string;
+}
+
+export interface PoolRegistrationTxDraft {
+  kind: string;
+  certificate_path: string | null;
+  required_deposit: number | null;
+  payment_address: string | null;
+  required_signing_materials: string[];
+  command_preview: string;
+}
+
+export interface PoolRegistrationPrepareResult {
+  machine_id: number;
+  machine_name: string;
+  network: "mainnet" | "preprod" | "preview" | string;
+  pool_id: string | null;
+  registration_relays: PoolOnchainRelay[];
+  certificate_generated: boolean;
+  certificate_path: string | null;
+  missing_requirements: string[];
+  missing_signing_materials: string[];
+  tx_draft: PoolRegistrationTxDraft;
   note: string;
 }
 

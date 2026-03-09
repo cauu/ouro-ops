@@ -65,7 +65,7 @@ Spec-ID：`S0006`
 - [x] `p6-1` 定义链上注册状态查询接口与返回模型
 - [x] `p6-2` 实现 stake pool 是否已注册的链上判断与详情读取
 - [x] `p6-3` 将 Settings 中误导性的本地可编辑链上字段改为只读或迁移
-- [ ] `p6-4` 设计并实现 registration 准备流程：参数校验、证书生成、交易草稿
+- [x] `p6-4` 设计并实现 registration 准备流程：参数校验、证书生成、交易草稿
 - [ ] `p6-5` 设计并实现 registration 提交流程：签名输入、交易提交与结果回执
 - [x] `p6-6` 增加前端注册状态页，支持对 `p6-2` 的链上查询能力进行可视化验证
 - [ ] `p6-7` 增加高风险确认、审计记录与验收验证
@@ -115,6 +115,8 @@ Spec-ID：`S0006`
 - `2026-03-09T20:42:00+0800` `p6-17` 完成：将已绑定 pool 的链上信息展示与已注册 pool 的绑定入口收敛到 Dashboard，撤掉独立的 on-chain status 导航入口，避免用户在多个页面之间切换查看同一份 pool 状态。 
 - `2026-03-09T20:42:00+0800` `p6-18` 完成：当 workspace 已初始化但尚未绑定链上 pool 时，Dashboard 会同时展示“绑定已有 `pool_id`”的可执行面板，以及“注册新 pool”的下一步引导说明。 
 - `2026-03-09T21:18:00+0800` `p6-19` 完成：新增 `pool_unbind_onchain` 链路，允许用户在 Dashboard 对已绑定 pool 执行 unbind；该操作只清空 workspace 的链上绑定关系和缓存的链上字段，不影响运行中的 relay/bp 节点。 
+- `2026-03-09T23:45:00+0800` `p6-4` 完成：新增 `pool_registration_prepare` 后端链路，支持基于 relay/bp 机器生成 registration certificate、推导 `pool_id`、汇总 relay 列表、计算 stake pool deposit，并返回 transaction draft 与缺失签名材料清单；当公钥材料或 relay 条件不足时，返回一致的缺失要求而不直接失败。 
+- `2026-03-09T23:58:00+0800` `p6-4` 回归修正：补齐 `pool_registration_prepare` 的审计写入，修正测试夹具对 docker shell 内层转义的匹配方式，并改为基于已解析的容器内 `cold.vkey` 路径推导 `pool_id`，确保 registration prepare 在真实命令拼装下仍能稳定返回证书和交易草稿。
 
 ## 6. 验证证据（仅追加）
 
@@ -139,6 +141,10 @@ Spec-ID：`S0006`
 - `2026-03-09T21:18:00+0800` `TC-P6-012 | stack: node | command: pnpm build | result: pass | note: Dashboard 上已绑定 pool 卡片可执行 unbind，并在解绑后自然回到未绑定引导态，前端构建通过。`
 - `2026-03-09T22:20:00+0800` `TC-P6-005/013 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_fe_026，断言 Settings 页面明确声明 ticker/margin/fixed cost 不在此编辑，且页面不再调用 poolUpdate 或提交本地链上字段。`
 - `2026-03-09T22:20:00+0800` `TC-P6-005/013 | stack: node | command: pnpm build | result: pass | note: Settings 页面已改为只读说明页；路由仍保留，但不再暴露会误导用户的 ticker/margin/fixed cost 编辑表单。`
+- `2026-03-09T23:45:00+0800` `TC-P6-003 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_017 与 tc_pool_018，覆盖 registration prepare 在缺少 owner keys / metadata hash / relay / signing keys 时返回明确缺失项，以及在材料齐全时生成 registration certificate 并返回 transaction draft。`
+- `2026-03-09T23:45:00+0800` `TC-P6-003 | stack: node | command: pnpm build | result: pass | note: 前端 IPC 和类型已补齐 PoolRegistrationPreparePayload / PoolRegistrationPrepareResult，为后续注册向导接入准备链路。`
+- `2026-03-09T23:58:00+0800` `TC-P6-003 | stack: rust | command: cargo test -q | result: pass | note: p6-4 回归后全量 139/139 通过；tc_pool_017、tc_pool_018 现在在真实 docker shell 转义场景下也能稳定覆盖 pool_id 推导、证书生成和审计写入。`
+- `2026-03-09T23:58:00+0800` `TC-P6-003 | stack: node | command: pnpm build | result: pass | note: 前端 IPC / 类型保持兼容，注册准备结果模型在构建后可供后续注册向导直接复用。`
 
 ## 7. 变更记录（仅追加）
 
