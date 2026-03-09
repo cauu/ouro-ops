@@ -107,11 +107,13 @@ mod frontend_tests {
         assert!(sidebar.contains("to=\"/machines\""));
         assert!(sidebar.contains("to=\"/kes\""));
         assert!(sidebar.contains("to=\"/deploy\""));
+        assert!(sidebar.contains("to=\"/upgrade\""));
         assert!(sidebar.contains("to=\"/settings\""));
         assert!(sidebar.contains("Dashboard"));
         assert!(sidebar.contains("Machines"));
         assert!(sidebar.contains("KES"));
         assert!(sidebar.contains("Deploy"));
+        assert!(sidebar.contains("Upgrade"));
         assert!(sidebar.contains("Settings"));
     }
 
@@ -127,6 +129,7 @@ mod frontend_tests {
         let deploy = include_str!("../../src/pages/DeployWizard.tsx");
         assert!(app.contains("path=\"/deploy\""));
         assert!(app.contains("path=\"/kes\""));
+        assert!(app.contains("path=\"/upgrade\""));
         assert!(deploy.contains("deployStart("));
         assert!(deploy.contains("useState(\"10.5.4-1\")"));
         assert!(deploy.contains("ghcr.io/blinklabs-io/cardano-node"));
@@ -389,6 +392,20 @@ mod frontend_tests {
         assert!(page.contains("Generate KES"));
         assert!(page.contains("Import Cert"));
         assert!(page.contains("Push to BP"));
+    }
+
+    #[test]
+    fn tc_fe_015_upgrade_wizard_page_exists() {
+        let page = include_str!("../../src/pages/UpgradeWizard.tsx");
+        assert!(page.contains("Upgrade Wizard"));
+        assert!(page.contains("upgradeStart("));
+        assert!(page.contains("upgradeStatus("));
+        assert!(page.contains("upgradeConfirmNext("));
+        assert!(page.contains("upgradeRollback("));
+        assert!(page.contains("listen<UpgradeGateEvent>(\"upgrade:gate\""));
+        assert!(page.contains("TaskLogStream"));
+        assert!(page.contains("Confirm Next Step"));
+        assert!(page.contains("Rollback"));
     }
 
     #[test]
