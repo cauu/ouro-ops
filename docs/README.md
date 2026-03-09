@@ -10,7 +10,7 @@ Read the active spec first for current requirements, outline design, execution p
 
 ## Draft Specs
 
-- 暂无。下一份 draft spec 会创建在 `docs/specs/draft/` 下，并使用稳定 `Spec-ID` 文件名。
+- [S0006-stake-pool-onchain-registration.md](./specs/draft/S0006-stake-pool-onchain-registration.md)
 
 ## Completed Specs
 
