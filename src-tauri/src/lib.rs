@@ -108,12 +108,14 @@ mod frontend_tests {
         assert!(sidebar.contains("to=\"/\""));
         assert!(sidebar.contains("to=\"/machines\""));
         assert!(sidebar.contains("to=\"/kes\""));
+        assert!(sidebar.contains("to=\"/pool-status\""));
         assert!(sidebar.contains("to=\"/deploy\""));
         assert!(sidebar.contains("to=\"/upgrade\""));
         assert!(sidebar.contains("to=\"/settings\""));
         assert!(sidebar.contains("Dashboard"));
         assert!(sidebar.contains("Machines"));
         assert!(sidebar.contains("KES"));
+        assert!(sidebar.contains("On-chain Status"));
         assert!(sidebar.contains("Deploy"));
         assert!(sidebar.contains("Upgrade"));
         assert!(sidebar.contains("Settings"));
@@ -131,6 +133,7 @@ mod frontend_tests {
         let deploy = include_str!("../../src/pages/DeployWizard.tsx");
         assert!(app.contains("path=\"/deploy\""));
         assert!(app.contains("path=\"/kes\""));
+        assert!(app.contains("path=\"/pool-status\""));
         assert!(app.contains("path=\"/upgrade\""));
         assert!(deploy.contains("deployStart("));
         assert!(deploy.contains("useState(\"10.5.4-1\")"));
@@ -496,6 +499,17 @@ mod frontend_tests {
         assert!(types.contains("export interface PoolOnchainRegistration"));
         assert!(types.contains("export interface PoolOnchainStatus"));
         assert!(types.contains("missing_requirements: string[]"));
+    }
+
+    #[test]
+    fn tc_fe_023_pool_status_page_wires_onchain_query() {
+        let page = include_str!("../../src/pages/PoolRegistrationStatus.tsx");
+        assert!(page.contains("poolOnchainStatus({"));
+        assert!(page.contains("Query On-chain Status"));
+        assert!(page.contains("registered on-chain"));
+        assert!(page.contains("not registered"));
+        assert!(page.contains("Registered Parameters"));
+        assert!(page.contains("cold_vkey_path"));
     }
 
     #[test]

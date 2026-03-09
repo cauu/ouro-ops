@@ -67,8 +67,9 @@ Spec-ID：`S0006`
 - [ ] `p6-3` 将 Settings 中误导性的本地可编辑链上字段改为只读或迁移
 - [ ] `p6-4` 设计并实现 registration 准备流程：参数校验、证书生成、交易草稿
 - [ ] `p6-5` 设计并实现 registration 提交流程：签名输入、交易提交与结果回执
-- [ ] `p6-6` 增加前端注册状态页与注册向导
+- [x] `p6-6` 增加前端注册状态页，支持对 `p6-2` 的链上查询能力进行可视化验证
 - [ ] `p6-7` 增加高风险确认、审计记录与验收验证
+- [ ] `p6-9` 增加前端注册向导，将 registration 准备与提交链路接入 UI
 
 ## 4. 测试与验收标准
 
@@ -86,6 +87,7 @@ Spec-ID：`S0006`
 - `2026-03-09T16:02:09+0800` `p6-8` 完成：`S0006` 从 draft 提升为唯一 active spec，并显式承接 `S0005` 已交付的 Phase 4 运行时、监控、KES、升级与审计基线。
 - `2026-03-09T16:12:00+0800` `p6-1` 完成：新增 `pool_onchain_status` 查询契约、请求/返回模型和前端 IPC；当前实现先完成本地校验和占位返回，真实 `cardano-cli` 查询逻辑留待 `p6-2`。
 - `2026-03-09T16:35:00+0800` `p6-2` 完成：`pool_onchain_status` 现在通过目标 `relay/bp` 机器上的运行中容器执行 `cardano-cli` 查询；优先使用显式 `pool_id`，否则从 `cold.vkey` 推导 pool id，再通过 `query stake-snapshot` 判断是否已链上注册，并用 `query pool-state / pool-params` 读取 on-chain 注册详情。
+- `2026-03-09T17:05:00+0800` `p6-6` 完成：新增只读的前端注册状态页，接入 `poolOnchainStatus(...)` IPC，可按 relay/bp 机器查询链上注册状态与注册详情，先用于验证 `p6-2` 的链上查询能力，不引入交易提交或注册向导写路径。
 
 ## 6. 验证证据（仅追加）
 
@@ -95,8 +97,11 @@ Spec-ID：`S0006`
 - `2026-03-09T16:12:00+0800` `TC-P6-007 | stack: node | command: pnpm build | result: pass | note: 前端已暴露 PoolOnchainQueryPayload、PoolOnchainStatus 模型和 poolOnchainStatus IPC，构建通过。`
 - `2026-03-09T16:35:00+0800` `TC-P6-001/002 | stack: rust | command: cargo test -q | result: pass | note: tc_pool_009 覆盖已注册 pool 的链上判断与详情映射；tc_pool_010 覆盖从 cold.vkey 推导 pool id 并在 preprod 上执行真实查询命令拼装。`
 - `2026-03-09T16:35:00+0800` `TC-P6-001/002 | stack: node | command: pnpm build | result: pass | note: 前端查询契约保持兼容，poolOnchainStatus 仍能消费真实 on-chain 查询结果模型。`
+- `2026-03-09T17:05:00+0800` `TC-P6-002 | stack: rust | command: cargo test -q | result: pass | note: 新增前端静态断言 tc_fe_023，确认已接入 On-chain Status 路由、侧栏入口和 poolOnchainStatus 查询页面。`
+- `2026-03-09T17:05:00+0800` `TC-P6-002 | stack: node | command: pnpm build | result: pass | note: PoolRegistrationStatus 页面、App 路由和 Sidebar 入口已纳入构建，前端可只读展示链上注册状态与注册详情。`
 
 ## 7. 变更记录（仅追加）
 
 - `2026-03-09` 基于用户确认，“查询当前矿池是否已链上注册、已注册则读取注册信息、未注册则提供注册功能”被识别为超出当前 Phase 4 运维范围的新需求，单独创建 draft spec 处理。
 - `2026-03-09T16:02:09+0800` 用户确认以链上注册能力为新的执行主线，当前 spec 从 draft 提升为 active，并以前序 spec `S0005` 作为已交付基线。
+- `2026-03-09T16:50:00+0800` 基于用户确认，将原 `p6-6` 拆分为“前端注册状态页”和“前端注册向导”两个事项，先交付状态页以便直接验证 `p6-2` 的链上查询能力。
