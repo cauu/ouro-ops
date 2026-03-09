@@ -77,16 +77,7 @@ function App() {
         <Route path="/upgrade" element={pool ? <UpgradeWizard poolTicker={pool.ticker} /> : null} />
         <Route
           path="/settings"
-          element={
-            pool ? (
-              <Settings
-                pool={pool}
-                onUpdated={(updatedPool) => {
-                  setPool(updatedPool);
-                }}
-              />
-            ) : null
-          }
+          element={pool ? <Settings pool={pool} /> : null}
         />
       </Route>
 

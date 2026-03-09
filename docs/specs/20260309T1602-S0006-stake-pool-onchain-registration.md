@@ -64,7 +64,7 @@ Spec-ID：`S0006`
 - [x] `p6-8` 将 `S0006` 提升为唯一 active spec，并承接 `S0005` 已交付的 Phase 4 基线
 - [x] `p6-1` 定义链上注册状态查询接口与返回模型
 - [x] `p6-2` 实现 stake pool 是否已注册的链上判断与详情读取
-- [ ] `p6-3` 将 Settings 中误导性的本地可编辑链上字段改为只读或迁移
+- [x] `p6-3` 将 Settings 中误导性的本地可编辑链上字段改为只读或迁移
 - [ ] `p6-4` 设计并实现 registration 准备流程：参数校验、证书生成、交易草稿
 - [ ] `p6-5` 设计并实现 registration 提交流程：签名输入、交易提交与结果回执
 - [x] `p6-6` 增加前端注册状态页，支持对 `p6-2` 的链上查询能力进行可视化验证
@@ -95,6 +95,7 @@ Spec-ID：`S0006`
 - `TC-P6-010` Dashboard 应直接展示已绑定 pool 的链上信息；不再要求用户通过独立 on-chain status 页面查看当前 workspace 的绑定状态。
 - `TC-P6-011` 当 workspace 已初始化但尚未绑定链上 pool 时，Dashboard 应明确展示两条后续路径：绑定已有 `pool_id`，以及注册新 pool 的引导说明。
 - `TC-P6-012` Dashboard 应允许用户对已绑定 pool 执行 unbind；执行后应回到未绑定引导状态，且后台静默刷新不再尝试覆盖未绑定状态。
+- `TC-P6-013` Settings 页面不得继续允许用户编辑 `ticker / margin / fixed_cost` 这类会被误认为链上已生效的字段；页面应明确声明链上参数以 Dashboard 中的 bound on-chain pool 为准。
 
 ## 5. 执行日志（仅追加）
 
@@ -102,6 +103,7 @@ Spec-ID：`S0006`
 - `2026-03-09T16:02:09+0800` `p6-8` 完成：`S0006` 从 draft 提升为唯一 active spec，并显式承接 `S0005` 已交付的 Phase 4 运行时、监控、KES、升级与审计基线。
 - `2026-03-09T16:12:00+0800` `p6-1` 完成：新增 `pool_onchain_status` 查询契约、请求/返回模型和前端 IPC；当前实现先完成本地校验和占位返回，真实 `cardano-cli` 查询逻辑留待 `p6-2`。
 - `2026-03-09T16:35:00+0800` `p6-2` 完成：`pool_onchain_status` 现在通过目标 `relay/bp` 机器上的运行中容器执行 `cardano-cli` 查询；优先使用显式 `pool_id`，否则从 `cold.vkey` 推导 pool id，再通过 `query stake-snapshot` 判断是否已链上注册，并用 `query pool-state / pool-params` 读取 on-chain 注册详情。
+- `2026-03-09T22:20:00+0800` `p6-3` 完成：`Settings` 页面不再允许编辑 `ticker / margin / fixed_cost`；改为只读说明页，明确这些链向字段的 truth source 是 Dashboard 中已绑定的 on-chain pool，避免继续把本地 SQLite 字段误解为链上已生效配置。
 - `2026-03-09T17:05:00+0800` `p6-6` 完成：新增只读的前端注册状态页，接入 `poolOnchainStatus(...)` IPC，可按 relay/bp 机器查询链上注册状态与注册详情，先用于验证 `p6-2` 的链上查询能力，不引入交易提交或注册向导写路径。
 - `2026-03-09T17:20:00+0800` `p6-10` 完成：统一修复 pool / machine / monitor 的 docker SSH 包装器，在回退 `sudo -n docker ...` 前屏蔽第一次无权限直连的 stderr，避免把真实失败原因错误格式化成“当前 SSH 用户无法直接访问 Docker daemon”。 
 - `2026-03-09T17:32:00+0800` `p6-11` 完成：移除 `query stake-snapshot` 作为注册判定来源，改为直接使用 `query pool-state / pool-params` 读取注册详情并据此判定是否已链上注册；同时扩宽对嵌套 `poolParams / poolParameters / currentPoolParams` 等结构的解析，以兼容当前 `cardano-cli 10.14.0.0` 输出。 
@@ -135,6 +137,8 @@ Spec-ID：`S0006`
 - `2026-03-09T20:42:00+0800` `TC-P6-010/011 | stack: node | command: pnpm build | result: pass | note: Dashboard 现在直接承载已绑定 pool 信息、绑定已有 pool_id 的入口以及注册新 pool 的引导说明，前端构建通过。`
 - `2026-03-09T21:18:00+0800` `TC-P6-012 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_016 覆盖 unbind 后 on-chain 绑定字段被清空且写入 audit_log；新增前端静态断言确认 Dashboard 暴露 Unbind Pool 按钮和 poolUnbindOnchain IPC。`
 - `2026-03-09T21:18:00+0800` `TC-P6-012 | stack: node | command: pnpm build | result: pass | note: Dashboard 上已绑定 pool 卡片可执行 unbind，并在解绑后自然回到未绑定引导态，前端构建通过。`
+- `2026-03-09T22:20:00+0800` `TC-P6-005/013 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_fe_026，断言 Settings 页面明确声明 ticker/margin/fixed cost 不在此编辑，且页面不再调用 poolUpdate 或提交本地链上字段。`
+- `2026-03-09T22:20:00+0800` `TC-P6-005/013 | stack: node | command: pnpm build | result: pass | note: Settings 页面已改为只读说明页；路由仍保留，但不再暴露会误导用户的 ticker/margin/fixed cost 编辑表单。`
 
 ## 7. 变更记录（仅追加）
 
@@ -144,3 +148,4 @@ Spec-ID：`S0006`
 - `2026-03-09T19:50:00+0800` 基于用户确认，增加“输入已注册 `pool_id` 后完成 workspace 绑定并持久化链上信息；Dashboard 每次访问时静默刷新最新链上数据”的需求，作为当前 active spec 的追加事项实现。
 - `2026-03-09T20:30:00+0800` 基于用户确认，收敛交互：不再保留独立的 on-chain status 页面；pool 绑定状态和链上信息统一回到 Dashboard 展示，并在未绑定时提供“绑定已有 `pool_id`”和“注册新 pool”的双路径引导。
 - `2026-03-09T21:10:00+0800` 基于用户确认，补充 pool 信息的 unbound 能力：已绑定 pool 需要支持解除绑定，并回到 Dashboard 的未绑定引导状态。
+- `2026-03-09T22:10:00+0800` 基于用户确认，推进 `p6-3`：不再把 Settings 作为本地链上参数编辑入口，改为只读说明页，将链上参数展示统一收敛到 Dashboard 中的 bound on-chain pool 卡片。 

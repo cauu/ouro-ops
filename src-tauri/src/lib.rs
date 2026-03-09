@@ -183,6 +183,21 @@ mod frontend_tests {
         assert!(dashboard.contains("snapshot restoring"));
         assert!(dashboard.contains("restore timeout"));
         assert!(dashboard.contains("fallback syncing"));
+        assert!(dashboard.contains("Bind Existing Pool"));
+        assert!(dashboard.contains("Register New Pool"));
+        assert!(dashboard.contains("<PoolRegistrationStatus"));
+        assert!(dashboard.contains("pool.onchain_registered && pool.onchain_pool_id"));
+        assert!(dashboard.contains("Unbind Pool"));
+        assert!(dashboard.contains("poolUnbindOnchain()"));
+    }
+
+    #[test]
+    fn tc_fe_026_settings_is_read_only_for_chain_fields() {
+        let settings = include_str!("../../src/pages/Settings.tsx");
+        assert!(settings.contains("ticker`, `margin` and `fixed cost` are not edited here."));
+        assert!(settings.contains("Chain-facing pool parameters are read from the bound on-chain registration."));
+        assert!(!settings.contains("poolUpdate("));
+        assert!(!settings.contains("type=\"submit\""));
     }
 
     #[test]

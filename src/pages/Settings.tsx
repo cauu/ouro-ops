@@ -1,52 +1,11 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { toUserError } from "../lib/errors";
-import { poolUpdate } from "../lib/ipc";
-import type { Pool, PoolUpdatePayload } from "../lib/types";
+import type { Pool } from "../lib/types";
 
 interface SettingsProps {
   pool: Pool;
-  onUpdated: (pool: Pool) => void;
 }
 
-export default function Settings({ pool, onUpdated }: SettingsProps) {
-  const [ticker, setTicker] = useState(pool.ticker);
-  const [margin, setMargin] = useState(pool.margin?.toString() ?? "");
-  const [fixedCost, setFixedCost] = useState(pool.fixed_cost?.toString() ?? "");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    setTicker(pool.ticker);
-    setMargin(pool.margin?.toString() ?? "");
-    setFixedCost(pool.fixed_cost?.toString() ?? "");
-  }, [pool]);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const payload: PoolUpdatePayload = {};
-      if (ticker.trim() !== "") {
-        payload.ticker = ticker.trim().toUpperCase();
-      }
-      if (margin.trim() !== "") {
-        payload.margin = Number(margin);
-      }
-      if (fixedCost.trim() !== "") {
-        payload.fixed_cost = Number(fixedCost);
-      }
-      const updated = await poolUpdate(payload);
-      onUpdated(updated);
-      setMessage("Pool settings updated.");
-    } catch (e) {
-      setError(toUserError(e));
-    } finally {
-      setSaving(false);
-    }
-  };
+export default function Settings({ pool }: SettingsProps) {
+  const isBound = pool.onchain_registered && Boolean(pool.onchain_pool_id);
 
   return (
     <section className="space-y-6">
@@ -57,65 +16,47 @@ export default function Settings({ pool, onUpdated }: SettingsProps) {
         </p>
       </header>
 
-      <form onSubmit={handleSubmit} className="max-w-xl rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
-        <div className="space-y-4">
-          <label className="block text-sm">
-            <span className="mb-1 block text-zinc-300">Ticker</span>
-            <input
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
-              value={ticker}
-              onChange={(e) => setTicker(e.target.value)}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              maxLength={5}
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-zinc-300">Margin</span>
-            <input
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
-              value={margin}
-              onChange={(e) => setMargin(e.target.value)}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              inputMode="decimal"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-zinc-300">Fixed Cost</span>
-            <input
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
-              value={fixedCost}
-              onChange={(e) => setFixedCost(e.target.value)}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              inputMode="numeric"
-            />
-          </label>
+      <section className="max-w-3xl rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-3">
+            <h2 className="text-sm font-medium text-zinc-200">Workspace Pool Record</h2>
+            <dl className="mt-3 space-y-2 text-sm text-zinc-300">
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-zinc-500">Network</dt>
+                <dd>{pool.network}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-zinc-500">Local ticker cache</dt>
+                <dd>{pool.ticker || "—"}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-zinc-500">Bound on-chain pool</dt>
+                <dd>{pool.onchain_pool_id ?? "Not bound"}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-zinc-500">On-chain sync</dt>
+                <dd>{pool.onchain_synced_at ?? "Never"}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-3">
+            <h2 className="text-sm font-medium text-zinc-200">Configuration Source of Truth</h2>
+            <ul className="mt-3 space-y-2 text-sm text-zinc-300">
+              <li>`ticker`, `margin` and `fixed cost` are not edited here.</li>
+              <li>Chain-facing pool parameters are read from the bound on-chain registration.</li>
+              <li>Use Dashboard to bind an existing `pool_id` or continue with the registration flow.</li>
+              <li>Node runtime configuration stays under Machines, Deploy and Runtime actions.</li>
+            </ul>
+          </div>
         </div>
 
-        {error && (
-          <p className="mt-4 rounded-md border border-red-700/60 bg-red-900/20 px-3 py-2 text-sm text-red-300">
-            {error}
-          </p>
-        )}
-        {message && (
-          <p className="mt-4 rounded-md border border-emerald-700/60 bg-emerald-900/20 px-3 py-2 text-sm text-emerald-300">
-            {message}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={saving}
-          className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          {saving ? "Saving..." : "Save"}
-        </button>
-      </form>
+        <div className="mt-4 rounded-md border border-amber-700/40 bg-amber-950/20 px-3 py-3 text-sm text-amber-200">
+          {isBound
+            ? "This workspace is bound to an on-chain pool. Dashboard shows the latest on-chain ticker, margin, fixed cost and metadata."
+            : "This workspace is not yet bound to an on-chain pool. Bind an existing pool from Dashboard, or continue with pool registration there."}
+        </div>
+      </section>
     </section>
   );
 }
