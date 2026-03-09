@@ -70,6 +70,7 @@ Spec-ID：`S0006`
 - [x] `p6-6` 增加前端注册状态页，支持对 `p6-2` 的链上查询能力进行可视化验证
 - [ ] `p6-7` 增加高风险确认、审计记录与验收验证
 - [ ] `p6-9` 增加前端注册向导，将 registration 准备与提交链路接入 UI
+- [x] `p6-10` 修复链上状态查询在 docker 无直连权限场景下的错误归因，避免第一次失败的 stderr 污染最终提示
 
 ## 4. 测试与验收标准
 
@@ -88,6 +89,7 @@ Spec-ID：`S0006`
 - `2026-03-09T16:12:00+0800` `p6-1` 完成：新增 `pool_onchain_status` 查询契约、请求/返回模型和前端 IPC；当前实现先完成本地校验和占位返回，真实 `cardano-cli` 查询逻辑留待 `p6-2`。
 - `2026-03-09T16:35:00+0800` `p6-2` 完成：`pool_onchain_status` 现在通过目标 `relay/bp` 机器上的运行中容器执行 `cardano-cli` 查询；优先使用显式 `pool_id`，否则从 `cold.vkey` 推导 pool id，再通过 `query stake-snapshot` 判断是否已链上注册，并用 `query pool-state / pool-params` 读取 on-chain 注册详情。
 - `2026-03-09T17:05:00+0800` `p6-6` 完成：新增只读的前端注册状态页，接入 `poolOnchainStatus(...)` IPC，可按 relay/bp 机器查询链上注册状态与注册详情，先用于验证 `p6-2` 的链上查询能力，不引入交易提交或注册向导写路径。
+- `2026-03-09T17:20:00+0800` `p6-10` 完成：统一修复 pool / machine / monitor 的 docker SSH 包装器，在回退 `sudo -n docker ...` 前屏蔽第一次无权限直连的 stderr，避免把真实失败原因错误格式化成“当前 SSH 用户无法直接访问 Docker daemon”。 
 
 ## 6. 验证证据（仅追加）
 
@@ -99,6 +101,7 @@ Spec-ID：`S0006`
 - `2026-03-09T16:35:00+0800` `TC-P6-001/002 | stack: node | command: pnpm build | result: pass | note: 前端查询契约保持兼容，poolOnchainStatus 仍能消费真实 on-chain 查询结果模型。`
 - `2026-03-09T17:05:00+0800` `TC-P6-002 | stack: rust | command: cargo test -q | result: pass | note: 新增前端静态断言 tc_fe_023，确认已接入 On-chain Status 路由、侧栏入口和 poolOnchainStatus 查询页面。`
 - `2026-03-09T17:05:00+0800` `TC-P6-002 | stack: node | command: pnpm build | result: pass | note: PoolRegistrationStatus 页面、App 路由和 Sidebar 入口已纳入构建，前端可只读展示链上注册状态与注册详情。`
+- `2026-03-09T17:20:00+0800` `TC-P6-001 | stack: rust | command: cargo test -q | result: pass | note: tc_pool_011、tc_mch_012、tc_mon_004 断言 docker SSH 包装器会屏蔽第一次无权限直连的 stderr，再回退到 sudo 执行，避免错误提示被 permission denied 污染。`
 
 ## 7. 变更记录（仅追加）
 

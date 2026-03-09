@@ -81,7 +81,7 @@ fn wrap_remote_command(remote_cmd: &str) -> String {
         return remote_cmd.to_string();
     }
     let wrapped = format!(
-        "if [ \"$(id -u)\" -eq 0 ]; then {cmd}; else {cmd} || sudo -n {cmd}; fi",
+        "if [ \"$(id -u)\" -eq 0 ]; then {cmd}; else {cmd} 2>/dev/null || sudo -n {cmd}; fi",
         cmd = remote_cmd
     );
     format!("sh -lc {}", shell_single_quote(wrapped.as_str()))
@@ -761,6 +761,9 @@ mod tests {
     fn tc_mon_004_wrap_remote_command_uses_sudo_for_docker() {
         let wrapped = wrap_remote_command("docker exec cardano-node cardano-cli query tip");
         assert!(wrapped.contains("sudo -n docker exec cardano-node cardano-cli query tip"));
+        assert!(
+            wrapped.contains("2>/dev/null || sudo -n docker exec cardano-node cardano-cli query tip")
+        );
         assert!(wrapped.starts_with("sh -lc "));
     }
 

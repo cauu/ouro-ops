@@ -163,7 +163,7 @@ fn wrap_remote_command(remote_cmd: &str) -> String {
         return remote_cmd.to_string();
     }
     let wrapped = format!(
-        "if [ \"$(id -u)\" -eq 0 ]; then {cmd}; else {cmd} || sudo -n {cmd}; fi",
+        "if [ \"$(id -u)\" -eq 0 ]; then {cmd}; else {cmd} 2>/dev/null || sudo -n {cmd}; fi",
         cmd = remote_cmd
     );
     format!("sh -lc {}", shell_single_quote(wrapped.as_str()))
@@ -1057,5 +1057,12 @@ mod tests {
         assert_eq!(status.pool_id.as_deref(), Some("pool1derived"));
         assert!(!status.registered_onchain);
         assert!(status.registration.is_none());
+    }
+
+    #[test]
+    fn tc_pool_011_wrap_remote_command_hides_first_docker_permission_error() {
+        let wrapped = wrap_remote_command("docker exec cardano-node cardano-cli query tip");
+        assert!(wrapped.contains("docker exec cardano-node cardano-cli query tip"));
+        assert!(wrapped.contains("2>/dev/null || sudo -n docker exec cardano-node cardano-cli query tip"));
     }
 }
