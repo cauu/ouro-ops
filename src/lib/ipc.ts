@@ -7,6 +7,8 @@ import type {
   MachineAddPayload,
   MachineFilter,
   MonitorSnapshot,
+  KesSignRequest,
+  KesStatus,
   Pool,
   PoolInitPayload,
   PoolUpdatePayload,
@@ -95,4 +97,16 @@ export async function monitorStartPolling(
 
 export async function monitorStopPolling(): Promise<{ running: boolean; interval_seconds: number }> {
   return invoke("monitor_stop_polling");
+}
+
+export async function kesStatusAll(): Promise<KesStatus[]> {
+  return invoke("kes_status_all");
+}
+
+export async function kesGenerate(machineId: number): Promise<KesSignRequest> {
+  return invoke("kes_generate", { machineId });
+}
+
+export async function kesImportCert(machineId: number, certPath: string): Promise<string> {
+  return invoke("kes_import_cert", { machineId, certPath });
 }

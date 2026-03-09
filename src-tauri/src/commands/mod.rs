@@ -1,6 +1,7 @@
 //! Tauri IPC commands.
 
 pub mod deploy;
+pub mod kes;
 pub mod machine;
 pub mod monitor;
 pub mod pool;

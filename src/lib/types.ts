@@ -165,3 +165,21 @@ export interface MonitorPollingStatus {
   running: boolean;
   interval_seconds: number;
 }
+
+export interface KesStatus {
+  machine_id: number;
+  machine_name: string;
+  kes_period_current: number | null;
+  kes_period_max: number | null;
+  remaining_days: number | null;
+  severity: "healthy" | "warning" | "critical" | string;
+  expiry_date: string | null;
+  op_cert_counter: number | null;
+}
+
+export interface KesSignRequest {
+  machine_id: number;
+  kes_vkey_path: string;
+  counter_value: number;
+  instructions: string;
+}

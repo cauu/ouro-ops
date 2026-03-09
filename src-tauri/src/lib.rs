@@ -72,6 +72,9 @@ pub fn run() {
             commands::monitor::monitor_snapshot,
             commands::monitor::monitor_start_polling,
             commands::monitor::monitor_stop_polling,
+            commands::kes::kes_status_all,
+            commands::kes::kes_generate,
+            commands::kes::kes_import_cert,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -243,5 +246,20 @@ mod frontend_tests {
         assert!(playbook.contains("Capture Mithril startup logs"));
         assert!(playbook.contains("readiness: restore-in-progress"));
         assert!(playbook.contains("when: not (cardano_restore_snapshot_effective | default(false) | bool)"));
+    }
+
+    #[test]
+    fn tc_fe_009_ipc_exposes_kes_commands() {
+        let ipc = include_str!("../../src/lib/ipc.ts");
+        assert!(ipc.contains("kesStatusAll"));
+        assert!(ipc.contains("kesGenerate"));
+        assert!(ipc.contains("kesImportCert"));
+    }
+
+    #[test]
+    fn tc_fe_010_types_expose_kes_models() {
+        let types = include_str!("../../src/lib/types.ts");
+        assert!(types.contains("export interface KesStatus"));
+        assert!(types.contains("export interface KesSignRequest"));
     }
 }
