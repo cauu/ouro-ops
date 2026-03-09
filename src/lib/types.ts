@@ -49,30 +49,16 @@ export interface PoolBindOnchainPayload {
 
 export interface PoolRegistrationPreparePayload {
   machine_id: number;
-  cold_vkey_path: string;
-  cold_skey_path?: string;
-  vrf_vkey_path: string;
-  reward_vkey_path: string;
-  owner_vkey_paths: string[];
-  owner_skey_paths: string[];
-  payment_addr_path?: string;
-  payment_skey_path?: string;
-  pledge: number;
-  margin: number;
-  fixed_cost: number;
-  metadata_url?: string;
-  metadata_hash?: string;
+  pool_id: string;
+  certificate_path: string;
+  payment_addr_path: string;
 }
 
 export interface PoolRegistrationSubmitPayload {
   machine_id: number;
   pool_id: string;
   confirm_pool_id: string;
-  certificate_path: string;
-  cold_skey_path: string;
-  owner_skey_paths: string[];
-  payment_addr_path: string;
-  payment_skey_path: string;
+  tx_signed_path: string;
 }
 
 export interface PoolOnchainRelay {
@@ -111,7 +97,8 @@ export interface PoolRegistrationTxDraft {
   certificate_path: string | null;
   required_deposit: number | null;
   payment_address: string | null;
-  required_signing_materials: string[];
+  tx_body_path: string | null;
+  offline_signing_required: boolean;
   command_preview: string;
 }
 
@@ -124,7 +111,6 @@ export interface PoolRegistrationPrepareResult {
   certificate_generated: boolean;
   certificate_path: string | null;
   missing_requirements: string[];
-  missing_signing_materials: string[];
   tx_draft: PoolRegistrationTxDraft;
   note: string;
 }
@@ -140,7 +126,6 @@ export interface PoolRegistrationSubmitResult {
   tx_hash: string | null;
   tx_inputs: string[];
   missing_requirements: string[];
-  missing_signing_materials: string[];
   note: string;
 }
 

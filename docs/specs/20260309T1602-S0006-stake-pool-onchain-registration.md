@@ -80,6 +80,7 @@ Spec-ID：`S0006`
 - [x] `p6-17` 将 pool 绑定与链上状态展示入口收敛到 Dashboard，移除独立的 on-chain status 导航入口
 - [x] `p6-18` 当 workspace 已初始化但尚未绑定链上 pool 时，在 Dashboard 中显式引导“绑定已有 `pool_id`”与“注册新 pool”两条路径
 - [x] `p6-19` 支持对已绑定 pool 执行 unbind，清空 workspace 的链上绑定关系和本地缓存的链上字段
+- [x] `p6-20` 纠正 registration 流程的安全模型：冷环境生成 registration certificate 与签名交易，热环境不再要求 `cold.skey/cold.vkey`
 
 ## 4. 测试与验收标准
 
@@ -118,6 +119,7 @@ Spec-ID：`S0006`
 - `2026-03-09T23:45:00+0800` `p6-4` 完成：新增 `pool_registration_prepare` 后端链路，支持基于 relay/bp 机器生成 registration certificate、推导 `pool_id`、汇总 relay 列表、计算 stake pool deposit，并返回 transaction draft 与缺失签名材料清单；当公钥材料或 relay 条件不足时，返回一致的缺失要求而不直接失败。 
 - `2026-03-09T23:58:00+0800` `p6-4` 回归修正：补齐 `pool_registration_prepare` 的审计写入，修正测试夹具对 docker shell 内层转义的匹配方式，并改为基于已解析的容器内 `cold.vkey` 路径推导 `pool_id`，确保 registration prepare 在真实命令拼装下仍能稳定返回证书和交易草稿。
 - `2026-03-09T21:54:25+0800` `p6-5` 完成：新增 `pool_registration_submit` 后端链路，支持显式确认 `pool_id`、校验 registration certificate / cold signing key / owner signing keys / payment signing key、查询付款地址 UTxO、构建 `cardano-cli latest transaction build`、执行签名与提交，并返回 `tx_body_path`、`tx_signed_path`、`tx_hash`、`tx_inputs` 与缺失材料清单；同时写入 `pool_registration_submit` 审计记录。 
+- `2026-03-10T00:28:00+0800` `p6-20` 完成：基于“热环境不得存放 `cold.skey/cold.vkey`”的安全约束，重构 registration flow：`pool_registration_prepare` 改为仅校验并消费冷环境预先生成的 registration certificate，在热环境构建 unsigned tx draft；`pool_registration_submit` 改为仅消费冷环境预先签名的 tx 文件并执行提交，彻底移除热环境对 `cold.skey/cold.vkey` 的依赖。 
 
 ## 6. 验证证据（仅追加）
 
@@ -136,6 +138,8 @@ Spec-ID：`S0006`
 - `2026-03-09T18:22:00+0800` `TC-P6-002 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_015，覆盖在已解析出 `metadata_url` 后拉取 metadata JSON 并读取 `ticker` 字段，验证前端可直接看到链上 metadata 中定义的 pool ticker。`
 - `2026-03-09T20:14:27+0800` `TC-P6-008/009 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_db_005 验证 pool 表 on-chain binding 字段迁移到位；新增 tc_fe_024 验证 App 已接入 pool 绑定回写与 Dashboard 的后台静默刷新入口。`
 - `2026-03-09T20:14:27+0800` `TC-P6-008/009 | stack: node | command: pnpm build | result: pass | note: PoolRegistrationStatus 的绑定入口、App 的 pool 状态回写，以及 Dashboard 的静默刷新链路均已纳入构建并通过。`
+- `2026-03-10T00:33:00+0800` `TC-P6-016/017 | stack: rust | command: cargo test -q | result: pass | note: tc_pool_017~020 已改为冷环境证书/签名、热环境仅 build unsigned tx 与 submit signed tx 的模型，确认 prepare/submit 不再要求 `cold.skey/cold.vkey`、owner/payment signing keys 存在于热环境。`
+- `2026-03-10T00:34:00+0800` `TC-P6-016/017 | stack: node | command: pnpm build | result: pass | note: 前端注册流程类型已同步为 `certificate_path + payment_addr_path` 的 prepare 和 `tx_signed_path` 的 submit，构建通过。`
 - `2026-03-09T20:42:00+0800` `TC-P6-010/011 | stack: rust | command: cargo test -q | result: pass | note: 更新前端静态断言，确保 Sidebar 不再暴露 on-chain status 导航，App 不再挂载独立 route，Dashboard 接收 pool 并直接展示绑定信息与未绑定引导。`
 - `2026-03-09T20:42:00+0800` `TC-P6-010/011 | stack: node | command: pnpm build | result: pass | note: Dashboard 现在直接承载已绑定 pool 信息、绑定已有 pool_id 的入口以及注册新 pool 的引导说明，前端构建通过。`
 - `2026-03-09T21:18:00+0800` `TC-P6-012 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_016 覆盖 unbind 后 on-chain 绑定字段被清空且写入 audit_log；新增前端静态断言确认 Dashboard 暴露 Unbind Pool 按钮和 poolUnbindOnchain IPC。`
@@ -148,6 +152,8 @@ Spec-ID：`S0006`
 - `2026-03-09T23:58:00+0800` `TC-P6-003 | stack: node | command: pnpm build | result: pass | note: 前端 IPC / 类型保持兼容，注册准备结果模型在构建后可供后续注册向导直接复用。`
 - `2026-03-09T21:54:25+0800` `TC-P6-004 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_019 与 tc_pool_020，分别覆盖 registration submit 的 pool_id 显式确认不匹配时立即失败，以及材料齐全时完成 build/sign/submit、返回 tx hash/inputs 并写入 audit_log；全量 141/141 通过。`
 - `2026-03-09T21:54:25+0800` `TC-P6-004 | stack: node | command: pnpm build | result: pass | note: 前端 IPC / 类型已补齐 PoolRegistrationSubmitPayload / PoolRegistrationSubmitResult，注册提交链路可供后续注册向导直接接入。`
+- `2026-03-10T00:28:00+0800` `TC-P6-003/004 | stack: rust | command: cargo test -q | result: pass | note: registration prepare/submit 契约已切换为“热 build/submit，冷 cert/sign”模型；新增回归测试确认热环境不再要求 cold.skey/cold.vkey，且 prepare 仅构建 unsigned tx，submit 仅提交预签名交易。`
+- `2026-03-10T00:28:00+0800` `TC-P6-003/004 | stack: node | command: pnpm build | result: pass | note: 前端类型与 IPC 已同步移除 hot cold key 依赖，后续注册向导将以离线证书和预签名交易作为输入。`
 
 ## 7. 变更记录（仅追加）
 
@@ -158,3 +164,4 @@ Spec-ID：`S0006`
 - `2026-03-09T20:30:00+0800` 基于用户确认，收敛交互：不再保留独立的 on-chain status 页面；pool 绑定状态和链上信息统一回到 Dashboard 展示，并在未绑定时提供“绑定已有 `pool_id`”和“注册新 pool”的双路径引导。
 - `2026-03-09T21:10:00+0800` 基于用户确认，补充 pool 信息的 unbound 能力：已绑定 pool 需要支持解除绑定，并回到 Dashboard 的未绑定引导状态。
 - `2026-03-09T22:10:00+0800` 基于用户确认，推进 `p6-3`：不再把 Settings 作为本地链上参数编辑入口，改为只读说明页，将链上参数展示统一收敛到 Dashboard 中的 bound on-chain pool 卡片。 
+- `2026-03-10T00:12:00+0800` 基于用户确认，“热环境不应存放 `cold.skey/cold.vkey`”被收敛为当前 active spec 的安全纠偏项；已完成的 `p6-4/p6-5` 不回写历史，改以追加事项的方式重构 registration flow。 
