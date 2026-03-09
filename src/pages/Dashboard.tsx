@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { formatTaskError, toUserError } from "../lib/errors";
-import { dbVersion, kesStatusAll, ping, runPlaybookTest, taskRecentList } from "../lib/ipc";
+import {
+  dbVersion,
+  kesStatusAll,
+  ping,
+  poolRefreshBoundOnchain,
+  runPlaybookTest,
+  taskRecentList,
+} from "../lib/ipc";
 import {
   refreshMonitorStore,
   startMonitorStore,
   stopMonitorStore,
   useMonitorStore,
 } from "../lib/monitorStore";
-import type { DbVersionResult, KesStatus, RecentTaskSummary } from "../lib/types";
+import type { DbVersionResult, KesStatus, Pool, RecentTaskSummary } from "../lib/types";
 
 function formatProgress(value: number | null): string {
   if (value === null) {
@@ -121,7 +128,11 @@ function truncatePreview(value: string, maxLength = 180): string {
   return `${value.slice(0, maxLength).trimEnd()}...`;
 }
 
-export default function Dashboard() {
+interface DashboardProps {
+  onPoolRefreshed: (pool: Pool) => void;
+}
+
+export default function Dashboard({ onPoolRefreshed }: DashboardProps) {
   const [status, setStatus] = useState<string>("loading");
   const [dbInfo, setDbInfo] = useState<DbVersionResult | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -156,6 +167,23 @@ export default function Dashboard() {
       void stopMonitorStore();
     };
   }, [refreshMonitor]);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const nextPool = await poolRefreshBoundOnchain();
+        if (active) {
+          onPoolRefreshed(nextPool);
+        }
+      } catch {
+        // Best-effort background refresh. Ignore when no pool is bound yet or query is unavailable.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [onPoolRefreshed]);
 
   useEffect(() => {
     const unlisteners: Array<() => void> = [];

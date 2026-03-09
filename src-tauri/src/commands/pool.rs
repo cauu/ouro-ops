@@ -5,8 +5,9 @@ use serde_json::Value;
 use tauri::State;
 
 use crate::db::{
-    audit_log_insert, machine_get, machine_list as repo_machine_list, pool_get_single, pool_insert,
-    pool_update_single, DbState, MachineRow, PoolRow,
+    audit_log_insert, machine_get, machine_list as repo_machine_list, pool_bind_onchain_single,
+    pool_get_single, pool_insert, pool_update_single, DbState, MachineRow, PoolOnchainBindingUpdate,
+    PoolRow,
 };
 use crate::error::AppError;
 
@@ -35,6 +36,12 @@ pub struct PoolOnchainQueryPayload {
     pub cold_vkey_path: Option<String>,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct PoolBindOnchainPayload {
+    pub machine_id: i64,
+    pub pool_id: String,
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct Pool {
     pub id: i64,
@@ -42,6 +49,15 @@ pub struct Pool {
     pub network: String,
     pub margin: Option<f64>,
     pub fixed_cost: Option<i64>,
+    pub onchain_pool_id: Option<String>,
+    pub onchain_registered: bool,
+    pub pledge: Option<i64>,
+    pub reward_account: Option<String>,
+    pub metadata_url: Option<String>,
+    pub metadata_hash: Option<String>,
+    pub owners: Vec<String>,
+    pub relays: Vec<PoolOnchainRelay>,
+    pub onchain_synced_at: Option<String>,
     pub kes_expiry_date: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -124,6 +140,15 @@ fn into_pool(row: PoolRow) -> Pool {
         network: row.network,
         margin: row.margin,
         fixed_cost: row.fixed_cost,
+        onchain_pool_id: row.onchain_pool_id,
+        onchain_registered: row.onchain_registered,
+        pledge: row.pledge,
+        reward_account: row.reward_account,
+        metadata_url: row.metadata_url,
+        metadata_hash: row.metadata_hash,
+        owners: row.owners,
+        relays: parse_relay_list(Some(&Value::Array(row.relays))),
+        onchain_synced_at: row.onchain_synced_at,
         kes_expiry_date: None,
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -750,6 +775,104 @@ fn pool_onchain_status_with_conn(
     )
 }
 
+fn persist_bound_pool_status(conn: &Connection, status: &PoolOnchainStatus) -> Result<Pool, AppError> {
+    let registration = status.registration.as_ref().ok_or_else(|| {
+        AppError::Internal("pool is not registered on-chain; cannot bind local pool".into())
+    })?;
+    let resolved_pool_id = status.pool_id.as_deref().ok_or_else(|| {
+        AppError::Internal("resolved pool id missing from on-chain registration status".into())
+    })?;
+    let owners_json = serde_json::to_string(&registration.owners)
+        .map_err(|e| AppError::Internal(format!("serialize owners json failed: {e}")))?;
+    let relays_json = serde_json::to_string(&registration.relays)
+        .map_err(|e| AppError::Internal(format!("serialize relays json failed: {e}")))?;
+    let row = pool_bind_onchain_single(
+        conn,
+        PoolOnchainBindingUpdate {
+            pool_id: resolved_pool_id,
+            ticker: registration.ticker.as_deref(),
+            margin: registration.margin,
+            fixed_cost: registration.fixed_cost,
+            pledge: registration.pledge,
+            reward_account: registration.reward_account.as_deref(),
+            metadata_url: registration.metadata_url.as_deref(),
+            metadata_hash: registration.metadata_hash.as_deref(),
+            owners_json: owners_json.as_str(),
+            relays_json: relays_json.as_str(),
+        },
+    )?;
+    let pool = into_pool(row);
+    audit_log_insert(
+        conn,
+        "pool_bind_onchain",
+        &serde_json::json!({
+            "machine_id": status.machine_id,
+            "machine_name": status.machine_name,
+            "query_source": status.query_source,
+            "pool_id": pool.onchain_pool_id,
+            "ticker": pool.ticker,
+            "margin": pool.margin,
+            "fixed_cost": pool.fixed_cost,
+            "pledge": pool.pledge,
+            "metadata_url": pool.metadata_url,
+            "metadata_hash": pool.metadata_hash,
+        }),
+    )?;
+    Ok(pool)
+}
+
+fn select_pool_query_machine(conn: &Connection, network: &str) -> Result<Option<MachineRow>, AppError> {
+    if let Some(relay) = repo_machine_list(conn, Some("relay"), Some(network))?.into_iter().next() {
+        return Ok(Some(relay));
+    }
+    Ok(repo_machine_list(conn, Some("bp"), Some(network))?.into_iter().next())
+}
+
+fn pool_bind_onchain_with_conn(
+    conn: &Connection,
+    payload: PoolBindOnchainPayload,
+) -> Result<Pool, AppError> {
+    let status = pool_onchain_status_with_conn(
+        conn,
+        PoolOnchainQueryPayload {
+            machine_id: payload.machine_id,
+            pool_id: Some(payload.pool_id),
+            cold_vkey_path: None,
+        },
+    )?;
+    if !status.registered_onchain {
+        return Err(AppError::Internal(
+            "pool is not registered on-chain; cannot bind local pool".into(),
+        ));
+    }
+    persist_bound_pool_status(conn, &status)
+}
+
+fn pool_refresh_bound_onchain_with_conn(conn: &Connection) -> Result<Pool, AppError> {
+    let current =
+        pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
+    let onchain_pool_id = current.onchain_pool_id.as_deref().ok_or_else(|| {
+        AppError::Internal("pool is not bound to an on-chain pool id".into())
+    })?;
+    let machine = select_pool_query_machine(conn, current.network.as_str())?.ok_or_else(|| {
+        AppError::Internal("no relay or bp machine available for on-chain refresh".into())
+    })?;
+    let status = pool_onchain_status_with_conn(
+        conn,
+        PoolOnchainQueryPayload {
+            machine_id: machine.id,
+            pool_id: Some(onchain_pool_id.to_string()),
+            cold_vkey_path: None,
+        },
+    )?;
+    if !status.registered_onchain {
+        return Err(AppError::Internal(
+            "bound on-chain pool no longer appears registered".into(),
+        ));
+    }
+    persist_bound_pool_status(conn, &status)
+}
+
 fn pool_init_with_conn(conn: &Connection, payload: PoolInitPayload) -> Result<Pool, AppError> {
     validate_ticker(&payload.ticker)?;
     validate_network(&payload.network)?;
@@ -853,6 +976,21 @@ pub async fn pool_onchain_status(
 ) -> Result<PoolOnchainStatus, AppError> {
     let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
     pool_onchain_status_with_conn(&conn, payload)
+}
+
+#[tauri::command]
+pub async fn pool_bind_onchain(
+    payload: PoolBindOnchainPayload,
+    db: State<'_, DbState>,
+) -> Result<Pool, AppError> {
+    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    pool_bind_onchain_with_conn(&conn, payload)
+}
+
+#[tauri::command]
+pub async fn pool_refresh_bound_onchain(db: State<'_, DbState>) -> Result<Pool, AppError> {
+    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    pool_refresh_bound_onchain_with_conn(&conn)
 }
 
 #[cfg(test)]

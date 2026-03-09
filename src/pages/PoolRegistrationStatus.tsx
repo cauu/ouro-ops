@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatTaskError, toUserError } from "../lib/errors";
-import { machineList, poolOnchainStatus } from "../lib/ipc";
-import type { Machine, PoolOnchainStatus } from "../lib/types";
+import { machineList, poolBindOnchain, poolOnchainStatus } from "../lib/ipc";
+import type { Machine, Pool, PoolOnchainStatus } from "../lib/types";
 
 interface PoolRegistrationStatusProps {
   poolTicker: string;
+  onBound: (pool: Pool) => void;
 }
 
 function formatLovelace(value: number | null): string {
@@ -21,10 +22,12 @@ function formatMargin(value: number | null): string {
   return `${(value * 100).toFixed(2)}%`;
 }
 
-export default function PoolRegistrationStatus({ poolTicker }: PoolRegistrationStatusProps) {
+export default function PoolRegistrationStatus({ poolTicker, onBound }: PoolRegistrationStatusProps) {
   const [loading, setLoading] = useState(true);
   const [querying, setQuerying] = useState(false);
+  const [binding, setBinding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [machineId, setMachineId] = useState<number | null>(null);
   const [poolId, setPoolId] = useState("");
@@ -75,6 +78,7 @@ export default function PoolRegistrationStatus({ poolTicker }: PoolRegistrationS
     }
     setQuerying(true);
     setError(null);
+    setMessage(null);
     try {
       const next = await poolOnchainStatus({
         machine_id: machineId,
@@ -87,6 +91,28 @@ export default function PoolRegistrationStatus({ poolTicker }: PoolRegistrationS
       setStatus(null);
     } finally {
       setQuerying(false);
+    }
+  };
+
+  const handleBind = async () => {
+    if (!status?.registered_onchain || !status.pool_id || machineId == null) {
+      setError("Query a registered on-chain pool first.");
+      return;
+    }
+    setBinding(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const nextPool = await poolBindOnchain({
+        machine_id: machineId,
+        pool_id: status.pool_id,
+      });
+      onBound(nextPool);
+      setMessage("On-chain pool bound and persisted to local database.");
+    } catch (e) {
+      setError(toUserError(e));
+    } finally {
+      setBinding(false);
     }
   };
 
@@ -105,6 +131,11 @@ export default function PoolRegistrationStatus({ poolTicker }: PoolRegistrationS
       {error && (
         <p className="rounded-md border border-red-700/60 bg-red-900/20 px-3 py-2 text-sm text-red-300">
           {formatTaskError(error)}
+        </p>
+      )}
+      {message && (
+        <p className="rounded-md border border-emerald-700/60 bg-emerald-900/20 px-3 py-2 text-sm text-emerald-300">
+          {message}
         </p>
       )}
 
@@ -170,6 +201,18 @@ export default function PoolRegistrationStatus({ poolTicker }: PoolRegistrationS
                 {querying ? "Querying..." : "Query On-chain Status"}
               </button>
             </div>
+            {status?.registered_onchain && status.pool_id && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleBind()}
+                  disabled={binding}
+                  className="rounded-md border border-emerald-700/70 bg-emerald-900/30 px-4 py-2 text-sm font-medium text-emerald-200 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {binding ? "Binding..." : "Bind Pool To Workspace"}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </section>

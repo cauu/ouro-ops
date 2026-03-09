@@ -1,6 +1,7 @@
 //! Data access layer.
 
 use rusqlite::{Connection, Row};
+use serde_json::Value;
 
 use crate::error::AppError;
 
@@ -13,6 +14,15 @@ pub struct PoolRow {
     pub network: String,
     pub margin: Option<f64>,
     pub fixed_cost: Option<i64>,
+    pub onchain_pool_id: Option<String>,
+    pub onchain_registered: bool,
+    pub pledge: Option<i64>,
+    pub reward_account: Option<String>,
+    pub metadata_url: Option<String>,
+    pub metadata_hash: Option<String>,
+    pub owners: Vec<String>,
+    pub relays: Vec<Value>,
+    pub onchain_synced_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -44,8 +54,25 @@ fn map_pool_row(row: &Row<'_>) -> Result<PoolRow, rusqlite::Error> {
         network: row.get(2)?,
         margin: row.get(3)?,
         fixed_cost: row.get(4)?,
-        created_at: row.get(5)?,
-        updated_at: row.get(6)?,
+        onchain_pool_id: row.get(5)?,
+        onchain_registered: row.get::<_, i64>(6)? != 0,
+        pledge: row.get(7)?,
+        reward_account: row.get(8)?,
+        metadata_url: row.get(9)?,
+        metadata_hash: row.get(10)?,
+        owners: row
+            .get::<_, Option<String>>(11)?
+            .as_deref()
+            .and_then(|raw| serde_json::from_str(raw).ok())
+            .unwrap_or_default(),
+        relays: row
+            .get::<_, Option<String>>(12)?
+            .as_deref()
+            .and_then(|raw| serde_json::from_str(raw).ok())
+            .unwrap_or_default(),
+        onchain_synced_at: row.get(13)?,
+        created_at: row.get(14)?,
+        updated_at: row.get(15)?,
     })
 }
 
@@ -88,7 +115,10 @@ pub fn pool_insert(
 /// Get the only pool record in MVP mode.
 pub fn pool_get_single(conn: &Connection) -> Result<Option<PoolRow>, AppError> {
     let mut stmt = conn.prepare(
-        "SELECT id, ticker, network, margin, fixed_cost, created_at, updated_at
+        "SELECT id, ticker, network, margin, fixed_cost,
+                onchain_pool_id, onchain_registered, pledge, reward_account,
+                metadata_url, metadata_hash, owners_json, relays_json, onchain_synced_at,
+                created_at, updated_at
          FROM pool
          ORDER BY id ASC
          LIMIT 1",
@@ -122,6 +152,63 @@ pub fn pool_update_single(
     )?;
 
     pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool disappeared after update".into()))
+}
+
+pub struct PoolOnchainBindingUpdate<'a> {
+    pub pool_id: &'a str,
+    pub ticker: Option<&'a str>,
+    pub margin: Option<f64>,
+    pub fixed_cost: Option<i64>,
+    pub pledge: Option<i64>,
+    pub reward_account: Option<&'a str>,
+    pub metadata_url: Option<&'a str>,
+    pub metadata_hash: Option<&'a str>,
+    pub owners_json: &'a str,
+    pub relays_json: &'a str,
+}
+
+pub fn pool_bind_onchain_single(
+    conn: &Connection,
+    update: PoolOnchainBindingUpdate<'_>,
+) -> Result<PoolRow, AppError> {
+    let current =
+        pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
+    let next_ticker = update.ticker.unwrap_or(current.ticker.as_str());
+    let next_margin = update.margin.or(current.margin);
+    let next_fixed_cost = update.fixed_cost.or(current.fixed_cost);
+
+    conn.execute(
+        "UPDATE pool
+         SET ticker = ?1,
+             margin = ?2,
+             fixed_cost = ?3,
+             onchain_pool_id = ?4,
+             onchain_registered = 1,
+             pledge = ?5,
+             reward_account = ?6,
+             metadata_url = ?7,
+             metadata_hash = ?8,
+             owners_json = ?9,
+             relays_json = ?10,
+             onchain_synced_at = datetime('now'),
+             updated_at = datetime('now')
+         WHERE id = ?11",
+        rusqlite::params![
+            next_ticker,
+            next_margin,
+            next_fixed_cost,
+            update.pool_id,
+            update.pledge,
+            update.reward_account,
+            update.metadata_url,
+            update.metadata_hash,
+            update.owners_json,
+            update.relays_json,
+            current.id,
+        ],
+    )?;
+
+    pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool disappeared after bind".into()))
 }
 
 /// Insert one machine.

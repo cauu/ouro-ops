@@ -75,6 +75,8 @@ Spec-ID：`S0006`
 - [x] `p6-12` 兼容 `cardano-cli 10.14.0.0` 的 `sps*` pool 参数结构，确保 relay 查询能返回 registered parameters
 - [x] `p6-13` 当 BP 上的 `cardano-cli` 无法执行 `pool-state / pool-params` 时，自动回退到同池 relay 查询链上注册状态
 - [x] `p6-14` 根据链上注册参数中的 `metadata_url` 拉取 metadata JSON，并解析其中的 `ticker`
+- [x] `p6-15` 对已链上注册的 staking pool，允许用户输入 `pool_id` 完成 workspace 绑定，并将链上 pool 信息持久化到本地数据库
+- [x] `p6-16` 每次访问 Dashboard 时，在后台静默刷新已绑定 pool 的最新链上数据并更新本地缓存
 
 ## 4. 测试与验收标准
 
@@ -85,6 +87,8 @@ Spec-ID：`S0006`
 - `TC-P6-005` 不再允许用户将仅本地可写的字段误认为链上已生效配置。
 - `TC-P6-006` spec 切换后，`docs/specs/` 根目录应仅保留 `S0006` 作为 active spec，`S0005` 应进入 `completed/`，且 `docs/README.md` 入口一致。
 - `TC-P6-007` 后端与前端应暴露统一的链上注册状态查询接口、请求模型与返回模型；在 `p6-2` 落地真实链上查询前，接口至少能完成本地校验并返回一致的占位结构。
+- `TC-P6-008` 对已链上注册的 pool，输入 `pool_id` 后应能完成绑定，并将 `pool_id`、ticker、margin、fixed_cost、pledge、reward_account、metadata、owners、relays 持久化到本地数据库。
+- `TC-P6-009` 每次访问 Dashboard 时，应 best-effort 静默刷新已绑定 pool 的链上数据；无已绑定 pool 或刷新失败时，不得阻塞 Dashboard 正常加载。
 
 ## 5. 执行日志（仅追加）
 
@@ -98,6 +102,8 @@ Spec-ID：`S0006`
 - `2026-03-09T17:40:00+0800` `p6-12` 完成：根据真实 relay 输出，补充 `spsCost / spsMargin / spsPledge / spsRewardAccount / spsOwners / spsRelays / spsMetadata` 字段解析，并兼容 `single host name` relay 结构，使 registered on-chain 状态下能正确返回 registered parameters。 
 - `2026-03-09T18:05:00+0800` `p6-13` 完成：将链上注册状态查询策略从“严格使用用户选中的机器”收敛为“优先使用选中机器；若是 BP 且本机 `cardano-cli` 对 `pool-state / pool-params` 报 era 不兼容，则自动回退到同池 relay 查询”，避免把 BP 的 era/CLI 能力差异暴露给用户。 
 - `2026-03-09T18:22:00+0800` `p6-14` 完成：在链上注册参数已解析出 `metadata_url` 的前提下，额外发起 metadata JSON 拉取并提取 `ticker`；metadata 拉取为 best-effort，不影响主查询成功/失败判定。 
+- `2026-03-09T20:14:27+0800` `p6-15` 完成：新增 `pool_bind_onchain` 绑定链路，允许用户用已注册的 `pool_id` 将 workspace 绑定到真实链上 pool，并把 `pool_id`、ticker、margin、fixed_cost、pledge、reward_account、metadata、owners、relays 与同步时间持久化到本地 `pool` 表。 
+- `2026-03-09T20:14:27+0800` `p6-16` 完成：Dashboard 页面进入时会 best-effort 调用 `pool_refresh_bound_onchain`，在后台静默刷新已绑定 pool 的链上缓存；若尚未绑定或查询失败，则忽略错误，不影响页面加载。 
 
 ## 6. 验证证据（仅追加）
 
@@ -114,9 +120,12 @@ Spec-ID：`S0006`
 - `2026-03-09T17:40:00+0800` `TC-P6-002 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_013 覆盖 relay 真实 `pool-state / pool-params` 返回的 `sps*` 字段和 `single host name` relay 结构，验证 registered parameters 可被正确映射到前端模型。`
 - `2026-03-09T18:05:00+0800` `TC-P6-001/002 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_014，覆盖 BP 上 `pool-state` 因 era 不兼容报错时，会自动回退到同池 relay 查询并返回完整 registered parameters。`
 - `2026-03-09T18:22:00+0800` `TC-P6-002 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_pool_015，覆盖在已解析出 `metadata_url` 后拉取 metadata JSON 并读取 `ticker` 字段，验证前端可直接看到链上 metadata 中定义的 pool ticker。`
+- `2026-03-09T20:14:27+0800` `TC-P6-008/009 | stack: rust | command: cargo test -q | result: pass | note: 新增 tc_db_005 验证 pool 表 on-chain binding 字段迁移到位；新增 tc_fe_024 验证 App 已接入 pool 绑定回写与 Dashboard 的后台静默刷新入口。`
+- `2026-03-09T20:14:27+0800` `TC-P6-008/009 | stack: node | command: pnpm build | result: pass | note: PoolRegistrationStatus 的绑定入口、App 的 pool 状态回写，以及 Dashboard 的静默刷新链路均已纳入构建并通过。`
 
 ## 7. 变更记录（仅追加）
 
 - `2026-03-09` 基于用户确认，“查询当前矿池是否已链上注册、已注册则读取注册信息、未注册则提供注册功能”被识别为超出当前 Phase 4 运维范围的新需求，单独创建 draft spec 处理。
 - `2026-03-09T16:02:09+0800` 用户确认以链上注册能力为新的执行主线，当前 spec 从 draft 提升为 active，并以前序 spec `S0005` 作为已交付基线。
 - `2026-03-09T16:50:00+0800` 基于用户确认，将原 `p6-6` 拆分为“前端注册状态页”和“前端注册向导”两个事项，先交付状态页以便直接验证 `p6-2` 的链上查询能力。
+- `2026-03-09T19:50:00+0800` 基于用户确认，增加“输入已注册 `pool_id` 后完成 workspace 绑定并持久化链上信息；Dashboard 每次访问时静默刷新最新链上数据”的需求，作为当前 active spec 的追加事项实现。

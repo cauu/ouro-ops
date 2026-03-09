@@ -60,6 +60,8 @@ pub fn run() {
             commands::pool::pool_get,
             commands::pool::pool_update,
             commands::pool::pool_onchain_status,
+            commands::pool::pool_bind_onchain,
+            commands::pool::pool_refresh_bound_onchain,
             commands::machine::machine_add,
             commands::machine::machine_remove,
             commands::machine::machine_list,
@@ -171,6 +173,8 @@ mod frontend_tests {
         assert!(dashboard.contains("useMonitorStore()"));
         assert!(dashboard.contains("startMonitorStore(30)"));
         assert!(dashboard.contains("stopMonitorStore()"));
+        assert!(dashboard.contains("poolRefreshBoundOnchain()"));
+        assert!(dashboard.contains("onPoolRefreshed(nextPool)"));
         assert!(dashboard.contains("Recent Tasks"));
         assert!(dashboard.contains("KES Rotation Watch"));
         assert!(dashboard.contains("Blocks/min"));
@@ -489,12 +493,18 @@ mod frontend_tests {
         let ipc = include_str!("../../src/lib/ipc.ts");
         assert!(ipc.contains("poolOnchainStatus"));
         assert!(ipc.contains("pool_onchain_status"));
+        assert!(ipc.contains("poolBindOnchain"));
+        assert!(ipc.contains("poolRefreshBoundOnchain"));
     }
 
     #[test]
     fn tc_fe_022_types_expose_pool_onchain_models() {
         let types = include_str!("../../src/lib/types.ts");
+        assert!(types.contains("export interface Pool {"));
+        assert!(types.contains("onchain_pool_id: string | null;"));
+        assert!(types.contains("onchain_registered: boolean;"));
         assert!(types.contains("export interface PoolOnchainQueryPayload"));
+        assert!(types.contains("export interface PoolBindOnchainPayload"));
         assert!(types.contains("export interface PoolOnchainRelay"));
         assert!(types.contains("export interface PoolOnchainRegistration"));
         assert!(types.contains("export interface PoolOnchainStatus"));
@@ -505,11 +515,22 @@ mod frontend_tests {
     fn tc_fe_023_pool_status_page_wires_onchain_query() {
         let page = include_str!("../../src/pages/PoolRegistrationStatus.tsx");
         assert!(page.contains("poolOnchainStatus({"));
+        assert!(page.contains("poolBindOnchain({"));
         assert!(page.contains("Query On-chain Status"));
+        assert!(page.contains("Bind Pool To Workspace"));
         assert!(page.contains("registered on-chain"));
         assert!(page.contains("not registered"));
         assert!(page.contains("Registered Parameters"));
         assert!(page.contains("cold_vkey_path"));
+    }
+
+    #[test]
+    fn tc_fe_024_app_wires_pool_binding_and_background_refresh() {
+        let app = include_str!("../../src/App.tsx");
+        assert!(app.contains("<Dashboard"));
+        assert!(app.contains("onPoolRefreshed={(nextPool) => {"));
+        assert!(app.contains("<PoolRegistrationStatus"));
+        assert!(app.contains("onBound={(nextPool) => {"));
     }
 
     #[test]

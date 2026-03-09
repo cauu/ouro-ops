@@ -11,6 +11,7 @@ const MIGRATIONS: &[&str] = &[
     schema::MIGRATION_001,
     schema::MIGRATION_002,
     schema::MIGRATION_003,
+    schema::MIGRATION_004,
 ];
 
 /// 执行迁移：user_version 递增，仅执行未执行的迁移
@@ -251,5 +252,36 @@ mod tests {
             [],
         )
         .expect("insert runtime_restart task");
+    }
+
+    #[test]
+    fn tc_db_005_pool_migration_adds_onchain_binding_columns() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+
+        let version = get_user_version(&conn).expect("user version");
+        assert!(version >= 4);
+
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(pool)")
+            .expect("prepare pragma");
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("query pragma");
+        let columns: Vec<String> = rows.map(|row| row.expect("column")).collect();
+
+        for expected in [
+            "onchain_pool_id",
+            "onchain_registered",
+            "pledge",
+            "reward_account",
+            "metadata_url",
+            "metadata_hash",
+            "owners_json",
+            "relays_json",
+            "onchain_synced_at",
+        ] {
+            assert!(columns.iter().any(|column| column == expected));
+        }
     }
 }

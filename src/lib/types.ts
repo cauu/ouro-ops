@@ -9,6 +9,15 @@ export interface Pool {
   network: "mainnet" | "preprod" | "preview";
   margin: number | null;
   fixed_cost: number | null;
+  onchain_pool_id: string | null;
+  onchain_registered: boolean;
+  pledge: number | null;
+  reward_account: string | null;
+  metadata_url: string | null;
+  metadata_hash: string | null;
+  owners: string[];
+  relays: PoolOnchainRelay[];
+  onchain_synced_at: string | null;
   kes_expiry_date: string | null;
   created_at: string;
   updated_at: string;
@@ -31,6 +40,11 @@ export interface PoolOnchainQueryPayload {
   machine_id: number;
   pool_id?: string;
   cold_vkey_path?: string;
+}
+
+export interface PoolBindOnchainPayload {
+  machine_id: number;
+  pool_id: string;
 }
 
 export interface PoolOnchainRelay {

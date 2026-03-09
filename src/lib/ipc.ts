@@ -11,6 +11,7 @@ import type {
   KesSignRequest,
   KesStatus,
   Pool,
+  PoolBindOnchainPayload,
   PoolOnchainQueryPayload,
   PoolOnchainStatus,
   PoolInitPayload,
@@ -49,6 +50,14 @@ export async function poolOnchainStatus(
   payload: PoolOnchainQueryPayload,
 ): Promise<PoolOnchainStatus> {
   return invoke("pool_onchain_status", { payload });
+}
+
+export async function poolBindOnchain(payload: PoolBindOnchainPayload): Promise<Pool> {
+  return invoke("pool_bind_onchain", { payload });
+}
+
+export async function poolRefreshBoundOnchain(): Promise<Pool> {
+  return invoke("pool_refresh_bound_onchain");
 }
 
 export async function machineList(filter?: MachineFilter): Promise<Machine[]> {

@@ -61,12 +61,30 @@ function App() {
       />
 
       <Route element={pool ? <Layout pool={pool} /> : <Navigate to="/setup" replace />}>
-        <Route path="/" element={<Dashboard />} />
+        <Route
+          path="/"
+          element={
+            <Dashboard
+              onPoolRefreshed={(nextPool) => {
+                setPool(nextPool);
+              }}
+            />
+          }
+        />
         <Route path="/machines" element={pool ? <MachineManager pool={pool} /> : null} />
         <Route path="/kes" element={pool ? <KesManager poolTicker={pool.ticker} /> : null} />
         <Route
           path="/pool-status"
-          element={pool ? <PoolRegistrationStatus poolTicker={pool.ticker} /> : null}
+          element={
+            pool ? (
+              <PoolRegistrationStatus
+                poolTicker={pool.ticker}
+                onBound={(nextPool) => {
+                  setPool(nextPool);
+                }}
+              />
+            ) : null
+          }
         />
         <Route path="/deploy" element={pool ? <DeployWizard pool={pool} /> : null} />
         <Route path="/upgrade" element={pool ? <UpgradeWizard poolTicker={pool.ticker} /> : null} />
