@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { toUserError } from "../lib/errors";
 import { poolUpdate } from "../lib/ipc";
 import type { Pool, PoolUpdatePayload } from "../lib/types";
 
@@ -41,7 +42,7 @@ export default function Settings({ pool, onUpdated }: SettingsProps) {
       onUpdated(updated);
       setMessage("Pool settings updated.");
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setSaving(false);
     }

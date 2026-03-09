@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { toUserError } from "../lib/errors";
 import { poolInit } from "../lib/ipc";
 import type { Pool, PoolInitPayload } from "../lib/types";
 
@@ -35,7 +36,7 @@ export default function SetupWizard({ onCreated }: SetupWizardProps) {
       onCreated(pool);
       navigate("/", { replace: true });
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setSubmitting(false);
     }

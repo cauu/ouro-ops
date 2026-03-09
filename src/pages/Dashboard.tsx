@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { formatTaskError, toUserError } from "../lib/errors";
 import { dbVersion, kesStatusAll, ping, runPlaybookTest, taskRecentList } from "../lib/ipc";
 import {
   refreshMonitorStore,
@@ -141,7 +142,7 @@ export default function Dashboard() {
         setKesStatuses(nextKes);
         setRecentTasks(nextTasks);
       } catch (error) {
-        setStatus(`Error: ${String(error)}`);
+        setStatus(`Error: ${toUserError(error)}`);
       }
     })();
     return () => {
@@ -168,7 +169,7 @@ export default function Dashboard() {
       const id = await runPlaybookTest();
       setTaskId(id);
     } catch (error) {
-      setEvents((prev) => [...prev, `run_playbook_test error: ${String(error)}`]);
+      setEvents((prev) => [...prev, `run_playbook_test error: ${toUserError(error)}`]);
     }
   };
 
@@ -253,9 +254,9 @@ export default function Dashboard() {
                     {task.phase ? `${formatTaskLabel(task.phase)} · ` : ""}
                     {task.machine_count} machine(s) · {task.created_at}
                   </p>
-                  {task.error_msg && (
+                  {formatTaskError(task.error_msg) && (
                     <p className="mt-2 rounded-md border border-red-950 bg-red-950/30 px-2 py-1 text-xs text-red-200">
-                      {task.error_msg}
+                      {formatTaskError(task.error_msg)}
                     </p>
                   )}
                 </div>

@@ -442,6 +442,28 @@ mod frontend_tests {
     }
 
     #[test]
+    fn tc_fe_017_frontend_error_helpers_exist() {
+        let errors = include_str!("../../src/lib/errors.ts");
+        assert!(errors.contains("export function toUserError"));
+        assert!(errors.contains("export function formatTaskError"));
+        assert!(errors.contains("permission denied while trying to connect to the docker daemon socket"));
+        assert!(errors.contains("network.socket.connect"));
+    }
+
+    #[test]
+    fn tc_fe_018_pages_use_user_error_helpers() {
+        let deploy = include_str!("../../src/pages/DeployWizard.tsx");
+        let dashboard = include_str!("../../src/pages/Dashboard.tsx");
+        let machine = include_str!("../../src/pages/MachineManager.tsx");
+        assert!(deploy.contains("toUserError"));
+        assert!(deploy.contains("formatTaskError"));
+        assert!(dashboard.contains("toUserError"));
+        assert!(dashboard.contains("formatTaskError"));
+        assert!(machine.contains("toUserError"));
+        assert!(machine.contains("formatTaskError"));
+    }
+
+    #[test]
     fn tc_task_002_task_commands_registered() {
         let commands = include_str!("commands/mod.rs");
         let lib = include_str!("lib.rs");

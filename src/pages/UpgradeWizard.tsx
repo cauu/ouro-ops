@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useState } from "react";
 import TaskLogStream from "../components/TaskLogStream";
+import { toUserError } from "../lib/errors";
 import {
   machineList,
   upgradeConfirmNext,
@@ -94,7 +95,7 @@ export default function UpgradeWizard({ poolTicker }: UpgradeWizardProps) {
         return upgradeMachines.map((machine) => machine.id);
       });
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setLoading(false);
     }
@@ -122,7 +123,7 @@ export default function UpgradeWizard({ poolTicker }: UpgradeWizardProps) {
         })
         .catch((e) => {
           if (active) {
-            setError(String(e));
+            setError(toUserError(e));
           }
         });
     }, 1500);
@@ -191,7 +192,7 @@ export default function UpgradeWizard({ poolTicker }: UpgradeWizardProps) {
       setTaskStatus(status);
       setBpConfirmValue("");
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setStarting(false);
     }
@@ -210,7 +211,7 @@ export default function UpgradeWizard({ poolTicker }: UpgradeWizardProps) {
       setGateEvent(null);
       setBpConfirmValue("");
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setConfirming(false);
     }
@@ -229,7 +230,7 @@ export default function UpgradeWizard({ poolTicker }: UpgradeWizardProps) {
         machines.find((machine) => machine.id === machineId)?.name ?? `machine-${machineId}`;
       setRollbackNotice(`Rollback started for ${machineName}. task_id=${rollbackTaskId}`);
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setRollbackMachineId(null);
     }

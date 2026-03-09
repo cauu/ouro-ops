@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { formatTaskError, toUserError } from "../lib/errors";
 import {
   machineAdd,
   machineList,
@@ -83,7 +84,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
         setFingerprint(keyRows[0].fingerprint);
       }
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setLoading(false);
     }
@@ -136,7 +137,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
         })
         .catch((e) => {
           if (active) {
-            setError(String(e));
+            setError(toUserError(e));
           }
         });
     }, 1500);
@@ -175,7 +176,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
         })
         .catch((e) => {
           if (active) {
-            setError(String(e));
+            setError(toUserError(e));
           }
         });
     }, 1500);
@@ -207,7 +208,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
       setRole("relay");
       await loadData();
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setSubmitting(false);
     }
@@ -224,7 +225,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
         return copy;
       });
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     }
   };
 
@@ -235,7 +236,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
       const report = await machinePreflight(machineId);
       setPreflightMap((prev) => ({ ...prev, [machineId]: report }));
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setRunningPreflight(null);
     }
@@ -248,7 +249,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
       const probe = await machineRuntimeProbe(machineId);
       setRuntimeProbeMap((prev) => ({ ...prev, [machineId]: probe }));
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setRunningProbe(null);
     }
@@ -264,7 +265,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
         setFingerprint(updatedKeys[0].fingerprint);
       }
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setAddingKey(false);
     }
@@ -278,7 +279,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
       const task = await runtimeConfigStatus(taskId);
       setRuntimeConfigTasks((prev) => ({ ...prev, [machineId]: task }));
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setRunningRuntimeConfig(null);
     }
@@ -292,7 +293,7 @@ export default function MachineManager({ pool }: MachineManagerProps) {
       const task = await runtimeRestartStatus(taskId);
       setRuntimeRestartTasks((prev) => ({ ...prev, [machineId]: task }));
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setRunningRuntimeRestart(null);
     }
@@ -530,9 +531,9 @@ export default function MachineManager({ pool }: MachineManagerProps) {
                           config task: {runtimeConfigTasks[machine.id].status} (
                           {runtimeConfigTasks[machine.id].task_id})
                         </p>
-                        {runtimeConfigTasks[machine.id].error_msg && (
+                        {formatTaskError(runtimeConfigTasks[machine.id].error_msg) && (
                           <p className="text-red-300">
-                            {runtimeConfigTasks[machine.id].error_msg}
+                            {formatTaskError(runtimeConfigTasks[machine.id].error_msg)}
                           </p>
                         )}
                       </div>
@@ -543,9 +544,9 @@ export default function MachineManager({ pool }: MachineManagerProps) {
                           restart task: {runtimeRestartTasks[machine.id].status} (
                           {runtimeRestartTasks[machine.id].task_id})
                         </p>
-                        {runtimeRestartTasks[machine.id].error_msg && (
+                        {formatTaskError(runtimeRestartTasks[machine.id].error_msg) && (
                           <p className="text-red-300">
-                            {runtimeRestartTasks[machine.id].error_msg}
+                            {formatTaskError(runtimeRestartTasks[machine.id].error_msg)}
                           </p>
                         )}
                       </div>

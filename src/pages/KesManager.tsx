@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { formatTaskError, toUserError } from "../lib/errors";
 import {
   kesGenerate,
   kesImportCert,
@@ -72,7 +73,7 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
         return next;
       });
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setLoading(false);
     }
@@ -112,7 +113,7 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
         })
         .catch((e) => {
           if (active) {
-            setError(String(e));
+            setError(toUserError(e));
           }
         });
     }, 1500);
@@ -134,7 +135,7 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
       const request = await kesGenerate(machineId);
       setRequests((prev) => ({ ...prev, [machineId]: request }));
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setBusyMachineId(null);
     }
@@ -152,7 +153,7 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
       const task = await kesRotationStatus(taskId);
       setRotationTasks((prev) => ({ ...prev, [machineId]: task }));
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setBusyMachineId(null);
     }
@@ -170,7 +171,7 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
       const next = await kesRotationStatus(task.task_id);
       setRotationTasks((prev) => ({ ...prev, [machineId]: next }));
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setBusyMachineId(null);
     }
@@ -375,9 +376,9 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                         Task {formatTaskLabel(task.status)}
                       </p>
                       <p className="mt-1 break-all text-zinc-400">Task ID: {task.task_id}</p>
-                      {task.error_msg && (
+                      {formatTaskError(task.error_msg) && (
                         <p className="mt-2 rounded-md border border-red-900 bg-red-950/30 px-3 py-2 text-red-200">
-                          {task.error_msg}
+                          {formatTaskError(task.error_msg)}
                         </p>
                       )}
                     </div>

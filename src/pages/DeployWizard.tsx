@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ConfirmModal from "../components/ConfirmModal";
 import TaskLogStream from "../components/TaskLogStream";
+import { formatTaskError, toUserError } from "../lib/errors";
 import { deployCancel, deployStart, deployStatus, machineList, machineRuntimeProbe } from "../lib/ipc";
 import type { DeployPayload, DeployTaskStatus, Machine, Pool, RuntimeProbe } from "../lib/types";
 
@@ -68,7 +69,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
         const rows = await machineList();
         setMachines(rows);
       } catch (e) {
-        setError(String(e));
+        setError(toUserError(e));
       } finally {
         setLoading(false);
       }
@@ -107,7 +108,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
         })
         .catch((e) => {
           if (active) {
-            setError(String(e));
+            setError(toUserError(e));
           }
         });
     }, 1500);
@@ -231,7 +232,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
       setTaskStatus(status);
       setShowConfirm(false);
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setStarting(false);
     }
@@ -248,7 +249,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
       const status = await deployStatus(taskId);
       setTaskStatus(status);
     } catch (e) {
-      setError(String(e));
+      setError(toUserError(e));
     } finally {
       setCancelling(false);
     }
@@ -491,7 +492,9 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
           <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm">
             <p>TaskId: {taskId}</p>
             <p>Status: {taskStatus?.status ?? "pending"}</p>
-            {taskStatus?.error_msg && <p className="text-red-300">Error: {taskStatus.error_msg}</p>}
+            {formatTaskError(taskStatus?.error_msg) && (
+              <p className="text-red-300">Error: {formatTaskError(taskStatus?.error_msg)}</p>
+            )}
             {(taskStatus?.status === "running" || taskStatus?.status === "pending") && (
               <button
                 type="button"
