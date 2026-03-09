@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS task (
     id          TEXT PRIMARY KEY,
     task_type   TEXT NOT NULL CHECK(task_type IN (
                     'deploy', 'upgrade', 'kes_rotation',
-                    'rollback', 'health_check', 'hardening'
+                    'rollback', 'health_check', 'hardening',
+                    'runtime_config', 'runtime_restart'
                 )),
     status      TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
                     'pending', 'running', 'paused',

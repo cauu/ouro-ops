@@ -75,6 +75,8 @@ pub fn run() {
             commands::kes::kes_status_all,
             commands::kes::kes_generate,
             commands::kes::kes_import_cert,
+            commands::runtime::runtime_apply_config,
+            commands::runtime::runtime_config_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -246,6 +248,25 @@ mod frontend_tests {
         assert!(playbook.contains("Capture Mithril startup logs"));
         assert!(playbook.contains("readiness: restore-in-progress"));
         assert!(playbook.contains("when: not (cardano_restore_snapshot_effective | default(false) | bool)"));
+    }
+
+    #[test]
+    fn tc_dep_013_runtime_config_playbook_exists_and_restarts_runtime() {
+        let playbook = include_str!("../../ansible/playbooks/runtime-config.yml");
+        let tasks = include_str!("../../ansible/roles/cardano-node/tasks/runtime_config.yml");
+        assert!(playbook.contains("tasks_from: runtime_config"));
+        assert!(tasks.contains("Render topology template for runtime apply"));
+        assert!(tasks.contains("docker restart cardano-node"));
+        assert!(tasks.contains("use deploy for initial provisioning"));
+    }
+
+    #[test]
+    fn tc_dep_014_mainnet_config_template_is_role_aware() {
+        let template = include_str!("../../ansible/roles/cardano-node/templates/config-mainnet-10.5.4-1.json.j2");
+        assert!(template.contains("role == \"relay\""));
+        assert!(template.contains("TargetNumberOfRootPeers"));
+        assert!(template.contains("relay_nodes | default([]) | length"));
+        assert!(template.contains("PeerSharing"));
     }
 
     #[test]

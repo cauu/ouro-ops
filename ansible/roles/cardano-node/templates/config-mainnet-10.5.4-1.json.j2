@@ -1,3 +1,17 @@
+{% set relay_peer_count = [relay_nodes | default([]) | length, 1] | max %}
+{% if role == "relay" %}
+{% set peer_sharing = true %}
+{% set target_root_peers = 60 %}
+{% set target_known_peers = 85 %}
+{% set target_established_peers = 40 %}
+{% set target_active_peers = 15 %}
+{% else %}
+{% set peer_sharing = false %}
+{% set target_root_peers = relay_peer_count %}
+{% set target_known_peers = relay_peer_count %}
+{% set target_established_peers = relay_peer_count %}
+{% set target_active_peers = relay_peer_count %}
+{% endif %}
 {
   "AlonzoGenesisFile": "alonzo-genesis.json",
   "AlonzoGenesisHash": "7e94a15f55d1e82d10f09203fa1d40f8eede58fd8066542cf6566008068ed874",
@@ -12,7 +26,7 @@
   "MaxKnownMajorProtocolVersion": 2,
   "MinBigLedgerPeersForTrustedState": 5,
   "MinNodeVersion": "10.2.1",
-  "PeerSharing": false,
+  "PeerSharing": {{ "true" if peer_sharing else "false" }},
   "Protocol": "Cardano",
   "RequiresNetworkMagic": "RequiresNoMagic",
   "ShelleyGenesisFile": "shelley-genesis.json",
@@ -21,10 +35,10 @@
   "SyncTargetNumberOfActivePeers": 0,
   "SyncTargetNumberOfEstablishedBigLedgerPeers": 50,
   "SyncTargetNumberOfKnownBigLedgerPeers": 100,
-  "TargetNumberOfActivePeers": 1,
-  "TargetNumberOfEstablishedPeers": 1,
-  "TargetNumberOfKnownPeers": 1,
-  "TargetNumberOfRootPeers": 1,
+  "TargetNumberOfActivePeers": {{ target_active_peers }},
+  "TargetNumberOfEstablishedPeers": {{ target_established_peers }},
+  "TargetNumberOfKnownPeers": {{ target_known_peers }},
+  "TargetNumberOfRootPeers": {{ target_root_peers }},
   "TraceAcceptPolicy": true,
   "TraceBlockFetchClient": false,
   "TraceBlockFetchDecisions": false,

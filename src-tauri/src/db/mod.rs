@@ -7,7 +7,11 @@ use std::sync::Mutex;
 
 use crate::error::AppError;
 
-const MIGRATIONS: &[&str] = &[schema::MIGRATION_001, schema::MIGRATION_002];
+const MIGRATIONS: &[&str] = &[
+    schema::MIGRATION_001,
+    schema::MIGRATION_002,
+    schema::MIGRATION_003,
+];
 
 /// 执行迁移：user_version 递增，仅执行未执行的迁移
 pub fn run_migrations(conn: &Connection) -> Result<(), AppError> {
@@ -227,5 +231,25 @@ mod tests {
 
         assert!(columns.iter().any(|column| column == "sync_stage"));
         assert!(columns.iter().any(|column| column == "sync_note"));
+    }
+
+    #[test]
+    fn tc_db_004_task_migration_allows_runtime_task_types() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+
+        let version = get_user_version(&conn).expect("user version");
+        assert!(version >= 3);
+
+        conn.execute(
+            "INSERT INTO task (id, task_type, status) VALUES ('runtime-config-task', 'runtime_config', 'pending')",
+            [],
+        )
+        .expect("insert runtime_config task");
+        conn.execute(
+            "INSERT INTO task (id, task_type, status) VALUES ('runtime-restart-task', 'runtime_restart', 'pending')",
+            [],
+        )
+        .expect("insert runtime_restart task");
     }
 }

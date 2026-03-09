@@ -1,0 +1,136 @@
+---
+- name: Ensure Cardano config directories exist for runtime apply
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /opt/cardano/config
+    - /opt/cardano/config/{{ network }}
+
+- name: Render bundled mainnet config compatible with 10.5.4-1
+  template:
+    src: config-mainnet-10.5.4-1.json.j2
+    dest: "/opt/cardano/config/mainnet/config.json"
+    mode: "0644"
+  register: cardano_mainnet_config_result
+  when: network == "mainnet"
+
+- name: Download network config file for non-mainnet environments
+  get_url:
+    url: "https://book.world.dev.cardano.org/environments/{{ network }}/config.json"
+    dest: "/opt/cardano/config/{{ network }}/config.json"
+    mode: "0644"
+  register: cardano_network_config_result
+  when: network != "mainnet"
+
+- name: Download network genesis byron file
+  get_url:
+    url: "https://book.world.dev.cardano.org/environments/{{ network }}/byron-genesis.json"
+    dest: "/opt/cardano/config/{{ network }}/byron-genesis.json"
+    mode: "0644"
+  register: cardano_byron_genesis_result
+
+- name: Download network genesis shelley file
+  get_url:
+    url: "https://book.world.dev.cardano.org/environments/{{ network }}/shelley-genesis.json"
+    dest: "/opt/cardano/config/{{ network }}/shelley-genesis.json"
+    mode: "0644"
+  register: cardano_shelley_genesis_result
+
+- name: Download network genesis alonzo file
+  get_url:
+    url: "https://book.world.dev.cardano.org/environments/{{ network }}/alonzo-genesis.json"
+    dest: "/opt/cardano/config/{{ network }}/alonzo-genesis.json"
+    mode: "0644"
+  register: cardano_alonzo_genesis_result
+
+- name: Download network genesis conway file
+  get_url:
+    url: "https://book.world.dev.cardano.org/environments/{{ network }}/conway-genesis.json"
+    dest: "/opt/cardano/config/{{ network }}/conway-genesis.json"
+    mode: "0644"
+  register: cardano_conway_genesis_result
+
+- name: Render topology template for runtime apply
+  template:
+    src: topology-p2p.json.j2
+    dest: "/opt/cardano/config/{{ network }}/topology.json"
+    mode: "0644"
+  register: cardano_topology_result
+
+- name: Determine whether runtime config changed
+  set_fact:
+    cardano_runtime_config_changed: >-
+      {{
+        (cardano_network_config_result is defined and (cardano_network_config_result.changed | default(false)))
+        or (cardano_mainnet_config_result is defined and (cardano_mainnet_config_result.changed | default(false)))
+        or (cardano_byron_genesis_result.changed | default(false))
+        or (cardano_shelley_genesis_result.changed | default(false))
+        or (cardano_alonzo_genesis_result.changed | default(false))
+        or (cardano_conway_genesis_result.changed | default(false))
+        or (cardano_topology_result.changed | default(false))
+      }}
+
+- name: Check whether cardano-node container exists
+  shell: docker inspect --format '{{"{{"}}.State.Status{{"}}"}}' cardano-node
+  register: cardano_runtime_existing_status
+  changed_when: false
+  failed_when: false
+
+- name: Fail when runtime config apply targets a missing container
+  fail:
+    msg: "cardano-node container is missing; use deploy for initial provisioning"
+  when: cardano_runtime_existing_status.rc != 0
+
+- name: Restart cardano-node after runtime config change
+  shell: docker restart cardano-node
+  register: cardano_restart_result
+  changed_when: cardano_runtime_config_changed | bool
+  when: cardano_runtime_config_changed | bool
+
+- name: Wait for cardano container to stay running after runtime config apply
+  shell: docker inspect --format '{{"{{"}}if and .State.Running (not .State.Restarting){{"}}"}}ok{{"{{"}}end{{"}}"}}' cardano-node
+  register: cardano_running_check
+  until: cardano_running_check.rc == 0 and (cardano_running_check.stdout | trim) == 'ok'
+  retries: 24
+  delay: 5
+  changed_when: false
+  when: cardano_runtime_config_changed | bool
+
+- name: Wait for cardano socket file inside container after runtime config apply
+  shell: docker exec cardano-node sh -lc 'test -S /ipc/node.socket'
+  register: cardano_socket_check
+  until: cardano_socket_check.rc == 0
+  retries: 24
+  delay: 5
+  changed_when: false
+  when: cardano_runtime_config_changed | bool
+
+- name: Wait for cardano tip query to succeed after runtime config apply
+  shell: |
+    docker exec cardano-node cardano-cli query tip \
+      --socket-path /ipc/node.socket \
+      --{{ network }}
+  register: cardano_tip_raw
+  until: cardano_tip_raw.rc == 0
+  retries: 24
+  delay: 5
+  changed_when: false
+  when: cardano_runtime_config_changed | bool
+
+- name: Report runtime config apply result
+  debug:
+    msg:
+      role: "{{ role }}"
+      changed: "{{ cardano_runtime_config_changed | bool }}"
+      restart_performed: "{{ cardano_runtime_config_changed | bool }}"
+      note: >-
+        {{
+          'Runtime config updated and container restarted'
+          if (cardano_runtime_config_changed | bool)
+          else 'No runtime config changes detected; container restart skipped'
+        }}
+  changed_when: false
