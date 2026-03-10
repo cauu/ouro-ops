@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ouro Ops Prototype - Machines</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <div>
+            <h1>Machine Topology</h1>
+            <p>Inventory and trust boundaries</p>
+          </div>
+        </div>
+        <span class="status-pill">2 machines · 1 relay + 1 bp</span>
+      </header>
+
+      <div class="layout">
+        <nav class="nav">
+          <a href="./index.html">Dashboard</a>
+          <a href="./machines.html" class="active">Machines</a>
+          <a href="./deploy.html">Deploy</a>
+          <a href="./pool.html">Pool</a>
+          <a href="./settings.html">Settings</a>
+        </nav>
+
+        <main class="main">
+          <section class="hero">
+            <h2>Topology aligned to minimal production baseline</h2>
+            <p>One relay and one block producer, with explicit role boundaries and runtime probe summary.</p>
+          </section>
+
+          <section class="grid">
+            <article class="card span-7">
+              <p class="label">Registered Machines</p>
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>IP</th>
+                    <th>Runtime</th>
+                    <th>Probe</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>relay-1</td>
+                    <td><span class="badge">relay</span></td>
+                    <td>84.247.139.72</td>
+                    <td class="ok">container running</td>
+                    <td>compose detected</td>
+                  </tr>
+                  <tr>
+                    <td>bp-1</td>
+                    <td><span class="badge">bp</span></td>
+                    <td>31.220.95.72</td>
+                    <td class="ok">container running</td>
+                    <td>managed by app</td>
+                  </tr>
+                </tbody>
+              </table>
+            </article>
+
+            <article class="card span-5">
+              <p class="label">Machine Add (prototype)</p>
+              <form class="form">
+                <div class="field">
+                  <label>Display name</label>
+                  <input class="input" placeholder="relay-2" />
+                </div>
+                <div class="field">
+                  <label>Address</label>
+                  <input class="input" placeholder="203.0.113.10" />
+                </div>
+                <div class="field">
+                  <label>Role</label>
+                  <select class="select">
+                    <option>relay</option>
+                    <option>bp</option>
+                  </select>
+                </div>
+                <div class="row">
+                  <button type="button" class="btn">Test SSH</button>
+                  <button type="button" class="btn primary">Save Machine</button>
+                </div>
+              </form>
+            </article>
+
+            <article class="card span-12">
+              <div class="row">
+                <p class="label">Takeover Readiness Summary</p>
+                <span class="badge warn">manual review required</span>
+              </div>
+              <p class="muted">
+                Existing compose-managed node is discoverable. Expected migration paths:
+                <code>/home/cardano/node-db → /opt/cardano/db</code>, <code>/home/cardano/node-keys → /opt/cardano/keys</code>.
+              </p>
+            </article>
+          </section>
+        </main>
+      </div>
+    </div>
+  </body>
+  </html>

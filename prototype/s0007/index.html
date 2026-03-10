@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ouro Ops Prototype - Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <div>
+            <h1>Ouro Ops · Control Plane</h1>
+            <p>Cardano SPO workspace prototype (light mode)</p>
+          </div>
+        </div>
+        <span class="status-pill">Workspace: BUBB · mainnet</span>
+      </header>
+
+      <div class="layout">
+        <nav class="nav">
+          <a href="./index.html" class="active">Dashboard</a>
+          <a href="./machines.html">Machines</a>
+          <a href="./deploy.html">Deploy</a>
+          <a href="./pool.html">Pool</a>
+          <a href="./settings.html">Settings</a>
+        </nav>
+
+        <main class="main">
+          <section class="hero">
+            <h2>Operational confidence, minimal noise</h2>
+            <p>
+              Focused view of sync, health, KES horizon, and current rollout posture. This prototype is
+              static and intentionally keeps critical actions explicit.
+            </p>
+          </section>
+
+          <section class="grid">
+            <article class="card span-3">
+              <p class="label">Relay Sync</p>
+              <p class="value ok">99.82%</p>
+              <p class="hint">snapshot restore complete</p>
+            </article>
+            <article class="card span-3">
+              <p class="label">BP Sync</p>
+              <p class="value warn">98.74%</p>
+              <p class="hint">lagging behind relay by 312 blocks</p>
+            </article>
+            <article class="card span-3">
+              <p class="label">KES Remaining</p>
+              <p class="value">21.6 days</p>
+              <p class="hint">next rotation window: 2026-03-27</p>
+            </article>
+            <article class="card span-3">
+              <p class="label">Pool Registration</p>
+              <p class="value">Bound</p>
+              <p class="hint">ticker from metadata: BUBB</p>
+            </article>
+
+            <article class="card span-8">
+              <div class="row">
+                <p class="label">Recent Tasks</p>
+                <button class="btn">Open All</button>
+              </div>
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Task</th>
+                    <th>Target</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Runtime Config Apply</td>
+                    <td>relay-1</td>
+                    <td><span class="badge ok">success</span></td>
+                    <td>2026-03-10 10:44</td>
+                  </tr>
+                  <tr>
+                    <td>Mithril Restore</td>
+                    <td>relay-1</td>
+                    <td><span class="badge warn">running</span></td>
+                    <td>2026-03-10 11:02</td>
+                  </tr>
+                  <tr>
+                    <td>Deploy (Phase 4)</td>
+                    <td>bp-1</td>
+                    <td><span class="badge">completed</span></td>
+                    <td>2026-03-09 21:18</td>
+                  </tr>
+                </tbody>
+              </table>
+            </article>
+
+            <article class="card span-4">
+              <p class="label">Health Feed</p>
+              <div class="stack">
+                <div>
+                  <div class="row"><strong>relay-1</strong><span class="ok">healthy</span></div>
+                  <div class="line"><span style="width: 96%"></span></div>
+                </div>
+                <div>
+                  <div class="row"><strong>bp-1</strong><span class="warn">syncing</span></div>
+                  <div class="line"><span style="width: 82%"></span></div>
+                </div>
+                <div>
+                  <div class="row"><strong>kes status</strong><span>nominal</span></div>
+                  <div class="line"><span style="width: 74%"></span></div>
+                </div>
+              </div>
+            </article>
+          </section>
+        </main>
+      </div>
+    </div>
+  </body>
+  </html>
