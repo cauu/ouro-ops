@@ -10,3 +10,4 @@ This directory contains static HTML prototype pages for the S0007 design iterati
 Primary dashboard entry: `index.html`
 
 First launch setup state: `setup.html`
+Onboarding parameters form: `setup-onboarding.html`

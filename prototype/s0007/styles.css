@@ -391,6 +391,46 @@ a {
   gap: 8px;
 }
 
+.empty-state {
+  border: 1px dashed #c5d8ff;
+  border-radius: 14px;
+  background: #f7faff;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.pool-create-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #4ca9ff, #0033ad);
+  position: relative;
+}
+
+.pool-create-icon::before,
+.pool-create-icon::after {
+  content: \"\";
+  position: absolute;
+  background: #f4f9ff;
+  border-radius: 2px;
+}
+
+.pool-create-icon::before {
+  width: 24px;
+  height: 4px;
+  top: 24px;
+  left: 14px;
+}
+
+.pool-create-icon::after {
+  width: 4px;
+  height: 24px;
+  top: 14px;
+  left: 24px;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;

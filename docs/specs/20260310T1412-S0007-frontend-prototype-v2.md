@@ -42,6 +42,7 @@ Spec-ID: S0007
 - [x] p7-4 基于 onboard 改造登录页原型（强调首次价值与可跳过）
 - [x] p7-5 修正初始化流程原型：移除登录，改为首次创建 pool 引导
 - [x] p7-6 交互现代化改版：从传统 SaaS 结构切换到任务优先的轻量交互
+- [x] p7-7 Onboarding 空状态引导：无 pool 时图标提示创建并进入参数填写流程
 
 ## 4. Test And Acceptance Criteria
 - TC-1 原型文件结构完整，页面可独立打开并互相跳转。
@@ -51,6 +52,7 @@ Spec-ID: S0007
 - TC-5 登录页具备 onboarding 关键要素：价值主张、时间预期、可跳过路径、首个行动入口。
 - TC-6 初始化流程符合产品约束：无登录依赖；未创建 pool 进入 setup；已创建 pool 进入看板。
 - TC-7 交互风格符合“专业/克制/极简”的现代桌面体验：弱化厚重表单与表格，强调任务流与主行动。
+- TC-8 无 pool 场景下展示“新建 pool 图标 + 创建 CTA”，点击进入 onboarding 参数页。
 
 ## 5. Execution Log (append-only)
 - 2026-03-10 14:12 +0800 p7-1 started: 初始化 S0007 active spec。
@@ -65,6 +67,8 @@ Spec-ID: S0007
 - 2026-03-10 18:21 +0800 p7-5 completed: 删除 `login.html`，新增 `setup.html` 并更新原型说明。
 - 2026-03-10 18:27 +0800 p7-6 started: 根据反馈进行交互现代化改版。
 - 2026-03-10 18:35 +0800 p7-6 completed: 重构主页与核心页面交互结构，弱化传统 SaaS 观感。
+- 2026-03-10 18:45 +0800 p7-7 started: 调整 onboarding 空状态与创建流程入口。
+- 2026-03-10 18:48 +0800 p7-7 completed: setup 页改为空状态引导，并新增 setup-onboarding 参数页。
 
 ## 6. Validation Evidence (append-only)
 - TC-1 | stack: other | command: ls docs/specs && test -f docs/specs/20260310T1412-S0007-frontend-prototype-v2.md | result: pass | note: active spec 文件存在且唯一
@@ -81,7 +85,11 @@ Spec-ID: S0007
 - TC-7 | stack: ui | command: manual review of dashboard/deploy/machines/pool/settings prototypes | result: pass | note: 结构从“表格+表单主导”改为“行动项+状态流主导”
 - TC-3 | stack: ui | command: manual review of responsive behavior in styles.css and nav/actions wrapping | result: pass | note: 窄屏下导航与按钮可换行并保持触达
 - TC-4 | stack: ui | command: rg -n \"<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest\" prototype/s0007/*.html | result: pass | note: 现代化改版后仍保持纯静态
+- TC-8 | stack: ui | command: manual review of prototype/s0007/setup.html | result: pass | note: 无 pool 空状态包含新建图标和 Create Pool CTA
+- TC-8 | stack: ui | command: test -f prototype/s0007/setup-onboarding.html && rg -n \"Pool Parameters|Create and Enter Dashboard\" prototype/s0007/setup-onboarding.html | result: pass | note: 创建按钮进入参数填写 onboarding 页
+- TC-4 | stack: ui | command: rg -n \"<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest\" prototype/s0007/setup.html prototype/s0007/setup-onboarding.html | result: pass | note: onboarding 改动仍为纯静态
 
 ## 7. Change Requests (append-only)
 - 2026-03-10 18:18 +0800 需求修正：初始化流程不依赖用户登录；首次打开需判断 pool 是否存在，不存在提示创建，存在则直接进入首页看板。
 - 2026-03-10 18:27 +0800 体验修正：现有交互过于传统 SaaS，要求提升现代感与轻量化。
+- 2026-03-10 18:45 +0800 Onboarding 修正：无 pool 时使用“新建 pool 图标”提示创建，点击进入参数填写流程。
