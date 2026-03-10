@@ -37,8 +37,8 @@ Spec-ID: S0007
 
 ## 3. Execution Plan
 - [x] p7-1 建立 S0007 active spec 与验收基线
-- [ ] p7-2 设计并实现共享视觉样式（浅色、Cardano 品牌化、响应式）
-- [ ] p7-3 交付多页面纯 HTML prototype（无业务逻辑）
+- [x] p7-2 设计并实现共享视觉样式（浅色、Cardano 品牌化、响应式）
+- [x] p7-3 交付多页面纯 HTML prototype（无业务逻辑）
 
 ## 4. Test And Acceptance Criteria
 - TC-1 原型文件结构完整，页面可独立打开并互相跳转。
@@ -49,8 +49,16 @@ Spec-ID: S0007
 ## 5. Execution Log (append-only)
 - 2026-03-10 14:12 +0800 p7-1 started: 初始化 S0007 active spec。
 - 2026-03-10 14:15 +0800 p7-1 completed: 建立 active spec、更新 docs 入口。
+- 2026-03-10 14:16 +0800 p7-2 started: 设计共享视觉样式（字体、颜色、布局、响应式规则）。
+- 2026-03-10 14:18 +0800 p7-2 completed: 交付 `prototype/s0007/styles.css`，完成浅色 Cardano 风格基础。
+- 2026-03-10 14:18 +0800 p7-3 started: 构建多页面原型结构与信息架构链接。
+- 2026-03-10 14:22 +0800 p7-3 completed: 交付 dashboard/machines/deploy/pool/settings 五个静态页面。
 
 ## 6. Validation Evidence (append-only)
 - TC-1 | stack: other | command: ls docs/specs && test -f docs/specs/20260310T1412-S0007-frontend-prototype-v2.md | result: pass | note: active spec 文件存在且唯一
+- TC-1 | stack: ui | command: find prototype/s0007 -maxdepth 1 -type f | result: pass | note: 原型文件结构完整（5 个 HTML + 1 CSS + README）
+- TC-2 | stack: ui | command: manual review of prototype/s0007/styles.css and pages | result: pass | note: 视觉遵循专业/克制/极简、浅色主题、Cardano 蓝系主色
+- TC-3 | stack: ui | command: manual review of responsive rules in styles.css | result: pass | note: 提供 <=980px 与 <=640px 布局收敛规则
+- TC-4 | stack: ui | command: rg -n \"<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest\" prototype/s0007 | result: pass | note: 页面无业务逻辑与后端依赖
 
 ## 7. Change Requests (append-only)
