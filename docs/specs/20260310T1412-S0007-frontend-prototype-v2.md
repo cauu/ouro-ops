@@ -268,3 +268,31 @@ Spec-ID: S0007
 
 ### 13.5 Change Request Delta
 - 2026-03-10 23:44 +0800 需求新增：基于 Apple HIG/macOS 设计范式，优化所有页面并统一为原生桌面风格。
+
+## 14. Addendum (append-only)
+### 14.1 Execution Plan Delta
+- [x] p7-17 将 KES Rotate 页面重构为沉浸式 Focused Wizard（隐藏侧栏/右栏，聚焦冷环境交互主线）
+
+### 14.2 Acceptance Delta
+- TC-40 KES 页面进入专注模式：不再显示全局 sidebar 与 inspector，仅保留最小标题栏与居中主任务区。
+- TC-41 进度展示收敛为轻量步骤指示（focused-steps），移除冗余摘要面板。
+- TC-42 Step 2 以命令区为绝对视觉锚点，提供复制命令主动作与上下文 badge（input/output/env）。
+- TC-43 上传交互改为 Drag & Drop 主入口（含 Choose File），并明确“校验通过后自动进入 Step 3”。
+- TC-44 防呆反馈改为非阻塞提示语义，KES 倒计时固定在顶部工具区常驻提醒。
+- TC-45 保持纯静态原型，不引入业务逻辑脚本。
+
+### 14.3 Execution Log Delta
+- 2026-03-10 23:59 +0800 p7-17 started: 按 Focused Wizard 思路重构 KES Step 2 页面。
+- 2026-03-11 00:06 +0800 p7-17 completed: 完成沉浸式布局、上传主线与防呆提示重构。
+
+### 14.4 Validation Evidence Delta
+- TC-40 | stack: ui | command: rg -n "focused-workspace|focused-content|wizard-shell" prototype/s0007/kes-rotate.html prototype/s0007/styles.css | result: pass | note: 页面已切换为单主区专注布局
+- TC-40 | stack: ui | command: rg -n "<aside class=\"sidebar\"|<aside class=\"inspector\"" prototype/s0007/kes-rotate.html || true | result: pass | note: KES 页面未再包含 sidebar/inspector
+- TC-41 | stack: ui | command: rg -n "focused-steps|Step 2 / 4|aria-current=\"step\"" prototype/s0007/kes-rotate.html | result: pass | note: 进度展示已收敛为轻量步骤轨
+- TC-42 | stack: ui | command: rg -n "terminal-block|Copy Command|badge-pill|Input:|Output:|Run In:" prototype/s0007/kes-rotate.html prototype/s0007/styles.css | result: pass | note: 命令区与上下文提示成为主视觉锚点
+- TC-43 | stack: ui | command: rg -n "focused-dropzone|Choose File|拖拽|自动流转到 Step 3" prototype/s0007/kes-rotate.html | result: pass | note: 上传主入口与自动流转说明已就位
+- TC-44 | stack: ui | command: rg -n "toolbar-chip warn|KES Window|nonblocking-hint|network mismatch" prototype/s0007/kes-rotate.html prototype/s0007/styles.css | result: pass | note: 紧迫感指标常驻顶部，错误提示为非阻塞语义
+- TC-45 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/kes-rotate.html prototype/s0007/styles.css || true | result: pass | note: 仍为纯静态实现
+
+### 14.5 Change Request Delta
+- 2026-03-10 23:59 +0800 需求新增：按照 Focused Wizard 思路重做 KES 页面，突出冷热机交互主线并降低决策负担。
