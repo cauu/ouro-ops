@@ -1,0 +1,56 @@
+# Phase 4 Frontend Prototype (Pure HTML)
+
+Spec-ID: S0007
+状态: active
+创建时间: 2026-03-10 14:12 +0800
+开始时间: 2026-03-10 14:12 +0800
+完成时间:
+前一个 Spec-ID: S0006
+结项原因:
+
+## 1. Requirement Details
+- Background
+  - 当前版本核心能力已具备，需要基于最新 Design Context 先完成高保真原型，聚焦前端产品化体验。
+- Scope
+  - 使用 `frontend-design` 思路设计新版本 prototype。
+  - 使用纯 HTML（可多页面），不包含业务逻辑。
+  - 建立统一视觉语言（浅色主题、专业/克制/极简、Cardano 色盘）。
+  - 为后续 React 实装提供静态蓝图。
+- Constraints
+  - 不接入后端、不调用真实接口。
+  - 页面可独立打开浏览。
+  - 兼容桌面与移动端浏览。
+- Non-goals
+  - 不改动现有业务代码行为。
+  - 不实现交互状态机与数据持久化。
+
+## 2. Outline Design
+- Architecture / modules impacted
+  - 新增 `prototype/s0007/` 目录，包含独立 HTML 页面与共享 CSS。
+  - 页面覆盖核心流程：Dashboard、Machines、Deploy、Pool、Settings。
+- Data model and interfaces
+  - 无真实数据模型变更，仅使用静态展示数据块。
+  - 通过页面内导航链接模拟信息架构。
+- Risk and rollback strategy
+  - 风险低：原型文件与业务代码隔离。
+  - 回滚策略：删除 `prototype/s0007/` 目录与对应 spec 项目提交。
+
+## 3. Execution Plan
+- [x] p7-1 建立 S0007 active spec 与验收基线
+- [ ] p7-2 设计并实现共享视觉样式（浅色、Cardano 品牌化、响应式）
+- [ ] p7-3 交付多页面纯 HTML prototype（无业务逻辑）
+
+## 4. Test And Acceptance Criteria
+- TC-1 原型文件结构完整，页面可独立打开并互相跳转。
+- TC-2 视觉符合 Design Context（专业、克制、极简；浅色主题；Cardano 色板）。
+- TC-3 页面在桌面与窄屏下可读、可用，无明显布局破坏。
+- TC-4 不引入业务逻辑与后端依赖。
+
+## 5. Execution Log (append-only)
+- 2026-03-10 14:12 +0800 p7-1 started: 初始化 S0007 active spec。
+- 2026-03-10 14:15 +0800 p7-1 completed: 建立 active spec、更新 docs 入口。
+
+## 6. Validation Evidence (append-only)
+- TC-1 | stack: other | command: ls docs/specs && test -f docs/specs/20260310T1412-S0007-frontend-prototype-v2.md | result: pass | note: active spec 文件存在且唯一
+
+## 7. Change Requests (append-only)

@@ -4,7 +4,7 @@ The project now uses the immutable-spec workflow for active delivery.
 
 ## Current Active Spec
 
-- 暂无。当前没有进行中的 active spec。
+- [20260310T1412-S0007-frontend-prototype-v2.md](./specs/20260310T1412-S0007-frontend-prototype-v2.md)
 
 如需开始新需求，请先在 `docs/specs/draft/` 创建新的 draft spec，并在启动执行时提升为 `docs/specs/` 根目录中的唯一 active spec。
 
