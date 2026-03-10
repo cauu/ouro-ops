@@ -120,3 +120,27 @@ Spec-ID: S0007
 - 2026-03-10 19:06 +0800 设计修正：要求使用 frontend-design 切换到另一种设计风格。
 - 2026-03-10 21:30 +0800 设计修正：减少文字与页面，图标替代文案，核心信息集中到 dashboard 且采用左右布局。
 - 2026-03-10 22:03 +0800 用户反馈当前版本不可接受，要求立即回退到上一个版本。
+
+## 8. Addendum (append-only)
+### 8.1 Execution Plan Delta
+- [x] p7-11 参考截图重构风格并收敛为 5 个核心页面（onboarding/dashboard/deploy/kes-rotate/upgrade-image）
+
+### 8.2 Acceptance Delta
+- TC-13 页面集合严格收敛为 5 个核心页面，且互相可跳转。
+- TC-14 页面内容完整覆盖初始化、部署、注册/更新 Pool、KES Rotate、升级镜像五条核心流程。
+- TC-15 新版视觉风格参考给定截图（左侧导航 + 顶部操作条 + 卡片化主内容），并保持浅色与专业/克制基调。
+- TC-16 原型仍为纯 HTML/CSS 静态实现，不引入业务逻辑脚本。
+
+### 8.3 Execution Log Delta
+- 2026-03-10 22:24 +0800 p7-11 started: 按截图风格重构 S0007 页面与信息架构。
+- 2026-03-10 22:36 +0800 p7-11 completed: 完成 5 页重构、流程映射、旧页面收敛与 README 更新。
+
+### 8.4 Validation Evidence Delta
+- TC-13 | stack: ui | command: find prototype/s0007 -maxdepth 1 -name '*.html' | sort | result: pass | note: 页面为 onboarding/index/deploy/kes-rotate/upgrade-image 共 5 页
+- TC-13 | stack: ui | command: rg -n "href=\"\./(onboarding|index|deploy|kes-rotate|upgrade-image)\.html\"" prototype/s0007/*.html | result: pass | note: 五页均具备互跳导航
+- TC-14 | stack: ui | command: rg -n "初始化流程|添加 BP|Relay|unsigned|signed|KES|升级镜像" prototype/s0007/*.html | result: pass | note: 五条核心流程均已映射到页面内容
+- TC-15 | stack: ui | command: manual review of prototype/s0007/styles.css and page layout | result: pass | note: 左侧导航、顶部工具条、卡片化主体与浅色专业风格已统一
+- TC-16 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007 || true | result: pass | note: 无脚本调用，保持纯静态原型
+
+### 8.5 Change Request Delta
+- 2026-03-10 22:24 +0800 需求新增：参考截图调整整体风格，并将页面收敛到 onboarding/dashboard/deploy/kes-rotate/upgrade-image 五个核心页。

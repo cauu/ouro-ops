@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ouro Ops Prototype - KES Rotate</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-orb"></span>
+          <div>
+            <h1>OURO OPS</h1>
+            <p>Mainnet Workspace</p>
+          </div>
+        </div>
+        <nav class="nav" aria-label="主导航">
+          <a href="./onboarding.html"><span class="icon">◉</span>Onboarding</a>
+          <a href="./index.html"><span class="icon">⌂</span>Dashboard</a>
+          <a href="./deploy.html"><span class="icon">↗</span>部署流程</a>
+          <a class="active" aria-current="page" href="./kes-rotate.html"><span class="icon">⟳</span>KES Rotate</a>
+          <a href="./upgrade-image.html"><span class="icon">⬆</span>升级镜像</a>
+        </nav>
+        <div class="sidebar-meta">Rotate 流程遵循热/冷环境分离：热环境不保存 cold.skey / cold.vkey。</div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="top-title">
+            <h2>KES Rotate</h2>
+            <p>生成 KES keypairs -> 冷环境生成 node.cert -> 上传 cert -> rotate -> 验证。</p>
+          </div>
+          <div class="top-actions">
+            <span class="search">⌕ 搜索 KES 操作</span>
+            <span class="badge">next window: 12.4d</span>
+          </div>
+        </header>
+
+        <section class="grid">
+          <article class="panel span-8">
+            <h3 class="section-title">Rotate 步骤</h3>
+            <div class="flow">
+              <div class="flow-step"><span class="num">1</span><div><strong>生成 KES keypairs</strong><p>在 BP 热环境生成新的 kes.skey / kes.vkey。</p></div></div>
+              <div class="flow-step"><span class="num">2</span><div><strong>冷环境生成 node.cert</strong><p>将 KES 信息带入冷环境脚本，产出新 node.cert。</p></div></div>
+              <div class="flow-step"><span class="num">3</span><div><strong>上传 node.cert</strong><p>回到应用上传证书并做格式校验。</p></div></div>
+              <div class="flow-step"><span class="num">4</span><div><strong>执行 Rotate</strong><p>替换证书后重启 BP 容器并等待可用。</p></div></div>
+              <div class="flow-step"><span class="num">5</span><div><strong>校验生效</strong><p>验证 KES period、节点可锻块与链上状态。</p></div></div>
+            </div>
+          </article>
+
+          <article class="panel span-4">
+            <h3 class="section-title">状态</h3>
+            <p class="section-meta">示例状态：证书尚未上传。</p>
+            <div class="list">
+              <div class="item"><strong>new kes.skey</strong><span class="pill ok">generated</span></div>
+              <div class="item"><strong>node.cert</strong><span class="pill warn">waiting upload</span></div>
+              <div class="item"><strong>bp restart</strong><span class="pill">not started</span></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn">下载冷环境脚本</button>
+              <button class="btn primary">上传 node.cert</button>
+            </div>
+          </article>
+
+          <article class="panel span-12">
+            <h3 class="section-title">冷环境脚本示例</h3>
+            <p class="section-meta">用于生成 node.cert，仅在冷环境执行。</p>
+            <div class="code">cardano-cli node issue-op-cert \
+  --kes-verification-key-file kes.vkey \
+  --cold-signing-key-file cold.skey \
+  --operational-certificate-issue-counter-file opcert.counter \
+  --kes-period &lt;current-kes-period&gt; \
+  --out-file node.cert</div>
+            <div class="btn-row">
+              <button class="btn">复制脚本</button>
+              <button class="btn">验证 cert 格式</button>
+              <button class="btn primary">执行 Rotate</button>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

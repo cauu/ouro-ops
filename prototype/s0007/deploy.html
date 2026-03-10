@@ -1,92 +1,98 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Ouro Ops Prototype - Deploy</title>
+    <title>Ouro Ops Prototype - Deploy Flow</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="shell">
-      <header class="topbar">
+    <div class="app">
+      <aside class="sidebar">
         <div class="brand">
-          <span class="brand-mark"></span>
+          <span class="brand-orb"></span>
           <div>
-            <h1>Deploy Flow</h1>
-            <p>Version pinned to 10.5.4-1 with explicit restore policy</p>
+            <h1>OURO OPS</h1>
+            <p>Mainnet Workspace</p>
           </div>
         </div>
-        <span class="status-pill">safe mode: off</span>
-      </header>
-
-      <div class="layout">
-        <nav class="nav" aria-label="Primary">
-          <a href="./index.html">Dashboard</a>
-          <a href="./machines.html">Machines</a>
-          <a href="./deploy.html" class="active" aria-current="page">Deploy</a>
-          <a href="./pool.html">Pool</a>
-          <a href="./settings.html">Settings</a>
-          <a href="./setup.html">Setup State</a>
+        <nav class="nav" aria-label="主导航">
+          <a href="./onboarding.html"><span class="icon">◉</span>Onboarding</a>
+          <a href="./index.html"><span class="icon">⌂</span>Dashboard</a>
+          <a class="active" aria-current="page" href="./deploy.html"><span class="icon">↗</span>部署流程</a>
+          <a href="./kes-rotate.html"><span class="icon">⟳</span>KES Rotate</a>
+          <a href="./upgrade-image.html"><span class="icon">⬆</span>升级镜像</a>
         </nav>
+        <div class="sidebar-meta">最小运行条件：1 relay + 1 bp。部署完成后继续 Pool 注册流程。</div>
+      </aside>
 
-        <main class="main">
-          <section class="hero">
-            <h2>Three-step deploy with visible risk controls.</h2>
-            <p>The flow emphasizes intent confirmation and outcome clarity over dense form input.</p>
-            <div class="actions" style="margin-top: 10px">
-              <span class="chip">1 Runtime profile</span>
-              <span class="chip">2 Restore strategy</span>
-              <span class="chip">3 Execution review</span>
+      <main class="main">
+        <header class="topbar">
+          <div class="top-title">
+            <h2>部署流程</h2>
+            <p>添加机器 -> 参数确认 -> 部署执行 -> 完成后进入 Pool 注册。</p>
+          </div>
+          <div class="top-actions">
+            <span class="search">⌕ 搜索部署参数</span>
+            <span class="badge">DeployWizard aligned</span>
+          </div>
+        </header>
+
+        <section class="grid">
+          <article class="panel span-7">
+            <h3 class="section-title">Step 1 · 添加 BP / Relay 机器</h3>
+            <p class="section-meta">输入 IP、SSH 用户、选择本地公私钥对，Relay 至少 1 台，可动态增加。</p>
+            <div class="table">
+              <div class="row header"><div>角色</div><div>IP</div><div>SSH 用户</div><div>密钥对</div></div>
+              <div class="row"><div>BP</div><div>31.220.95.72</div><div>cardano</div><div>~/.ssh/bp_ed25519</div></div>
+              <div class="row"><div>Relay #1</div><div>84.247.139.72</div><div>cardano</div><div>~/.ssh/relay_ed25519</div></div>
+              <div class="row"><div>Relay #2</div><div>203.0.113.20</div><div>cardano</div><div>~/.ssh/relay2_ed25519</div></div>
             </div>
-          </section>
+            <div class="btn-row">
+              <button class="btn">+ 添加 Relay</button>
+              <button class="btn">测试 SSH 连通性</button>
+            </div>
+          </article>
 
-          <section class="grid">
-            <article class="card span-7">
-              <p class="label">Current Step · Runtime Profile</p>
-              <form class="form">
-                <div class="field">
-                  <label for="deploy-network">Network</label>
-                  <select id="deploy-network" class="select">
-                    <option>mainnet</option>
-                    <option>preprod</option>
-                    <option>preview</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label for="deploy-image">Image</label>
-                  <input id="deploy-image" class="input" value="ghcr.io/blinklabs-io/cardano-node:10.5.4-1" />
-                </div>
-                <p class="hint">Digest override is available under advanced options.</p>
-              </form>
-            </article>
+          <article class="panel span-5">
+            <h3 class="section-title">Step 2 · 选择部署参数</h3>
+            <p class="section-meta">镜像参数和恢复策略支持按角色独立设置。</p>
+            <div class="kv">
+              <div class="cell"><span>network</span><strong>mainnet</strong></div>
+              <div class="cell"><span>image</span><strong>10.5.4-1</strong></div>
+              <div class="cell"><span>relay restore_snapshot</span><strong>true</strong></div>
+              <div class="cell"><span>bp restore_snapshot</span><strong>false</strong></div>
+              <div class="cell"><span>safe_validation_mode</span><strong>false</strong></div>
+              <div class="cell"><span>takeover_existing_node</span><strong>optional</strong></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn">保存草稿</button>
+              <button class="btn primary">确认参数</button>
+            </div>
+          </article>
 
-            <article class="card span-5">
-              <p class="label">Restore Strategy</p>
-              <div class="stack">
-                <div class="item"><span>Relay restore snapshot</span><span class="ok">enabled</span></div>
-                <div class="item"><span>BP restore snapshot</span><span>disabled</span></div>
-                <div class="item"><span>Takeover existing node</span><span>off</span></div>
-              </div>
-            </article>
-
-            <article class="card span-12">
-              <div class="row">
-                <p class="label">Execution Preview</p>
-                <span class="chip">ansible deploy.yml</span>
-              </div>
-              <div class="kvs">
-                <div class="kv"><strong>Stage A</strong><span>common + hardening baseline</span></div>
-                <div class="kv"><strong>Stage B</strong><span>relay rollout then bp rollout</span></div>
-                <div class="kv"><strong>Stage C</strong><span>health checks + rollback guard</span></div>
-              </div>
-              <div class="actions" style="margin-top: 12px">
-                <button class="btn">Save Draft</button>
-                <button class="btn primary">Start Deployment</button>
-              </div>
-            </article>
-          </section>
-        </main>
-      </div>
+          <article class="panel span-12">
+            <h3 class="section-title">Step 3 · 部署确认与执行</h3>
+            <p class="section-meta">执行后进入等待阶段，完成后提示注册 / 更新 Pool 信息。</p>
+            <div class="flow">
+              <div class="flow-step"><span class="num">3.1</span><div><strong>确认参数</strong><p>展示机器列表、镜像、restore 策略、网络。</p></div></div>
+              <div class="flow-step"><span class="num">3.2</span><div><strong>执行部署</strong><p>ansible 执行，显示任务进度和关键日志。</p></div></div>
+              <div class="flow-step"><span class="num">3.3</span><div><strong>等待部署完成</strong><p>容器健康检查成功后回到 dashboard。</p></div></div>
+              <div class="flow-step"><span class="num">3.4</span><div><strong>提示注册 Pool</strong><p>进入注册流程：cert -> unsigned tx -> 冷环境签名 -> signed tx 提交。</p></div></div>
+            </div>
+            <div class="code">Post-deploy registration path:
+1) create pool metadata
+2) cold env: generate pool-registration.cert
+3) upload cert and prepare unsigned tx
+4) cold env: sign tx
+5) submit signed tx</div>
+            <div class="btn-row">
+              <button class="btn">预览执行计划</button>
+              <button class="btn primary">开始部署</button>
+            </div>
+          </article>
+        </section>
+      </main>
     </div>
   </body>
 </html>

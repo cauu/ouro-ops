@@ -1,13 +1,15 @@
 # S0007 Frontend Prototype
 
-This directory contains static HTML prototype pages for the S0007 design iteration.
+Pure HTML prototype with five core pages:
 
-- Pure HTML + CSS only
-- No business logic
-- No backend integration
-- Pages can be opened independently in browser
+1. `onboarding.html`
+2. `index.html` (dashboard)
+3. `deploy.html`
+4. `kes-rotate.html`
+5. `upgrade-image.html`
 
-Primary dashboard entry: `index.html`
+Design direction: professional, restrained, minimal, light-only, Cardano blue palette.
 
-First launch setup state: `setup.html`
-Onboarding parameters form: `setup-onboarding.html`
+Notes:
+- Static prototype only, no business logic.
+- Flow is represented by page structure and visual states.

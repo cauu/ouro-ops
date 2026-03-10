@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ouro Ops Prototype - Upgrade Image</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-orb"></span>
+          <div>
+            <h1>OURO OPS</h1>
+            <p>Mainnet Workspace</p>
+          </div>
+        </div>
+        <nav class="nav" aria-label="主导航">
+          <a href="./onboarding.html"><span class="icon">◉</span>Onboarding</a>
+          <a href="./index.html"><span class="icon">⌂</span>Dashboard</a>
+          <a href="./deploy.html"><span class="icon">↗</span>部署流程</a>
+          <a href="./kes-rotate.html"><span class="icon">⟳</span>KES Rotate</a>
+          <a class="active" aria-current="page" href="./upgrade-image.html"><span class="icon">⬆</span>升级镜像</a>
+        </nav>
+        <div class="sidebar-meta">建议升级顺序：Relay -> 验证 -> BP，降低主链路风险。</div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="top-title">
+            <h2>升级镜像版本</h2>
+            <p>发现新版本时提供升级入口，并追踪执行进度。</p>
+          </div>
+          <div class="top-actions">
+            <span class="search">⌕ 搜索升级任务</span>
+            <span class="badge">new version available</span>
+          </div>
+        </header>
+
+        <section class="grid">
+          <article class="panel span-6">
+            <h3 class="section-title">版本对比</h3>
+            <p class="section-meta">固定镜像仓库，显式展示当前与目标版本。</p>
+            <div class="kv">
+              <div class="cell"><span>registry</span><strong>ghcr.io/blinklabs-io/cardano-node</strong></div>
+              <div class="cell"><span>current</span><strong>10.5.4-1</strong></div>
+              <div class="cell"><span>target</span><strong>10.6.x</strong></div>
+              <div class="cell"><span>upgrade window</span><strong>today 23:00</strong></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn">查看变更说明</button>
+              <button class="btn primary">开始升级</button>
+            </div>
+          </article>
+
+          <article class="panel span-6">
+            <h3 class="section-title">升级流程</h3>
+            <div class="flow">
+              <div class="flow-step"><span class="num">1</span><div><strong>版本提示</strong><p>Dashboard 显示可升级提示，用户点击进入。</p></div></div>
+              <div class="flow-step"><span class="num">2</span><div><strong>执行升级</strong><p>按 relay -> bp 顺序滚动升级镜像。</p></div></div>
+              <div class="flow-step"><span class="num">3</span><div><strong>等待完成</strong><p>容器健康检查通过后标记任务完成。</p></div></div>
+            </div>
+          </article>
+
+          <article class="panel span-12">
+            <h3 class="section-title">执行日志（示例）</h3>
+            <p class="section-meta">用于展示升级阶段和失败回滚信息。</p>
+            <div class="table">
+              <div class="row header"><div>时间</div><div>节点</div><div>阶段</div><div>结果</div></div>
+              <div class="row"><div>23:01:04</div><div>relay-1</div><div>pull image</div><div><span class="pill ok">done</span></div></div>
+              <div class="row"><div>23:03:10</div><div>relay-1</div><div>health-check</div><div><span class="pill ok">pass</span></div></div>
+              <div class="row"><div>23:04:22</div><div>bp-1</div><div>rolling restart</div><div><span class="pill warn">running</span></div></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn">导出日志</button>
+              <button class="btn">触发回滚</button>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

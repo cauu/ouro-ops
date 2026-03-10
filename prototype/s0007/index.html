@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -7,94 +7,108 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="shell">
-      <header class="topbar">
+    <div class="app">
+      <aside class="sidebar">
         <div class="brand">
-          <span class="brand-mark"></span>
+          <span class="brand-orb"></span>
           <div>
-            <h1>Ouro Ops</h1>
-            <p>Workspace BUBB · mainnet</p>
+            <h1>OURO OPS</h1>
+            <p>Mainnet Workspace</p>
           </div>
         </div>
-        <span class="status-pill">Runtime stable</span>
-      </header>
-
-      <div class="layout">
-        <nav class="nav" aria-label="Primary">
-          <a href="./index.html" class="active" aria-current="page">Dashboard</a>
-          <a href="./machines.html">Machines</a>
-          <a href="./deploy.html">Deploy</a>
-          <a href="./pool.html">Pool</a>
-          <a href="./settings.html">Settings</a>
-          <a href="./setup.html">Setup State</a>
+        <nav class="nav" aria-label="主导航">
+          <a href="./onboarding.html"><span class="icon">◉</span>Onboarding</a>
+          <a class="active" aria-current="page" href="./index.html"><span class="icon">⌂</span>Dashboard</a>
+          <a href="./deploy.html"><span class="icon">↗</span>部署流程</a>
+          <a href="./kes-rotate.html"><span class="icon">⟳</span>KES Rotate</a>
+          <a href="./upgrade-image.html"><span class="icon">⬆</span>升级镜像</a>
         </nav>
+        <div class="sidebar-meta">
+          核心运营视图：
+          <br />
+          运行健康、部署任务、Pool 注册、轮换与升级入口。
+        </div>
+      </aside>
 
-        <main class="main">
-          <section class="hero">
-            <h2>Focus now: keep relay healthy, move BP to full sync.</h2>
-            <p>Task-first dashboard with concise status and direct next actions.</p>
-            <div class="kpis">
-              <div class="kpi"><strong class="ok">Relay 99.82%</strong><span class="meta">snapshot restore complete</span></div>
-              <div class="kpi"><strong class="warn">BP 98.74%</strong><span class="meta">lag: 312 blocks</span></div>
-              <div class="kpi"><strong>KES 21.6d</strong><span class="meta">rotation window open</span></div>
-              <div class="kpi"><strong>Pool bound</strong><span class="meta">ticker: BUBB</span></div>
+      <main class="main">
+        <header class="topbar">
+          <div class="top-title">
+            <h2>Dashboard</h2>
+            <p>个人 SPO 控制台：状态先于配置，动作先于表单。</p>
+          </div>
+          <div class="top-actions">
+            <span class="search">⌕ 搜索任务 / 机器 / 节点</span>
+            <span class="badge">runtime stable</span>
+          </div>
+        </header>
+
+        <section class="panel">
+          <h3 class="section-title">运行总览</h3>
+          <p class="section-meta">关键状态集中在一屏，优先展示需要处理的事项。</p>
+          <div class="metric-grid">
+            <div class="metric"><span class="label">Relay 同步</span><strong>99.32%</strong></div>
+            <div class="metric"><span class="label">BP 同步</span><strong>97.84%</strong></div>
+            <div class="metric"><span class="label">Pool 绑定</span><strong>未绑定</strong></div>
+            <div class="metric"><span class="label">KES 剩余</span><strong>12.4 天</strong></div>
+          </div>
+        </section>
+
+        <section class="grid">
+          <article class="panel span-8">
+            <h3 class="section-title">待处理动作</h3>
+            <p class="section-meta">部署完成后，按顺序完成注册、轮换、升级。</p>
+            <div class="list">
+              <div class="item">
+                <div>
+                  <strong>注册 / 更新 Pool 信息</strong>
+                  <div class="meta">创建 pool 基本信息 -> 冷环境产出 cert -> 上传 cert -> 生成 unsigned tx -> 冷环境签名 -> 提交 signed tx</div>
+                </div>
+                <span class="pill danger">required</span>
+              </div>
+              <div class="item">
+                <div>
+                  <strong>KES Rotate 预演</strong>
+                  <div class="meta">生成 KES keypairs 并在冷环境生成 node.cert。</div>
+                </div>
+                <span class="pill warn">scheduled</span>
+              </div>
+              <div class="item">
+                <div>
+                  <strong>镜像版本检查</strong>
+                  <div class="meta">发现新版本时，按 relay -> bp 顺序执行升级。</div>
+                </div>
+                <span class="pill ok">ready</span>
+              </div>
             </div>
-          </section>
+            <div class="btn-row">
+              <a class="btn" href="./deploy.html">查看部署流程</a>
+              <a class="btn" href="./kes-rotate.html">进入 KES Rotate</a>
+              <a class="btn" href="./upgrade-image.html">进入升级流程</a>
+            </div>
+          </article>
 
-          <section class="grid">
-            <article class="card span-7">
-              <div class="row">
-                <p class="label">Next Actions</p>
-                <span class="chip">operator guidance</span>
-              </div>
-              <div class="stack">
-                <div class="item">
-                  <div>
-                    <strong>Apply runtime config on relay</strong>
-                    <div class="meta">topology update pending validation</div>
-                  </div>
-                  <button class="btn">Open</button>
-                </div>
-                <div class="item">
-                  <div>
-                    <strong>Review BP peer path</strong>
-                    <div class="meta">ensure relay is first local root</div>
-                  </div>
-                  <button class="btn">Review</button>
-                </div>
-                <div class="item">
-                  <div>
-                    <strong>Schedule KES rotation dry-run</strong>
-                    <div class="meta">recommended before T-10d</div>
-                  </div>
-                  <button class="btn">Plan</button>
-                </div>
-              </div>
-            </article>
+          <article class="panel span-4">
+            <h3 class="section-title">部署阶段</h3>
+            <p class="section-meta">从启动到运行的关键阶段。</p>
+            <div class="flow">
+              <div class="flow-step"><span class="num">1</span><div><strong>machine 已添加</strong><p>bp 1 台 / relay 1 台。</p></div></div>
+              <div class="flow-step"><span class="num">2</span><div><strong>参数已确认</strong><p>镜像 10.5.4-1，策略已保存。</p></div></div>
+              <div class="flow-step"><span class="num">3</span><div><strong>部署完成</strong><p>等待 pool 绑定与注册动作。</p></div></div>
+            </div>
+          </article>
 
-            <article class="card span-5">
-              <p class="label">Live Health</p>
-              <div class="stack">
-                <div class="item"><strong>relay-1</strong><span class="ok">healthy</span></div>
-                <div class="item"><strong>bp-1</strong><span class="warn">syncing</span></div>
-                <div class="item"><strong>task queue</strong><span>2 running</span></div>
-              </div>
-            </article>
-
-            <article class="card span-12">
-              <div class="row">
-                <p class="label">Recent Events</p>
-                <button class="btn">Open task stream</button>
-              </div>
-              <div class="stack">
-                <div class="item"><span>Runtime config applied on relay-1</span><span class="meta">10:44</span></div>
-                <div class="item"><span>Mithril restore entered replay stage</span><span class="meta">11:02</span></div>
-                <div class="item"><span>BP deploy completed with rollback guard</span><span class="meta">Yesterday</span></div>
-              </div>
-            </article>
-          </section>
-        </main>
-      </div>
+          <article class="panel span-12">
+            <h3 class="section-title">静默刷新策略</h3>
+            <p class="section-meta">每次进入 dashboard 后后台自动拉取并更新最新数据。</p>
+            <div class="table">
+              <div class="row header"><div>数据域</div><div>来源</div><div>刷新频率</div><div>展示位置</div></div>
+              <div class="row"><div>节点运行状态</div><div>runtime probe</div><div>30s</div><div>运行总览</div></div>
+              <div class="row"><div>Pool 链上信息</div><div>cardano-cli query</div><div>进入页面后</div><div>待处理动作 / pool 卡片</div></div>
+              <div class="row"><div>任务进度</div><div>本地任务存储</div><div>实时</div><div>部署阶段</div></div>
+            </div>
+          </article>
+        </section>
+      </main>
     </div>
   </body>
 </html>
