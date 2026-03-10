@@ -49,7 +49,7 @@
         <section class="grid">
           <article class="panel span-12">
             <h3 class="section-title">向导步骤</h3>
-            <p class="section-meta">按步骤推进，避免在一次操作中输入过多参数。</p>
+            <p class="section-meta">仅展示当前步骤内容，降低信息密度和操作干扰。</p>
             <ol class="stepper" aria-label="部署步骤">
               <li class="step-node done">
                 <span class="step-kicker">Step 1</span>
@@ -74,50 +74,9 @@
             </ol>
           </article>
 
-          <article class="panel span-7">
-            <h3 class="section-title">Step 1 · 添加 BP / Relay 机器</h3>
-            <p class="section-meta">已完成：输入 IP、SSH 用户、选择本地公私钥对，Relay 至少 1 台，可动态增加。</p>
-            <div class="table-wrap">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th scope="col">角色</th>
-                    <th scope="col">IP</th>
-                    <th scope="col">SSH 用户</th>
-                    <th scope="col">密钥对</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>BP</td>
-                    <td>31.220.95.72</td>
-                    <td>cardano</td>
-                    <td>~/.ssh/bp_ed25519</td>
-                  </tr>
-                  <tr>
-                    <td>Relay #1</td>
-                    <td>84.247.139.72</td>
-                    <td>cardano</td>
-                    <td>~/.ssh/relay_ed25519</td>
-                  </tr>
-                  <tr>
-                    <td>Relay #2</td>
-                    <td>203.0.113.20</td>
-                    <td>cardano</td>
-                    <td>~/.ssh/relay2_ed25519</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="btn-row">
-              <button type="button" class="btn">+ 添加 Relay</button>
-              <button type="button" class="btn">测试 SSH 连通性</button>
-            </div>
-          </article>
-
-          <article class="panel span-5">
-            <h3 class="section-title">Step 2 · 选择部署参数（当前）</h3>
-            <p class="section-meta">当前步骤：镜像参数和恢复策略按角色独立设置。</p>
+          <article class="panel span-8">
+            <h3 class="section-title">Step 2 · Deployment Parameters</h3>
+            <p class="section-meta">当前仅聚焦参数配置：网络、镜像版本与角色级恢复策略。</p>
             <div class="kv">
               <div class="cell"><span>network</span><strong>mainnet</strong></div>
               <div class="cell"><span>image</span><strong>10.5.4-1</strong></div>
@@ -139,24 +98,24 @@
             </div>
           </article>
 
-          <article class="panel span-12">
-            <h3 class="section-title">Step 3 / Step 4 · 部署确认与完成引导</h3>
-            <p class="section-meta">Step 3 执行部署，Step 4 在完成后引导注册 / 更新 Pool 信息。</p>
-            <div class="flow">
-              <div class="flow-step"><span class="num" aria-hidden="true">3.1</span><div><strong>确认参数</strong><p>展示机器列表、镜像、restore 策略、网络。</p></div></div>
-              <div class="flow-step"><span class="num" aria-hidden="true">3.2</span><div><strong>执行部署</strong><p>Ansible 执行，显示任务进度和关键日志。</p></div></div>
-              <div class="flow-step"><span class="num" aria-hidden="true">3.3</span><div><strong>等待部署完成</strong><p>容器健康检查成功后回到看板。</p></div></div>
-              <div class="flow-step"><span class="num" aria-hidden="true">3.4</span><div><strong>提示注册 Pool</strong><p>进入注册流程：cert -> unsigned tx -> 冷环境签名 -> signed tx 提交。</p></div></div>
-            </div>
-            <div class="code">Post-deploy registration path:
-1) create pool metadata
-2) cold env: generate pool-registration.cert
-3) upload cert and prepare unsigned tx
-4) cold env: sign tx
-5) submit signed tx</div>
-            <div class="btn-row">
-              <button type="button" class="btn">预览执行计划</button>
-              <button type="button" class="btn primary">开始部署</button>
+          <article class="panel span-4">
+            <h3 class="section-title">已完成摘要</h3>
+            <p class="section-meta">轻量回顾已完成步骤，避免重复展示明细内容。</p>
+            <div class="list">
+              <div class="item">
+                <div>
+                  <strong>Step 1 · 添加机器</strong>
+                  <div class="meta">bp 1 台 / relay 2 台，SSH 已验证。</div>
+                </div>
+                <span class="pill ok">done</span>
+              </div>
+              <div class="item">
+                <div>
+                  <strong>下一步预告</strong>
+                  <div class="meta">Step 3 将进入执行确认与部署启动。</div>
+                </div>
+                <span class="pill">upcoming</span>
+              </div>
             </div>
           </article>
         </section>

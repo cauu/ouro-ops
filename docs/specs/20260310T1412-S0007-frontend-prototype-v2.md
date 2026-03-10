@@ -193,3 +193,27 @@ Spec-ID: S0007
 
 ### 10.5 Change Request Delta
 - 2026-03-10 23:02 +0800 需求新增：按审计建议的优先级流程对原型进行设计与可访问性修正。
+
+## 11. Addendum (append-only)
+### 11.1 Execution Plan Delta
+- [x] p7-14 将部署流程页重构为单步骤聚焦向导（single-step focused wizard）
+
+### 11.2 Acceptance Delta
+- TC-26 部署页顶部保留全量水平 stepper，并标记 completed/current/upcoming。
+- TC-27 主内容区仅展示当前步骤（Step 2）的详细内容与动作，不展示 Step 1/3/4 详细区块。
+- TC-28 页面仅保留轻量已完成摘要（可选），信息密度明显下降。
+- TC-29 保持现有企业化轻量风格（浅色背景、白卡片、蓝灰边框、圆角、清晰层级）。
+
+### 11.3 Execution Log Delta
+- 2026-03-10 23:18 +0800 p7-14 started: 按 single-step wizard 要求重构部署流程页信息架构。
+- 2026-03-10 23:23 +0800 p7-14 completed: 部署页实现“仅当前步骤内容 + 顶部 stepper + 轻量摘要”布局。
+
+### 11.4 Validation Evidence Delta
+- TC-26 | stack: ui | command: rg -n "step-node done|step-node current|step-node\">" prototype/s0007/deploy.html | result: pass | note: stepper 保留完整步骤并具备状态层级
+- TC-27 | stack: ui | command: rg -n "Step 2 · Deployment Parameters|保存草稿|确认参数|上一步|下一步" prototype/s0007/deploy.html | result: pass | note: 主区域仅保留当前步骤内容与动作
+- TC-27 | stack: ui | command: rg -n "Step 1 · 添加 BP / Relay 机器|Step 3 / Step 4|Post-deploy registration path|data-table" prototype/s0007/deploy.html || true | result: pass | note: 已移除非当前步骤详细区块
+- TC-28 | stack: ui | command: rg -n "已完成摘要|Step 1 · 添加机器|下一步预告" prototype/s0007/deploy.html | result: pass | note: 仅保留轻量摘要，无展开明细
+- TC-29 | stack: ui | command: manual review of prototype/s0007/deploy.html with styles.css tokens | result: pass | note: 风格保持浅色企业化卡片体系与清晰视觉层级
+
+### 11.5 Change Request Delta
+- 2026-03-10 23:18 +0800 需求新增：部署流程页改为 single-step focused wizard，避免同时显示多步骤详情。
