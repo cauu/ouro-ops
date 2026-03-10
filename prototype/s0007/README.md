@@ -9,4 +9,4 @@ This directory contains static HTML prototype pages for the S0007 design iterati
 
 Entry page: `index.html`
 
-Onboarding/login prototype: `login.html`
+First launch setup state: `setup.html`

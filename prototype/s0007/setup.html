@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ouro Ops Prototype - First Launch Setup</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="auth-shell">
+      <main class="auth-frame">
+        <section class="auth-side" aria-labelledby="setup-title">
+          <p class="status-pill">First Launch Flow</p>
+          <h1 id="setup-title">No login required. Create your pool workspace once, then enter dashboard directly.</h1>
+          <p>
+            On app start, bootstrap checks whether a pool exists in local workspace. If not, users see this
+            setup step. If yes, app navigates straight to dashboard.
+          </p>
+          <ul class="auth-points">
+            <li>Single-pool workspace initialization with safe defaults</li>
+            <li>No account registration and no remote auth dependency</li>
+            <li>After creation, all operations continue from dashboard</li>
+          </ul>
+        </section>
+
+        <section class="auth-card" aria-labelledby="create-pool-title">
+          <h2 id="create-pool-title">Create Pool Workspace</h2>
+          <p class="auth-meta">Static prototype for initial setup state when pool is not yet created.</p>
+
+          <form class="form">
+            <div class="field">
+              <label for="pool-ticker">Pool ticker (3-5 chars)</label>
+              <input id="pool-ticker" class="input" placeholder="BUBB" />
+            </div>
+            <div class="field">
+              <label for="pool-network">Network</label>
+              <select id="pool-network" class="select">
+                <option>mainnet</option>
+                <option>preprod</option>
+                <option>preview</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="pool-margin">Margin (optional)</label>
+              <input id="pool-margin" class="input" placeholder="0.03" />
+            </div>
+            <div class="field">
+              <label for="pool-fixed-cost">Fixed cost (optional)</label>
+              <input id="pool-fixed-cost" class="input" placeholder="170000000" />
+            </div>
+
+            <div class="auth-actions">
+              <button type="button" class="btn primary">Create Pool</button>
+              <a href="./index.html" class="btn ghost">Pool already exists, open dashboard</a>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
