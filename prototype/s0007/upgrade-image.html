@@ -25,10 +25,10 @@
           <a class="active" aria-current="page" href="./upgrade-image.html"><span class="icon" aria-hidden="true">⬆</span>升级镜像</a>
         </nav>
         <div class="sidebar-meta">
-          <p>升级建议：</p>
+          <p>升级策略：</p>
           <ul>
-            <li>按 relay -> bp 顺序执行</li>
-            <li>每一步都做健康检查</li>
+            <li>先 relay，后 bp</li>
+            <li>每一步必须通过健康检查</li>
           </ul>
         </div>
       </aside>
@@ -37,7 +37,7 @@
         <header class="topbar">
           <div class="top-title">
             <h2>升级镜像版本</h2>
-            <p>发现新版本时提供升级入口，并追踪执行进度。</p>
+            <p>单步骤向导：当前仅聚焦 Step 2（执行滚动升级）。</p>
           </div>
           <div class="top-actions">
             <label class="sr-only" for="search-upgrade">搜索升级任务</label>
@@ -49,7 +49,7 @@
         <section class="grid">
           <article class="panel span-12">
             <h3 class="section-title">向导步骤</h3>
-            <p class="section-meta">升级按步骤执行，显式分离“发现版本 / 执行升级 / 完成验证”。</p>
+            <p class="section-meta">显示全部步骤状态，但仅在主区展示当前步骤内容。</p>
             <ol class="stepper" aria-label="升级步骤">
               <li class="step-node done">
                 <span class="step-kicker">Step 1</span>
@@ -69,30 +69,42 @@
             </ol>
           </article>
 
-          <article class="panel span-6">
-            <h3 class="section-title">Step 1 · 版本对比</h3>
-            <p class="section-meta">固定镜像仓库，显式展示当前与目标版本。</p>
+          <article class="panel span-8">
+            <h3 class="section-title">Step 2 · 执行滚动升级</h3>
+            <p class="section-meta">仅处理当前升级动作：按 relay -> bp 顺序执行并观测状态。</p>
+
             <div class="kv">
               <div class="cell"><span>registry</span><strong>ghcr.io/blinklabs-io/cardano-node</strong></div>
-              <div class="cell"><span>current</span><strong>10.5.4-1</strong></div>
-              <div class="cell"><span>target</span><strong>10.6.x</strong></div>
-              <div class="cell"><span>upgrade window</span><strong>today 23:00</strong></div>
+              <div class="cell"><span>target tag</span><strong>10.6.x</strong></div>
+              <div class="cell"><span>rollout order</span><strong>relay -> bp</strong></div>
+              <div class="cell"><span>current stage</span><strong>bp rolling restart</strong></div>
             </div>
-            <div class="btn-row">
-              <button type="button" class="btn">查看变更说明</button>
-              <button type="button" class="btn primary">开始升级</button>
-            </div>
-          </article>
 
-          <article class="panel span-6">
-            <h3 class="section-title">Step 2 / Step 3 · 升级执行与完成</h3>
-            <div class="flow">
-              <div class="flow-step"><span class="num" aria-hidden="true">1</span><div><strong>版本提示</strong><p>看板显示可升级提示，用户点击进入。</p></div></div>
-              <div class="flow-step"><span class="num" aria-hidden="true">2</span><div><strong>执行升级</strong><p>按 relay -> bp 顺序滚动升级镜像。</p></div></div>
-              <div class="flow-step"><span class="num" aria-hidden="true">3</span><div><strong>等待完成</strong><p>容器健康检查通过后标记任务完成。</p></div></div>
+            <div class="list">
+              <div class="item">
+                <div>
+                  <strong>relay-1</strong>
+                  <div class="meta">镜像拉取与健康检查完成。</div>
+                </div>
+                <span class="pill ok">done</span>
+              </div>
+              <div class="item">
+                <div>
+                  <strong>bp-1</strong>
+                  <div class="meta">滚动重启中，等待 socket 与端口健康。</div>
+                </div>
+                <span class="pill warn">running</span>
+              </div>
             </div>
+
+            <div class="btn-row">
+              <button type="button" class="btn">刷新阶段状态</button>
+              <button type="button" class="btn">导出当前日志</button>
+              <button type="button" class="btn primary">确认并继续</button>
+            </div>
+
             <div class="wizard-footer">
-              <span class="hint">当前示例处于 Step 2（relay 已完成，bp 升级中）。</span>
+              <span class="hint">当前步骤完成后进入 Step 3（全量健康检查与完成）。</span>
               <div class="btn-row">
                 <button type="button" class="btn">上一步</button>
                 <button type="button" class="btn primary">下一步</button>
@@ -100,44 +112,24 @@
             </div>
           </article>
 
-          <article class="panel span-12">
-            <h3 class="section-title">执行日志（示例）</h3>
-            <p class="section-meta">用于展示升级阶段和失败回滚信息。</p>
-            <div class="table-wrap">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th scope="col">时间</th>
-                    <th scope="col">节点</th>
-                    <th scope="col">阶段</th>
-                    <th scope="col">结果</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>23:01:04</td>
-                    <td>relay-1</td>
-                    <td>pull image</td>
-                    <td><span class="pill ok">done</span></td>
-                  </tr>
-                  <tr>
-                    <td>23:03:10</td>
-                    <td>relay-1</td>
-                    <td>health-check</td>
-                    <td><span class="pill ok">pass</span></td>
-                  </tr>
-                  <tr>
-                    <td>23:04:22</td>
-                    <td>bp-1</td>
-                    <td>rolling restart</td>
-                    <td><span class="pill warn">running</span></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="btn-row">
-              <button type="button" class="btn">导出日志</button>
-              <button type="button" class="btn">触发回滚</button>
+          <article class="panel span-4">
+            <h3 class="section-title">已完成摘要</h3>
+            <p class="section-meta">轻量保留已完成信息，避免展示多步骤明细。</p>
+            <div class="list">
+              <div class="item">
+                <div>
+                  <strong>Step 1 · 版本确认</strong>
+                  <div class="meta">current: 10.5.4-1, target: 10.6.x</div>
+                </div>
+                <span class="pill ok">done</span>
+              </div>
+              <div class="item">
+                <div>
+                  <strong>下一步预告</strong>
+                  <div class="meta">Step 3 统一健康检查并标记完成。</div>
+                </div>
+                <span class="pill">upcoming</span>
+              </div>
             </div>
           </article>
         </section>

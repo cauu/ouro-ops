@@ -25,10 +25,10 @@
           <a href="./upgrade-image.html"><span class="icon" aria-hidden="true">⬆</span>升级镜像</a>
         </nav>
         <div class="sidebar-meta">
-          <p>Rotate 流程约束：</p>
+          <p>KES Rotate 约束：</p>
           <ul>
             <li>热环境不保存 cold.skey / cold.vkey</li>
-            <li>冷环境负责生成 node.cert</li>
+            <li>冷环境生成 node.cert 后再回传</li>
           </ul>
         </div>
       </aside>
@@ -37,7 +37,7 @@
         <header class="topbar">
           <div class="top-title">
             <h2>KES Rotate</h2>
-            <p>生成 KES keypairs -> 冷环境生成 node.cert -> 上传 cert -> rotate -> 验证。</p>
+            <p>单步骤向导：当前仅聚焦 Step 2（冷环境生成 node.cert）。</p>
           </div>
           <div class="top-actions">
             <label class="sr-only" for="search-kes">搜索 KES 操作</label>
@@ -49,7 +49,7 @@
         <section class="grid">
           <article class="panel span-12">
             <h3 class="section-title">向导步骤</h3>
-            <p class="section-meta">KES Rotate 采用严格分步骤，保证热/冷环境职责分离。</p>
+            <p class="section-meta">显示全部步骤状态，但仅在主区展示当前步骤内容。</p>
             <ol class="stepper" aria-label="KES Rotate 步骤">
               <li class="step-node done">
                 <span class="step-kicker">Step 1</span>
@@ -75,30 +75,31 @@
           </article>
 
           <article class="panel span-8">
-            <h3 class="section-title">分步骤执行详情</h3>
-            <div class="flow">
-              <div class="flow-step"><span class="num" aria-hidden="true">1</span><div><strong>生成 KES keypairs</strong><p>在 BP 热环境生成新的 kes.skey / kes.vkey。</p></div></div>
-              <div class="flow-step"><span class="num" aria-hidden="true">2</span><div><strong>冷环境生成 node.cert</strong><p>将 KES 信息带入冷环境脚本，产出新 node.cert。</p></div></div>
-              <div class="flow-step"><span class="num" aria-hidden="true">3</span><div><strong>上传 node.cert</strong><p>回到应用上传证书并做格式校验。</p></div></div>
-              <div class="flow-step"><span class="num" aria-hidden="true">4</span><div><strong>执行 Rotate</strong><p>替换证书后重启 BP 容器并等待可用。</p></div></div>
-              <div class="flow-step"><span class="num" aria-hidden="true">5</span><div><strong>校验生效</strong><p>验证 KES period、节点可锻块与链上状态。</p></div></div>
-            </div>
-          </article>
+            <h3 class="section-title">Step 2 · 冷环境生成 node.cert</h3>
+            <p class="section-meta">请在冷环境执行脚本并回传证书；当前页面不展示其他步骤明细。</p>
 
-          <article class="panel span-4">
-            <h3 class="section-title">当前步骤状态</h3>
-            <p class="section-meta">当前位于 Step 2，等待冷环境产出并上传证书。</p>
-            <div class="list">
-              <div class="item"><strong>new kes.skey</strong><span class="pill ok">generated</span></div>
-              <div class="item"><strong>node.cert</strong><span class="pill warn">waiting upload</span></div>
-              <div class="item"><strong>bp restart</strong><span class="pill">not started</span></div>
+            <div class="code">cardano-cli node issue-op-cert \
+  --kes-verification-key-file kes.vkey \
+  --cold-signing-key-file cold.skey \
+  --operational-certificate-issue-counter-file opcert.counter \
+  --kes-period &lt;current-kes-period&gt; \
+  --out-file node.cert</div>
+
+            <div class="kv">
+              <div class="cell"><span>required input</span><strong>kes.vkey / opcert.counter</strong></div>
+              <div class="cell"><span>output</span><strong>node.cert</strong></div>
+              <div class="cell"><span>execution env</span><strong>cold environment</strong></div>
+              <div class="cell"><span>next</span><strong>upload node.cert</strong></div>
             </div>
+
             <div class="btn-row">
-              <button type="button" class="btn">下载冷环境脚本</button>
+              <button type="button" class="btn">复制脚本</button>
+              <button type="button" class="btn">下载参数说明</button>
               <button type="button" class="btn primary">上传 node.cert</button>
             </div>
+
             <div class="wizard-footer">
-              <span class="hint">上传成功后自动进入 Step 4（Rotate 与验证）。</span>
+              <span class="hint">完成上传后进入 Step 3（证书校验与准备 Rotate）。</span>
               <div class="btn-row">
                 <button type="button" class="btn">上一步</button>
                 <button type="button" class="btn primary">下一步</button>
@@ -106,19 +107,24 @@
             </div>
           </article>
 
-          <article class="panel span-12">
-            <h3 class="section-title">冷环境脚本示例</h3>
-            <p class="section-meta">用于生成 node.cert，仅在冷环境执行。</p>
-            <div class="code">cardano-cli node issue-op-cert \
-  --kes-verification-key-file kes.vkey \
-  --cold-signing-key-file cold.skey \
-  --operational-certificate-issue-counter-file opcert.counter \
-  --kes-period &lt;current-kes-period&gt; \
-  --out-file node.cert</div>
-            <div class="btn-row">
-              <button type="button" class="btn">复制脚本</button>
-              <button type="button" class="btn">验证 cert 格式</button>
-              <button type="button" class="btn primary">执行 Rotate</button>
+          <article class="panel span-4">
+            <h3 class="section-title">已完成摘要</h3>
+            <p class="section-meta">轻量展示已完成与即将进入步骤。</p>
+            <div class="list">
+              <div class="item">
+                <div>
+                  <strong>Step 1 · KES keypairs</strong>
+                  <div class="meta">kes.skey / kes.vkey 已生成。</div>
+                </div>
+                <span class="pill ok">done</span>
+              </div>
+              <div class="item">
+                <div>
+                  <strong>下一步预告</strong>
+                  <div class="meta">Step 3 上传并校验 node.cert。</div>
+                </div>
+                <span class="pill">upcoming</span>
+              </div>
             </div>
           </article>
         </section>

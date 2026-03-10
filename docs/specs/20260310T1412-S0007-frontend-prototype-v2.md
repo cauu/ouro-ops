@@ -217,3 +217,27 @@ Spec-ID: S0007
 
 ### 11.5 Change Request Delta
 - 2026-03-10 23:18 +0800 需求新增：部署流程页改为 single-step focused wizard，避免同时显示多步骤详情。
+
+## 12. Addendum (append-only)
+### 12.1 Execution Plan Delta
+- [x] p7-15 将 KES Rotate 与升级镜像页面重构为单步骤聚焦向导（single-step focused wizard）
+
+### 12.2 Acceptance Delta
+- TC-30 KES Rotate 页面仅展示当前步骤详细内容，顶部 stepper 仅用于显示 completed/current/upcoming 状态。
+- TC-31 升级镜像页面仅展示当前步骤详细内容，顶部 stepper 仅用于显示 completed/current/upcoming 状态。
+- TC-32 两页均不再展示非当前步骤的详细区块，仅保留轻量已完成摘要。
+- TC-33 保持现有企业化浅色风格与低认知负担布局。
+
+### 12.3 Execution Log Delta
+- 2026-03-10 23:31 +0800 p7-15 started: 优化 KES Rotate 与升级镜像页面为单步骤聚焦向导。
+- 2026-03-10 23:36 +0800 p7-15 completed: 两页已完成单步骤重构，移除多步骤明细并保留轻量摘要。
+
+### 12.4 Validation Evidence Delta
+- TC-30 | stack: ui | command: rg -n "Step 2 · 冷环境生成 node.cert|aria-current=\"step\"|已完成摘要|上一步|下一步" prototype/s0007/kes-rotate.html | result: pass | note: KES 页面主区仅保留当前步骤与动作
+- TC-31 | stack: ui | command: rg -n "Step 2 · 执行滚动升级|aria-current=\"step\"|已完成摘要|上一步|下一步" prototype/s0007/upgrade-image.html | result: pass | note: 升级页面主区仅保留当前步骤与动作
+- TC-32 | stack: ui | command: rg -n "分步骤执行详情|冷环境脚本示例|Step 1 · 版本对比|Step 2 / Step 3 · 升级执行与完成|执行日志（示例）" prototype/s0007/kes-rotate.html prototype/s0007/upgrade-image.html || true | result: pass | note: 非当前步骤详细区块已移除
+- TC-33 | stack: ui | command: manual review of prototype/s0007/kes-rotate.html and upgrade-image.html with shared styles.css | result: pass | note: 保持浅色卡片化企业风格与清晰层级
+- TC-25 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007 || true | result: pass | note: 仍为纯静态原型
+
+### 12.5 Change Request Delta
+- 2026-03-10 23:31 +0800 需求新增：KES Rotate 和升级镜像流程均需按单步骤聚焦向导进行优化。
