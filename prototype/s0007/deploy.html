@@ -12,112 +12,75 @@
         <div class="brand">
           <span class="brand-mark"></span>
           <div>
-            <h1>Deploy Wizard</h1>
-            <p>Explicit runtime controls, static prototype</p>
+            <h1>Deploy Flow</h1>
+            <p>Version pinned to 10.5.4-1 with explicit restore policy</p>
           </div>
         </div>
-        <span class="status-pill">default image: 10.5.4-1</span>
+        <span class="status-pill">safe mode: off</span>
       </header>
 
       <div class="layout">
-        <nav class="nav">
+        <nav class="nav" aria-label="Primary">
           <a href="./index.html">Dashboard</a>
           <a href="./machines.html">Machines</a>
-          <a href="./deploy.html" class="active">Deploy</a>
+          <a href="./deploy.html" class="active" aria-current="page">Deploy</a>
           <a href="./pool.html">Pool</a>
           <a href="./settings.html">Settings</a>
+          <a href="./setup.html">Setup State</a>
         </nav>
 
         <main class="main">
           <section class="hero">
-            <h2>Deliberate deployment flow</h2>
-            <p>Safety switches are visible by default, while advanced inputs are grouped and concise.</p>
+            <h2>Three-step deploy with visible risk controls.</h2>
+            <p>The flow emphasizes intent confirmation and outcome clarity over dense form input.</p>
+            <div class="actions" style="margin-top: 10px">
+              <span class="chip">1 Runtime profile</span>
+              <span class="chip">2 Restore strategy</span>
+              <span class="chip">3 Execution review</span>
+            </div>
           </section>
 
           <section class="grid">
-            <article class="card span-6">
-              <p class="label">Step 1 · Runtime Profile</p>
+            <article class="card span-7">
+              <p class="label">Current Step · Runtime Profile</p>
               <form class="form">
                 <div class="field">
-                  <label>Network</label>
-                  <select class="select">
+                  <label for="deploy-network">Network</label>
+                  <select id="deploy-network" class="select">
                     <option>mainnet</option>
                     <option>preprod</option>
                     <option>preview</option>
                   </select>
                 </div>
                 <div class="field">
-                  <label>Image Registry</label>
-                  <input class="input" value="ghcr.io/blinklabs-io/cardano-node" />
+                  <label for="deploy-image">Image</label>
+                  <input id="deploy-image" class="input" value="ghcr.io/blinklabs-io/cardano-node:10.5.4-1" />
                 </div>
-                <div class="field">
-                  <label>Image Version</label>
-                  <input class="input" value="10.5.4-1" />
-                </div>
-                <p class="hint">Digest input remains available in advanced section.</p>
+                <p class="hint">Digest override is available under advanced options.</p>
               </form>
             </article>
 
-            <article class="card span-6">
-              <p class="label">Step 2 · Restore Strategy</p>
-              <form class="form">
-                <div class="field">
-                  <label>Relay restore snapshot</label>
-                  <select class="select">
-                    <option>enabled</option>
-                    <option>disabled</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label>BP restore snapshot</label>
-                  <select class="select">
-                    <option>disabled</option>
-                    <option>enabled (advanced)</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label>Safe validation mode</label>
-                  <select class="select">
-                    <option>false</option>
-                    <option>true (read-only)</option>
-                  </select>
-                </div>
-              </form>
+            <article class="card span-5">
+              <p class="label">Restore Strategy</p>
+              <div class="stack">
+                <div class="item"><span>Relay restore snapshot</span><span class="ok">enabled</span></div>
+                <div class="item"><span>BP restore snapshot</span><span>disabled</span></div>
+                <div class="item"><span>Takeover existing node</span><span>off</span></div>
+              </div>
             </article>
 
             <article class="card span-12">
               <div class="row">
                 <p class="label">Execution Preview</p>
-                <span class="badge">ansible deploy.yml</span>
+                <span class="chip">ansible deploy.yml</span>
               </div>
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Stage</th>
-                    <th>Target</th>
-                    <th>Expected Outcome</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>common + hardening</td>
-                    <td>relay, bp</td>
-                    <td>baseline host readiness and security posture</td>
-                  </tr>
-                  <tr>
-                    <td>cardano-node rollout</td>
-                    <td>relay first, then bp</td>
-                    <td>runtime start and health checks with rollback guard</td>
-                  </tr>
-                  <tr>
-                    <td>sync monitor</td>
-                    <td>relay, bp</td>
-                    <td>stage transitions visible in dashboard</td>
-                  </tr>
-                </tbody>
-              </table>
-              <div class="row" style="margin-top: 12px">
-                <button class="btn">Save As Draft</button>
+              <div class="kvs">
+                <div class="kv"><strong>Stage A</strong><span>common + hardening baseline</span></div>
+                <div class="kv"><strong>Stage B</strong><span>relay rollout then bp rollout</span></div>
+                <div class="kv"><strong>Stage C</strong><span>health checks + rollback guard</span></div>
+              </div>
+              <div class="actions" style="margin-top: 12px">
+                <button class="btn">Save Draft</button>
                 <button class="btn primary">Start Deployment</button>
               </div>
             </article>
@@ -126,4 +89,4 @@
       </div>
     </div>
   </body>
-  </html>
+</html>

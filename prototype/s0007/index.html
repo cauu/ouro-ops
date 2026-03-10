@@ -12,105 +12,84 @@
         <div class="brand">
           <span class="brand-mark"></span>
           <div>
-            <h1>Ouro Ops · Control Plane</h1>
-            <p>Cardano SPO workspace prototype (light mode)</p>
+            <h1>Ouro Ops</h1>
+            <p>Workspace BUBB · mainnet</p>
           </div>
         </div>
-        <span class="status-pill">Workspace: BUBB · mainnet</span>
+        <span class="status-pill">Runtime stable</span>
       </header>
 
       <div class="layout">
-        <nav class="nav">
-          <a href="./index.html" class="active">Dashboard</a>
+        <nav class="nav" aria-label="Primary">
+          <a href="./index.html" class="active" aria-current="page">Dashboard</a>
           <a href="./machines.html">Machines</a>
           <a href="./deploy.html">Deploy</a>
           <a href="./pool.html">Pool</a>
           <a href="./settings.html">Settings</a>
+          <a href="./setup.html">Setup State</a>
         </nav>
 
         <main class="main">
           <section class="hero">
-            <h2>Operational confidence, minimal noise</h2>
-            <p>
-              Focused view of sync, health, KES horizon, and current rollout posture. This prototype is
-              static and intentionally keeps critical actions explicit.
-            </p>
+            <h2>Focus now: keep relay healthy, move BP to full sync.</h2>
+            <p>Task-first dashboard with concise status and direct next actions.</p>
+            <div class="kpis">
+              <div class="kpi"><strong class="ok">Relay 99.82%</strong><span class="meta">snapshot restore complete</span></div>
+              <div class="kpi"><strong class="warn">BP 98.74%</strong><span class="meta">lag: 312 blocks</span></div>
+              <div class="kpi"><strong>KES 21.6d</strong><span class="meta">rotation window open</span></div>
+              <div class="kpi"><strong>Pool bound</strong><span class="meta">ticker: BUBB</span></div>
+            </div>
           </section>
 
           <section class="grid">
-            <article class="card span-3">
-              <p class="label">Relay Sync</p>
-              <p class="value ok">99.82%</p>
-              <p class="hint">snapshot restore complete</p>
-            </article>
-            <article class="card span-3">
-              <p class="label">BP Sync</p>
-              <p class="value warn">98.74%</p>
-              <p class="hint">lagging behind relay by 312 blocks</p>
-            </article>
-            <article class="card span-3">
-              <p class="label">KES Remaining</p>
-              <p class="value">21.6 days</p>
-              <p class="hint">next rotation window: 2026-03-27</p>
-            </article>
-            <article class="card span-3">
-              <p class="label">Pool Registration</p>
-              <p class="value">Bound</p>
-              <p class="hint">ticker from metadata: BUBB</p>
-            </article>
-
-            <article class="card span-8">
+            <article class="card span-7">
               <div class="row">
-                <p class="label">Recent Tasks</p>
-                <button class="btn">Open All</button>
+                <p class="label">Next Actions</p>
+                <span class="chip">operator guidance</span>
               </div>
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Task</th>
-                    <th>Target</th>
-                    <th>Status</th>
-                    <th>Started</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Runtime Config Apply</td>
-                    <td>relay-1</td>
-                    <td><span class="badge ok">success</span></td>
-                    <td>2026-03-10 10:44</td>
-                  </tr>
-                  <tr>
-                    <td>Mithril Restore</td>
-                    <td>relay-1</td>
-                    <td><span class="badge warn">running</span></td>
-                    <td>2026-03-10 11:02</td>
-                  </tr>
-                  <tr>
-                    <td>Deploy (Phase 4)</td>
-                    <td>bp-1</td>
-                    <td><span class="badge">completed</span></td>
-                    <td>2026-03-09 21:18</td>
-                  </tr>
-                </tbody>
-              </table>
+              <div class="stack">
+                <div class="item">
+                  <div>
+                    <strong>Apply runtime config on relay</strong>
+                    <div class="meta">topology update pending validation</div>
+                  </div>
+                  <button class="btn">Open</button>
+                </div>
+                <div class="item">
+                  <div>
+                    <strong>Review BP peer path</strong>
+                    <div class="meta">ensure relay is first local root</div>
+                  </div>
+                  <button class="btn">Review</button>
+                </div>
+                <div class="item">
+                  <div>
+                    <strong>Schedule KES rotation dry-run</strong>
+                    <div class="meta">recommended before T-10d</div>
+                  </div>
+                  <button class="btn">Plan</button>
+                </div>
+              </div>
             </article>
 
-            <article class="card span-4">
-              <p class="label">Health Feed</p>
+            <article class="card span-5">
+              <p class="label">Live Health</p>
               <div class="stack">
-                <div>
-                  <div class="row"><strong>relay-1</strong><span class="ok">healthy</span></div>
-                  <div class="line"><span style="width: 96%"></span></div>
-                </div>
-                <div>
-                  <div class="row"><strong>bp-1</strong><span class="warn">syncing</span></div>
-                  <div class="line"><span style="width: 82%"></span></div>
-                </div>
-                <div>
-                  <div class="row"><strong>kes status</strong><span>nominal</span></div>
-                  <div class="line"><span style="width: 74%"></span></div>
-                </div>
+                <div class="item"><strong>relay-1</strong><span class="ok">healthy</span></div>
+                <div class="item"><strong>bp-1</strong><span class="warn">syncing</span></div>
+                <div class="item"><strong>task queue</strong><span>2 running</span></div>
+              </div>
+            </article>
+
+            <article class="card span-12">
+              <div class="row">
+                <p class="label">Recent Events</p>
+                <button class="btn">Open task stream</button>
+              </div>
+              <div class="stack">
+                <div class="item"><span>Runtime config applied on relay-1</span><span class="meta">10:44</span></div>
+                <div class="item"><span>Mithril restore entered replay stage</span><span class="meta">11:02</span></div>
+                <div class="item"><span>BP deploy completed with rollback guard</span><span class="meta">Yesterday</span></div>
               </div>
             </article>
           </section>
@@ -118,4 +97,4 @@
       </div>
     </div>
   </body>
-  </html>
+</html>

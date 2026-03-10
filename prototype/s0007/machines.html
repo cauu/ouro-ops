@@ -13,97 +13,94 @@
           <span class="brand-mark"></span>
           <div>
             <h1>Machine Topology</h1>
-            <p>Inventory and trust boundaries</p>
+            <p>1 relay + 1 bp minimal production profile</p>
           </div>
         </div>
-        <span class="status-pill">2 machines · 1 relay + 1 bp</span>
+        <span class="status-pill">2 machines online</span>
       </header>
 
       <div class="layout">
-        <nav class="nav">
+        <nav class="nav" aria-label="Primary">
           <a href="./index.html">Dashboard</a>
-          <a href="./machines.html" class="active">Machines</a>
+          <a href="./machines.html" class="active" aria-current="page">Machines</a>
           <a href="./deploy.html">Deploy</a>
           <a href="./pool.html">Pool</a>
           <a href="./settings.html">Settings</a>
+          <a href="./setup.html">Setup State</a>
         </nav>
 
         <main class="main">
           <section class="hero">
-            <h2>Topology aligned to minimal production baseline</h2>
-            <p>One relay and one block producer, with explicit role boundaries and runtime probe summary.</p>
+            <h2>Topology state is readable in one glance.</h2>
+            <p>Each node card exposes role, runtime ownership, and immediate corrective actions.</p>
           </section>
 
           <section class="grid">
-            <article class="card span-7">
-              <p class="label">Registered Machines</p>
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Role</th>
-                    <th>IP</th>
-                    <th>Runtime</th>
-                    <th>Probe</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>relay-1</td>
-                    <td><span class="badge">relay</span></td>
-                    <td>84.247.139.72</td>
-                    <td class="ok">container running</td>
-                    <td>compose detected</td>
-                  </tr>
-                  <tr>
-                    <td>bp-1</td>
-                    <td><span class="badge">bp</span></td>
-                    <td>31.220.95.72</td>
-                    <td class="ok">container running</td>
-                    <td>managed by app</td>
-                  </tr>
-                </tbody>
-              </table>
+            <article class="card span-8">
+              <p class="label">Machine Cards</p>
+              <div class="stack">
+                <div class="item">
+                  <div>
+                    <strong>relay-1 · 84.247.139.72</strong>
+                    <div class="meta">role: relay · runtime: container running · probe: compose detected</div>
+                  </div>
+                  <div class="actions">
+                    <button class="btn">Probe</button>
+                    <button class="btn">Logs</button>
+                  </div>
+                </div>
+                <div class="item">
+                  <div>
+                    <strong>bp-1 · 31.220.95.72</strong>
+                    <div class="meta">role: bp · runtime: container running · probe: app managed</div>
+                  </div>
+                  <div class="actions">
+                    <button class="btn">Probe</button>
+                    <button class="btn">Logs</button>
+                  </div>
+                </div>
+              </div>
             </article>
 
-            <article class="card span-5">
-              <p class="label">Machine Add (prototype)</p>
+            <article class="card span-4">
+              <p class="label">Add Machine</p>
               <form class="form">
                 <div class="field">
-                  <label>Display name</label>
-                  <input class="input" placeholder="relay-2" />
+                  <label for="machine-name">Display name</label>
+                  <input id="machine-name" class="input" placeholder="relay-2" />
                 </div>
                 <div class="field">
-                  <label>Address</label>
-                  <input class="input" placeholder="203.0.113.10" />
+                  <label for="machine-address">Address</label>
+                  <input id="machine-address" class="input" placeholder="203.0.113.10" />
                 </div>
                 <div class="field">
-                  <label>Role</label>
-                  <select class="select">
+                  <label for="machine-role">Role</label>
+                  <select id="machine-role" class="select">
                     <option>relay</option>
                     <option>bp</option>
                   </select>
                 </div>
-                <div class="row">
+                <div class="actions">
                   <button type="button" class="btn">Test SSH</button>
-                  <button type="button" class="btn primary">Save Machine</button>
+                  <button type="button" class="btn primary">Save</button>
                 </div>
               </form>
             </article>
 
             <article class="card span-12">
               <div class="row">
-                <p class="label">Takeover Readiness Summary</p>
-                <span class="badge warn">manual review required</span>
+                <p class="label">Takeover Summary</p>
+                <span class="chip">manual approval required</span>
               </div>
-              <p class="muted">
-                Existing compose-managed node is discoverable. Expected migration paths:
-                <code>/home/cardano/node-db → /opt/cardano/db</code>, <code>/home/cardano/node-keys → /opt/cardano/keys</code>.
-              </p>
+              <div class="kvs">
+                <div class="kv"><strong>Current source path</strong><span class="muted">/home/cardano/node-db</span></div>
+                <div class="kv"><strong>Target path</strong><span class="muted">/opt/cardano/db</span></div>
+                <div class="kv"><strong>Key migration</strong><span class="muted">/home/cardano/node-keys → /opt/cardano/keys</span></div>
+              </div>
             </article>
           </section>
         </main>
       </div>
     </div>
   </body>
-  </html>
+</html>

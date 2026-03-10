@@ -12,90 +12,62 @@
         <div class="brand">
           <span class="brand-mark"></span>
           <div>
-            <h1>Settings & Policy</h1>
-            <p>Operational defaults with risk-aware copy</p>
+            <h1>Settings</h1>
+            <p>Operational defaults and operator preferences</p>
           </div>
         </div>
-        <span class="status-pill">policy profile: conservative</span>
+        <span class="status-pill">profile: conservative</span>
       </header>
 
       <div class="layout">
-        <nav class="nav">
+        <nav class="nav" aria-label="Primary">
           <a href="./index.html">Dashboard</a>
           <a href="./machines.html">Machines</a>
           <a href="./deploy.html">Deploy</a>
           <a href="./pool.html">Pool</a>
-          <a href="./settings.html" class="active">Settings</a>
+          <a href="./settings.html" class="active" aria-current="page">Settings</a>
+          <a href="./setup.html">Setup State</a>
         </nav>
 
         <main class="main">
           <section class="hero">
-            <h2>Defaults should reduce mistakes</h2>
-            <p>Settings focus on deployment behavior. Chain-registered pool economics stay outside local toggles.</p>
+            <h2>Keep defaults strict, keep operations predictable.</h2>
+            <p>Local settings should support deployment behavior, not duplicate on-chain governance fields.</p>
           </section>
 
           <section class="grid">
             <article class="card span-6">
               <p class="label">Deployment Defaults</p>
-              <form class="form">
-                <div class="field">
-                  <label>Default image tag</label>
-                  <input class="input" value="10.5.4-1" />
-                </div>
-                <div class="field">
-                  <label>Relay restore snapshot</label>
-                  <select class="select">
-                    <option>enabled</option>
-                    <option>disabled</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label>BP restore snapshot</label>
-                  <select class="select">
-                    <option>disabled</option>
-                    <option>enabled (with warning)</option>
-                  </select>
-                </div>
-              </form>
+              <div class="stack">
+                <div class="item"><span>Default image tag</span><strong>10.5.4-1</strong></div>
+                <div class="item"><span>Relay restore snapshot</span><strong class="ok">enabled</strong></div>
+                <div class="item"><span>BP restore snapshot</span><strong>disabled</strong></div>
+              </div>
             </article>
 
             <article class="card span-6">
-              <p class="label">Diagnostic Policies</p>
-              <form class="form">
-                <div class="field">
-                  <label>Runtime probe interval</label>
-                  <input class="input" value="30s" />
-                </div>
-                <div class="field">
-                  <label>Task log truncation</label>
-                  <select class="select">
-                    <option>180 chars</option>
-                    <option>240 chars</option>
-                    <option>disabled</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label>Snapshot stage visibility</label>
-                  <select class="select">
-                    <option>detailed</option>
-                    <option>compact</option>
-                  </select>
-                </div>
-              </form>
+              <p class="label">Diagnostics</p>
+              <div class="stack">
+                <div class="item"><span>Runtime probe interval</span><strong>30s</strong></div>
+                <div class="item"><span>Task log truncation</span><strong>180 chars</strong></div>
+                <div class="item"><span>Snapshot stage visibility</span><strong>detailed</strong></div>
+              </div>
             </article>
 
             <article class="card span-12">
               <div class="row">
                 <p class="label">Accessibility Commitments</p>
-                <span class="badge">WCAG 2.1 AA</span>
+                <span class="chip">WCAG 2.1 AA</span>
               </div>
-              <p class="muted">
-                Maintain keyboard reachability, visible focus indicators, clear error messaging, and reduced
-                motion fallback for all non-essential animations.
-              </p>
-              <div class="row" style="margin-top: 12px">
-                <button class="btn">Reset</button>
-                <button class="btn primary">Save Settings</button>
+              <div class="item">
+                <div>
+                  <strong>Keyboard-first and reduced-motion friendly</strong>
+                  <div class="meta">Visible focus, explicit error messaging, and reduced motion fallback across key flows.</div>
+                </div>
+                <div class="actions">
+                  <button class="btn">Reset</button>
+                  <button class="btn primary">Save</button>
+                </div>
               </div>
             </article>
           </section>
@@ -103,4 +75,4 @@
       </div>
     </div>
   </body>
-  </html>
+</html>

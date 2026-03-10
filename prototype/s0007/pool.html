@@ -13,78 +13,70 @@
           <span class="brand-mark"></span>
           <div>
             <h1>Pool Workspace</h1>
-            <p>Registration state and metadata posture</p>
+            <p>On-chain status and metadata snapshot</p>
           </div>
         </div>
-        <span class="status-pill">pool1...d458 · bound</span>
+        <span class="status-pill">pool1...d458 bound</span>
       </header>
 
       <div class="layout">
-        <nav class="nav">
+        <nav class="nav" aria-label="Primary">
           <a href="./index.html">Dashboard</a>
           <a href="./machines.html">Machines</a>
           <a href="./deploy.html">Deploy</a>
-          <a href="./pool.html" class="active">Pool</a>
+          <a href="./pool.html" class="active" aria-current="page">Pool</a>
           <a href="./settings.html">Settings</a>
+          <a href="./setup.html">Setup State</a>
         </nav>
 
         <main class="main">
           <section class="hero">
-            <h2>On-chain identity at a glance</h2>
-            <p>
-              Bound pool status, metadata preview, and safe next actions. Prototype keeps registration and
-              binding flows explicit and separated.
-            </p>
+            <h2>Registered on-chain, synced to local workspace.</h2>
+            <p>Pool information is loaded in the background and surfaced with clear next actions.</p>
+            <div class="kpis">
+              <div class="kpi"><strong>BUBB</strong><span class="meta">ticker</span></div>
+              <div class="kpi"><strong>3.00%</strong><span class="meta">margin</span></div>
+              <div class="kpi"><strong>170,000,000</strong><span class="meta">fixed cost</span></div>
+              <div class="kpi"><strong>mainnet</strong><span class="meta">network</span></div>
+            </div>
           </section>
 
           <section class="grid">
-            <article class="card span-4">
-              <p class="label">Ticker</p>
-              <p class="value">BUBB</p>
-              <p class="hint">from metadata URL payload</p>
-            </article>
-            <article class="card span-4">
-              <p class="label">Margin</p>
-              <p class="value">3.00%</p>
-              <p class="hint">on-chain registered</p>
-            </article>
-            <article class="card span-4">
-              <p class="label">Fixed Cost</p>
-              <p class="value">170,000,000</p>
-              <p class="hint">lovelace</p>
-            </article>
-
             <article class="card span-8">
-              <p class="label">Metadata</p>
-              <div class="stack">
-                <div class="row"><strong>URL</strong><span class="muted">https://www.bubble-studio.xyz/md.json</span></div>
-                <div class="row"><strong>Hash</strong><span class="muted">0ad6ff...df443</span></div>
-                <div class="row"><strong>Relay DNS</strong><span class="muted">pool-relay-1.bubble-studio.xyz:3001</span></div>
+              <p class="label">Registration Snapshot</p>
+              <div class="kvs">
+                <div class="kv"><strong>Pool ID</strong><span class="muted">95e81a695eb880668a5c5a73311e208782a02efdad9905c6f079d458</span></div>
+                <div class="kv"><strong>Metadata URL</strong><span class="muted">https://www.bubble-studio.xyz/md.json</span></div>
+                <div class="kv"><strong>Metadata Hash</strong><span class="muted">0ad6ff2157b5d574095f7286cf1ff93ed263a75519860e5779a97f356a4df443</span></div>
+                <div class="kv"><strong>Relay DNS</strong><span class="muted">pool-relay-1.bubble-studio.xyz:3001</span></div>
               </div>
             </article>
 
             <article class="card span-4">
-              <p class="label">State Actions</p>
+              <p class="label">Primary Actions</p>
               <div class="stack">
-                <button class="btn">Refresh On-chain Data</button>
+                <button class="btn">Refresh On-chain</button>
                 <button class="btn">Bind Existing Pool ID</button>
-                <button class="btn primary">Open Registration Wizard</button>
+                <button class="btn primary">Start Registration Flow</button>
               </div>
             </article>
 
             <article class="card span-12">
               <div class="row">
-                <p class="label">Guidance When Unbound (prototype block)</p>
-                <span class="badge warn">conditional UI preview</span>
+                <p class="label">Unbound Guidance Preview</p>
+                <span class="chip">conditional state</span>
               </div>
-              <p class="muted">
-                If pool is initialized but unbound, dashboard should show two primary paths:
-                <strong> bind existing Pool ID </strong> or <strong> start registration flow </strong>.
-              </p>
+              <div class="item">
+                <div>
+                  <strong>If pool is initialized but unbound</strong>
+                  <div class="meta">present two paths only: bind existing pool ID or run registration wizard.</div>
+                </div>
+                <button class="btn">Preview CTA</button>
+              </div>
             </article>
           </section>
         </main>
       </div>
     </div>
   </body>
-  </html>
+</html>
