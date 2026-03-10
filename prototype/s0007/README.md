@@ -8,3 +8,5 @@ This directory contains static HTML prototype pages for the S0007 design iterati
 - Pages can be opened independently in browser
 
 Entry page: `index.html`
+
+Onboarding/login prototype: `login.html`

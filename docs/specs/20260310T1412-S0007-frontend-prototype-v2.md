@@ -39,12 +39,14 @@ Spec-ID: S0007
 - [x] p7-1 建立 S0007 active spec 与验收基线
 - [x] p7-2 设计并实现共享视觉样式（浅色、Cardano 品牌化、响应式）
 - [x] p7-3 交付多页面纯 HTML prototype（无业务逻辑）
+- [x] p7-4 基于 onboard 改造登录页原型（强调首次价值与可跳过）
 
 ## 4. Test And Acceptance Criteria
 - TC-1 原型文件结构完整，页面可独立打开并互相跳转。
 - TC-2 视觉符合 Design Context（专业、克制、极简；浅色主题；Cardano 色板）。
 - TC-3 页面在桌面与窄屏下可读、可用，无明显布局破坏。
 - TC-4 不引入业务逻辑与后端依赖。
+- TC-5 登录页具备 onboarding 关键要素：价值主张、时间预期、可跳过路径、首个行动入口。
 
 ## 5. Execution Log (append-only)
 - 2026-03-10 14:12 +0800 p7-1 started: 初始化 S0007 active spec。
@@ -53,6 +55,8 @@ Spec-ID: S0007
 - 2026-03-10 14:18 +0800 p7-2 completed: 交付 `prototype/s0007/styles.css`，完成浅色 Cardano 风格基础。
 - 2026-03-10 14:18 +0800 p7-3 started: 构建多页面原型结构与信息架构链接。
 - 2026-03-10 14:22 +0800 p7-3 completed: 交付 dashboard/machines/deploy/pool/settings 五个静态页面。
+- 2026-03-10 15:12 +0800 p7-4 started: 使用 onboard 思路改造登录页原型。
+- 2026-03-10 15:15 +0800 p7-4 completed: 新增 `login.html` 与登录/首访引导样式。
 
 ## 6. Validation Evidence (append-only)
 - TC-1 | stack: other | command: ls docs/specs && test -f docs/specs/20260310T1412-S0007-frontend-prototype-v2.md | result: pass | note: active spec 文件存在且唯一
@@ -60,5 +64,7 @@ Spec-ID: S0007
 - TC-2 | stack: ui | command: manual review of prototype/s0007/styles.css and pages | result: pass | note: 视觉遵循专业/克制/极简、浅色主题、Cardano 蓝系主色
 - TC-3 | stack: ui | command: manual review of responsive rules in styles.css | result: pass | note: 提供 <=980px 与 <=640px 布局收敛规则
 - TC-4 | stack: ui | command: rg -n \"<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest\" prototype/s0007 | result: pass | note: 页面无业务逻辑与后端依赖
+- TC-5 | stack: ui | command: manual review of prototype/s0007/login.html | result: pass | note: 包含价值主张、2 分钟预期、Skip 路径与首个进入动作
+- TC-4 | stack: ui | command: rg -n \"<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest\" prototype/s0007/login.html | result: pass | note: 登录页仍为纯静态原型
 
 ## 7. Change Requests (append-only)

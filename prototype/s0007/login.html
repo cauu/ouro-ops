@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ouro Ops Prototype - Login</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="auth-shell">
+      <main class="auth-frame">
+        <section class="auth-side" aria-labelledby="auth-title">
+          <p class="status-pill">Personal SPO Workspace</p>
+          <h1 id="auth-title">Manage one or more Cardano pools with calm, explicit control.</h1>
+          <p>
+            First-time setup takes around 2 minutes. Returning operators can enter workspace immediately and
+            continue from the latest machine and deployment state.
+          </p>
+          <ul class="auth-points">
+            <li>Guided deploy and runtime controls with rollback visibility</li>
+            <li>Pool status, KES horizon, and task trail in one dashboard</li>
+            <li>No terminal required for routine operations</li>
+          </ul>
+        </section>
+
+        <section class="auth-card" aria-labelledby="signin-title">
+          <h2 id="signin-title">Sign in to workspace</h2>
+          <p class="auth-meta">Use your local operator profile. This is static prototype UI only.</p>
+
+          <form class="form">
+            <div class="field">
+              <label for="workspace-id">Workspace ID</label>
+              <input id="workspace-id" class="input" placeholder="bubb-mainnet" />
+            </div>
+            <div class="field">
+              <label for="operator-handle">Operator handle</label>
+              <input id="operator-handle" class="input" placeholder="caiyufu" />
+            </div>
+            <div class="field">
+              <label for="access-key">Access key</label>
+              <input id="access-key" class="input" type="password" placeholder="••••••••••••" />
+            </div>
+
+            <div class="auth-actions">
+              <button type="button" class="btn primary">Enter Workspace</button>
+              <button type="button" class="btn ghost">First-time Setup (2 min)</button>
+              <button type="button" class="btn ghost">Skip, explore prototype</button>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
