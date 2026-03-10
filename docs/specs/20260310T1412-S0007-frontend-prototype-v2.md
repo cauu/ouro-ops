@@ -44,6 +44,7 @@ Spec-ID: S0007
 - [x] p7-6 交互现代化改版：从传统 SaaS 结构切换到任务优先的轻量交互
 - [x] p7-7 Onboarding 空状态引导：无 pool 时图标提示创建并进入参数填写流程
 - [x] p7-8 使用 frontend-design 切换到全新视觉风格（保持浅色与专业基调）
+- [x] p7-9 再次切换风格：图标优先、左右布局、减少页面并收敛到 dashboard
 
 ## 4. Test And Acceptance Criteria
 - TC-1 原型文件结构完整，页面可独立打开并互相跳转。
@@ -55,6 +56,8 @@ Spec-ID: S0007
 - TC-7 交互风格符合“专业/克制/极简”的现代桌面体验：弱化厚重表单与表格，强调任务流与主行动。
 - TC-8 无 pool 场景下展示“新建 pool 图标 + 创建 CTA”，点击进入 onboarding 参数页。
 - TC-9 原型整体视觉风格与上一版显著不同，且符合专业/克制/极简与浅色约束。
+- TC-10 核心页面采用左右布局，核心信息以 dashboard 为主承载。
+- TC-11 页面数量减少，原型主流程不出现滚动条。
 
 ## 5. Execution Log (append-only)
 - 2026-03-10 14:12 +0800 p7-1 started: 初始化 S0007 active spec。
@@ -73,6 +76,8 @@ Spec-ID: S0007
 - 2026-03-10 18:48 +0800 p7-7 completed: setup 页改为空状态引导，并新增 setup-onboarding 参数页。
 - 2026-03-10 19:06 +0800 p7-8 started: 根据新指令切换原型视觉风格。
 - 2026-03-10 19:14 +0800 p7-8 completed: 重写共享样式为新视觉体系并完成页面回归。
+- 2026-03-10 21:30 +0800 p7-9 started: 图标优先与 dashboard 集中化改版。
+- 2026-03-10 21:38 +0800 p7-9 completed: 重构 dashboard 与页面集合，压缩为核心页面集合并控制视口内布局。
 
 ## 6. Validation Evidence (append-only)
 - TC-1 | stack: other | command: ls docs/specs && test -f docs/specs/20260310T1412-S0007-frontend-prototype-v2.md | result: pass | note: active spec 文件存在且唯一
@@ -94,9 +99,16 @@ Spec-ID: S0007
 - TC-4 | stack: ui | command: rg -n \"<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest\" prototype/s0007/setup.html prototype/s0007/setup-onboarding.html | result: pass | note: onboarding 改动仍为纯静态
 - TC-9 | stack: ui | command: manual review of prototype/s0007/styles.css visual tokens and component treatment | result: pass | note: 新版改为编辑化轻奢风格，版式与配色明显区别于上一版
 - TC-4 | stack: ui | command: rg -n \"<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest\" prototype/s0007/*.html | result: pass | note: 风格改版后仍无业务逻辑脚本
+- TC-10 | stack: ui | command: manual review of prototype/s0007/index.html structure | result: pass | note: dashboard 采用左右主布局并承载 machine/deploy/pool/settings核心模块
+- TC-11 | stack: ui | command: test \"$(find prototype/s0007 -maxdepth 1 -name '*.html' | wc -l | tr -d ' ')\" -eq 3 | result: pass | note: 核心原型页面减少到 dashboard/setup/setup-onboarding
+- TC-11 | stack: ui | command: manual review of styles.css viewport rules | result: pass | note: body 与 shell 设置为视口内布局，避免主流程滚动条
+- TC-11 | stack: ui | command: find prototype/s0007 -maxdepth 1 -name '*.html' | wc -l | result: pass | note: 结果为 3，已删除 deploy/machines/pool/settings 子页
+- TC-10 | stack: ui | command: rg -n \"dashboard-shell|side-panel|main-panel|icon-grid\" prototype/s0007/index.html prototype/s0007/styles.css | result: pass | note: 图标优先与左右布局样式已生效
+- TC-11 | stack: ui | command: rg -n \"height:\\s*100vh|overflow:\\s*hidden\" prototype/s0007/styles.css | result: pass | note: 桌面主流程使用视口内布局避免滚动条
 
 ## 7. Change Requests (append-only)
 - 2026-03-10 18:18 +0800 需求修正：初始化流程不依赖用户登录；首次打开需判断 pool 是否存在，不存在提示创建，存在则直接进入首页看板。
 - 2026-03-10 18:27 +0800 体验修正：现有交互过于传统 SaaS，要求提升现代感与轻量化。
 - 2026-03-10 18:45 +0800 Onboarding 修正：无 pool 时使用“新建 pool 图标”提示创建，点击进入参数填写流程。
 - 2026-03-10 19:06 +0800 设计修正：要求使用 frontend-design 切换到另一种设计风格。
+- 2026-03-10 21:30 +0800 设计修正：减少文字与页面，图标替代文案，核心信息集中到 dashboard 且采用左右布局。

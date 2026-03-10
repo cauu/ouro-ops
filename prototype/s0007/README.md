@@ -7,7 +7,12 @@ This directory contains static HTML prototype pages for the S0007 design iterati
 - No backend integration
 - Pages can be opened independently in browser
 
-Primary dashboard entry: `index.html`
+Core pages:
+- `index.html` (dashboard-first, split layout)
+- `setup.html` (no pool empty-state)
+- `setup-onboarding.html` (parameter onboarding)
 
-First launch setup state: `setup.html`
-Onboarding parameters form: `setup-onboarding.html`
+Design notes:
+- Icon-first UI with reduced copy
+- Core modules consolidated into dashboard
+- Main flow targets viewport-contained layout without scrollbars on desktop

@@ -3,57 +3,59 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Ouro Ops Prototype - Pool Onboarding</title>
+    <title>Ouro Ops Prototype - Onboarding</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="auth-shell">
-      <main class="auth-frame">
-        <section class="auth-side" aria-labelledby="onboarding-title">
-          <p class="status-pill">Onboarding · Step 1/1</p>
-          <h1 id="onboarding-title">Create Pool Workspace</h1>
-          <p>
-            Fill the minimum required configuration to initialize local workspace. This prototype is static and
-            demonstrates flow only.
-          </p>
-          <ul class="auth-points">
-            <li>Ticker and network are required</li>
-            <li>Margin and fixed cost are optional defaults</li>
-            <li>Completion routes to dashboard</li>
-          </ul>
-        </section>
+    <div class="shell viewport-shell">
+      <header class="topbar compact-topbar">
+        <div class="brand compact-brand">
+          <span class="brand-mark"></span>
+          <div><h1>Onboarding</h1></div>
+        </div>
+        <span class="chip">🛠 Step 1/1</span>
+      </header>
 
-        <section class="auth-card" aria-labelledby="pool-form-title">
-          <h2 id="pool-form-title">Pool Parameters</h2>
-          <p class="auth-meta">Setup values can be adjusted later in workflow.</p>
+      <main class="dashboard-shell">
+        <aside class="side-panel">
+          <p class="label">Flow</p>
+          <div class="stack">
+            <div class="item"><span>🏷️ Ticker</span><strong>Required</strong></div>
+            <div class="item"><span>🌐 Network</span><strong>Required</strong></div>
+            <div class="item"><span>⚙️ Defaults</span><strong>Optional</strong></div>
+          </div>
+        </aside>
 
-          <form class="form">
-            <div class="field">
-              <label for="pool-ticker">Pool ticker (3-5 chars)</label>
-              <input id="pool-ticker" class="input" placeholder="BUBB" />
-            </div>
-            <div class="field">
-              <label for="pool-network">Network</label>
-              <select id="pool-network" class="select">
-                <option>mainnet</option>
-                <option>preprod</option>
-                <option>preview</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="pool-margin">Margin (optional)</label>
-              <input id="pool-margin" class="input" placeholder="0.03" />
-            </div>
-            <div class="field">
-              <label for="pool-fixed-cost">Fixed cost (optional)</label>
-              <input id="pool-fixed-cost" class="input" placeholder="170000000" />
-            </div>
-
-            <div class="auth-actions">
-              <a href="./index.html" class="btn primary">Create and Enter Dashboard</a>
-              <a href="./setup.html" class="btn ghost">Back</a>
-            </div>
-          </form>
+        <section class="main-panel">
+          <article class="module-card big-card">
+            <header><span class="big-icon">🧩</span><h3>Pool Parameters</h3></header>
+            <form class="form compact-form">
+              <div class="field">
+                <label for="pool-ticker">🏷️ Ticker</label>
+                <input id="pool-ticker" class="input" placeholder="BUBB" />
+              </div>
+              <div class="field">
+                <label for="pool-network">🌐 Network</label>
+                <select id="pool-network" class="select">
+                  <option>mainnet</option>
+                  <option>preprod</option>
+                  <option>preview</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="pool-margin">📊 Margin</label>
+                <input id="pool-margin" class="input" placeholder="0.03" />
+              </div>
+              <div class="field">
+                <label for="pool-fixed-cost">💰 Fixed cost</label>
+                <input id="pool-fixed-cost" class="input" placeholder="170000000" />
+              </div>
+              <div class="actions">
+                <a href="./index.html" class="btn primary">Create</a>
+                <a href="./setup.html" class="btn">Back</a>
+              </div>
+            </form>
+          </article>
         </section>
       </main>
     </div>
