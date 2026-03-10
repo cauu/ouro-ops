@@ -436,6 +436,58 @@ a {
   font-size: 0.89rem;
 }
 
+.stepper {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.step-node {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfdff;
+  padding: 10px 11px;
+}
+
+.step-node strong {
+  display: block;
+  font-size: 0.82rem;
+}
+
+.step-node span {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+
+.step-node.done {
+  border-color: #b7e3ca;
+  background: #effaf3;
+}
+
+.step-node.current {
+  border-color: #b9cdfa;
+  background: #eef4ff;
+}
+
+.wizard-footer {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #d9e2f6;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.wizard-footer .hint {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
 @media (max-width: 1200px) {
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

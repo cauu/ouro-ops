@@ -39,9 +39,20 @@
         </header>
 
         <section class="grid">
+          <article class="panel span-12">
+            <h3 class="section-title">向导步骤</h3>
+            <p class="section-meta">按步骤推进，避免在一次操作中输入过多参数。</p>
+            <div class="stepper">
+              <div class="step-node done"><strong>Step 1</strong><span>添加机器</span></div>
+              <div class="step-node current"><strong>Step 2</strong><span>部署参数</span></div>
+              <div class="step-node"><strong>Step 3</strong><span>确认执行</span></div>
+              <div class="step-node"><strong>Step 4</strong><span>完成与引导</span></div>
+            </div>
+          </article>
+
           <article class="panel span-7">
             <h3 class="section-title">Step 1 · 添加 BP / Relay 机器</h3>
-            <p class="section-meta">输入 IP、SSH 用户、选择本地公私钥对，Relay 至少 1 台，可动态增加。</p>
+            <p class="section-meta">已完成：输入 IP、SSH 用户、选择本地公私钥对，Relay 至少 1 台，可动态增加。</p>
             <div class="table">
               <div class="row header"><div>角色</div><div>IP</div><div>SSH 用户</div><div>密钥对</div></div>
               <div class="row"><div>BP</div><div>31.220.95.72</div><div>cardano</div><div>~/.ssh/bp_ed25519</div></div>
@@ -55,8 +66,8 @@
           </article>
 
           <article class="panel span-5">
-            <h3 class="section-title">Step 2 · 选择部署参数</h3>
-            <p class="section-meta">镜像参数和恢复策略支持按角色独立设置。</p>
+            <h3 class="section-title">Step 2 · 选择部署参数（当前）</h3>
+            <p class="section-meta">当前步骤：镜像参数和恢复策略按角色独立设置。</p>
             <div class="kv">
               <div class="cell"><span>network</span><strong>mainnet</strong></div>
               <div class="cell"><span>image</span><strong>10.5.4-1</strong></div>
@@ -69,11 +80,18 @@
               <button class="btn">保存草稿</button>
               <button class="btn primary">确认参数</button>
             </div>
+            <div class="wizard-footer">
+              <span class="hint">完成当前步骤后进入 Step 3（确认执行）。</span>
+              <div class="btn-row">
+                <button class="btn">上一步</button>
+                <button class="btn primary">下一步</button>
+              </div>
+            </div>
           </article>
 
           <article class="panel span-12">
-            <h3 class="section-title">Step 3 · 部署确认与执行</h3>
-            <p class="section-meta">执行后进入等待阶段，完成后提示注册 / 更新 Pool 信息。</p>
+            <h3 class="section-title">Step 3 / Step 4 · 部署确认与完成引导</h3>
+            <p class="section-meta">Step 3 执行部署，Step 4 在完成后引导注册 / 更新 Pool 信息。</p>
             <div class="flow">
               <div class="flow-step"><span class="num">3.1</span><div><strong>确认参数</strong><p>展示机器列表、镜像、restore 策略、网络。</p></div></div>
               <div class="flow-step"><span class="num">3.2</span><div><strong>执行部署</strong><p>ansible 执行，显示任务进度和关键日志。</p></div></div>

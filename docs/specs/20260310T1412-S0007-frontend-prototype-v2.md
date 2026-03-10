@@ -144,3 +144,25 @@ Spec-ID: S0007
 
 ### 8.5 Change Request Delta
 - 2026-03-10 22:24 +0800 需求新增：参考截图调整整体风格，并将页面收敛到 onboarding/dashboard/deploy/kes-rotate/upgrade-image 五个核心页。
+
+## 9. Addendum (append-only)
+### 9.1 Execution Plan Delta
+- [x] p7-12 将部署/KES Rotate/升级镜像改为分步骤向导流程（stepper）
+
+### 9.2 Acceptance Delta
+- TC-17 deploy 页面采用明确 stepper，按步骤呈现并包含上一步/下一步区。
+- TC-18 kes-rotate 页面采用明确 stepper，按步骤呈现并包含上一步/下一步区。
+- TC-19 upgrade-image 页面采用明确 stepper，按步骤呈现并包含上一步/下一步区。
+
+### 9.3 Execution Log Delta
+- 2026-03-10 22:43 +0800 p7-12 started: 三个流程页改造为分步骤向导结构。
+- 2026-03-10 22:49 +0800 p7-12 completed: deploy/kes-rotate/upgrade-image 全部完成 stepper 化与导航动作区统一。
+
+### 9.4 Validation Evidence Delta
+- TC-17 | stack: ui | command: rg -n "向导步骤|Step 1|Step 2|Step 3|上一步|下一步" prototype/s0007/deploy.html | result: pass | note: deploy 页面已为分步骤向导
+- TC-18 | stack: ui | command: rg -n "向导步骤|Step 1|Step 2|Step 3|Step 4|上一步|下一步" prototype/s0007/kes-rotate.html | result: pass | note: kes-rotate 页面已为分步骤向导
+- TC-19 | stack: ui | command: rg -n "向导步骤|Step 1|Step 2|Step 3|上一步|下一步" prototype/s0007/upgrade-image.html | result: pass | note: upgrade-image 页面已为分步骤向导
+- TC-16 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007 || true | result: pass | note: 分步骤改造后仍为纯静态原型
+
+### 9.5 Change Request Delta
+- 2026-03-10 22:43 +0800 需求新增：部署、KES Rotate、升级镜像需要采用分步骤流程展示。

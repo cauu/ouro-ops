@@ -13,3 +13,4 @@ Design direction: professional, restrained, minimal, light-only, Cardano blue pa
 Notes:
 - Static prototype only, no business logic.
 - Flow is represented by page structure and visual states.
+- Deploy / KES Rotate / Upgrade pages use step-by-step wizard layout.
