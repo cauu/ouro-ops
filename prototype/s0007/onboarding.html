@@ -7,40 +7,42 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">跳到主内容</a>
     <div class="app">
       <aside class="sidebar">
         <div class="brand">
-          <span class="brand-orb"></span>
+          <span class="brand-orb" aria-hidden="true"></span>
           <div>
             <h1>OURO OPS</h1>
             <p>Cardano SPO Console</p>
           </div>
         </div>
         <nav class="nav" aria-label="主导航">
-          <a class="active" aria-current="page" href="./onboarding.html"><span class="icon">◉</span>Onboarding</a>
-          <a href="./index.html"><span class="icon">⌂</span>Dashboard</a>
-          <a href="./deploy.html"><span class="icon">↗</span>部署流程</a>
-          <a href="./kes-rotate.html"><span class="icon">⟳</span>KES Rotate</a>
-          <a href="./upgrade-image.html"><span class="icon">⬆</span>升级镜像</a>
+          <a class="active" aria-current="page" href="./onboarding.html"><span class="icon" aria-hidden="true">◉</span>初始化</a>
+          <a href="./index.html"><span class="icon" aria-hidden="true">⌂</span>看板</a>
+          <a href="./deploy.html"><span class="icon" aria-hidden="true">↗</span>部署流程</a>
+          <a href="./kes-rotate.html"><span class="icon" aria-hidden="true">⟳</span>KES Rotate</a>
+          <a href="./upgrade-image.html"><span class="icon" aria-hidden="true">⬆</span>升级镜像</a>
         </nav>
         <div class="sidebar-meta">
-          首次打开应用后：
-          <br />
-          1) 未部署 -> 引导进入部署流程
-          <br />
-          2) 已部署 -> 直接进入 Dashboard
+          <p>首次打开应用后的分流逻辑：</p>
+          <ul>
+            <li>未部署：引导进入部署流程</li>
+            <li>已部署：直接进入看板</li>
+          </ul>
         </div>
       </aside>
 
-      <main class="main">
+      <main id="main-content" class="main">
         <header class="topbar">
           <div class="top-title">
             <h2>初始化流程</h2>
             <p>无账号登录依赖，直接按部署状态分流。</p>
           </div>
           <div class="top-actions">
-            <span class="search">⌕ 搜索机器、任务或流程</span>
-            <span class="badge">状态机：bootstrap</span>
+            <label class="sr-only" for="search-onboarding">搜索</label>
+            <input id="search-onboarding" class="search-input" type="search" placeholder="搜索机器、任务或流程" />
+            <span class="badge" aria-label="状态机 bootstrap">状态机：bootstrap</span>
           </div>
         </header>
 
@@ -50,37 +52,37 @@
             <p class="section-meta">应用启动后自动执行部署状态检查。</p>
             <div class="flow">
               <div class="flow-step">
-                <span class="num">1</span>
+                <span class="num" aria-hidden="true">1</span>
                 <div>
                   <strong>打开应用</strong>
                   <p>加载本地 workspace 配置并触发部署状态探测。</p>
                 </div>
               </div>
               <div class="flow-step">
-                <span class="num">2</span>
+                <span class="num" aria-hidden="true">2</span>
                 <div>
                   <strong>判断是否已部署</strong>
                   <p>检查最小运行条件（至少 1 relay + 1 bp）与容器可达性。</p>
                 </div>
               </div>
               <div class="flow-step">
-                <span class="num">3A</span>
+                <span class="num" aria-hidden="true">3A</span>
                 <div>
                   <strong>未部署</strong>
-                  <p>展示部署提示，点击「进入部署」跳转部署流程页。</p>
+                  <p>展示部署提示，点击“进入部署”跳转部署流程页。</p>
                 </div>
               </div>
               <div class="flow-step">
-                <span class="num">3B</span>
+                <span class="num" aria-hidden="true">3B</span>
                 <div>
                   <strong>已部署</strong>
-                  <p>直接进入 Dashboard，后台静默更新运行状态与任务摘要。</p>
+                  <p>直接进入看板，后台静默更新运行状态与任务摘要。</p>
                 </div>
               </div>
             </div>
             <div class="btn-row">
               <a class="btn primary" href="./deploy.html">进入部署</a>
-              <a class="btn" href="./index.html">已部署，进入 Dashboard</a>
+              <a class="btn" href="./index.html">已部署，进入看板</a>
             </div>
           </article>
 
@@ -88,20 +90,41 @@
             <h3 class="section-title">当前原型状态</h3>
             <p class="section-meta">示例状态，仅用于展示分流逻辑。</p>
             <div class="list">
-              <div class="item"><strong>deployment</strong><span class="pill warn">not detected</span></div>
-              <div class="item"><strong>bp machine</strong><span class="pill">pending</span></div>
-              <div class="item"><strong>relay machine</strong><span class="pill">pending</span></div>
+              <div class="item"><strong>deployment</strong><span class="pill warn">未检测到</span></div>
+              <div class="item"><strong>bp machine</strong><span class="pill">待添加</span></div>
+              <div class="item"><strong>relay machine</strong><span class="pill">待添加</span></div>
             </div>
             <div class="code">startup() -> detectDeployment() -> if false then route('/deploy')</div>
           </article>
 
           <article class="panel span-12">
             <h3 class="section-title">部署后引导</h3>
-            <p class="section-meta">部署完成后提示注册/更新 Pool 信息，避免遗漏链上参数维护。</p>
-            <div class="table">
-              <div class="row header"><div>触发点</div><div>入口</div><div>动作</div><div>结果</div></div>
-              <div class="row"><div>deploy success</div><div>dashboard 通知卡</div><div>打开注册流程</div><div>生成 cert / tx / 提交</div></div>
-              <div class="row"><div>pool 已绑定</div><div>dashboard 侧栏</div><div>更新注册信息</div><div>参数同步链上</div></div>
+            <p class="section-meta">部署完成后提示注册或更新 Pool 信息，避免遗漏链上参数维护。</p>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">触发点</th>
+                    <th scope="col">入口</th>
+                    <th scope="col">动作</th>
+                    <th scope="col">结果</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>deploy success</td>
+                    <td>dashboard 通知卡</td>
+                    <td>打开注册流程</td>
+                    <td>生成 cert / tx / 提交</td>
+                  </tr>
+                  <tr>
+                    <td>pool 已绑定</td>
+                    <td>dashboard 侧栏</td>
+                    <td>更新注册信息</td>
+                    <td>参数同步链上</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </article>
         </section>

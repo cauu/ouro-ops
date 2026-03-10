@@ -166,3 +166,30 @@ Spec-ID: S0007
 
 ### 9.5 Change Request Delta
 - 2026-03-10 22:43 +0800 需求新增：部署、KES Rotate、升级镜像需要采用分步骤流程展示。
+
+## 10. Addendum (append-only)
+### 10.1 Execution Plan Delta
+- [x] p7-13 按审计优先级修正原型可访问性与语义质量（真实搜索控件、焦点样式、触达尺寸、table/stepper 语义）
+
+### 10.2 Acceptance Delta
+- TC-20 五个页面均提供 skip-link，支持键盘快速跳转主内容。
+- TC-21 顶部搜索区改为真实 `input[type=search]`，不再使用伪控件。
+- TC-22 deploy / kes-rotate / upgrade-image 的 stepper 增加语义状态（`aria-current=step` + 文本状态）。
+- TC-23 数据网格改为语义 table（`table/thead/tbody/th`）。
+- TC-24 交互可达性基线修正：可操作按钮使用 pointer，关键交互最小触达 44px，统一 `:focus-visible`。
+- TC-25 保持纯静态原型，不引入业务逻辑脚本。
+
+### 10.3 Execution Log Delta
+- 2026-03-10 23:02 +0800 p7-13 started: 执行审计建议的高优先级与中优先级设计修正。
+- 2026-03-10 23:11 +0800 p7-13 completed: 完成可访问性、语义结构与交互基线统一改造。
+
+### 10.4 Validation Evidence Delta
+- TC-20 | stack: ui | command: rg -n "skip-link" prototype/s0007/*.html | result: pass | note: 五个页面均存在 skip-link
+- TC-21 | stack: ui | command: rg -n "search-input|type=\"search\"" prototype/s0007/*.html | result: pass | note: 顶部搜索区已改为真实搜索输入
+- TC-22 | stack: ui | command: rg -n "aria-current=\"step\"" prototype/s0007/deploy.html prototype/s0007/kes-rotate.html prototype/s0007/upgrade-image.html | result: pass | note: 三个分步骤页面均标记当前步骤
+- TC-23 | stack: ui | command: rg -n "<table class=\"data-table\"|<thead>|<tbody>|<th scope=\"col\"" prototype/s0007/*.html | result: pass | note: 数据展示区已改为语义表格
+- TC-24 | stack: ui | command: rg -n "cursor:\s*pointer|min-height:\s*44px|:focus-visible" prototype/s0007/styles.css | result: pass | note: 交互尺寸与焦点样式已统一
+- TC-25 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007 || true | result: pass | note: 仍为纯 HTML/CSS 静态原型
+
+### 10.5 Change Request Delta
+- 2026-03-10 23:02 +0800 需求新增：按审计建议的优先级流程对原型进行设计与可访问性修正。

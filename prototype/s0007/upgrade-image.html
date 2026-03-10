@@ -7,33 +7,41 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">跳到主内容</a>
     <div class="app">
       <aside class="sidebar">
         <div class="brand">
-          <span class="brand-orb"></span>
+          <span class="brand-orb" aria-hidden="true"></span>
           <div>
             <h1>OURO OPS</h1>
             <p>Mainnet Workspace</p>
           </div>
         </div>
         <nav class="nav" aria-label="主导航">
-          <a href="./onboarding.html"><span class="icon">◉</span>Onboarding</a>
-          <a href="./index.html"><span class="icon">⌂</span>Dashboard</a>
-          <a href="./deploy.html"><span class="icon">↗</span>部署流程</a>
-          <a href="./kes-rotate.html"><span class="icon">⟳</span>KES Rotate</a>
-          <a class="active" aria-current="page" href="./upgrade-image.html"><span class="icon">⬆</span>升级镜像</a>
+          <a href="./onboarding.html"><span class="icon" aria-hidden="true">◉</span>初始化</a>
+          <a href="./index.html"><span class="icon" aria-hidden="true">⌂</span>看板</a>
+          <a href="./deploy.html"><span class="icon" aria-hidden="true">↗</span>部署流程</a>
+          <a href="./kes-rotate.html"><span class="icon" aria-hidden="true">⟳</span>KES Rotate</a>
+          <a class="active" aria-current="page" href="./upgrade-image.html"><span class="icon" aria-hidden="true">⬆</span>升级镜像</a>
         </nav>
-        <div class="sidebar-meta">建议升级顺序：Relay -> 验证 -> BP，降低主链路风险。</div>
+        <div class="sidebar-meta">
+          <p>升级建议：</p>
+          <ul>
+            <li>按 relay -> bp 顺序执行</li>
+            <li>每一步都做健康检查</li>
+          </ul>
+        </div>
       </aside>
 
-      <main class="main">
+      <main id="main-content" class="main">
         <header class="topbar">
           <div class="top-title">
             <h2>升级镜像版本</h2>
             <p>发现新版本时提供升级入口，并追踪执行进度。</p>
           </div>
           <div class="top-actions">
-            <span class="search">⌕ 搜索升级任务</span>
+            <label class="sr-only" for="search-upgrade">搜索升级任务</label>
+            <input id="search-upgrade" class="search-input" type="search" placeholder="搜索升级任务" />
             <span class="badge">new version available</span>
           </div>
         </header>
@@ -42,11 +50,23 @@
           <article class="panel span-12">
             <h3 class="section-title">向导步骤</h3>
             <p class="section-meta">升级按步骤执行，显式分离“发现版本 / 执行升级 / 完成验证”。</p>
-            <div class="stepper">
-              <div class="step-node done"><strong>Step 1</strong><span>发现新版本</span></div>
-              <div class="step-node current"><strong>Step 2</strong><span>执行滚动升级</span></div>
-              <div class="step-node"><strong>Step 3</strong><span>健康检查与完成</span></div>
-            </div>
+            <ol class="stepper" aria-label="升级步骤">
+              <li class="step-node done">
+                <span class="step-kicker">Step 1</span>
+                <strong>发现新版本</strong>
+                <span class="step-status">已完成</span>
+              </li>
+              <li class="step-node current" aria-current="step">
+                <span class="step-kicker">Step 2</span>
+                <strong>执行滚动升级</strong>
+                <span class="step-status">进行中</span>
+              </li>
+              <li class="step-node">
+                <span class="step-kicker">Step 3</span>
+                <strong>健康检查与完成</strong>
+                <span class="step-status">待开始</span>
+              </li>
+            </ol>
           </article>
 
           <article class="panel span-6">
@@ -59,23 +79,23 @@
               <div class="cell"><span>upgrade window</span><strong>today 23:00</strong></div>
             </div>
             <div class="btn-row">
-              <button class="btn">查看变更说明</button>
-              <button class="btn primary">开始升级</button>
+              <button type="button" class="btn">查看变更说明</button>
+              <button type="button" class="btn primary">开始升级</button>
             </div>
           </article>
 
           <article class="panel span-6">
             <h3 class="section-title">Step 2 / Step 3 · 升级执行与完成</h3>
             <div class="flow">
-              <div class="flow-step"><span class="num">1</span><div><strong>版本提示</strong><p>Dashboard 显示可升级提示，用户点击进入。</p></div></div>
-              <div class="flow-step"><span class="num">2</span><div><strong>执行升级</strong><p>按 relay -> bp 顺序滚动升级镜像。</p></div></div>
-              <div class="flow-step"><span class="num">3</span><div><strong>等待完成</strong><p>容器健康检查通过后标记任务完成。</p></div></div>
+              <div class="flow-step"><span class="num" aria-hidden="true">1</span><div><strong>版本提示</strong><p>看板显示可升级提示，用户点击进入。</p></div></div>
+              <div class="flow-step"><span class="num" aria-hidden="true">2</span><div><strong>执行升级</strong><p>按 relay -> bp 顺序滚动升级镜像。</p></div></div>
+              <div class="flow-step"><span class="num" aria-hidden="true">3</span><div><strong>等待完成</strong><p>容器健康检查通过后标记任务完成。</p></div></div>
             </div>
             <div class="wizard-footer">
               <span class="hint">当前示例处于 Step 2（relay 已完成，bp 升级中）。</span>
               <div class="btn-row">
-                <button class="btn">上一步</button>
-                <button class="btn primary">下一步</button>
+                <button type="button" class="btn">上一步</button>
+                <button type="button" class="btn primary">下一步</button>
               </div>
             </div>
           </article>
@@ -83,15 +103,41 @@
           <article class="panel span-12">
             <h3 class="section-title">执行日志（示例）</h3>
             <p class="section-meta">用于展示升级阶段和失败回滚信息。</p>
-            <div class="table">
-              <div class="row header"><div>时间</div><div>节点</div><div>阶段</div><div>结果</div></div>
-              <div class="row"><div>23:01:04</div><div>relay-1</div><div>pull image</div><div><span class="pill ok">done</span></div></div>
-              <div class="row"><div>23:03:10</div><div>relay-1</div><div>health-check</div><div><span class="pill ok">pass</span></div></div>
-              <div class="row"><div>23:04:22</div><div>bp-1</div><div>rolling restart</div><div><span class="pill warn">running</span></div></div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">时间</th>
+                    <th scope="col">节点</th>
+                    <th scope="col">阶段</th>
+                    <th scope="col">结果</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>23:01:04</td>
+                    <td>relay-1</td>
+                    <td>pull image</td>
+                    <td><span class="pill ok">done</span></td>
+                  </tr>
+                  <tr>
+                    <td>23:03:10</td>
+                    <td>relay-1</td>
+                    <td>health-check</td>
+                    <td><span class="pill ok">pass</span></td>
+                  </tr>
+                  <tr>
+                    <td>23:04:22</td>
+                    <td>bp-1</td>
+                    <td>rolling restart</td>
+                    <td><span class="pill warn">running</span></td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
             <div class="btn-row">
-              <button class="btn">导出日志</button>
-              <button class="btn">触发回滚</button>
+              <button type="button" class="btn">导出日志</button>
+              <button type="button" class="btn">触发回滚</button>
             </div>
           </article>
         </section>

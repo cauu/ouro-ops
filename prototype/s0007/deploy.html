@@ -7,33 +7,41 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">跳到主内容</a>
     <div class="app">
       <aside class="sidebar">
         <div class="brand">
-          <span class="brand-orb"></span>
+          <span class="brand-orb" aria-hidden="true"></span>
           <div>
             <h1>OURO OPS</h1>
             <p>Mainnet Workspace</p>
           </div>
         </div>
         <nav class="nav" aria-label="主导航">
-          <a href="./onboarding.html"><span class="icon">◉</span>Onboarding</a>
-          <a href="./index.html"><span class="icon">⌂</span>Dashboard</a>
-          <a class="active" aria-current="page" href="./deploy.html"><span class="icon">↗</span>部署流程</a>
-          <a href="./kes-rotate.html"><span class="icon">⟳</span>KES Rotate</a>
-          <a href="./upgrade-image.html"><span class="icon">⬆</span>升级镜像</a>
+          <a href="./onboarding.html"><span class="icon" aria-hidden="true">◉</span>初始化</a>
+          <a href="./index.html"><span class="icon" aria-hidden="true">⌂</span>看板</a>
+          <a class="active" aria-current="page" href="./deploy.html"><span class="icon" aria-hidden="true">↗</span>部署流程</a>
+          <a href="./kes-rotate.html"><span class="icon" aria-hidden="true">⟳</span>KES Rotate</a>
+          <a href="./upgrade-image.html"><span class="icon" aria-hidden="true">⬆</span>升级镜像</a>
         </nav>
-        <div class="sidebar-meta">最小运行条件：1 relay + 1 bp。部署完成后继续 Pool 注册流程。</div>
+        <div class="sidebar-meta">
+          <p>部署约束：</p>
+          <ul>
+            <li>最小运行条件：1 relay + 1 bp</li>
+            <li>部署完成后进入 Pool 注册/更新</li>
+          </ul>
+        </div>
       </aside>
 
-      <main class="main">
+      <main id="main-content" class="main">
         <header class="topbar">
           <div class="top-title">
             <h2>部署流程</h2>
             <p>添加机器 -> 参数确认 -> 部署执行 -> 完成后进入 Pool 注册。</p>
           </div>
           <div class="top-actions">
-            <span class="search">⌕ 搜索部署参数</span>
+            <label class="sr-only" for="search-deploy">搜索部署参数</label>
+            <input id="search-deploy" class="search-input" type="search" placeholder="搜索部署参数" />
             <span class="badge">DeployWizard aligned</span>
           </div>
         </header>
@@ -42,26 +50,68 @@
           <article class="panel span-12">
             <h3 class="section-title">向导步骤</h3>
             <p class="section-meta">按步骤推进，避免在一次操作中输入过多参数。</p>
-            <div class="stepper">
-              <div class="step-node done"><strong>Step 1</strong><span>添加机器</span></div>
-              <div class="step-node current"><strong>Step 2</strong><span>部署参数</span></div>
-              <div class="step-node"><strong>Step 3</strong><span>确认执行</span></div>
-              <div class="step-node"><strong>Step 4</strong><span>完成与引导</span></div>
-            </div>
+            <ol class="stepper" aria-label="部署步骤">
+              <li class="step-node done">
+                <span class="step-kicker">Step 1</span>
+                <strong>添加机器</strong>
+                <span class="step-status">已完成</span>
+              </li>
+              <li class="step-node current" aria-current="step">
+                <span class="step-kicker">Step 2</span>
+                <strong>部署参数</strong>
+                <span class="step-status">进行中</span>
+              </li>
+              <li class="step-node">
+                <span class="step-kicker">Step 3</span>
+                <strong>确认执行</strong>
+                <span class="step-status">待开始</span>
+              </li>
+              <li class="step-node">
+                <span class="step-kicker">Step 4</span>
+                <strong>完成与引导</strong>
+                <span class="step-status">待开始</span>
+              </li>
+            </ol>
           </article>
 
           <article class="panel span-7">
             <h3 class="section-title">Step 1 · 添加 BP / Relay 机器</h3>
             <p class="section-meta">已完成：输入 IP、SSH 用户、选择本地公私钥对，Relay 至少 1 台，可动态增加。</p>
-            <div class="table">
-              <div class="row header"><div>角色</div><div>IP</div><div>SSH 用户</div><div>密钥对</div></div>
-              <div class="row"><div>BP</div><div>31.220.95.72</div><div>cardano</div><div>~/.ssh/bp_ed25519</div></div>
-              <div class="row"><div>Relay #1</div><div>84.247.139.72</div><div>cardano</div><div>~/.ssh/relay_ed25519</div></div>
-              <div class="row"><div>Relay #2</div><div>203.0.113.20</div><div>cardano</div><div>~/.ssh/relay2_ed25519</div></div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">角色</th>
+                    <th scope="col">IP</th>
+                    <th scope="col">SSH 用户</th>
+                    <th scope="col">密钥对</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>BP</td>
+                    <td>31.220.95.72</td>
+                    <td>cardano</td>
+                    <td>~/.ssh/bp_ed25519</td>
+                  </tr>
+                  <tr>
+                    <td>Relay #1</td>
+                    <td>84.247.139.72</td>
+                    <td>cardano</td>
+                    <td>~/.ssh/relay_ed25519</td>
+                  </tr>
+                  <tr>
+                    <td>Relay #2</td>
+                    <td>203.0.113.20</td>
+                    <td>cardano</td>
+                    <td>~/.ssh/relay2_ed25519</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
             <div class="btn-row">
-              <button class="btn">+ 添加 Relay</button>
-              <button class="btn">测试 SSH 连通性</button>
+              <button type="button" class="btn">+ 添加 Relay</button>
+              <button type="button" class="btn">测试 SSH 连通性</button>
             </div>
           </article>
 
@@ -77,14 +127,14 @@
               <div class="cell"><span>takeover_existing_node</span><strong>optional</strong></div>
             </div>
             <div class="btn-row">
-              <button class="btn">保存草稿</button>
-              <button class="btn primary">确认参数</button>
+              <button type="button" class="btn">保存草稿</button>
+              <button type="button" class="btn primary">确认参数</button>
             </div>
             <div class="wizard-footer">
               <span class="hint">完成当前步骤后进入 Step 3（确认执行）。</span>
               <div class="btn-row">
-                <button class="btn">上一步</button>
-                <button class="btn primary">下一步</button>
+                <button type="button" class="btn">上一步</button>
+                <button type="button" class="btn primary">下一步</button>
               </div>
             </div>
           </article>
@@ -93,10 +143,10 @@
             <h3 class="section-title">Step 3 / Step 4 · 部署确认与完成引导</h3>
             <p class="section-meta">Step 3 执行部署，Step 4 在完成后引导注册 / 更新 Pool 信息。</p>
             <div class="flow">
-              <div class="flow-step"><span class="num">3.1</span><div><strong>确认参数</strong><p>展示机器列表、镜像、restore 策略、网络。</p></div></div>
-              <div class="flow-step"><span class="num">3.2</span><div><strong>执行部署</strong><p>ansible 执行，显示任务进度和关键日志。</p></div></div>
-              <div class="flow-step"><span class="num">3.3</span><div><strong>等待部署完成</strong><p>容器健康检查成功后回到 dashboard。</p></div></div>
-              <div class="flow-step"><span class="num">3.4</span><div><strong>提示注册 Pool</strong><p>进入注册流程：cert -> unsigned tx -> 冷环境签名 -> signed tx 提交。</p></div></div>
+              <div class="flow-step"><span class="num" aria-hidden="true">3.1</span><div><strong>确认参数</strong><p>展示机器列表、镜像、restore 策略、网络。</p></div></div>
+              <div class="flow-step"><span class="num" aria-hidden="true">3.2</span><div><strong>执行部署</strong><p>Ansible 执行，显示任务进度和关键日志。</p></div></div>
+              <div class="flow-step"><span class="num" aria-hidden="true">3.3</span><div><strong>等待部署完成</strong><p>容器健康检查成功后回到看板。</p></div></div>
+              <div class="flow-step"><span class="num" aria-hidden="true">3.4</span><div><strong>提示注册 Pool</strong><p>进入注册流程：cert -> unsigned tx -> 冷环境签名 -> signed tx 提交。</p></div></div>
             </div>
             <div class="code">Post-deploy registration path:
 1) create pool metadata
@@ -105,8 +155,8 @@
 4) cold env: sign tx
 5) submit signed tx</div>
             <div class="btn-row">
-              <button class="btn">预览执行计划</button>
-              <button class="btn primary">开始部署</button>
+              <button type="button" class="btn">预览执行计划</button>
+              <button type="button" class="btn primary">开始部署</button>
             </div>
           </article>
         </section>

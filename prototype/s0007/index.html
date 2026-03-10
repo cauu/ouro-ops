@@ -7,38 +7,43 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">跳到主内容</a>
     <div class="app">
       <aside class="sidebar">
         <div class="brand">
-          <span class="brand-orb"></span>
+          <span class="brand-orb" aria-hidden="true"></span>
           <div>
             <h1>OURO OPS</h1>
             <p>Mainnet Workspace</p>
           </div>
         </div>
         <nav class="nav" aria-label="主导航">
-          <a href="./onboarding.html"><span class="icon">◉</span>Onboarding</a>
-          <a class="active" aria-current="page" href="./index.html"><span class="icon">⌂</span>Dashboard</a>
-          <a href="./deploy.html"><span class="icon">↗</span>部署流程</a>
-          <a href="./kes-rotate.html"><span class="icon">⟳</span>KES Rotate</a>
-          <a href="./upgrade-image.html"><span class="icon">⬆</span>升级镜像</a>
+          <a href="./onboarding.html"><span class="icon" aria-hidden="true">◉</span>初始化</a>
+          <a class="active" aria-current="page" href="./index.html"><span class="icon" aria-hidden="true">⌂</span>看板</a>
+          <a href="./deploy.html"><span class="icon" aria-hidden="true">↗</span>部署流程</a>
+          <a href="./kes-rotate.html"><span class="icon" aria-hidden="true">⟳</span>KES Rotate</a>
+          <a href="./upgrade-image.html"><span class="icon" aria-hidden="true">⬆</span>升级镜像</a>
         </nav>
         <div class="sidebar-meta">
-          核心运营视图：
-          <br />
-          运行健康、部署任务、Pool 注册、轮换与升级入口。
+          <p>核心运营视图：</p>
+          <ul>
+            <li>运行健康与部署进度</li>
+            <li>Pool 注册与更新入口</li>
+            <li>KES Rotate 与升级动作</li>
+          </ul>
         </div>
       </aside>
 
-      <main class="main">
+      <main id="main-content" class="main">
         <header class="topbar">
           <div class="top-title">
-            <h2>Dashboard</h2>
+            <h2>看板</h2>
             <p>个人 SPO 控制台：状态先于配置，动作先于表单。</p>
           </div>
           <div class="top-actions">
-            <span class="search">⌕ 搜索任务 / 机器 / 节点</span>
-            <span class="badge">runtime stable</span>
+            <label class="sr-only" for="search-dashboard">搜索</label>
+            <input id="search-dashboard" class="search-input" type="search" placeholder="搜索任务、机器或节点" />
+            <span class="badge" aria-label="运行稳定">runtime stable</span>
           </div>
         </header>
 
@@ -63,21 +68,21 @@
                   <strong>注册 / 更新 Pool 信息</strong>
                   <div class="meta">创建 pool 基本信息 -> 冷环境产出 cert -> 上传 cert -> 生成 unsigned tx -> 冷环境签名 -> 提交 signed tx</div>
                 </div>
-                <span class="pill danger">required</span>
+                <span class="pill danger">必需</span>
               </div>
               <div class="item">
                 <div>
                   <strong>KES Rotate 预演</strong>
                   <div class="meta">生成 KES keypairs 并在冷环境生成 node.cert。</div>
                 </div>
-                <span class="pill warn">scheduled</span>
+                <span class="pill warn">已计划</span>
               </div>
               <div class="item">
                 <div>
                   <strong>镜像版本检查</strong>
                   <div class="meta">发现新版本时，按 relay -> bp 顺序执行升级。</div>
                 </div>
-                <span class="pill ok">ready</span>
+                <span class="pill ok">可执行</span>
               </div>
             </div>
             <div class="btn-row">
@@ -91,20 +96,46 @@
             <h3 class="section-title">部署阶段</h3>
             <p class="section-meta">从启动到运行的关键阶段。</p>
             <div class="flow">
-              <div class="flow-step"><span class="num">1</span><div><strong>machine 已添加</strong><p>bp 1 台 / relay 1 台。</p></div></div>
-              <div class="flow-step"><span class="num">2</span><div><strong>参数已确认</strong><p>镜像 10.5.4-1，策略已保存。</p></div></div>
-              <div class="flow-step"><span class="num">3</span><div><strong>部署完成</strong><p>等待 pool 绑定与注册动作。</p></div></div>
+              <div class="flow-step"><span class="num" aria-hidden="true">1</span><div><strong>machine 已添加</strong><p>bp 1 台 / relay 1 台。</p></div></div>
+              <div class="flow-step"><span class="num" aria-hidden="true">2</span><div><strong>参数已确认</strong><p>镜像 10.5.4-1，策略已保存。</p></div></div>
+              <div class="flow-step"><span class="num" aria-hidden="true">3</span><div><strong>部署完成</strong><p>等待 pool 绑定与注册动作。</p></div></div>
             </div>
           </article>
 
           <article class="panel span-12">
             <h3 class="section-title">静默刷新策略</h3>
-            <p class="section-meta">每次进入 dashboard 后后台自动拉取并更新最新数据。</p>
-            <div class="table">
-              <div class="row header"><div>数据域</div><div>来源</div><div>刷新频率</div><div>展示位置</div></div>
-              <div class="row"><div>节点运行状态</div><div>runtime probe</div><div>30s</div><div>运行总览</div></div>
-              <div class="row"><div>Pool 链上信息</div><div>cardano-cli query</div><div>进入页面后</div><div>待处理动作 / pool 卡片</div></div>
-              <div class="row"><div>任务进度</div><div>本地任务存储</div><div>实时</div><div>部署阶段</div></div>
+            <p class="section-meta">每次进入看板后后台自动拉取并更新最新数据。</p>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">数据域</th>
+                    <th scope="col">来源</th>
+                    <th scope="col">刷新频率</th>
+                    <th scope="col">展示位置</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>节点运行状态</td>
+                    <td>runtime probe</td>
+                    <td>30s</td>
+                    <td>运行总览</td>
+                  </tr>
+                  <tr>
+                    <td>Pool 链上信息</td>
+                    <td>cardano-cli query</td>
+                    <td>进入页面后</td>
+                    <td>待处理动作 / pool 卡片</td>
+                  </tr>
+                  <tr>
+                    <td>任务进度</td>
+                    <td>本地任务存储</td>
+                    <td>实时</td>
+                    <td>部署阶段</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </article>
         </section>
