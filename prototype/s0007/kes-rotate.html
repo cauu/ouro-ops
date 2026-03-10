@@ -8,127 +8,169 @@
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主内容</a>
-    <div class="app">
-      <aside class="sidebar">
-        <div class="brand">
-          <span class="brand-orb" aria-hidden="true"></span>
-          <div>
-            <h1>OURO OPS</h1>
-            <p>Mainnet Workspace</p>
+    <div class="window-shell">
+      <div class="window">
+        <header class="titlebar">
+          <div class="titlebar-leading">
+            <div class="traffic-lights" aria-hidden="true">
+              <span class="light red"></span>
+              <span class="light yellow"></span>
+              <span class="light green"></span>
+            </div>
+            <button class="sidebar-toggle" type="button">Sidebar</button>
           </div>
-        </div>
-        <nav class="nav" aria-label="主导航">
-          <a href="./onboarding.html"><span class="icon" aria-hidden="true">◉</span>初始化</a>
-          <a href="./index.html"><span class="icon" aria-hidden="true">⌂</span>看板</a>
-          <a href="./deploy.html"><span class="icon" aria-hidden="true">↗</span>部署流程</a>
-          <a class="active" aria-current="page" href="./kes-rotate.html"><span class="icon" aria-hidden="true">⟳</span>KES Rotate</a>
-          <a href="./upgrade-image.html"><span class="icon" aria-hidden="true">⬆</span>升级镜像</a>
-        </nav>
-        <div class="sidebar-meta">
-          <p>KES Rotate 约束：</p>
-          <ul>
-            <li>热环境不保存 cold.skey / cold.vkey</li>
-            <li>冷环境生成 node.cert 后再回传</li>
-          </ul>
-        </div>
-      </aside>
-
-      <main id="main-content" class="main">
-        <header class="topbar">
-          <div class="top-title">
-            <h2>KES Rotate</h2>
-            <p>单步骤向导：当前仅聚焦 Step 2（冷环境生成 node.cert）。</p>
-          </div>
-          <div class="top-actions">
-            <label class="sr-only" for="search-kes">搜索 KES 操作</label>
-            <input id="search-kes" class="search-input" type="search" placeholder="搜索 KES 操作" />
-            <span class="badge">next window: 12.4d</span>
+          <h1 class="window-title">Ouro Ops · KES Rotate</h1>
+          <div class="toolbar">
+            <label class="toolbar-search" for="search-kes">
+              <span aria-hidden="true">⌕</span>
+              <input id="search-kes" type="search" placeholder="搜索 KES 操作" />
+            </label>
+            <button class="toolbar-chip" type="button">window 12.4d</button>
           </div>
         </header>
 
-        <section class="grid">
-          <article class="panel span-12">
-            <h3 class="section-title">向导步骤</h3>
-            <p class="section-meta">显示全部步骤状态，但仅在主区展示当前步骤内容。</p>
-            <ol class="stepper" aria-label="KES Rotate 步骤">
-              <li class="step-node done">
-                <span class="step-kicker">Step 1</span>
-                <strong>生成 KES keypairs</strong>
-                <span class="step-status">已完成</span>
-              </li>
-              <li class="step-node current" aria-current="step">
-                <span class="step-kicker">Step 2</span>
-                <strong>冷环境生成 node.cert</strong>
-                <span class="step-status">进行中</span>
-              </li>
-              <li class="step-node">
-                <span class="step-kicker">Step 3</span>
-                <strong>上传 node.cert</strong>
-                <span class="step-status">待开始</span>
-              </li>
-              <li class="step-node">
-                <span class="step-kicker">Step 4</span>
-                <strong>Rotate 与验证</strong>
-                <span class="step-status">待开始</span>
-              </li>
-            </ol>
-          </article>
+        <div class="workspace">
+          <aside class="sidebar">
+            <div class="brand">
+              <span class="brand-mark" aria-hidden="true"></span>
+              <div>
+                <h1>OURO OPS</h1>
+                <p>Mainnet Workspace</p>
+              </div>
+            </div>
 
-          <article class="panel span-8">
-            <h3 class="section-title">Step 2 · 冷环境生成 node.cert</h3>
-            <p class="section-meta">请在冷环境执行脚本并回传证书；当前页面不展示其他步骤明细。</p>
+            <div class="nav-group">
+              <p class="group-title">Workspace</p>
+              <a class="nav-item" href="./onboarding.html"><span class="nav-symbol" aria-hidden="true">◎</span>Onboarding</a>
+              <a class="nav-item" href="./index.html"><span class="nav-symbol" aria-hidden="true">⌂</span>Dashboard</a>
+            </div>
 
-            <div class="code">cardano-cli node issue-op-cert \
+            <div class="nav-group">
+              <p class="group-title">Operations</p>
+              <a class="nav-item" href="./deploy.html"><span class="nav-symbol" aria-hidden="true">↗</span>Deploy</a>
+              <a class="nav-item active" aria-current="page" href="./kes-rotate.html"><span class="nav-symbol" aria-hidden="true">↻</span>KES Rotate</a>
+              <a class="nav-item" href="./upgrade-image.html"><span class="nav-symbol" aria-hidden="true">⬆</span>Upgrade</a>
+            </div>
+
+            <div class="sidebar-note">
+              冷热隔离：
+              <br />热环境不保存 cold.skey / cold.vkey。
+            </div>
+          </aside>
+
+          <main id="main-content" class="content">
+            <h2 class="page-title">KES Rotate</h2>
+            <p class="page-subtitle">流程页只聚焦当前步骤，减少同时阅读多步骤内容的干扰。</p>
+
+            <div class="layout-grid">
+              <section class="section">
+                <header class="section-header">
+                  <div>
+                    <h3 class="section-title">流程进度</h3>
+                    <p class="section-meta">Step 2 正在进行：冷环境生成 node.cert</p>
+                  </div>
+                </header>
+                <div class="section-body">
+                  <ol class="progress-track" aria-label="KES rotate steps">
+                    <li class="progress-step done">
+                      <em>STEP 1</em>
+                      <strong>生成 KES keypairs</strong>
+                      <span>completed</span>
+                    </li>
+                    <li class="progress-step current" aria-current="step">
+                      <em>STEP 2</em>
+                      <strong>冷环境生成 node.cert</strong>
+                      <span>current</span>
+                    </li>
+                    <li class="progress-step">
+                      <em>STEP 3</em>
+                      <strong>上传 node.cert</strong>
+                      <span>upcoming</span>
+                    </li>
+                    <li class="progress-step">
+                      <em>STEP 4</em>
+                      <strong>Rotate 与验证</strong>
+                      <span>upcoming</span>
+                    </li>
+                  </ol>
+                </div>
+              </section>
+
+              <section class="section">
+                <header class="section-header">
+                  <div>
+                    <h3 class="section-title">Step 2 · 冷环境脚本</h3>
+                    <p class="section-meta">在 cold environment 生成 node.cert，再回传至热环境执行 rotate。</p>
+                  </div>
+                </header>
+                <div class="section-body">
+                  <div class="terminal-block" role="region" aria-label="命令脚本">
+                    <div class="terminal-head" aria-hidden="true">
+                      <span class="terminal-dot red"></span>
+                      <span class="terminal-dot yellow"></span>
+                      <span class="terminal-dot green"></span>
+                    </div>
+                    <pre class="terminal-body">cardano-cli node issue-op-cert \
   --kes-verification-key-file kes.vkey \
   --cold-signing-key-file cold.skey \
   --operational-certificate-issue-counter-file opcert.counter \
   --kes-period &lt;current-kes-period&gt; \
-  --out-file node.cert</div>
+  --out-file node.cert</pre>
+                  </div>
 
-            <div class="kv">
-              <div class="cell"><span>required input</span><strong>kes.vkey / opcert.counter</strong></div>
-              <div class="cell"><span>output</span><strong>node.cert</strong></div>
-              <div class="cell"><span>execution env</span><strong>cold environment</strong></div>
-              <div class="cell"><span>next</span><strong>upload node.cert</strong></div>
-            </div>
+                  <div class="kv-grid" style="margin-top: 10px">
+                    <div class="kv-cell"><span>required input</span><strong>kes.vkey / opcert.counter</strong></div>
+                    <div class="kv-cell"><span>output</span><strong>node.cert</strong></div>
+                    <div class="kv-cell"><span>environment</span><strong>cold environment</strong></div>
+                    <div class="kv-cell"><span>next step</span><strong>upload node.cert</strong></div>
+                  </div>
 
-            <div class="btn-row">
-              <button type="button" class="btn">复制脚本</button>
-              <button type="button" class="btn">下载参数说明</button>
-              <button type="button" class="btn primary">上传 node.cert</button>
-            </div>
+                  <div class="dropzone">拖拽上传 `node.cert` 到此处，或使用下方上传按钮。</div>
 
-            <div class="wizard-footer">
-              <span class="hint">完成上传后进入 Step 3（证书校验与准备 Rotate）。</span>
-              <div class="btn-row">
-                <button type="button" class="btn">上一步</button>
-                <button type="button" class="btn primary">下一步</button>
-              </div>
-            </div>
-          </article>
-
-          <article class="panel span-4">
-            <h3 class="section-title">已完成摘要</h3>
-            <p class="section-meta">轻量展示已完成与即将进入步骤。</p>
-            <div class="list">
-              <div class="item">
-                <div>
-                  <strong>Step 1 · KES keypairs</strong>
-                  <div class="meta">kes.skey / kes.vkey 已生成。</div>
+                  <div class="action-row">
+                    <span class="inline-note">上传后将进入 Step 3 执行证书校验。</span>
+                    <div class="action-group">
+                      <button type="button" class="btn">复制脚本</button>
+                      <button type="button" class="btn">下载参数说明</button>
+                      <button type="button" class="btn">上一步</button>
+                      <button type="button" class="btn primary">上传并下一步</button>
+                    </div>
+                  </div>
                 </div>
-                <span class="pill ok">done</span>
-              </div>
-              <div class="item">
-                <div>
-                  <strong>下一步预告</strong>
-                  <div class="meta">Step 3 上传并校验 node.cert。</div>
-                </div>
-                <span class="pill">upcoming</span>
-              </div>
+              </section>
             </div>
-          </article>
-        </section>
-      </main>
+          </main>
+
+          <aside class="inspector" aria-label="KES 检查器">
+            <section class="inspector-block">
+              <header class="inspector-head">
+                <h3>已完成摘要</h3>
+                <p>Step 1</p>
+              </header>
+              <div class="inspector-body">
+                <ul class="mini-list">
+                  <li><strong>kes.skey</strong><span>generated</span></li>
+                  <li><strong>kes.vkey</strong><span>generated</span></li>
+                  <li><strong>counter file</strong><span>loaded</span></li>
+                </ul>
+              </div>
+            </section>
+
+            <section class="inspector-block">
+              <header class="inspector-head">
+                <h3>风控提示</h3>
+                <p>Security</p>
+              </header>
+              <div class="inspector-body">
+                <ul class="mini-list">
+                  <li><strong>cold keys</strong><span>must stay offline</span></li>
+                  <li><strong>post-check</strong><span>verify new cert in bp</span></li>
+                </ul>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
     </div>
   </body>
 </html>

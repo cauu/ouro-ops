@@ -3,137 +3,181 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Ouro Ops Prototype - Upgrade Image</title>
+    <title>Ouro Ops Prototype - Upgrade</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主内容</a>
-    <div class="app">
-      <aside class="sidebar">
-        <div class="brand">
-          <span class="brand-orb" aria-hidden="true"></span>
-          <div>
-            <h1>OURO OPS</h1>
-            <p>Mainnet Workspace</p>
+    <div class="window-shell">
+      <div class="window">
+        <header class="titlebar">
+          <div class="titlebar-leading">
+            <div class="traffic-lights" aria-hidden="true">
+              <span class="light red"></span>
+              <span class="light yellow"></span>
+              <span class="light green"></span>
+            </div>
+            <button class="sidebar-toggle" type="button">Sidebar</button>
           </div>
-        </div>
-        <nav class="nav" aria-label="主导航">
-          <a href="./onboarding.html"><span class="icon" aria-hidden="true">◉</span>初始化</a>
-          <a href="./index.html"><span class="icon" aria-hidden="true">⌂</span>看板</a>
-          <a href="./deploy.html"><span class="icon" aria-hidden="true">↗</span>部署流程</a>
-          <a href="./kes-rotate.html"><span class="icon" aria-hidden="true">⟳</span>KES Rotate</a>
-          <a class="active" aria-current="page" href="./upgrade-image.html"><span class="icon" aria-hidden="true">⬆</span>升级镜像</a>
-        </nav>
-        <div class="sidebar-meta">
-          <p>升级策略：</p>
-          <ul>
-            <li>先 relay，后 bp</li>
-            <li>每一步必须通过健康检查</li>
-          </ul>
-        </div>
-      </aside>
-
-      <main id="main-content" class="main">
-        <header class="topbar">
-          <div class="top-title">
-            <h2>升级镜像版本</h2>
-            <p>单步骤向导：当前仅聚焦 Step 2（执行滚动升级）。</p>
-          </div>
-          <div class="top-actions">
-            <label class="sr-only" for="search-upgrade">搜索升级任务</label>
-            <input id="search-upgrade" class="search-input" type="search" placeholder="搜索升级任务" />
-            <span class="badge">new version available</span>
+          <h1 class="window-title">Ouro Ops · Image Upgrade</h1>
+          <div class="toolbar">
+            <label class="toolbar-search" for="search-upgrade">
+              <span aria-hidden="true">⌕</span>
+              <input id="search-upgrade" type="search" placeholder="搜索升级任务" />
+            </label>
+            <button class="toolbar-chip" type="button">new tag found</button>
           </div>
         </header>
 
-        <section class="grid">
-          <article class="panel span-12">
-            <h3 class="section-title">向导步骤</h3>
-            <p class="section-meta">显示全部步骤状态，但仅在主区展示当前步骤内容。</p>
-            <ol class="stepper" aria-label="升级步骤">
-              <li class="step-node done">
-                <span class="step-kicker">Step 1</span>
-                <strong>发现新版本</strong>
-                <span class="step-status">已完成</span>
-              </li>
-              <li class="step-node current" aria-current="step">
-                <span class="step-kicker">Step 2</span>
-                <strong>执行滚动升级</strong>
-                <span class="step-status">进行中</span>
-              </li>
-              <li class="step-node">
-                <span class="step-kicker">Step 3</span>
-                <strong>健康检查与完成</strong>
-                <span class="step-status">待开始</span>
-              </li>
-            </ol>
-          </article>
-
-          <article class="panel span-8">
-            <h3 class="section-title">Step 2 · 执行滚动升级</h3>
-            <p class="section-meta">仅处理当前升级动作：按 relay -> bp 顺序执行并观测状态。</p>
-
-            <div class="kv">
-              <div class="cell"><span>registry</span><strong>ghcr.io/blinklabs-io/cardano-node</strong></div>
-              <div class="cell"><span>target tag</span><strong>10.6.x</strong></div>
-              <div class="cell"><span>rollout order</span><strong>relay -> bp</strong></div>
-              <div class="cell"><span>current stage</span><strong>bp rolling restart</strong></div>
+        <div class="workspace">
+          <aside class="sidebar">
+            <div class="brand">
+              <span class="brand-mark" aria-hidden="true"></span>
+              <div>
+                <h1>OURO OPS</h1>
+                <p>Mainnet Workspace</p>
+              </div>
             </div>
 
-            <div class="list">
-              <div class="item">
-                <div>
-                  <strong>relay-1</strong>
-                  <div class="meta">镜像拉取与健康检查完成。</div>
+            <div class="nav-group">
+              <p class="group-title">Workspace</p>
+              <a class="nav-item" href="./onboarding.html"><span class="nav-symbol" aria-hidden="true">◎</span>Onboarding</a>
+              <a class="nav-item" href="./index.html"><span class="nav-symbol" aria-hidden="true">⌂</span>Dashboard</a>
+            </div>
+
+            <div class="nav-group">
+              <p class="group-title">Operations</p>
+              <a class="nav-item" href="./deploy.html"><span class="nav-symbol" aria-hidden="true">↗</span>Deploy</a>
+              <a class="nav-item" href="./kes-rotate.html"><span class="nav-symbol" aria-hidden="true">↻</span>KES Rotate</a>
+              <a class="nav-item active" aria-current="page" href="./upgrade-image.html"><span class="nav-symbol" aria-hidden="true">⬆</span>Upgrade</a>
+            </div>
+
+            <div class="sidebar-note">
+              升级顺序：
+              <br />relay -> bp。
+              <br />每步都需要健康检查通过。
+            </div>
+          </aside>
+
+          <main id="main-content" class="content">
+            <h2 class="page-title">升级镜像</h2>
+            <p class="page-subtitle">流程页聚焦单一任务，当前仅处理 Step 2 的滚动升级执行。</p>
+
+            <div class="layout-grid">
+              <section class="section">
+                <header class="section-header">
+                  <div>
+                    <h3 class="section-title">流程进度</h3>
+                    <p class="section-meta">Step 2 执行中：relay 已完成，bp 正在滚动重启。</p>
+                  </div>
+                </header>
+                <div class="section-body">
+                  <ol class="progress-track" aria-label="Upgrade steps">
+                    <li class="progress-step done">
+                      <em>STEP 1</em>
+                      <strong>版本确认</strong>
+                      <span>completed</span>
+                    </li>
+                    <li class="progress-step current" aria-current="step">
+                      <em>STEP 2</em>
+                      <strong>滚动升级</strong>
+                      <span>current</span>
+                    </li>
+                    <li class="progress-step">
+                      <em>STEP 3</em>
+                      <strong>健康检查与完成</strong>
+                      <span>upcoming</span>
+                    </li>
+                  </ol>
                 </div>
-                <span class="pill ok">done</span>
-              </div>
-              <div class="item">
-                <div>
-                  <strong>bp-1</strong>
-                  <div class="meta">滚动重启中，等待 socket 与端口健康。</div>
-                </div>
-                <span class="pill warn">running</span>
-              </div>
-            </div>
+              </section>
 
-            <div class="btn-row">
-              <button type="button" class="btn">刷新阶段状态</button>
-              <button type="button" class="btn">导出当前日志</button>
-              <button type="button" class="btn primary">确认并继续</button>
-            </div>
+              <section class="section">
+                <header class="section-header">
+                  <div>
+                    <h3 class="section-title">Step 2 · 执行滚动升级</h3>
+                    <p class="section-meta">当前步骤只展示升级执行参数与节点进度。</p>
+                  </div>
+                </header>
+                <div class="section-body">
+                  <div class="kv-grid">
+                    <div class="kv-cell"><span>registry</span><strong>ghcr.io/blinklabs-io/cardano-node</strong></div>
+                    <div class="kv-cell"><span>target tag</span><strong>10.5.4-1</strong></div>
+                    <div class="kv-cell"><span>rollout order</span><strong>relay -> bp</strong></div>
+                    <div class="kv-cell"><span>health gate</span><strong>port + socket + tip</strong></div>
+                  </div>
 
-            <div class="wizard-footer">
-              <span class="hint">当前步骤完成后进入 Step 3（全量健康检查与完成）。</span>
-              <div class="btn-row">
-                <button type="button" class="btn">上一步</button>
-                <button type="button" class="btn primary">下一步</button>
-              </div>
-            </div>
-          </article>
+                  <div class="table-wrap" style="margin-top: 10px">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">Node</th>
+                          <th scope="col">Stage</th>
+                          <th scope="col">Runtime</th>
+                          <th scope="col">Result</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>relay-1</td>
+                          <td>pull + restart + health-check</td>
+                          <td>2m 12s</td>
+                          <td><span class="chip ok">done</span></td>
+                        </tr>
+                        <tr>
+                          <td>bp-1</td>
+                          <td>rolling restart</td>
+                          <td>running</td>
+                          <td><span class="chip warn">in progress</span></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
 
-          <article class="panel span-4">
-            <h3 class="section-title">已完成摘要</h3>
-            <p class="section-meta">轻量保留已完成信息，避免展示多步骤明细。</p>
-            <div class="list">
-              <div class="item">
-                <div>
-                  <strong>Step 1 · 版本确认</strong>
-                  <div class="meta">current: 10.5.4-1, target: 10.6.x</div>
+                  <div class="action-row">
+                    <span class="inline-note">Step 2 完成后进入全量健康检查并结束升级。</span>
+                    <div class="action-group">
+                      <button type="button" class="btn">刷新状态</button>
+                      <button type="button" class="btn">导出日志</button>
+                      <button type="button" class="btn">上一步</button>
+                      <button type="button" class="btn primary">确认并下一步</button>
+                    </div>
+                  </div>
                 </div>
-                <span class="pill ok">done</span>
-              </div>
-              <div class="item">
-                <div>
-                  <strong>下一步预告</strong>
-                  <div class="meta">Step 3 统一健康检查并标记完成。</div>
-                </div>
-                <span class="pill">upcoming</span>
-              </div>
+              </section>
             </div>
-          </article>
-        </section>
-      </main>
+          </main>
+
+          <aside class="inspector" aria-label="升级检查器">
+            <section class="inspector-block">
+              <header class="inspector-head">
+                <h3>已完成摘要</h3>
+                <p>Step 1</p>
+              </header>
+              <div class="inspector-body">
+                <ul class="mini-list">
+                  <li><strong>current</strong><span>10.5.3-1</span></li>
+                  <li><strong>target</strong><span>10.5.4-1</span></li>
+                  <li><strong>diff</strong><span>release patch update</span></li>
+                </ul>
+              </div>
+            </section>
+
+            <section class="inspector-block">
+              <header class="inspector-head">
+                <h3>风险控制</h3>
+                <p>Upgrade</p>
+              </header>
+              <div class="inspector-body">
+                <ul class="mini-list">
+                  <li><strong>rollback</strong><span>use previous tag redeploy</span></li>
+                  <li><strong>next gate</strong><span>bp health-check pass</span></li>
+                </ul>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
     </div>
   </body>
 </html>

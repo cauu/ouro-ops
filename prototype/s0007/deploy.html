@@ -3,123 +3,177 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Ouro Ops Prototype - Deploy Flow</title>
+    <title>Ouro Ops Prototype - Deploy</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主内容</a>
-    <div class="app">
-      <aside class="sidebar">
-        <div class="brand">
-          <span class="brand-orb" aria-hidden="true"></span>
-          <div>
-            <h1>OURO OPS</h1>
-            <p>Mainnet Workspace</p>
+    <div class="window-shell">
+      <div class="window">
+        <header class="titlebar">
+          <div class="titlebar-leading">
+            <div class="traffic-lights" aria-hidden="true">
+              <span class="light red"></span>
+              <span class="light yellow"></span>
+              <span class="light green"></span>
+            </div>
+            <button class="sidebar-toggle" type="button">Sidebar</button>
           </div>
-        </div>
-        <nav class="nav" aria-label="主导航">
-          <a href="./onboarding.html"><span class="icon" aria-hidden="true">◉</span>初始化</a>
-          <a href="./index.html"><span class="icon" aria-hidden="true">⌂</span>看板</a>
-          <a class="active" aria-current="page" href="./deploy.html"><span class="icon" aria-hidden="true">↗</span>部署流程</a>
-          <a href="./kes-rotate.html"><span class="icon" aria-hidden="true">⟳</span>KES Rotate</a>
-          <a href="./upgrade-image.html"><span class="icon" aria-hidden="true">⬆</span>升级镜像</a>
-        </nav>
-        <div class="sidebar-meta">
-          <p>部署约束：</p>
-          <ul>
-            <li>最小运行条件：1 relay + 1 bp</li>
-            <li>部署完成后进入 Pool 注册/更新</li>
-          </ul>
-        </div>
-      </aside>
-
-      <main id="main-content" class="main">
-        <header class="topbar">
-          <div class="top-title">
-            <h2>部署流程</h2>
-            <p>添加机器 -> 参数确认 -> 部署执行 -> 完成后进入 Pool 注册。</p>
-          </div>
-          <div class="top-actions">
-            <label class="sr-only" for="search-deploy">搜索部署参数</label>
-            <input id="search-deploy" class="search-input" type="search" placeholder="搜索部署参数" />
-            <span class="badge">DeployWizard aligned</span>
+          <h1 class="window-title">Ouro Ops · Deploy Wizard</h1>
+          <div class="toolbar">
+            <label class="toolbar-search" for="search-deploy">
+              <span aria-hidden="true">⌕</span>
+              <input id="search-deploy" type="search" placeholder="搜索部署参数" />
+            </label>
+            <button class="toolbar-chip" type="button">Step 2/4</button>
           </div>
         </header>
 
-        <section class="grid">
-          <article class="panel span-12">
-            <h3 class="section-title">向导步骤</h3>
-            <p class="section-meta">仅展示当前步骤内容，降低信息密度和操作干扰。</p>
-            <ol class="stepper" aria-label="部署步骤">
-              <li class="step-node done">
-                <span class="step-kicker">Step 1</span>
-                <strong>添加机器</strong>
-                <span class="step-status">已完成</span>
-              </li>
-              <li class="step-node current" aria-current="step">
-                <span class="step-kicker">Step 2</span>
-                <strong>部署参数</strong>
-                <span class="step-status">进行中</span>
-              </li>
-              <li class="step-node">
-                <span class="step-kicker">Step 3</span>
-                <strong>确认执行</strong>
-                <span class="step-status">待开始</span>
-              </li>
-              <li class="step-node">
-                <span class="step-kicker">Step 4</span>
-                <strong>完成与引导</strong>
-                <span class="step-status">待开始</span>
-              </li>
-            </ol>
-          </article>
+        <div class="workspace">
+          <aside class="sidebar">
+            <div class="brand">
+              <span class="brand-mark" aria-hidden="true"></span>
+              <div>
+                <h1>OURO OPS</h1>
+                <p>Mainnet Workspace</p>
+              </div>
+            </div>
 
-          <article class="panel span-8">
-            <h3 class="section-title">Step 2 · Deployment Parameters</h3>
-            <p class="section-meta">当前仅聚焦参数配置：网络、镜像版本与角色级恢复策略。</p>
-            <div class="kv">
-              <div class="cell"><span>network</span><strong>mainnet</strong></div>
-              <div class="cell"><span>image</span><strong>10.5.4-1</strong></div>
-              <div class="cell"><span>relay restore_snapshot</span><strong>true</strong></div>
-              <div class="cell"><span>bp restore_snapshot</span><strong>false</strong></div>
-              <div class="cell"><span>safe_validation_mode</span><strong>false</strong></div>
-              <div class="cell"><span>takeover_existing_node</span><strong>optional</strong></div>
+            <div class="nav-group">
+              <p class="group-title">Workspace</p>
+              <a class="nav-item" href="./onboarding.html"><span class="nav-symbol" aria-hidden="true">◎</span>Onboarding</a>
+              <a class="nav-item" href="./index.html"><span class="nav-symbol" aria-hidden="true">⌂</span>Dashboard</a>
             </div>
-            <div class="btn-row">
-              <button type="button" class="btn">保存草稿</button>
-              <button type="button" class="btn primary">确认参数</button>
-            </div>
-            <div class="wizard-footer">
-              <span class="hint">完成当前步骤后进入 Step 3（确认执行）。</span>
-              <div class="btn-row">
-                <button type="button" class="btn">上一步</button>
-                <button type="button" class="btn primary">下一步</button>
-              </div>
-            </div>
-          </article>
 
-          <article class="panel span-4">
-            <h3 class="section-title">已完成摘要</h3>
-            <p class="section-meta">轻量回顾已完成步骤，避免重复展示明细内容。</p>
-            <div class="list">
-              <div class="item">
-                <div>
-                  <strong>Step 1 · 添加机器</strong>
-                  <div class="meta">bp 1 台 / relay 2 台，SSH 已验证。</div>
-                </div>
-                <span class="pill ok">done</span>
-              </div>
-              <div class="item">
-                <div>
-                  <strong>下一步预告</strong>
-                  <div class="meta">Step 3 将进入执行确认与部署启动。</div>
-                </div>
-                <span class="pill">upcoming</span>
-              </div>
+            <div class="nav-group">
+              <p class="group-title">Operations</p>
+              <a class="nav-item active" aria-current="page" href="./deploy.html"><span class="nav-symbol" aria-hidden="true">↗</span>Deploy</a>
+              <a class="nav-item" href="./kes-rotate.html"><span class="nav-symbol" aria-hidden="true">↻</span>KES Rotate</a>
+              <a class="nav-item" href="./upgrade-image.html"><span class="nav-symbol" aria-hidden="true">⬆</span>Upgrade</a>
             </div>
-          </article>
-        </section>
-      </main>
+
+            <div class="sidebar-note">
+              最小部署：1 relay + 1 bp。
+              <br />部署后引导进入 Pool 注册/更新。
+            </div>
+          </aside>
+
+          <main id="main-content" class="content">
+            <h2 class="page-title">部署流程</h2>
+            <p class="page-subtitle">单步骤聚焦向导：顶部显示全量步骤状态，主区仅处理当前步骤。</p>
+
+            <div class="layout-grid">
+              <section class="section">
+                <header class="section-header">
+                  <div>
+                    <h3 class="section-title">流程进度</h3>
+                    <p class="section-meta">completed / current / upcoming</p>
+                  </div>
+                </header>
+                <div class="section-body">
+                  <ol class="progress-track" aria-label="Deploy steps">
+                    <li class="progress-step done">
+                      <em>STEP 1</em>
+                      <strong>添加机器</strong>
+                      <span>completed</span>
+                    </li>
+                    <li class="progress-step current" aria-current="step">
+                      <em>STEP 2</em>
+                      <strong>部署参数</strong>
+                      <span>current</span>
+                    </li>
+                    <li class="progress-step">
+                      <em>STEP 3</em>
+                      <strong>确认执行</strong>
+                      <span>upcoming</span>
+                    </li>
+                    <li class="progress-step">
+                      <em>STEP 4</em>
+                      <strong>完成与引导</strong>
+                      <span>upcoming</span>
+                    </li>
+                  </ol>
+                </div>
+              </section>
+
+              <section class="section">
+                <header class="section-header">
+                  <div>
+                    <h3 class="section-title">Step 2 · Deployment Parameters</h3>
+                    <p class="section-meta">聚焦当前任务：参数校验与确认，不显示其他步骤详细内容。</p>
+                  </div>
+                </header>
+                <div class="section-body">
+                  <div class="form-grid" role="group" aria-label="部署参数表单">
+                    <div class="form-row">
+                      <div class="form-label">Network</div>
+                      <div class="form-value">mainnet</div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-label">Image Registry</div>
+                      <div class="form-value">ghcr.io/blinklabs-io/cardano-node</div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-label">Image Tag</div>
+                      <div class="form-value">10.5.4-1</div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-label">Relay restore_snapshot</div>
+                      <div class="form-value">true</div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-label">BP restore_snapshot</div>
+                      <div class="form-value">false</div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-label">safe_validation_mode</div>
+                      <div class="form-value">false</div>
+                    </div>
+                  </div>
+
+                  <div class="action-row">
+                    <span class="inline-note">完成参数确认后进入 Step 3 执行部署。</span>
+                    <div class="action-group">
+                      <button type="button" class="btn">保存草稿</button>
+                      <button type="button" class="btn">上一步</button>
+                      <button type="button" class="btn primary">确认参数并下一步</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </main>
+
+          <aside class="inspector" aria-label="部署检查器">
+            <section class="inspector-block">
+              <header class="inspector-head">
+                <h3>已完成摘要</h3>
+                <p>Step 1</p>
+              </header>
+              <div class="inspector-body">
+                <ul class="mini-list">
+                  <li><strong>BP machine</strong><span>1 added, ssh verified</span></li>
+                  <li><strong>Relay machines</strong><span>2 added, ssh verified</span></li>
+                  <li><strong>Inventory</strong><span>rendered and validated</span></li>
+                </ul>
+              </div>
+            </section>
+
+            <section class="inspector-block">
+              <header class="inspector-head">
+                <h3>下一步提示</h3>
+                <p>Step 3</p>
+              </header>
+              <div class="inspector-body">
+                <ul class="mini-list">
+                  <li><strong>执行策略</strong><span>relay first, then bp</span></li>
+                  <li><strong>中断处理</strong><span>cancel should stop sidecar run</span></li>
+                </ul>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
     </div>
   </body>
 </html>

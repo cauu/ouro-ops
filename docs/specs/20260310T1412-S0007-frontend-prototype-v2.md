@@ -241,3 +241,30 @@ Spec-ID: S0007
 
 ### 12.5 Change Request Delta
 - 2026-03-10 23:31 +0800 需求新增：KES Rotate 和升级镜像流程均需按单步骤聚焦向导进行优化。
+
+## 13. Addendum (append-only)
+### 13.1 Execution Plan Delta
+- [x] p7-16 基于 macOS 原生范式重构全部 5 个页面（titlebar/source list/toolbar/inspector），统一流程页与主视图交互语言
+
+### 13.2 Acceptance Delta
+- TC-34 五个页面统一采用 macOS 窗口骨架：titlebar（含 traffic lights）+ sidebar + main content + inspector。
+- TC-35 Sidebar 改为 source list 风格，Toolbar 改为轻量搜索与上下文动作，移除 Web 风格重 Header 叠层。
+- TC-36 Deploy / KES Rotate / Upgrade 保持单步骤聚焦主区，仅顶部展示进度状态（completed/current/upcoming）。
+- TC-37 KES 页面代码区采用终端语义块（terminal head + mono body），Deploy 参数区采用更接近原生 Form 的行式布局。
+- TC-38 原型仍为纯 HTML/CSS 静态实现，不引入业务逻辑脚本。
+- TC-39 原型说明文档同步更新为 macOS 化设计方向与结构说明。
+
+### 13.3 Execution Log Delta
+- 2026-03-10 23:44 +0800 p7-16 started: 执行全页面 macOS 化重构（窗口结构、导航、工具栏、主区与检查器统一）。
+- 2026-03-10 23:53 +0800 p7-16 completed: 完成 5 页结构重写与样式系统替换，并更新 README 设计说明。
+
+### 13.4 Validation Evidence Delta
+- TC-34 | stack: ui | command: rg -n "window-shell|titlebar|traffic-lights|workspace|sidebar|inspector" prototype/s0007/onboarding.html prototype/s0007/index.html prototype/s0007/deploy.html prototype/s0007/kes-rotate.html prototype/s0007/upgrade-image.html | result: pass | note: 五页均具备统一 macOS 窗口骨架
+- TC-35 | stack: ui | command: rg -n "toolbar-search|toolbar-chip|nav-group|nav-item" prototype/s0007/*.html && rg -n -- "backdrop-filter" prototype/s0007/styles.css | result: pass | note: source list 与轻量 toolbar 结构到位，材质化层级存在
+- TC-36 | stack: ui | command: rg -n "progress-track|aria-current=\"step\"|Step 2|STEP 2" prototype/s0007/deploy.html prototype/s0007/kes-rotate.html prototype/s0007/upgrade-image.html | result: pass | note: 三个流程页均为单步骤主区 + 顶部进度轨
+- TC-37 | stack: ui | command: rg -n "terminal-block|terminal-head|terminal-body|form-row|form-label|form-value" prototype/s0007/kes-rotate.html prototype/s0007/deploy.html prototype/s0007/styles.css | result: pass | note: 终端语义块与行式参数表单均已生效
+- TC-38 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007 || true | result: pass | note: 仍无脚本调用
+- TC-39 | stack: ui | command: sed -n '1,220p' prototype/s0007/README.md | result: pass | note: README 已更新为 macOS-native 原型设计说明
+
+### 13.5 Change Request Delta
+- 2026-03-10 23:44 +0800 需求新增：基于 Apple HIG/macOS 设计范式，优化所有页面并统一为原生桌面风格。

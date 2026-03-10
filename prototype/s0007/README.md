@@ -8,9 +8,15 @@ Pure HTML prototype with five core pages:
 4. `kes-rotate.html`
 5. `upgrade-image.html`
 
-Design direction: professional, restrained, minimal, light-only, Cardano blue palette.
+Design direction:
+
+- macOS-native layout language: titlebar + source list sidebar + main content + inspector
+- professional, restrained, minimal
+- light-only, Cardano blue as subtle accent
+- single-step focused wizard for Deploy / KES Rotate / Upgrade
 
 Notes:
+
 - Static prototype only, no business logic.
 - Flow is represented by page structure and visual states.
-- Deploy / KES Rotate / Upgrade pages use step-by-step wizard layout.
+- Inspector panel carries lightweight contextual summary.
