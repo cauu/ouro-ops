@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ouro Ops Prototype - Deployment Wizard Step 4</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主内容</a>
+    <div class="window-shell">
+      <div class="window wizard-window">
+        <header class="titlebar">
+          <div class="titlebar-leading">
+            <div class="traffic-lights" aria-hidden="true">
+              <span class="light red"></span>
+              <span class="light yellow"></span>
+              <span class="light green"></span>
+            </div>
+            <a class="btn ghost" href="./deploy-step3.html">返回 Step 3</a>
+          </div>
+          <h1 class="window-title">Deployment Wizard</h1>
+          <div class="toolbar">
+            <button class="toolbar-chip" type="button">Step 4 / 4</button>
+          </div>
+        </header>
+
+        <div class="workspace focused-workspace">
+          <main id="main-content" class="content focused-content">
+            <section class="wizard-page" aria-label="deployment wizard step 4">
+              <header class="wizard-stage-head">
+                <h2 class="page-title">Step 4 · 部署执行与日志</h2>
+                <p class="page-subtitle">执行中页面不再提供“上一步”。</p>
+                <div class="wizard-stepline" aria-label="wizard progress">
+                  <span class="pill-step done">1 节点配置</span>
+                  <span class="dot" aria-hidden="true"></span>
+                  <span class="pill-step done">2 参数设置</span>
+                  <span class="dot" aria-hidden="true"></span>
+                  <span class="pill-step done">3 配置确认</span>
+                  <span class="dot" aria-hidden="true"></span>
+                  <span class="pill-step current">4 执行部署</span>
+                </div>
+              </header>
+
+              <div class="wizard-scroll">
+                <article class="wizard-card">
+                  <header class="wizard-card-head">
+                    <h3>部署进度</h3>
+                    <p>总进度与关键状态。</p>
+                  </header>
+                  <div class="wizard-card-body">
+                    <div class="loading-row" aria-live="polite">
+                      <span class="spinner" aria-hidden="true"></span>
+                      <span class="inline-note">Deploying... 当前阶段：relay rollout (2/4)</span>
+                    </div>
+
+                    <div class="flow-state" aria-label="deployment stages">
+                      <div class="state-row">
+                        <strong>inventory render</strong>
+                        <span class="chip ok">done</span>
+                      </div>
+                      <div class="state-row">
+                        <strong>relay rollout</strong>
+                        <span class="chip warn">running</span>
+                      </div>
+                      <div class="state-row">
+                        <strong>bp rollout</strong>
+                        <span class="chip">pending</span>
+                      </div>
+                      <div class="state-row">
+                        <strong>health-check</strong>
+                        <span class="chip">pending</span>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+
+                <article class="wizard-card">
+                  <header class="wizard-card-head">
+                    <h3>执行日志</h3>
+                    <p>终端输出示例（自动滚动）。</p>
+                  </header>
+                  <div class="wizard-card-body">
+                    <div class="terminal-block" role="region" aria-label="deploy logs">
+                      <div class="terminal-head" aria-hidden="true">
+                        <span class="terminal-dot red"></span>
+                        <span class="terminal-dot yellow"></span>
+                        <span class="terminal-dot green"></span>
+                      </div>
+                      <pre class="terminal-body">TASK [relay] Pull image ghcr.io/blinklabs-io/cardano-node:10.5.4-1 ... ok
+TASK [relay] Restart container cardano-node ... changed
+TASK [relay] Wait for /opt/cardano/ipc/node.socket ... ok
+TASK [relay] cardano-cli query tip ... ok
+TASK [bp] Pull image ghcr.io/blinklabs-io/cardano-node:10.5.4-1 ... running
+...
+</pre>
+                    </div>
+
+                    <div class="nonblocking-hint">部署完成后，主按钮会切换为“进入 Dashboard”。失败时保留“查看失败日志”与“重试部署”。</div>
+                  </div>
+                </article>
+              </div>
+
+              <footer class="action-bar">
+                <a class="btn" href="./onboarding.html">取消</a>
+                <div class="action-bar-right">
+                  <button type="button" class="btn">查看失败日志</button>
+                  <a class="btn primary" href="./index.html">进入 Dashboard</a>
+                </div>
+              </footer>
+            </section>
+          </main>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

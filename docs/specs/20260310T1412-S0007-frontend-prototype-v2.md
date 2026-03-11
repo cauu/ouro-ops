@@ -374,3 +374,60 @@ Spec-ID: S0007
 
 ### 17.5 Change Request Delta
 - 2026-03-11 00:43 +0800 需求新增：Deployment Wizard Step1 支持动态添加 Relay（>=1），并完成 Step2 与 Step3 的设计。
+
+## 14. Addendum (append-only)
+### 14.1 Execution Plan Delta
+- [x] p7-17 将 Deployment Wizard 重构为 4 个独立视图（单步聚焦）并统一底部 Action Bar
+
+### 14.2 Acceptance Delta
+- TC-40 Deploy 流程拆分为 4 个独立页面，任一页面仅展示当前步骤详细内容。
+- TC-41 顶部仅保留轻量水平 stepper，状态包含 completed/current/upcoming。
+- TC-42 四个步骤页均具备固定底部 Action Bar：左侧 `取消`，右侧 `上一步/下一步(或确认)`；Step 4 不提供 `上一步`。
+- TC-43 Step 1 支持 Relay 动态增减视觉与 `>=1` 约束表达。
+- TC-44 Step 2/Step 3 分别完成参数配置与只读确认视图设计，字段覆盖节点配置与部署关键参数。
+- TC-45 原型说明同步更新，明确 Deploy 已拆分为四个独立视图。
+
+### 14.3 Execution Log Delta
+- 2026-03-11 10:45 +0800 p7-17 started: 依据 4 视图向导要求重构 deploy 页面结构。
+- 2026-03-11 11:03 +0800 p7-17 completed: 完成 deploy step1~step4 独立页面、动作栏统一与文档同步。
+
+### 14.4 Validation Evidence Delta
+- TC-40 | stack: ui | command: test -f prototype/s0007/deploy.html && test -f prototype/s0007/deploy-step2.html && test -f prototype/s0007/deploy-step3.html && test -f prototype/s0007/deploy-step4.html | result: pass | note: Deploy 4 个独立步骤视图均存在
+- TC-41 | stack: ui | command: rg -n "wizard-stepline|pill-step done|pill-step current" prototype/s0007/deploy*.html | result: pass | note: 四个步骤页均使用顶部轻量 stepper 并带状态
+- TC-42 | stack: ui | command: rg -n "action-bar|取消|上一步|下一步|确认并部署|进入 Dashboard" prototype/s0007/deploy*.html | result: pass | note: 底部动作栏结构完整，Step4 无上一步按钮
+- TC-43 | stack: ui | command: rg -n "Relay Nodes|\+ Add Relay|− Remove|required" prototype/s0007/deploy.html | result: pass | note: Step1 明确支持 Relay 动态增减和最小一台约束
+- TC-44 | stack: ui | command: rg -n "Image & Network|Runtime Options|节点配置摘要|部署参数摘要" prototype/s0007/deploy-step2.html prototype/s0007/deploy-step3.html | result: pass | note: Step2/Step3 关键字段与确认视图完整
+- TC-45 | stack: ui | command: rg -n "deploy-step2.html|deploy-step3.html|deploy-step4.html|Deploy Wizard is split into 4 independent views" prototype/s0007/README.md | result: pass | note: 原型说明已同步
+
+### 14.5 Change Request Delta
+- 2026-03-11 10:45 +0800 需求新增：Deployment Wizard 必须改为 4 个独立视图，且固定底部动作栏与单步聚焦交互。
+
+## 18. Addendum (append-only)
+### 18.1 Correction Note
+- 2026-03-11 11:08 +0800 记录纠偏：上一追加段落误复用历史编号（p7-17 / TC-40..45）。本次交付以 `p7-21` 与 `TC-61..66` 为唯一追踪编号。
+
+### 18.2 Execution Plan Delta
+- [x] p7-21 将 Deployment Wizard 重构为 4 个独立视图（单步聚焦）并统一底部 Action Bar
+
+### 18.3 Acceptance Delta
+- TC-61 Deploy 流程拆分为 4 个独立页面，任一页面仅展示当前步骤详细内容。
+- TC-62 顶部仅保留轻量水平 stepper，状态包含 completed/current/upcoming。
+- TC-63 四个步骤页均具备固定底部 Action Bar：左侧 `取消`，右侧 `上一步/下一步(或确认)`；Step 4 不提供 `上一步`。
+- TC-64 Step 1 支持 Relay 动态增减视觉与 `>=1` 约束表达。
+- TC-65 Step 2/Step 3 分别完成参数配置与只读确认视图设计，字段覆盖节点配置与部署关键参数。
+- TC-66 原型说明同步更新，明确 Deploy 已拆分为四个独立视图。
+
+### 18.4 Execution Log Delta
+- 2026-03-11 10:45 +0800 p7-21 started: 依据 4 视图向导要求重构 deploy 页面结构。
+- 2026-03-11 11:03 +0800 p7-21 completed: 完成 deploy step1~step4 独立页面、动作栏统一与文档同步。
+
+### 18.5 Validation Evidence Delta
+- TC-61 | stack: ui | command: test -f prototype/s0007/deploy.html && test -f prototype/s0007/deploy-step2.html && test -f prototype/s0007/deploy-step3.html && test -f prototype/s0007/deploy-step4.html | result: pass | note: Deploy 4 个独立步骤视图均存在
+- TC-62 | stack: ui | command: rg -n "wizard-stepline|pill-step done|pill-step current" prototype/s0007/deploy*.html | result: pass | note: 四个步骤页均使用顶部轻量 stepper 并带状态
+- TC-63 | stack: ui | command: rg -n "action-bar|取消|上一步|下一步|确认并部署|进入 Dashboard" prototype/s0007/deploy*.html | result: pass | note: 底部动作栏结构完整，Step4 无上一步按钮
+- TC-64 | stack: ui | command: rg -n "Relay Nodes|\+ Add Relay|− Remove|required" prototype/s0007/deploy.html | result: pass | note: Step1 明确支持 Relay 动态增减和最小一台约束
+- TC-65 | stack: ui | command: rg -n "Image & Network|Runtime Options|节点配置摘要|部署参数摘要" prototype/s0007/deploy-step2.html prototype/s0007/deploy-step3.html | result: pass | note: Step2/Step3 关键字段与确认视图完整
+- TC-66 | stack: ui | command: rg -n "deploy-step2.html|deploy-step3.html|deploy-step4.html|Deploy Wizard is split into 4 independent views" prototype/s0007/README.md | result: pass | note: 原型说明已同步
+
+### 18.6 Change Request Delta
+- 2026-03-11 10:45 +0800 需求新增：Deployment Wizard 必须改为 4 个独立视图，且固定底部动作栏与单步聚焦交互。

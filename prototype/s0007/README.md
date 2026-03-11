@@ -4,9 +4,12 @@ Pure HTML prototype with five core pages:
 
 1. `onboarding.html`
 2. `index.html` (dashboard)
-3. `deploy.html`
-4. `kes-rotate.html`
-5. `upgrade-image.html`
+3. `deploy.html` (Deployment Wizard Step 1)
+4. `deploy-step2.html`
+5. `deploy-step3.html`
+6. `deploy-step4.html`
+7. `kes-rotate.html`
+8. `upgrade-image.html`
 
 Design direction:
 
@@ -14,6 +17,7 @@ Design direction:
 - professional, restrained, minimal
 - light-only, Cardano blue as subtle accent
 - single-step focused wizard for Deploy / KES Rotate / Upgrade
+- Deploy Wizard is split into 4 independent views with fixed action bar
 - startup flow: lightweight Welcome Window -> immersive Deploy Wizard (no sidebar)
 
 Notes:

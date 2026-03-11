@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ouro Ops Prototype - Deployment Wizard Step 3</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主内容</a>
+    <div class="window-shell">
+      <div class="window wizard-window">
+        <header class="titlebar">
+          <div class="titlebar-leading">
+            <div class="traffic-lights" aria-hidden="true">
+              <span class="light red"></span>
+              <span class="light yellow"></span>
+              <span class="light green"></span>
+            </div>
+            <a class="btn ghost" href="./deploy-step2.html">返回 Step 2</a>
+          </div>
+          <h1 class="window-title">Deployment Wizard</h1>
+          <div class="toolbar">
+            <button class="toolbar-chip" type="button">Step 3 / 4</button>
+          </div>
+        </header>
+
+        <div class="workspace focused-workspace">
+          <main id="main-content" class="content focused-content">
+            <section class="wizard-page" aria-label="deployment wizard step 3">
+              <header class="wizard-stage-head">
+                <h2 class="page-title">Step 3 · 配置确认</h2>
+                <p class="page-subtitle">部署前最终确认。仅展示只读摘要，不再编辑参数。</p>
+                <div class="wizard-stepline" aria-label="wizard progress">
+                  <span class="pill-step done">1 节点配置</span>
+                  <span class="dot" aria-hidden="true"></span>
+                  <span class="pill-step done">2 参数设置</span>
+                  <span class="dot" aria-hidden="true"></span>
+                  <span class="pill-step current">3 配置确认</span>
+                  <span class="dot" aria-hidden="true"></span>
+                  <span class="pill-step">4 执行部署</span>
+                </div>
+              </header>
+
+              <div class="wizard-scroll">
+                <article class="wizard-card">
+                  <header class="wizard-card-head">
+                    <h3>节点配置摘要</h3>
+                    <p>来源于 Step 1。</p>
+                  </header>
+                  <div class="wizard-card-body">
+                    <div class="table-wrap">
+                      <table class="data-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">Key</th>
+                            <th scope="col">Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>BP Host</td>
+                            <td>31.220.95.72 · ubuntu · ~/.ssh/bp_mainnet</td>
+                          </tr>
+                          <tr>
+                            <td>Relay Hosts</td>
+                            <td>84.247.139.72, 54.38.37.36</td>
+                          </tr>
+                          <tr>
+                            <td>Login Method</td>
+                            <td>SSH (fixed)</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </article>
+
+                <article class="wizard-card">
+                  <header class="wizard-card-head">
+                    <h3>部署参数摘要</h3>
+                    <p>来源于 Step 2。</p>
+                  </header>
+                  <div class="wizard-card-body">
+                    <div class="table-wrap">
+                      <table class="data-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">Parameter</th>
+                            <th scope="col">Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>Network</td>
+                            <td>mainnet</td>
+                          </tr>
+                          <tr>
+                            <td>Image</td>
+                            <td>ghcr.io/blinklabs-io/cardano-node:10.5.4-1</td>
+                          </tr>
+                          <tr>
+                            <td>Swap</td>
+                            <td>enabled, 8GB</td>
+                          </tr>
+                          <tr>
+                            <td>Default Options</td>
+                            <td>chrony/hardening/takeover/restore_snapshot_bp/restore_snapshot_relay = true</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div class="guard-alert" style="margin-top: 12px">
+                      即将执行真实部署。该操作将变更远端容器与节点配置，请确认网络、机器和私钥路径均正确。
+                    </div>
+                  </div>
+                </article>
+              </div>
+
+              <footer class="action-bar">
+                <a class="btn" href="./onboarding.html">取消</a>
+                <div class="action-bar-right">
+                  <a class="btn" href="./deploy-step2.html">上一步</a>
+                  <a class="btn primary" href="./deploy-step4.html">确认并部署</a>
+                </div>
+              </footer>
+            </section>
+          </main>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

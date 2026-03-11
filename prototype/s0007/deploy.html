@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Ouro Ops Prototype - Immersive Deploy Wizard</title>
+    <title>Ouro Ops Prototype - Deployment Wizard Step 1</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -19,59 +19,110 @@
             </div>
             <a class="btn ghost" href="./onboarding.html">返回欢迎页</a>
           </div>
-          <h1 class="window-title">Deployment Wizard · Immersive</h1>
+          <h1 class="window-title">Deployment Wizard</h1>
           <div class="toolbar">
-            <button class="toolbar-chip" type="button">Step 1 / 3</button>
+            <button class="toolbar-chip" type="button">Step 1 / 4</button>
           </div>
         </header>
 
         <div class="workspace focused-workspace">
           <main id="main-content" class="content focused-content">
-            <section class="wizard-shell wide" aria-label="deploy wizard step">
-              <h2 class="page-title">Deployment Wizard</h2>
-              <p class="page-subtitle">当前步骤：添加机器</p>
-              <div class="step-inline" aria-label="deploy steps compact">
-                <span class="mini current">Step 1 添加机器</span>
-                <span class="mini">Step 2 部署参数</span>
-                <span class="mini">Step 3 执行与校验</span>
-              </div>
+            <section class="wizard-page" aria-label="deployment wizard step 1">
+              <header class="wizard-stage-head">
+                <h2 class="page-title">Step 1 · 节点配置</h2>
+                <p class="page-subtitle">配置 1 台 BP 和至少 1 台 Relay。当前视图只包含节点配置，不展示其他步骤详情。</p>
+                <div class="wizard-stepline" aria-label="wizard progress">
+                  <span class="pill-step current">1 节点配置</span>
+                  <span class="dot" aria-hidden="true"></span>
+                  <span class="pill-step">2 参数设置</span>
+                  <span class="dot" aria-hidden="true"></span>
+                  <span class="pill-step">3 配置确认</span>
+                  <span class="dot" aria-hidden="true"></span>
+                  <span class="pill-step">4 执行部署</span>
+                </div>
+              </header>
 
-              <div class="stacked-sections">
-                <section class="section core-card">
-                  <header class="section-header">
-                    <div>
-                      <h3 class="section-title">Step 1 · 添加 BP 与 Relay 机器</h3>
-                      <p class="section-meta">支持动态添加 Relay，最少保留 1 台。</p>
-                    </div>
+              <div class="wizard-scroll">
+                <article class="wizard-card">
+                  <header class="wizard-card-head">
+                    <h3>BP 设置</h3>
+                    <p>登录方式当前固定为 SSH。</p>
                   </header>
-                  <div class="section-body">
-                    <div class="form-grid" role="group" aria-label="machine setup form">
-                      <div class="form-row">
-                        <div class="form-label">BP Host</div>
-                        <div class="form-value">31.220.95.72 · ubuntu · ~/.ssh/ouro_bp</div>
+                  <div class="wizard-card-body">
+                    <div class="control-grid">
+                      <div class="control-row">
+                        <label class="control-label" for="bp-ip">
+                          <strong>BP IP Address</strong>
+                          <span>公网 IP 或内网可达地址</span>
+                        </label>
+                        <div class="control-input">
+                          <input id="bp-ip" type="text" value="31.220.95.72" aria-label="BP IP Address" />
+                        </div>
+                      </div>
+
+                      <div class="control-row">
+                        <div class="control-label">
+                          <strong>Login Method</strong>
+                          <span>固定模式，不可切换</span>
+                        </div>
+                        <div class="control-input muted">SSH (fixed)</div>
+                      </div>
+
+                      <div class="control-row">
+                        <label class="control-label" for="bp-user">
+                          <strong>SSH Username</strong>
+                          <span>用于远端机器登录</span>
+                        </label>
+                        <div class="control-input">
+                          <input id="bp-user" type="text" value="ubuntu" aria-label="BP SSH Username" />
+                        </div>
+                      </div>
+
+                      <div class="control-row">
+                        <div class="control-label">
+                          <strong>Private Key</strong>
+                          <span>使用系统文件选择器选择私钥</span>
+                        </div>
+                        <div class="control-input with-end">
+                          <span>~/.ssh/bp_mainnet</span>
+                          <button type="button" class="btn tiny">Choose File…</button>
+                        </div>
                       </div>
                     </div>
+                  </div>
+                </article>
 
+                <article class="wizard-card">
+                  <header class="wizard-card-head">
+                    <h3>Relay 设置</h3>
+                    <p>至少保留 1 台 Relay，支持动态增减。</p>
+                  </header>
+                  <div class="wizard-card-body">
                     <div class="relay-panel" aria-label="relay machine list">
                       <div class="relay-head">
-                        <strong>Relay Machines (>=1)</strong>
-                        <button type="button" class="btn tiny">+ 添加 Relay</button>
+                        <strong>Relay Nodes</strong>
+                        <div class="action-group">
+                          <button type="button" class="btn tiny">− Remove</button>
+                          <button type="button" class="btn tiny">+ Add Relay</button>
+                        </div>
                       </div>
+
                       <div class="relay-list">
                         <article class="relay-row">
                           <div class="relay-info">
-                            <strong>Relay #1</strong>
-                            <span>84.247.139.72 · ubuntu · ~/.ssh/ouro_relay_1</span>
+                            <strong>Relay #1 (required)</strong>
+                            <span>IP: 84.247.139.72 · User: ubuntu · Key: ~/.ssh/relay_mainnet_1</span>
                           </div>
                           <div class="relay-actions">
                             <span class="chip ok">required</span>
                             <button type="button" class="btn tiny" disabled>移除</button>
                           </div>
                         </article>
+
                         <article class="relay-row">
                           <div class="relay-info">
                             <strong>Relay #2</strong>
-                            <span>Not configured</span>
+                            <span>IP: 54.38.37.36 · User: ubuntu · Key: ~/.ssh/relay_mainnet_2</span>
                           </div>
                           <div class="relay-actions">
                             <span class="chip">optional</span>
@@ -81,114 +132,18 @@
                       </div>
                     </div>
 
-                    <div class="form-grid" style="margin-top: 10px">
-                      <div class="form-row">
-                        <div class="form-label">SSH Validation</div>
-                        <div class="form-value">Ready · sudo + docker capability checked</div>
-                      </div>
-                    </div>
-
-                    <div class="action-row">
-                      <span class="inline-note">继续后进入 Step 2。</span>
-                      <div class="action-group">
-                        <button type="button" class="btn">导入机器清单</button>
-                        <button type="button" class="btn">取消部署</button>
-                        <button type="button" class="btn primary">继续</button>
-                      </div>
-                    </div>
+                    <p class="control-note" style="margin-top: 10px">建议在进入下一步前完成 SSH 连通性与 sudo 能力预检查。</p>
                   </div>
-                </section>
-
-                <section class="section">
-                  <header class="section-header">
-                    <div>
-                      <h3 class="section-title">Step 2 · 部署参数</h3>
-                      <p class="section-meta">确认网络、镜像与策略参数。</p>
-                    </div>
-                  </header>
-                  <div class="section-body">
-                    <div class="form-grid" role="group" aria-label="deploy parameters form">
-                      <div class="form-row">
-                        <div class="form-label">Network</div>
-                        <div class="form-value">mainnet</div>
-                      </div>
-                      <div class="form-row">
-                        <div class="form-label">Image Registry</div>
-                        <div class="form-value">ghcr.io/blinklabs-io/cardano-node</div>
-                      </div>
-                      <div class="form-row">
-                        <div class="form-label">Image Tag</div>
-                        <div class="form-value">10.5.4-1</div>
-                      </div>
-                      <div class="form-row">
-                        <div class="form-label">Relay restore_snapshot</div>
-                        <div class="form-value">true</div>
-                      </div>
-                      <div class="form-row">
-                        <div class="form-label">BP restore_snapshot</div>
-                        <div class="form-value">false</div>
-                      </div>
-                    </div>
-                    <div class="action-row">
-                      <span class="inline-note">确认后进入 Step 3 执行部署。</span>
-                      <div class="action-group">
-                        <button type="button" class="btn">上一步</button>
-                        <button type="button" class="btn">保存草稿</button>
-                        <button type="button" class="btn primary">确认参数</button>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                <section class="section">
-                  <header class="section-header">
-                    <div>
-                      <h3 class="section-title">Step 3 · 执行与校验</h3>
-                      <p class="section-meta">执行部署、观察进度并完成健康检查。</p>
-                    </div>
-                  </header>
-                  <div class="section-body">
-                    <div class="loading-row" aria-live="polite">
-                      <span class="spinner" aria-hidden="true"></span>
-                      <span class="inline-note">Deploying: relay -> bp，正在等待 socket 与端口检查。</span>
-                    </div>
-
-                    <div class="flow-state" aria-label="deploy runtime state">
-                      <div class="state-row">
-                        <strong>inventory render</strong>
-                        <span>done</span>
-                      </div>
-                      <div class="state-row">
-                        <strong>relay rollout</strong>
-                        <span>running</span>
-                      </div>
-                      <div class="state-row">
-                        <strong>bp rollout</strong>
-                        <span>pending</span>
-                      </div>
-                      <div class="state-row">
-                        <strong>health check</strong>
-                        <span>pending</span>
-                      </div>
-                    </div>
-
-                    <div class="guard-alert">
-                      若用户尝试关闭窗口或取消部署，弹出原生确认框：
-                      “部署尚未完成。现在退出会中断当前流程。是否仍要退出？”
-                      按钮：`继续部署`（默认） / `退出部署`（危险）。
-                    </div>
-
-                    <div class="action-row">
-                      <span class="inline-note">健康检查通过后可进入 Dashboard。</span>
-                      <div class="action-group">
-                        <button type="button" class="btn">查看日志</button>
-                        <button type="button" class="btn">取消部署</button>
-                        <button type="button" class="btn primary">完成并进入 Dashboard</button>
-                      </div>
-                    </div>
-                  </div>
-                </section>
+                </article>
               </div>
+
+              <footer class="action-bar">
+                <a class="btn" href="./onboarding.html">取消</a>
+                <div class="action-bar-right">
+                  <button type="button" class="btn" disabled>上一步</button>
+                  <a class="btn primary" href="./deploy-step2.html">下一步</a>
+                </div>
+              </footer>
             </section>
           </main>
         </div>
