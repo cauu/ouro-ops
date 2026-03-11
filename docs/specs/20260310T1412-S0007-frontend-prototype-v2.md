@@ -454,3 +454,31 @@ Spec-ID: S0007
 
 ### 19.5 Change Request Delta
 - 2026-03-12 00:04 +0800 需求新增：顶层集群概览需展示当前 BP/Relay 实际同步 Epoch 与进度。
+
+## 20. Addendum (append-only)
+### 20.1 Execution Plan Delta
+- [x] p7-23 重构 Dashboard 常态监控结构：移除 Onboard 菜单、增加节点 Tabs 详情与近期操作日志
+
+### 20.2 Acceptance Delta
+- TC-71 Sidebar 在已部署态隐藏 Onboard 菜单，保留 Dashboard 与高频运维入口。
+- TC-72 Dashboard 主视图重构为三段：顶部集群概览、中部节点 Tabs 详情、底部近期操作日志。
+- TC-73 节点详情区提供 BP/Relay Tabs（分段控件风格）与资源/连接可视化。
+- TC-74 近期操作日志以审计列表展示时间、操作类型、目标节点、状态、详情。
+- TC-75 顶层继续保留 BP/Relay 的 Epoch 与 Sync 进度，同时展示 KES 高危提示与 CTA。
+- TC-76 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 20.3 Execution Log Delta
+- 2026-03-12 00:10 +0800 p7-23 started: 按反馈补齐 Dashboard 其余模块改造。
+- 2026-03-12 00:15 +0800 p7-23 completed: 完成 Sidebar、节点详情 Tabs、审计日志与顶层告警协同改造。
+
+### 20.4 Validation Evidence Delta
+- TC-71 | stack: ui | command: rg -n "Onboarding|Deploy" prototype/s0007/index.html || true | result: pass | note: Sidebar 已无 Onboard 菜单，Deploy 未作为常态菜单展示
+- TC-71 | stack: ui | command: rg -n "Dashboard|Nodes|KES Rotate|Upgrade|Pool|Activity|Settings" prototype/s0007/index.html | result: pass | note: 高/中频运维菜单结构已替换
+- TC-72 | stack: ui | command: rg -n "集群概览|节点详情|近期操作日志" prototype/s0007/index.html | result: pass | note: 主区三段结构齐全
+- TC-73 | stack: ui | command: rg -n "tab-segment|seg-btn|node-details-grid|sparkline|dist-list" prototype/s0007/index.html prototype/s0007/styles.css | result: pass | note: Tabs 与资源/连接可视化样式到位
+- TC-74 | stack: ui | command: rg -n "audit-table|时间|操作|目标|状态|详情" prototype/s0007/index.html prototype/s0007/styles.css | result: pass | note: 审计日志表格结构完整
+- TC-75 | stack: ui | command: rg -n "Cluster Epoch|KES Risk|remain 3|立即 Rotate|Epoch|Sync" prototype/s0007/index.html | result: pass | note: 顶层同步与 KES 高危信息同时可见
+- TC-76 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: 保持纯静态原型
+
+### 20.5 Change Request Delta
+- 2026-03-12 00:10 +0800 需求新增：除顶层概览外，Dashboard 其余部分也需按 macOS 监控场景完成重构。

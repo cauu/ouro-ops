@@ -25,7 +25,7 @@
               <span aria-hidden="true">⌕</span>
               <input id="search-dashboard" type="search" placeholder="搜索节点、任务或Pool" />
             </label>
-            <button class="toolbar-chip" type="button">Inspector</button>
+            <button class="toolbar-chip warn" type="button">KES remain 3</button>
           </div>
         </header>
 
@@ -41,33 +41,39 @@
 
             <div class="nav-group">
               <p class="group-title">Workspace</p>
-              <a class="nav-item" href="./onboarding.html"><span class="nav-symbol" aria-hidden="true">◎</span>Onboarding</a>
               <a class="nav-item active" aria-current="page" href="./index.html"><span class="nav-symbol" aria-hidden="true">⌂</span>Dashboard</a>
+              <a class="nav-item" href="#"><span class="nav-symbol" aria-hidden="true">▦</span>Nodes</a>
             </div>
 
             <div class="nav-group">
               <p class="group-title">Operations</p>
-              <a class="nav-item" href="./deploy.html"><span class="nav-symbol" aria-hidden="true">↗</span>Deploy</a>
               <a class="nav-item" href="./kes-rotate.html"><span class="nav-symbol" aria-hidden="true">↻</span>KES Rotate</a>
               <a class="nav-item" href="./upgrade-image.html"><span class="nav-symbol" aria-hidden="true">⬆</span>Upgrade</a>
+              <a class="nav-item" href="#"><span class="nav-symbol" aria-hidden="true">◍</span>Pool</a>
+            </div>
+
+            <div class="nav-group">
+              <p class="group-title">Audit</p>
+              <a class="nav-item" href="#"><span class="nav-symbol" aria-hidden="true">🕘</span>Activity</a>
+              <a class="nav-item" href="#"><span class="nav-symbol" aria-hidden="true">⚙</span>Settings</a>
             </div>
 
             <div class="sidebar-note">
-              Dashboard 负责聚合：
-              <br />运行健康、待处理动作、Pool 状态。
+              监控阶段默认隐藏 Onboard。
+              <br />如需重新部署，可从 Settings 进入。
             </div>
           </aside>
 
           <main id="main-content" class="content">
-            <h2 class="page-title">运行看板</h2>
-            <p class="page-subtitle">同一屏幕完成状态读取与关键动作跳转，避免“先找入口再执行”。</p>
+            <h2 class="page-title">集群看板</h2>
+            <p class="page-subtitle">先看风险，再看节点细节，最后追溯操作历史。</p>
 
-            <div class="layout-grid">
+            <div class="layout-grid dashboard-grid">
               <section class="section">
                 <header class="section-header">
                   <div>
-                    <h3 class="section-title">集群总览（BP + Relays）</h3>
-                    <p class="section-meta">优先显示同步一致性、Epoch 漂移与 KES 风险。</p>
+                    <h3 class="section-title">集群概览（BP + Relays）</h3>
+                    <p class="section-meta">顶层展示 Epoch、同步差异和 KES 高危信号。</p>
                   </div>
                 </header>
                 <div class="section-body">
@@ -84,9 +90,9 @@
                       <span>Slowest Node</span>
                       <strong>BP · 98.41%</strong>
                     </article>
-                    <article class="summary-pill">
-                      <span>KES Remain</span>
-                      <strong>3（高危）</strong>
+                    <article class="summary-pill danger">
+                      <span>KES Risk</span>
+                      <strong>period 428 · remain 3</strong>
                     </article>
                   </div>
 
@@ -109,6 +115,9 @@
                         <span style="width: 98.41%"></span>
                       </div>
                       <p class="node-meta mono">tip diff: -1842 blocks</p>
+                      <div class="action-row compact-row">
+                        <a class="btn tiny primary" href="./kes-rotate.html">立即 Rotate</a>
+                      </div>
                     </article>
 
                     <article class="node-card">
@@ -157,42 +166,73 @@
               <section class="section">
                 <header class="section-header">
                   <div>
-                    <h3 class="section-title">待处理动作</h3>
-                    <p class="section-meta">按风险和执行顺序排列，不展示无关配置项。</p>
+                    <h3 class="section-title">节点详情</h3>
+                    <p class="section-meta">Tab 切换 BP / Relay，查看资源、连接与传播延迟。</p>
                   </div>
                 </header>
                 <div class="section-body">
-                  <div class="activity-list">
-                    <article class="activity-item">
-                      <div>
-                        <strong>更新 Pool 链上参数</strong>
-                        <p class="item-meta">检测到链上 metadata 与本地配置存在差异。</p>
-                      </div>
-                      <span class="chip danger">high</span>
-                    </article>
-                    <article class="activity-item">
-                      <div>
-                        <strong>KES Rotate 预准备</strong>
-                        <p class="item-meta">建议在窗口剩余 10 天前完成证书轮换。</p>
-                      </div>
-                      <span class="chip warn">planned</span>
-                    </article>
-                    <article class="activity-item">
-                      <div>
-                        <strong>镜像升级检查</strong>
-                        <p class="item-meta">发现可升级版本，建议先 relay 后 bp。</p>
-                      </div>
-                      <span class="chip ok">ready</span>
-                    </article>
+                  <div class="tab-segment" role="tablist" aria-label="node tabs">
+                    <button class="seg-btn active" role="tab" aria-selected="true">BP</button>
+                    <button class="seg-btn" role="tab" aria-selected="false">Relay 1</button>
+                    <button class="seg-btn" role="tab" aria-selected="false">Relay 2</button>
                   </div>
 
-                  <div class="action-row">
-                    <span class="inline-note">执行链路：Deploy -> Pool -> KES -> Upgrade。</span>
-                    <div class="action-group">
-                      <a class="btn" href="./deploy.html">Deploy</a>
-                      <a class="btn" href="./kes-rotate.html">KES Rotate</a>
-                      <a class="btn primary" href="./upgrade-image.html">Upgrade</a>
-                    </div>
+                  <div class="node-details-grid">
+                    <article class="detail-card">
+                      <h4>Resources</h4>
+                      <div class="metric-row">
+                        <span>CPU</span>
+                        <strong class="mono-num">42.8%</strong>
+                      </div>
+                      <div class="sparkline" aria-hidden="true">
+                        <span style="height: 30%"></span><span style="height: 45%"></span><span style="height: 38%"></span><span style="height: 54%"></span><span style="height: 48%"></span><span style="height: 62%"></span><span style="height: 50%"></span><span style="height: 58%"></span>
+                      </div>
+
+                      <div class="metric-row" style="margin-top: 10px">
+                        <span>Memory</span>
+                        <strong class="mono-num">68.2%</strong>
+                      </div>
+                      <div class="sparkline" aria-hidden="true">
+                        <span style="height: 56%"></span><span style="height: 60%"></span><span style="height: 66%"></span><span style="height: 64%"></span><span style="height: 70%"></span><span style="height: 68%"></span><span style="height: 72%"></span><span style="height: 69%"></span>
+                      </div>
+
+                      <p class="node-meta mono" style="margin-top: 10px">block: 112,904,332 · slot: 181,312,980</p>
+                    </article>
+
+                    <article class="detail-card">
+                      <h4>Connections & Peers</h4>
+                      <div class="metric-row">
+                        <span>Peers</span>
+                        <strong class="mono-num">27 / 32</strong>
+                      </div>
+                      <div class="metric-row">
+                        <span>Within 1s</span>
+                        <strong class="mono-num">97.06%</strong>
+                      </div>
+
+                      <div class="dist-list">
+                        <div class="dist-row">
+                          <span>0-50ms</span>
+                          <div class="dist-track"><span class="dist-fill" style="width: 58%"></span></div>
+                          <strong class="mono-num">58%</strong>
+                        </div>
+                        <div class="dist-row">
+                          <span>50-100ms</span>
+                          <div class="dist-track"><span class="dist-fill" style="width: 24%"></span></div>
+                          <strong class="mono-num">24%</strong>
+                        </div>
+                        <div class="dist-row">
+                          <span>100-500ms</span>
+                          <div class="dist-track"><span class="dist-fill" style="width: 15%"></span></div>
+                          <strong class="mono-num">15%</strong>
+                        </div>
+                        <div class="dist-row">
+                          <span>&gt;1s</span>
+                          <div class="dist-track"><span class="dist-fill danger" style="width: 3%"></span></div>
+                          <strong class="mono-num">3%</strong>
+                        </div>
+                      </div>
+                    </article>
                   </div>
                 </div>
               </section>
@@ -200,39 +240,50 @@
               <section class="section">
                 <header class="section-header">
                   <div>
-                    <h3 class="section-title">静默刷新策略</h3>
-                    <p class="section-meta">每次进入 Dashboard 后后台刷新关键数据。</p>
+                    <h3 class="section-title">近期操作日志</h3>
+                    <p class="section-meta">审计用户动作：时间、类型、目标节点、结果与详情。</p>
                   </div>
                 </header>
                 <div class="section-body">
                   <div class="table-wrap">
-                    <table class="data-table">
+                    <table class="data-table audit-table">
                       <thead>
                         <tr>
-                          <th scope="col">数据域</th>
-                          <th scope="col">来源</th>
-                          <th scope="col">频率</th>
-                          <th scope="col">展示区域</th>
+                          <th scope="col">时间</th>
+                          <th scope="col">操作</th>
+                          <th scope="col">目标</th>
+                          <th scope="col">状态</th>
+                          <th scope="col">详情</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr>
-                          <td>Node Runtime</td>
-                          <td>runtime probe</td>
-                          <td>30s</td>
-                          <td>节点总览</td>
+                          <td class="mono-num">2026-03-12 00:01</td>
+                          <td>KES Rotate Prepare</td>
+                          <td>BP</td>
+                          <td><span class="chip ok">success</span></td>
+                          <td>generated kes.vkey / kes.skey</td>
                         </tr>
                         <tr>
-                          <td>Pool On-chain</td>
-                          <td>cardano-cli query</td>
-                          <td>进入页面</td>
-                          <td>待处理动作</td>
+                          <td class="mono-num">2026-03-11 22:49</td>
+                          <td>Apply Runtime Config</td>
+                          <td>Relay-1</td>
+                          <td><span class="chip ok">success</span></td>
+                          <td>topology updated and restarted</td>
                         </tr>
                         <tr>
-                          <td>Task Progress</td>
-                          <td>local tasks</td>
-                          <td>实时</td>
-                          <td>Inspector</td>
+                          <td class="mono-num">2026-03-11 21:10</td>
+                          <td>Upgrade Image</td>
+                          <td>Relay-2</td>
+                          <td><span class="chip warn">partial</span></td>
+                          <td>health-check retry 2 times</td>
+                        </tr>
+                        <tr>
+                          <td class="mono-num">2026-03-11 20:36</td>
+                          <td>Bind Pool ID</td>
+                          <td>Cluster</td>
+                          <td><span class="chip ok">success</span></td>
+                          <td>metadata ticker synced</td>
                         </tr>
                       </tbody>
                     </table>
@@ -245,29 +296,28 @@
           <aside class="inspector" aria-label="右侧检查器">
             <section class="inspector-block">
               <header class="inspector-head">
-                <h3>任务摘要</h3>
-                <p>Recent</p>
+                <h3>高危提醒</h3>
+                <p>Now</p>
               </header>
               <div class="inspector-body">
                 <ul class="mini-list">
-                  <li><strong>Deploy Task</strong><span>completed 1h ago</span></li>
-                  <li><strong>Pool Sync</strong><span>metadata matched</span></li>
-                  <li><strong>Upgrade Task</strong><span>pending confirm</span></li>
+                  <li><strong>KES remain</strong><span>3 (rotate today)</span></li>
+                  <li><strong>BP drift</strong><span>lagging 1 epoch</span></li>
+                  <li><strong>Relay quorum</strong><span>2 / 2 healthy</span></li>
                 </ul>
               </div>
             </section>
 
             <section class="inspector-block">
               <header class="inspector-head">
-                <h3>机器快照</h3>
-                <p>Runtime</p>
+                <h3>快捷动作</h3>
+                <p>Ops</p>
               </header>
               <div class="inspector-body">
-                <ul class="mini-list">
-                  <li><strong>BP</strong><span>online / syncing</span></li>
-                  <li><strong>Relay-1</strong><span>online / synced</span></li>
-                  <li><strong>Relay-2</strong><span>online / synced</span></li>
-                </ul>
+                <div class="action-group">
+                  <a class="btn tiny" href="./kes-rotate.html">KES</a>
+                  <a class="btn tiny" href="./upgrade-image.html">Upgrade</a>
+                </div>
               </div>
             </section>
           </aside>
