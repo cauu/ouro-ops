@@ -349,3 +349,28 @@ Spec-ID: S0007
 
 ### 16.5 Change Request Delta
 - 2026-03-11 00:32 +0800 需求新增：去掉原型中不必要文案，并收敛 deploy 进度条视觉占比。
+
+## 17. Addendum (append-only)
+### 17.1 Execution Plan Delta
+- [x] p7-20 完成 Deployment Wizard：Step1 动态 Relay 设计（>=1）并补齐 Step2/Step3 页面设计稿
+
+### 17.2 Acceptance Delta
+- TC-56 Step1 提供动态 Relay 列表设计：支持“+ 添加 Relay”，并明确“至少 1 台 Relay”约束与移除规则。
+- TC-57 Step2（部署参数）设计完整，包含参数表单与操作区（上一步/保存草稿/确认参数）。
+- TC-58 Step3（执行与校验）设计完整，包含执行态、状态列表、中断防护与完成动作。
+- TC-59 deploy 进度提示保持紧凑，不抢占表单视觉重心。
+- TC-60 保持纯 HTML/CSS 静态原型。
+
+### 17.3 Execution Log Delta
+- 2026-03-11 00:43 +0800 p7-20 started: 按新需求补齐 deploy step1 动态 relay 设计，并完成 step2/step3 设计。
+- 2026-03-11 00:48 +0800 p7-20 completed: deploy 页面三步设计完成，样式补充 relay 列表与紧凑步骤提示。
+
+### 17.4 Validation Evidence Delta
+- TC-56 | stack: ui | command: rg -n "Relay Machines \(>=1\)|\+ 添加 Relay|required|移除" prototype/s0007/deploy.html prototype/s0007/styles.css | result: pass | note: Step1 已具备动态 relay 设计与最小约束表达
+- TC-57 | stack: ui | command: rg -n "Step 2 · 部署参数|deploy parameters form|保存草稿|确认参数" prototype/s0007/deploy.html | result: pass | note: Step2 参数区与操作区完整
+- TC-58 | stack: ui | command: rg -n "Step 3 · 执行与校验|loading-row|flow-state|guard-alert|完成并进入 Dashboard" prototype/s0007/deploy.html prototype/s0007/styles.css | result: pass | note: Step3 执行/校验/防中断与完成动作完整
+- TC-59 | stack: ui | command: rg -n "step-inline|mini current|mini done" prototype/s0007/deploy.html prototype/s0007/styles.css | result: pass | note: 进度条为紧凑单行提示
+- TC-60 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/deploy.html prototype/s0007/styles.css || true | result: pass | note: 无业务逻辑脚本
+
+### 17.5 Change Request Delta
+- 2026-03-11 00:43 +0800 需求新增：Deployment Wizard Step1 支持动态添加 Relay（>=1），并完成 Step2 与 Step3 的设计。
