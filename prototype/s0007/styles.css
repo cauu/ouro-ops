@@ -839,6 +839,32 @@ a {
   gap: 8px;
 }
 
+.step-inline {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.step-inline .mini {
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #f8f9fc;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.step-inline .mini.current {
+  border-color: rgba(35, 112, 216, 0.35);
+  background: var(--accent-soft);
+  color: #1b57b1;
+}
+
 .focused-step {
   min-height: 52px;
   border: 1px solid var(--line);

@@ -324,3 +324,28 @@ Spec-ID: S0007
 
 ### 15.5 Change Request Delta
 - 2026-03-11 00:16 +0800 需求新增：初始化采用 Welcome Window，点击开始部署后进入无侧栏沉浸式部署流程。
+
+## 16. Addendum (append-only)
+### 16.1 Execution Plan Delta
+- [x] p7-19 精简 onboarding/deploy 冗余文案，并收敛 deploy 进度条视觉占比以突出当前表单
+
+### 16.2 Acceptance Delta
+- TC-52 onboarding 页面移除非必要说明段落，保留核心引导与主次 CTA。
+- TC-53 deploy 页面去除大体量进度模块，替换为紧凑型单行步骤提示。
+- TC-54 deploy 页面视觉重心回归当前步骤输入表单区。
+- TC-55 仍保持纯 HTML/CSS 静态原型。
+
+### 16.3 Execution Log Delta
+- 2026-03-11 00:32 +0800 p7-19 started: 调整初始化与 deploy 页面文案密度与进度视觉权重。
+- 2026-03-11 00:36 +0800 p7-19 completed: onboarding 文案精简完成，deploy 进度区改为紧凑单行。
+
+### 16.4 Validation Evidence Delta
+- TC-52 | stack: ui | command: rg -n "welcome-points" prototype/s0007/onboarding.html || true | result: pass | note: 冗余说明块已移除
+- TC-52 | stack: ui | command: rg -n "开始部署|导入已有配置|直接进入 Dashboard" prototype/s0007/onboarding.html | result: pass | note: 核心引导与主次 CTA 保留
+- TC-53 | stack: ui | command: rg -n "step-inline|mini current|Step 1 添加机器" prototype/s0007/deploy.html prototype/s0007/styles.css | result: pass | note: 进度改为紧凑单行提示
+- TC-53 | stack: ui | command: rg -n "focused-steps" prototype/s0007/deploy.html || true | result: pass | note: deploy 页面已不再使用大体量步骤块
+- TC-54 | stack: ui | command: rg -n "当前步骤输入|form-grid|form-row" prototype/s0007/deploy.html | result: pass | note: 当前步骤表单仍为主内容区核心
+- TC-55 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/onboarding.html prototype/s0007/deploy.html prototype/s0007/styles.css || true | result: pass | note: 未引入脚本逻辑
+
+### 16.5 Change Request Delta
+- 2026-03-11 00:32 +0800 需求新增：去掉原型中不必要文案，并收敛 deploy 进度条视觉占比。

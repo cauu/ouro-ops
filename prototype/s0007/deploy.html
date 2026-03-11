@@ -29,41 +29,18 @@
           <main id="main-content" class="content focused-content">
             <section class="wizard-shell wide" aria-label="deploy wizard step">
               <h2 class="page-title">Step 1 · 添加 BP 与 Relay 机器</h2>
-              <p class="page-subtitle">沉浸式向导不展示侧边栏。当前仅聚焦本步骤输入，完成后进入参数确认。</p>
-
-              <section class="section">
-                <header class="section-header">
-                  <div>
-                    <h3 class="section-title">进度</h3>
-                    <p class="section-meta">使用轻量步骤提示，避免大型步骤卡占据注意力。</p>
-                  </div>
-                </header>
-                <div class="section-body">
-                  <ol class="focused-steps" aria-label="deploy steps">
-                    <li class="focused-step current" aria-current="step">
-                      <em>STEP 1</em>
-                      <strong>添加机器</strong>
-                      <span>current</span>
-                    </li>
-                    <li class="focused-step">
-                      <em>STEP 2</em>
-                      <strong>部署参数</strong>
-                      <span>upcoming</span>
-                    </li>
-                    <li class="focused-step">
-                      <em>STEP 3</em>
-                      <strong>执行与校验</strong>
-                      <span>upcoming</span>
-                    </li>
-                  </ol>
-                </div>
-              </section>
+              <p class="page-subtitle">当前仅处理机器输入。</p>
+              <div class="step-inline" aria-label="deploy steps compact">
+                <span class="mini current">Step 1 添加机器</span>
+                <span class="mini">Step 2 部署参数</span>
+                <span class="mini">Step 3 执行与校验</span>
+              </div>
 
               <section class="section core-card">
                 <header class="section-header">
                   <div>
                     <h3 class="section-title">当前步骤输入</h3>
-                    <p class="section-meta">先配置 BP，再至少添加 1 台 Relay。支持复用本地 SSH keypair。</p>
+                    <p class="section-meta">先配置 BP，再至少添加 1 台 Relay。</p>
                   </div>
                 </header>
                 <div class="section-body">
@@ -92,7 +69,7 @@
                   </div>
 
                   <div class="action-row">
-                    <span class="inline-note">点击“继续”后将进入 Step 2 参数确认界面。</span>
+                    <span class="inline-note">继续后进入 Step 2。</span>
                     <div class="action-group">
                       <button type="button" class="btn">导入机器清单</button>
                       <button type="button" class="btn">取消部署</button>
