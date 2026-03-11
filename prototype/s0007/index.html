@@ -66,16 +66,90 @@
               <section class="section">
                 <header class="section-header">
                   <div>
-                    <h3 class="section-title">节点总览</h3>
-                    <p class="section-meta">优先显示当前风险与运维节奏。</p>
+                    <h3 class="section-title">集群总览（BP + Relays）</h3>
+                    <p class="section-meta">优先显示同步一致性、Epoch 漂移与 KES 风险。</p>
                   </div>
                 </header>
                 <div class="section-body">
-                  <div class="status-grid">
-                    <article class="status-item"><span>Relay Sync</span><strong>100.00%</strong></article>
-                    <article class="status-item"><span>BP Sync</span><strong>98.41%</strong></article>
-                    <article class="status-item"><span>Pool Binding</span><strong>Bound</strong></article>
-                    <article class="status-item"><span>KES Window</span><strong>12.4 days</strong></article>
+                  <div class="cluster-summary">
+                    <article class="summary-pill">
+                      <span>Cluster Epoch</span>
+                      <strong>532</strong>
+                    </article>
+                    <article class="summary-pill warn">
+                      <span>BP vs Relay Drift</span>
+                      <strong>BP 落后 1 epoch</strong>
+                    </article>
+                    <article class="summary-pill danger">
+                      <span>Slowest Node</span>
+                      <strong>BP · 98.41%</strong>
+                    </article>
+                    <article class="summary-pill">
+                      <span>KES Remain</span>
+                      <strong>3（高危）</strong>
+                    </article>
+                  </div>
+
+                  <div class="node-matrix">
+                    <article class="node-card">
+                      <header class="node-head">
+                        <strong>BP</strong>
+                        <span class="chip danger">critical</span>
+                      </header>
+                      <p class="node-meta"><span class="state-dot danger"></span>online · uptime 9d 12h</p>
+                      <div class="node-stats">
+                        <span>Epoch</span>
+                        <strong>531</strong>
+                      </div>
+                      <div class="node-stats">
+                        <span>Sync</span>
+                        <strong>98.41%</strong>
+                      </div>
+                      <div class="progress-mini">
+                        <span style="width: 98.41%"></span>
+                      </div>
+                      <p class="node-meta mono">tip diff: -1842 blocks</p>
+                    </article>
+
+                    <article class="node-card">
+                      <header class="node-head">
+                        <strong>Relay-1</strong>
+                        <span class="chip ok">healthy</span>
+                      </header>
+                      <p class="node-meta"><span class="state-dot ok"></span>online · uptime 11d 4h</p>
+                      <div class="node-stats">
+                        <span>Epoch</span>
+                        <strong>532</strong>
+                      </div>
+                      <div class="node-stats">
+                        <span>Sync</span>
+                        <strong>100.00%</strong>
+                      </div>
+                      <div class="progress-mini">
+                        <span style="width: 100%"></span>
+                      </div>
+                      <p class="node-meta mono">tip diff: 0 blocks</p>
+                    </article>
+
+                    <article class="node-card">
+                      <header class="node-head">
+                        <strong>Relay-2</strong>
+                        <span class="chip ok">healthy</span>
+                      </header>
+                      <p class="node-meta"><span class="state-dot ok"></span>online · uptime 7d 19h</p>
+                      <div class="node-stats">
+                        <span>Epoch</span>
+                        <strong>532</strong>
+                      </div>
+                      <div class="node-stats">
+                        <span>Sync</span>
+                        <strong>99.87%</strong>
+                      </div>
+                      <div class="progress-mini">
+                        <span style="width: 99.87%"></span>
+                      </div>
+                      <p class="node-meta mono">tip diff: -9 blocks</p>
+                    </article>
                   </div>
                 </div>
               </section>

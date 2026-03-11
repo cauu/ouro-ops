@@ -431,3 +431,26 @@ Spec-ID: S0007
 
 ### 18.6 Change Request Delta
 - 2026-03-11 10:45 +0800 需求新增：Deployment Wizard 必须改为 4 个独立视图，且固定底部动作栏与单步聚焦交互。
+
+## 19. Addendum (append-only)
+### 19.1 Execution Plan Delta
+- [x] p7-22 Dashboard 顶层集群概览增加 BP/Relay 的 Epoch 与同步进度展示
+
+### 19.2 Acceptance Delta
+- TC-67 顶层集群概览新增全局同步摘要（Cluster Epoch、BP/Relay 漂移、最慢节点）。
+- TC-68 节点矩阵中每个 BP/Relay 卡片均展示 Epoch 与 Sync 进度条。
+- TC-69 BP 卡片显示高危同步与 tip diff 信息，支持一眼识别风险。
+- TC-70 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 19.3 Execution Log Delta
+- 2026-03-12 00:04 +0800 p7-22 started: 按需求补充 Dashboard 顶层 Epoch 与同步进度信息。
+- 2026-03-12 00:08 +0800 p7-22 completed: 完成集群同步摘要、节点 Epoch/Sync 卡片与样式更新。
+
+### 19.4 Validation Evidence Delta
+- TC-67 | stack: ui | command: rg -n "Cluster Epoch|BP vs Relay Drift|Slowest Node" prototype/s0007/index.html | result: pass | note: 集群同步总览字段已落地
+- TC-68 | stack: ui | command: rg -n "node-matrix|Epoch|Sync|progress-mini" prototype/s0007/index.html prototype/s0007/styles.css | result: pass | note: BP/Relay 卡片均包含 Epoch 与 Sync 进度展示
+- TC-69 | stack: ui | command: rg -n "BP · 98.41%|critical|tip diff" prototype/s0007/index.html | result: pass | note: BP 风险态与差异信息可见
+- TC-70 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: 保持纯静态原型
+
+### 19.5 Change Request Delta
+- 2026-03-12 00:04 +0800 需求新增：顶层集群概览需展示当前 BP/Relay 实际同步 Epoch 与进度。

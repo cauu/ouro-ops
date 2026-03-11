@@ -471,6 +471,128 @@ a {
   gap: 10px;
 }
 
+.cluster-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.summary-pill {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fbfcff;
+}
+
+.summary-pill span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.summary-pill strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 13px;
+  font-weight: 640;
+}
+
+.summary-pill.warn {
+  border-color: rgba(182, 121, 35, 0.32);
+  background: rgba(182, 121, 35, 0.08);
+}
+
+.summary-pill.danger {
+  border-color: rgba(178, 72, 79, 0.34);
+  background: rgba(178, 72, 79, 0.08);
+}
+
+.node-matrix {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.node-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fcfdff;
+  padding: 10px;
+}
+
+.node-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.node-head strong {
+  font-size: 13px;
+  font-weight: 640;
+}
+
+.node-meta {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.node-meta.mono {
+  font-family: "SF Mono", "SFMono-Regular", ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.state-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-right: 6px;
+  background: #c8d1e2;
+}
+
+.state-dot.ok {
+  background: #2d875f;
+}
+
+.state-dot.danger {
+  background: #b2484f;
+}
+
+.node-stats {
+  margin-top: 8px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.node-stats span {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.node-stats strong {
+  font-size: 13px;
+  font-weight: 640;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-mini {
+  margin-top: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #e5ebf5;
+  overflow: hidden;
+}
+
+.progress-mini span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #3d87e3, #2370d8);
+}
+
 .status-item {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -1402,6 +1524,14 @@ input:focus-visible {
 
   .status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cluster-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .node-matrix {
+    grid-template-columns: 1fr;
   }
 }
 
