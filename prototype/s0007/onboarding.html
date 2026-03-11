@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Ouro Ops Prototype - Onboarding</title>
+    <title>Ouro Ops Prototype - Welcome</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主内容</a>
-    <div class="window-shell">
-      <div class="window">
+    <div class="window-shell welcome-shell">
+      <div class="window welcome-window">
         <header class="titlebar">
           <div class="titlebar-leading">
             <div class="traffic-lights" aria-hidden="true">
@@ -17,145 +17,55 @@
               <span class="light yellow"></span>
               <span class="light green"></span>
             </div>
-            <button class="sidebar-toggle" type="button">Sidebar</button>
           </div>
-          <h1 class="window-title">Ouro Ops · Onboarding</h1>
+          <h1 class="window-title">Welcome · Ouro Ops</h1>
           <div class="toolbar">
-            <label class="toolbar-search" for="search-onboarding">
-              <span aria-hidden="true">⌕</span>
-              <input id="search-onboarding" type="search" placeholder="搜索初始化流程" />
-            </label>
-            <button class="toolbar-chip" type="button">Bootstrap</button>
+            <button class="toolbar-chip warn" type="button">Not Deployed</button>
           </div>
         </header>
 
-        <div class="workspace">
-          <aside class="sidebar">
-            <div class="brand">
-              <span class="brand-mark" aria-hidden="true"></span>
-              <div>
-                <h1>OURO OPS</h1>
-                <p>Mainnet Workspace</p>
+        <div class="workspace focused-workspace">
+          <main id="main-content" class="content welcome-content">
+            <section class="welcome-panel" aria-label="welcome window">
+              <div class="hero-mark" aria-hidden="true"></div>
+              <h2 class="welcome-title">欢迎使用 Ouro Ops</h2>
+              <p class="welcome-subtitle">在开始之前，需要先完成本地部署配置。点击“开始部署”后，窗口会平滑展开并进入无侧栏的沉浸式部署向导。</p>
+
+              <div class="welcome-points">
+                <article class="welcome-point">
+                  <span aria-hidden="true">1</span>
+                  <div>
+                    <strong>检测当前状态</strong>
+                    <span>应用启动时自动判断是否已部署（最小条件：1 relay + 1 bp）。</span>
+                  </div>
+                </article>
+                <article class="welcome-point">
+                  <span aria-hidden="true">2</span>
+                  <div>
+                    <strong>进入部署向导</strong>
+                    <span>添加机器、确认参数、执行部署，流程期间隐藏全局导航以减少干扰。</span>
+                  </div>
+                </article>
+                <article class="welcome-point">
+                  <span aria-hidden="true">3</span>
+                  <div>
+                    <strong>部署完成后返回看板</strong>
+                    <span>自动切回 Dashboard 并开始静默刷新节点与 Pool 状态。</span>
+                  </div>
+                </article>
               </div>
-            </div>
 
-            <div class="nav-group">
-              <p class="group-title">Workspace</p>
-              <a class="nav-item active" aria-current="page" href="./onboarding.html"><span class="nav-symbol" aria-hidden="true">◎</span>Onboarding</a>
-              <a class="nav-item" href="./index.html"><span class="nav-symbol" aria-hidden="true">⌂</span>Dashboard</a>
-            </div>
+              <div class="welcome-actions">
+                <a class="btn primary" href="./deploy.html">开始部署</a>
+                <button class="btn" type="button">导入已有配置</button>
+              </div>
 
-            <div class="nav-group">
-              <p class="group-title">Operations</p>
-              <a class="nav-item" href="./deploy.html"><span class="nav-symbol" aria-hidden="true">↗</span>Deploy</a>
-              <a class="nav-item" href="./kes-rotate.html"><span class="nav-symbol" aria-hidden="true">↻</span>KES Rotate</a>
-              <a class="nav-item" href="./upgrade-image.html"><span class="nav-symbol" aria-hidden="true">⬆</span>Upgrade</a>
-            </div>
-
-            <div class="sidebar-note">
-              启动规则：
-              <br />未部署进入 Deploy。
-              <br />已部署直接进入 Dashboard。
-            </div>
-          </aside>
-
-          <main id="main-content" class="content">
-            <h2 class="page-title">初始化流程</h2>
-            <p class="page-subtitle">不依赖账号登录。应用启动后先判断是否已部署，再决定进入部署或首页。</p>
-
-            <div class="layout-grid">
-              <section class="section">
-                <header class="section-header">
-                  <div>
-                    <h3 class="section-title">启动判定</h3>
-                    <p class="section-meta">一个窗口内完成分流，不让用户在无关页面停留。</p>
-                  </div>
-                </header>
-                <div class="section-body separator-list">
-                  <div class="separator-item">
-                    <strong>1. 打开应用</strong>
-                    <p class="inline-note">加载本地工作区，并读取机器与部署记录。</p>
-                  </div>
-                  <div class="separator-item">
-                    <strong>2. 探测部署状态</strong>
-                    <p class="inline-note">检查最小条件：至少 1 relay + 1 bp，且容器运行可达。</p>
-                  </div>
-                  <div class="separator-item">
-                    <strong>3A. 未部署</strong>
-                    <p class="inline-note">展示部署引导，点击“进入部署向导”。</p>
-                  </div>
-                  <div class="separator-item">
-                    <strong>3B. 已部署</strong>
-                    <p class="inline-note">直接进入 Dashboard，后台静默刷新状态与 Pool 数据。</p>
-                  </div>
-                </div>
-              </section>
-
-              <section class="section">
-                <header class="section-header">
-                  <div>
-                    <h3 class="section-title">首个动作</h3>
-                    <p class="section-meta">只保留两个高价值入口，减少初始化阶段认知负担。</p>
-                  </div>
-                </header>
-                <div class="section-body">
-                  <div class="activity-list">
-                    <article class="activity-item">
-                      <div>
-                        <strong>未部署：进入 Deploy 向导</strong>
-                        <p class="item-meta">添加 BP/Relay 机器，确认参数，执行部署。</p>
-                      </div>
-                      <span class="chip warn">required</span>
-                    </article>
-                    <article class="activity-item">
-                      <div>
-                        <strong>已部署：进入 Dashboard</strong>
-                        <p class="item-meta">查看运行状态、Pool 信息、待处理动作。</p>
-                      </div>
-                      <span class="chip ok">ready</span>
-                    </article>
-                  </div>
-
-                  <div class="action-row">
-                    <span class="inline-note">部署完成后将提示注册或更新 Pool 信息。</span>
-                    <div class="action-group">
-                      <a class="btn primary" href="./deploy.html">进入部署向导</a>
-                      <a class="btn" href="./index.html">直接进入 Dashboard</a>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </div>
+              <p class="transition-note">
+                已经部署完成？
+                <a class="text-link" href="./index.html">直接进入 Dashboard</a>
+              </p>
+            </section>
           </main>
-
-          <aside class="inspector" aria-label="初始化摘要">
-            <section class="inspector-block">
-              <header class="inspector-head">
-                <h3>当前状态</h3>
-                <p>示例数据</p>
-              </header>
-              <div class="inspector-body">
-                <ul class="mini-list">
-                  <li><strong>Deployment</strong><span>Not detected</span></li>
-                  <li><strong>BP machine</strong><span>0 configured</span></li>
-                  <li><strong>Relay machine</strong><span>0 configured</span></li>
-                </ul>
-              </div>
-            </section>
-
-            <section class="inspector-block">
-              <header class="inspector-head">
-                <h3>流程提示</h3>
-                <p>Onboarding</p>
-              </header>
-              <div class="inspector-body">
-                <ul class="mini-list">
-                  <li><strong>最小运行条件</strong><span>1 relay + 1 bp</span></li>
-                  <li><strong>下一阶段</strong><span>Deploy Step 1</span></li>
-                </ul>
-              </div>
-            </section>
-          </aside>
         </div>
       </div>
     </div>

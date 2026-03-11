@@ -296,3 +296,31 @@ Spec-ID: S0007
 
 ### 14.5 Change Request Delta
 - 2026-03-10 23:59 +0800 需求新增：按照 Focused Wizard 思路重做 KES 页面，突出冷热机交互主线并降低决策负担。
+
+## 15. Addendum (append-only)
+### 15.1 Execution Plan Delta
+- [x] p7-18 重构初始化与 onboarding 流程：Welcome Window 引导 + 无侧栏沉浸式 Deploy Wizard
+
+### 15.2 Acceptance Delta
+- TC-46 onboarding 页面改为轻量 Welcome Window（无 sidebar/inspector），聚焦“开始部署”主入口。
+- TC-47 Welcome Window 提供清晰视觉层级：Hero 图形、标题/副标题、主次 CTA 与“已部署直达 Dashboard”路径。
+- TC-48 deploy 页面改为无侧栏沉浸式向导布局，居中主视图承载步骤、表单、操作区。
+- TC-49 沉浸式部署页面提供轻量进度提示（Step 1/3 + focused-steps）与加载状态（spinner + 状态文本）。
+- TC-50 沉浸式部署页面提供中断防护文案（关闭/取消时的原生确认框策略）。
+- TC-51 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 15.3 Execution Log Delta
+- 2026-03-11 00:16 +0800 p7-18 started: 按 Welcome -> Immersive Deploy 思路重构初始化与 onboarding。
+- 2026-03-11 00:24 +0800 p7-18 completed: onboarding/deploy/styles/README 已完成流程与布局调整。
+
+### 15.4 Validation Evidence Delta
+- TC-46 | stack: ui | command: rg -n "welcome-shell|welcome-window|focused-workspace" prototype/s0007/onboarding.html prototype/s0007/styles.css | result: pass | note: onboarding 已切换为 Welcome Window 单主区布局
+- TC-46 | stack: ui | command: rg -n "<aside class=\"sidebar\"|<aside class=\"inspector\"" prototype/s0007/onboarding.html || true | result: pass | note: onboarding 页面无 sidebar/inspector
+- TC-47 | stack: ui | command: rg -n "hero-mark|welcome-title|welcome-subtitle|开始部署|导入已有配置|直接进入 Dashboard" prototype/s0007/onboarding.html prototype/s0007/styles.css | result: pass | note: Welcome 视觉层级与主次 CTA 完整
+- TC-48 | stack: ui | command: rg -n "Immersive|focused-workspace|wizard-shell wide" prototype/s0007/deploy.html prototype/s0007/styles.css | result: pass | note: deploy 已切换为无侧栏沉浸式向导主区
+- TC-49 | stack: ui | command: rg -n "Step 1 / 3|focused-steps|spinner|loading-row" prototype/s0007/deploy.html prototype/s0007/styles.css | result: pass | note: 轻量进度与加载态存在
+- TC-50 | stack: ui | command: rg -n "guard-alert|继续部署|退出部署|中断当前流程" prototype/s0007/deploy.html prototype/s0007/styles.css | result: pass | note: 中断防护策略文案已落位
+- TC-51 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/onboarding.html prototype/s0007/deploy.html prototype/s0007/styles.css || true | result: pass | note: 仍为纯静态实现
+
+### 15.5 Change Request Delta
+- 2026-03-11 00:16 +0800 需求新增：初始化采用 Welcome Window，点击开始部署后进入无侧栏沉浸式部署流程。

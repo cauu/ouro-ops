@@ -14,6 +14,7 @@ Design direction:
 - professional, restrained, minimal
 - light-only, Cardano blue as subtle accent
 - single-step focused wizard for Deploy / KES Rotate / Upgrade
+- startup flow: lightweight Welcome Window -> immersive Deploy Wizard (no sidebar)
 
 Notes:
 
