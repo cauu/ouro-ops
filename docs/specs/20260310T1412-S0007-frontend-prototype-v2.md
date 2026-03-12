@@ -568,3 +568,24 @@ Spec-ID: S0007
 
 ### 24.5 Change Request Delta
 - 2026-03-12 09:55 +0800 需求新增：KES Rotate 需要和 Upgrade 一样保留左侧菜单。
+
+## 25. Addendum (append-only)
+### 25.1 Execution Plan Delta
+- [x] p7-28 以 Upgrade 页面为基准统一 Dashboard / KES Rotate / Upgrade 侧边菜单为四项
+
+### 25.2 Acceptance Delta
+- TC-90 Dashboard、KES Rotate、Upgrade 三个页面的侧边菜单统一为：Dashboard / Deploy / KES Rotate / Upgrade。
+- TC-91 侧边菜单移除与本次要求无关的菜单项（例如 Onboarding、Nodes、Pool、Activity、Settings）。
+- TC-92 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 25.3 Execution Log Delta
+- 2026-03-12 10:45 +0800 p7-28 started: 按需求统一多个页面侧边菜单栏结构。
+- 2026-03-12 10:50 +0800 p7-28 completed: 已统一 `index.html`、`kes-rotate.html`、`upgrade-image.html` 侧边菜单为四项。
+
+### 25.4 Validation Evidence Delta
+- TC-90 | stack: ui | command: rg -n "Dashboard|Deploy|KES Rotate|Upgrade" prototype/s0007/index.html prototype/s0007/kes-rotate.html prototype/s0007/upgrade-image.html | result: pass | note: 三个页面侧边菜单均包含四项入口
+- TC-91 | stack: ui | command: rg -n "nav-item[^\n]*(Onboarding|Nodes|Pool|Activity|Settings)" prototype/s0007/index.html prototype/s0007/kes-rotate.html prototype/s0007/upgrade-image.html || true | result: pass | note: 侧边菜单中已无无关项
+- TC-92 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/kes-rotate.html prototype/s0007/upgrade-image.html || true | result: pass | note: 保持纯静态原型
+
+### 25.5 Change Request Delta
+- 2026-03-12 10:45 +0800 需求新增：以 upgrade 页面为基准，统一其他页面侧边菜单，菜单仅保留 Dashboard / Deploy / KES Rotate / Upgrade。
