@@ -798,3 +798,28 @@ Spec-ID: S0007
 
 ### 33.5 Change Request Delta
 - 2026-03-12 14:15 +0800 需求新增：节点 Resources 使用指定 6 指标，不展示 CPU/Mem avg。
+
+## 34. Addendum (append-only)
+### 34.1 Execution Plan Delta
+- [x] p7-37 修复 BP 概览卡 tag/按钮对齐与 tooltip 可读性与遮挡问题
+
+### 34.2 Acceptance Delta
+- TC-136 BP 概览卡中的状态 tag（`critical`、`slowest · BP`、`cluster 532`、`Δ-1e`、`KES remain 3`）高度与垂直对齐一致。
+- TC-137 主操作按钮（`立即 Rotate`）文字垂直居中。
+- TC-138 tooltip 文案颜色为高对比白色，确保深色 tooltip 背景上的可读性。
+- TC-139 BP 卡片中的 tooltip 不再出现被卡片/section 裁切遮挡。
+- TC-140 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 34.3 Execution Log Delta
+- 2026-03-12 14:19 +0800 p7-37 started: 根据截图反馈修复 BP 卡片 tag/button/tooltip 视觉与可读性问题。
+- 2026-03-12 14:22 +0800 p7-37 completed: 完成 tag 高度统一、按钮垂直居中、tooltip 白字与向上弹层防遮挡。
+
+### 34.4 Validation Evidence Delta
+- TC-136 | stack: ui | command: rg -n "\\.chip \\{|\\.metric-badge-btn \\{|min-height: 28px|padding: 0 10px|line-height: 1" prototype/s0007/styles.css | result: pass | note: chip 与 metric tag 已统一高度与内容对齐策略
+- TC-137 | stack: ui | command: rg -n "\\.btn \\{|display: inline-flex;|align-items: center;|justify-content: center;|line-height: 1" prototype/s0007/styles.css | result: pass | note: 按钮文本已采用 flex 垂直居中
+- TC-138 | stack: ui | command: rg -n "\\.tooltip-bubble \\{|color: #f8fbff|\\.tooltip-bubble,|\\.tooltip-bubble \\*" prototype/s0007/styles.css | result: pass | note: tooltip 文案颜色已固定为高对比白色
+- TC-139 | stack: ui | command: rg -n "\\.section \\{|overflow: visible;|\\.node-card \\.tooltip-bubble|bottom: calc\\(100% \\+ 8px\\)" prototype/s0007/styles.css | result: pass | note: section 不再裁切 tooltip，且 node-card tooltip 改为向上弹出
+- TC-140 | stack: ui | command: rg -n "<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: 保持静态原型边界
+
+### 34.5 Change Request Delta
+- 2026-03-12 14:19 +0800 需求新增：BP 概览卡存在 tag 高度不一致、按钮未垂直居中、tooltip 文案不清晰及遮挡问题。

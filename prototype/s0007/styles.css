@@ -474,7 +474,7 @@ a {
   border-radius: var(--radius-card);
   background: var(--surface-0);
   box-shadow: var(--shadow-soft);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .section-header {
@@ -592,7 +592,7 @@ a {
   border-radius: 9px;
   border: 1px solid rgba(68, 85, 120, 0.32);
   background: rgba(21, 27, 39, 0.95);
-  color: rgba(246, 249, 255, 0.95);
+  color: #f8fbff;
   font-size: 11px;
   line-height: 1.45;
   padding: 8px 10px;
@@ -602,6 +602,11 @@ a {
   pointer-events: none;
   transition: opacity 140ms ease, transform 140ms ease;
   z-index: 3;
+}
+
+.tooltip-bubble,
+.tooltip-bubble * {
+  color: #f8fbff;
 }
 
 .tooltip-wrap:hover .tooltip-bubble,
@@ -729,15 +734,16 @@ a {
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface-0) 84%, transparent);
   color: #50607c;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1;
   font-weight: 640;
   min-height: 28px;
-  padding: 4px 7px;
+  padding: 0 10px;
   cursor: help;
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  box-sizing: border-box;
 }
 
 .metric-badge-btn:hover,
@@ -779,6 +785,12 @@ a {
 .bp-action-row {
   justify-content: space-between;
   align-items: center;
+}
+
+.node-card .tooltip-bubble {
+  top: auto;
+  bottom: calc(100% + 8px);
+  transform: translateY(3px);
 }
 
 .kes-remain .kes-pulse {
@@ -954,11 +966,17 @@ a {
   border-radius: 999px;
   border: 1px solid var(--line);
   background: #f8f9fb;
-  padding: 4px 8px;
+  min-height: 28px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   white-space: nowrap;
   font-size: 11px;
+  line-height: 1;
   color: var(--text-secondary);
   font-weight: 600;
+  box-sizing: border-box;
 }
 
 .chip.ok {
@@ -1129,9 +1147,14 @@ a {
   background: var(--surface-0);
   color: var(--text);
   font-size: 12px;
+  line-height: 1;
   font-weight: 620;
   padding: 0 12px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .btn:hover {
