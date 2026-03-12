@@ -466,3 +466,20 @@ Spec-ID: S0008
 
 ### 26.4 Change Request Delta
 - 2026-03-12 17:34 +0800 需求修订：修复顶部标题栏空白区域拖不动的问题。
+
+## 27. Addendum (append-only)
+### 27.1 Execution Plan Delta
+- [x] p8-22 重构 KES Rotate 页面到 prototype 向导壳：titlebar、wizard-stepline、Step1 命令终端块、统一 action-bar
+
+### 27.2 Execution Log Delta
+- 2026-03-12 17:42 +0800 p8-22 started: 根据验收清单重构 KES Rotate，补齐 titlebar、步骤条、Step1 上下文/命令块与四步统一壳结构。
+- 2026-03-12 17:42 +0800 p8-22 completed: 完成 KES Rotate 页面结构重排（titlebar + 搜索 + Step chip、四步 stepline、wizard-page/wizard-scroll/action-bar、Step1 terminal-block + Copy Command），并保持现有 KES 真实调用链路。
+
+### 27.3 Validation Evidence Delta
+- TC-P8-008 | stack: ui | command: rg -n "Ouro Ops · KES Rotate|Step \\{wizardStep\\} / 4|Step 1 · 生成 KES Keypairs|Step 4 · 校验完成|Copy Command|Copy \\+ 参数说明|Push to BP|Confirm KES Push|sticky bottom-0" src/pages/KesManager.tsx | result: pass | note: KES Rotate 已具备 titlebar、四步向导壳、Step1 终端命令区与底部 action-bar
+- TC-P8-008 | stack: ui | command: rg -n "cardano-cli node key-gen-KES|cardano-cli node issue-op-cert|terminal-head|terminal-dot|Run In: bp hot environment|Next Input: node.cert signing" src/pages/KesManager.tsx | result: pass | note: Step1/2 命令区、terminal 样式语义与上下文 badges 已落地
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: KES 页面重构后前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 144/144 通过（仅 dead_code warning）
+
+### 27.4 Change Request Delta
+- 2026-03-12 17:42 +0800 需求修订：KES Rotate 对齐 prototype，补齐 titlebar、wizard-stepline、Step1 终端块与统一 action-bar。
