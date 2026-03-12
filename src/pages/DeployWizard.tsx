@@ -53,8 +53,9 @@ function emptyMachineDraft(role: MachineAddPayload["role"], index: number, keyFi
 }
 
 export default function DeployWizard({ pool }: DeployWizardProps) {
-  const defaultRelayRestore = networkSupportsMithril(pool.network);
-  const defaultBpRestore = networkSupportsMithril(pool.network);
+  const defaultRelayRestore = false;
+  const defaultBpRestore = false;
+  const mithrilInitializationAllowed = false;
   const [machines, setMachines] = useState<Machine[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -320,11 +321,17 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
     enable_hardening: enableHardening,
     safe_validation_mode: safeValidationMode,
     takeover_existing_node: takeoverExistingNode,
-    restore_snapshot_relay: restoreSnapshotRelay,
-    restore_snapshot_bp: restoreSnapshotBp,
+    restore_snapshot_relay: mithrilInitializationAllowed ? restoreSnapshotRelay : false,
+    restore_snapshot_bp: mithrilInitializationAllowed ? restoreSnapshotBp : false,
   });
 
   useEffect(() => {
+    if (!mithrilInitializationAllowed) {
+      setRestoreSnapshotRelay(false);
+      setRestoreSnapshotBp(false);
+      setRestoreSnapshotTouched(false);
+      return;
+    }
     if (!mithrilSupported) {
       setRestoreSnapshotRelay(false);
       setRestoreSnapshotBp(false);
@@ -335,7 +342,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
       setRestoreSnapshotRelay(true);
       setRestoreSnapshotBp(true);
     }
-  }, [mithrilSupported, restoreSnapshotTouched]);
+  }, [mithrilInitializationAllowed, mithrilSupported, restoreSnapshotTouched]);
 
   useEffect(() => {
     let active = true;
@@ -722,7 +729,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                   <input
                     type="checkbox"
                     checked={restoreSnapshotRelay}
-                    disabled={!mithrilSupported || selectedRelayCount === 0}
+                    disabled={!mithrilInitializationAllowed || !mithrilSupported || selectedRelayCount === 0}
                     onChange={(e) => {
                       setRestoreSnapshotRelay(e.target.checked);
                       setRestoreSnapshotTouched(true);
@@ -734,7 +741,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                   <input
                     type="checkbox"
                     checked={restoreSnapshotBp}
-                    disabled={!mithrilSupported || selectedBpCount === 0}
+                    disabled={!mithrilInitializationAllowed || !mithrilSupported || selectedBpCount === 0}
                     onChange={(e) => {
                       setRestoreSnapshotBp(e.target.checked);
                       setRestoreSnapshotTouched(true);
@@ -744,9 +751,9 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                 </label>
               </div>
               <p className="text-xs text-zinc-400">
-                Default is enabled for relay and bp cold-starts on <code>mainnet</code>/<code>preprod</code>, and
-                disabled on <code>preview</code>. Relay and bp can be configured independently; existing DB will still
-                be handled by deploy-side checks.
+                Mithril cold-start restore is disabled in this mac app stage to avoid long initialization time. Keep
+                <code> restore_snapshot_relay/bp </code>
+                off unless this policy is explicitly changed later.
               </p>
             </div>
           )}

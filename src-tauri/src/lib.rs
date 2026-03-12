@@ -142,9 +142,9 @@ mod frontend_tests {
         assert!(deploy.contains("takeover_existing_node"));
         assert!(deploy.contains("restore_snapshot_relay (Mithril cold-start restore)"));
         assert!(deploy.contains("restore_snapshot_bp (Mithril cold-start restore)"));
-        assert!(deploy.contains("setRestoreSnapshotRelay(true)"));
+        assert!(deploy.contains("mithrilInitializationAllowed = false"));
         assert!(deploy.contains("setRestoreSnapshotBp(false)"));
-        assert!(deploy.contains("Default is enabled for relay and bp cold-starts"));
+        assert!(deploy.contains("Mithril cold-start restore is disabled in this mac app stage"));
         assert!(deploy.contains("networkSupportsMithril"));
         assert!(deploy.contains("step === 1"));
         assert!(deploy.contains("step === 2"));

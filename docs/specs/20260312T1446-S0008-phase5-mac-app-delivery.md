@@ -63,7 +63,7 @@ Spec-ID: S0008
 - [x] p8-3 实现 Dashboard 结构对齐：BP 卡片主承载、节点详情 tab、tooltip/标签体系统一
 - [x] p8-4 实现 telemetry 三态体验：缓存优先、后台静默刷新、失败降级重试
 - [x] p8-5 接入 Prometheus 查询能力并完成 Dashboard 指标映射（含时间戳与空值兜底）
-- [ ] p8-6 实现 Deploy Step1 手动节点输入 + 机器创建，落实默认开关策略与无 mithril 初始化约束
+- [x] p8-6 实现 Deploy Step1 手动节点输入 + 机器创建，落实默认开关策略与无 mithril 初始化约束
 - [ ] p8-7 实现 KES Rotate 向导生产化页面与关键风险闸门（含 KES remain 关联操作）
 - [ ] p8-8 实现 Upgrade 向导生产化页面与 BP gate / rollback 提示
 - [ ] p8-9 打通审计与回归：关键操作日志、错误提示一致性、文案与状态对齐
@@ -226,3 +226,21 @@ Spec-ID: S0008
 
 ### 12.4 Change Request Delta
 - 2026-03-12 15:39 +0800 执行推进：继续推进 S0008，完成 p8-5 Prometheus 查询与 Dashboard 指标映射落地。
+
+## 13. Addendum (append-only)
+### 13.1 Execution Plan Delta
+- [x] p8-6 实现 Deploy Step1 手动节点输入 + 机器创建，落实默认开关策略与无 mithril 初始化约束
+
+### 13.2 Execution Log Delta
+- 2026-03-12 15:50 +0800 p8-6 started: 复核 Deploy Step1 机器创建时机与默认策略，并收敛 mithril 初始化约束。
+- 2026-03-12 15:54 +0800 p8-6 completed: 完成无 mithril 初始化策略下的开关默认与 payload 约束，并保持 Step1 手动输入创建链路与失败清理。
+
+### 13.3 Validation Evidence Delta
+- TC-P8-007 | stack: ui | command: rg -n "Enter BP and relay nodes manually|Moving to step 2 will create these machines|handlePersistStep1|machineAdd\\(|setStep1Completed\\(true\\)|setStep\\(2\\)|Creating nodes" src/pages/DeployWizard.tsx | result: pass | note: Step1 手动输入并在点击 Next 时完成机器创建
+- TC-P8-015 | stack: ui | command: rg -n "step1Completed|creatingStep1|createdIds|machineRemove\\(|best effort cleanup|step === 1 && creatingStep1" src/pages/DeployWizard.tsx | result: pass | note: Step1 具备幂等门禁、失败回滚清理与重复点击保护
+- TC-P8-007 | stack: ui | command: rg -n "takeoverExistingNode|enableChrony|enableHardening|mithrilInitializationAllowed = false|restore_snapshot_relay: mithrilInitializationAllowed|restore_snapshot_bp: mithrilInitializationAllowed|Mithril cold-start restore is disabled" src/pages/DeployWizard.tsx | result: pass | note: 默认策略已对齐（takeover off、chrony/hardening on、mithril 初始化关闭）
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: Deploy 策略调整后前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 142/142 通过
+
+### 13.4 Change Request Delta
+- 2026-03-12 15:50 +0800 执行推进：继续推进 S0008，完成 p8-6 Deploy Step1 机器创建与默认策略约束落地。
