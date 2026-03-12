@@ -385,3 +385,18 @@ Spec-ID: S0008
 
 ### 21.4 Change Request Delta
 - 2026-03-12 17:00 +0800 需求修订：Dashboard 标题栏不放页面内部，改为优化系统自带标题栏样式。
+
+## 22. Addendum (append-only)
+### 22.1 Execution Plan Delta
+- [x] p8-17 修复 Dashboard 日志详情可用性：固定详情列宽，支持 hover 查看全文与一键复制
+
+### 22.2 Execution Log Delta
+- 2026-03-12 17:09 +0800 p8-17 started: 根据反馈收敛「近期操作日志-详情」超长文案行为，避免横向撑开页面。
+- 2026-03-12 17:09 +0800 p8-17 completed: 完成详情列硬宽度约束、单行截断、hover 全文 tooltip 与复制交互，并通过前端构建回归。
+
+### 22.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "table-fixed|w-\\[360px\\]|text-ellipsis|复制详情|role=\\\"tooltip\\\"|copyPlainText|copiedTaskId" src/pages/Dashboard.tsx | result: pass | note: 详情列固定宽度 + 截断 + hover 全文 + 复制能力已落地
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 日志详情交互增强后前端构建通过
+
+### 22.4 Change Request Delta
+- 2026-03-12 17:09 +0800 需求修订：日志详情需支持复制与 hover 查看全文，同时不得横向撑开页面。

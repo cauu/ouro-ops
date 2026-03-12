@@ -186,6 +186,35 @@ function statusToneClass(status: string): string {
   }
 }
 
+async function copyPlainText(value: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // fallback below
+  }
+
+  try {
+    if (typeof document === "undefined") {
+      return false;
+    }
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "absolute";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
 interface TooltipBadgeProps {
   label: ReactNode;
   tip: string;
@@ -210,6 +239,7 @@ export default function Dashboard() {
   const [kesStatuses, setKesStatuses] = useState<KesStatus[]>([]);
   const [recentTasks, setRecentTasks] = useState<RecentTaskSummary[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+  const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const {
     snapshots,
     status: monitorStatus,
@@ -321,6 +351,16 @@ export default function Dashboard() {
   );
   const monitorPhaseText = monitorPhaseLabel(telemetryBehavior, monitorStatus);
   const monitorCollectedAge = formatRelativeCollectedAt(lastCollectedAt);
+  const handleCopyDetail = async (taskId: string, detailText: string) => {
+    const copied = await copyPlainText(detailText);
+    if (!copied) {
+      return;
+    }
+    setCopiedTaskId(taskId);
+    window.setTimeout(() => {
+      setCopiedTaskId((current) => (current === taskId ? null : current));
+    }, 1200);
+  };
 
   return (
     <section className="space-y-5">
@@ -616,7 +656,14 @@ export default function Dashboard() {
           <span className="text-xs text-slate-500">最近 {Math.min(recentTasks.length, 6)} 条</span>
         </header>
         <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-          <table className="min-w-full text-left text-xs">
+          <table className="w-full table-fixed text-left text-xs">
+            <colgroup>
+              <col className="w-[168px]" />
+              <col className="w-[132px]" />
+              <col className="w-[120px]" />
+              <col className="w-[110px]" />
+              <col className="w-[360px]" />
+            </colgroup>
             <thead className="bg-slate-100 text-slate-600">
               <tr>
                 <th className="px-3 py-2">时间</th>
@@ -636,6 +683,7 @@ export default function Dashboard() {
               ) : (
                 recentTasks.slice(0, 6).map((task) => {
                   const taskError = formatTaskError(task.error_msg);
+                  const detailText = taskError ? taskError : (task.phase ? formatTaskLabel(task.phase) : `${task.machine_count} machine(s)`);
                   return (
                     <tr key={task.task_id} className="border-t border-slate-200">
                       <td className="px-3 py-2 text-slate-600">{task.created_at}</td>
@@ -644,14 +692,33 @@ export default function Dashboard() {
                       <td className="px-3 py-2">
                         <span className={statusToneClass(task.status)}>{formatTaskLabel(task.status)}</span>
                       </td>
-                      <td className="px-3 py-2 text-slate-600">
-                        {taskError ? (
-                          <span title={taskError} className="text-rose-700">
-                            {taskError}
+                      <td className="w-0 max-w-[360px] px-3 py-2 text-slate-600">
+                        <div className="group relative">
+                          <span
+                            title={detailText}
+                            className={`block max-w-[360px] overflow-hidden pr-14 text-ellipsis whitespace-nowrap select-text ${
+                              taskError ? "text-rose-700" : "text-slate-600"
+                            }`}
+                          >
+                            {detailText}
                           </span>
-                        ) : (
-                          task.phase ? formatTaskLabel(task.phase) : `${task.machine_count} machine(s)`
-                        )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void handleCopyDetail(task.task_id, detailText);
+                            }}
+                            className="absolute right-0 top-1/2 inline-flex min-h-6 -translate-y-1/2 items-center rounded border border-slate-300 bg-white px-2 text-[11px] font-medium text-slate-700 opacity-0 transition hover:bg-slate-100 focus-visible:opacity-100 group-hover:opacity-100"
+                            title="复制详情"
+                          >
+                            {copiedTaskId === task.task_id ? "已复制" : "复制"}
+                          </button>
+                          <span
+                            role="tooltip"
+                            className="pointer-events-none absolute left-0 top-[calc(100%+6px)] z-20 w-[min(36rem,85vw)] max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs leading-5 text-white opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100"
+                          >
+                            {detailText}
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   );
