@@ -86,14 +86,33 @@ export default function Layout({ pool }: LayoutProps) {
         <Sidebar
           network={pool.network}
           collapsed={sidebarCollapsed}
-          onToggleCollapse={() => {
-            setSidebarCollapsed((current) => !current);
-          }}
         />
 
         <section className="flex min-w-0 flex-1 flex-col">
           <header className="drag-region border-b border-slate-200/80 bg-white/78 backdrop-blur-md" data-tauri-drag-region>
             <div className="drag-region flex h-14 items-center gap-4 px-5" data-tauri-drag-region>
+              <button
+                type="button"
+                title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+                aria-label={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+                onClick={() => setSidebarCollapsed((current) => !current)}
+                className="no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+              >
+                {sidebarCollapsed ? (
+                  <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <rect x="3.5" y="4" width="13" height="12" rx="2" />
+                    <path d="M8.5 4v12" />
+                    <path d="M11 7l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <rect x="3.5" y="4" width="13" height="12" rx="2" />
+                    <path d="M8.5 4v12" />
+                    <path d="M13 7l-3 3 3 3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </button>
+
               <div className="drag-region min-w-0" data-tauri-drag-region>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   {toolbar.section} · {networkLabel(pool.network)}

@@ -547,3 +547,19 @@ Spec-ID: S0008
 
 ### 31.4 Change Request Delta
 - 2026-03-12 21:38 +0800 需求修订：去掉标题栏暂未使用按钮，并扩大拖拽触发区域（所有无点击事件区域均可拖拽）。
+
+## 32. Addendum (append-only)
+### 32.1 Execution Plan Delta
+- [x] p8-27 迁移 Sidebar Toggle 到主标题栏，保证折叠态可达
+
+### 32.2 Execution Log Delta
+- 2026-03-12 22:21 +0800 p8-27 started: 按确认方案将 toggle 按钮从侧栏头部迁移到主标题栏左侧。
+- 2026-03-12 22:21 +0800 p8-27 completed: 主标题栏新增常驻 `Toggle Sidebar` 按钮（16x16 图标、32x32 点击区）；Sidebar 头部移除折叠按钮，保留 drag 空白区。
+
+### 32.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "title=\{sidebarCollapsed \? \"展开侧边栏\" : \"收起侧边栏\"\}|h-8 w-8|h-4 w-4|onClick=\{\(\) => setSidebarCollapsed" src/components/Layout.tsx | result: pass | note: toggle 已固定在主标题栏左侧并具备 16/32 尺寸语义
+- TC-P8-003 | stack: ui | command: rg -n "展开侧边栏|收起侧边栏|onToggleCollapse|IconButton" src/components/Sidebar.tsx src/components/Layout.tsx | result: pass | note: 侧栏内不再承载 toggle 入口，避免折叠态不可达
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: toggle 迁移后前端构建通过
+
+### 32.4 Change Request Delta
+- 2026-03-12 22:21 +0800 需求修订：将 toggle 放到折叠态可达位置，并采用 panel-left-open/close 语义图标与推荐尺寸。

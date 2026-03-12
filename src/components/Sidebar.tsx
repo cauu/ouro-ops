@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
 const linkBase = "flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors";
@@ -13,7 +12,6 @@ function navClass(isActive: boolean, collapsed: boolean): string {
 interface SidebarProps {
   network: "mainnet" | "preprod" | "preview";
   collapsed: boolean;
-  onToggleCollapse: () => void;
 }
 
 function workspaceLabel(network: SidebarProps["network"]): string {
@@ -26,50 +24,14 @@ function workspaceLabel(network: SidebarProps["network"]): string {
   return "Preview Workspace";
 }
 
-function IconButton({
-  title,
-  onClick,
-  children,
-}: {
-  title: string;
-  onClick?: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onClick={onClick}
-      className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
-    >
-      {children}
-    </button>
-  );
-}
-
-export default function Sidebar({ network, collapsed, onToggleCollapse }: SidebarProps) {
+export default function Sidebar({ network, collapsed }: SidebarProps) {
   return (
     <aside
-      className={`flex h-full flex-col border-r border-slate-200/80 bg-slate-50/85 backdrop-blur-md transition-[width] duration-200 ${
-        collapsed ? "w-[88px]" : "w-64"
-      }`}
+      className={`flex h-full flex-col border-r border-slate-200/80 bg-slate-50/85 backdrop-blur-md transition-[width] duration-200 ${collapsed ? "w-[88px]" : "w-64"
+        }`}
     >
-      <header className="drag-region border-b border-slate-200/80" data-tauri-drag-region>
+      <header className="drag-region border-slate-200/80" data-tauri-drag-region>
         <div className={`drag-region flex h-14 items-center pl-[74px] ${collapsed ? "pr-2" : "pr-3"}`} data-tauri-drag-region>
-          <div className="no-drag flex items-center gap-2">
-            <IconButton title={collapsed ? "展开侧边栏" : "收起侧边栏"} onClick={onToggleCollapse}>
-              {collapsed ? (
-                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                  <path d="M6 4l8 6-8 6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                  <path d="M14 4l-8 6 8 6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
-            </IconButton>
-          </div>
           <div className="drag-region flex-1" data-tauri-drag-region />
         </div>
       </header>
