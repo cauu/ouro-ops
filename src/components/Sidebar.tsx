@@ -52,7 +52,7 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
             {!collapsed && <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Workspace</p>}
             <NavLink to="/" end className={({ isActive }) => navClass(isActive, collapsed)} title="⌂ Dashboard">
               <span aria-hidden="true" className="text-[15px] leading-none">⌂</span>
-              {!collapsed && <span>⌂ Dashboard</span>}
+              {!collapsed && <span>Dashboard</span>}
             </NavLink>
           </section>
 
@@ -61,11 +61,11 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
             <nav className="space-y-2">
               <NavLink to="/kes" className={({ isActive }) => navClass(isActive, collapsed)} title="↻ KES Rotate">
                 <span aria-hidden="true" className="text-[15px] leading-none">↻</span>
-                {!collapsed && <span>↻ KES Rotate</span>}
+                {!collapsed && <span>KES Rotate</span>}
               </NavLink>
               <NavLink to="/upgrade" className={({ isActive }) => navClass(isActive, collapsed)} title="⬆ Upgrade">
                 <span aria-hidden="true" className="text-[15px] leading-none">⬆</span>
-                {!collapsed && <span>⬆ Upgrade</span>}
+                {!collapsed && <span>Upgrade</span>}
               </NavLink>
             </nav>
           </section>

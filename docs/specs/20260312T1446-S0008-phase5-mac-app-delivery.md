@@ -563,3 +563,18 @@ Spec-ID: S0008
 
 ### 32.4 Change Request Delta
 - 2026-03-12 22:21 +0800 需求修订：将 toggle 放到折叠态可达位置，并采用 panel-left-open/close 语义图标与推荐尺寸。
+
+## 33. Addendum (append-only)
+### 33.1 Execution Plan Delta
+- [x] p8-28 修复导航文案符号重复：仅保留图标位符号
+
+### 33.2 Execution Log Delta
+- 2026-03-12 23:55 +0800 p8-28 started: 根据设计一致性反馈修复 Sidebar 展开态导航文案重复符号问题。
+- 2026-03-12 23:55 +0800 p8-28 completed: 展开态可见文案改为 `Dashboard / KES Rotate / Upgrade`，符号仅保留在前置 `aria-hidden` 装饰 `span`。
+
+### 33.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "<span>Dashboard</span>|<span>KES Rotate</span>|<span>Upgrade</span>|<span>⌂ Dashboard</span>|<span>↻ KES Rotate</span>|<span>⬆ Upgrade</span>" src/components/Sidebar.tsx | result: pass | note: 文案为纯文本，重复符号文本不存在
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 导航文案调整后前端构建通过
+
+### 33.4 Change Request Delta
+- 2026-03-12 23:55 +0800 需求修订：导航符号只在装饰位显示，展开态文案不再重复符号。
