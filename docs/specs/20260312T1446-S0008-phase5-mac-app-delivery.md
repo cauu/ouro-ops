@@ -62,7 +62,7 @@ Spec-ID: S0008
 - [x] p8-2 落地 pool-centric IA：收敛导航与入口，移除机器中心化主流程暴露
 - [x] p8-3 实现 Dashboard 结构对齐：BP 卡片主承载、节点详情 tab、tooltip/标签体系统一
 - [x] p8-4 实现 telemetry 三态体验：缓存优先、后台静默刷新、失败降级重试
-- [ ] p8-5 接入 Prometheus 查询能力并完成 Dashboard 指标映射（含时间戳与空值兜底）
+- [x] p8-5 接入 Prometheus 查询能力并完成 Dashboard 指标映射（含时间戳与空值兜底）
 - [ ] p8-6 实现 Deploy Step1 手动节点输入 + 机器创建，落实默认开关策略与无 mithril 初始化约束
 - [ ] p8-7 实现 KES Rotate 向导生产化页面与关键风险闸门（含 KES remain 关联操作）
 - [ ] p8-8 实现 Upgrade 向导生产化页面与 BP gate / rollback 提示
@@ -208,3 +208,21 @@ Spec-ID: S0008
 
 ### 11.4 Change Request Delta
 - 2026-03-12 15:31 +0800 执行推进：继续推进 S0008，完成 p8-4 telemetry 三态体验收口。
+
+## 12. Addendum (append-only)
+### 12.1 Execution Plan Delta
+- [x] p8-5 接入 Prometheus 查询能力并完成 Dashboard 指标映射（含时间戳与空值兜底）
+
+### 12.2 Execution Log Delta
+- 2026-03-12 15:39 +0800 p8-5 started: 扩展 monitor 后端，接入 nview/cardano-node Prometheus 候选端点并实现字段映射。
+- 2026-03-12 15:49 +0800 p8-5 completed: 完成 Dashboard 指标消费与兜底展示，nview 不可用时保持 monitor 主链路稳定。
+
+### 12.3 Validation Evidence Delta
+- TC-P8-006 | stack: rust | command: rg -n "collect_prometheus_metrics|map_prometheus_metrics|nview:9090|cardano-node:12798|host:12798|host:12788" src-tauri/src/commands/monitor.rs | result: pass | note: Prometheus 查询已实现多端点候选探测与映射逻辑
+- TC-P8-006 | stack: ui | command: rg -n "epoch|sync_percent|tip_diff_blocks|cpu_sys_percent|mem_live_bytes|mem_rss_bytes|mem_heap_bytes|gc_minor_total|gc_major_total|prometheus_source|prometheus_note" src/lib/types.ts src/pages/Dashboard.tsx src-tauri/src/commands/monitor.rs | result: pass | note: 前后端字段模型与 Dashboard 展示映射已对齐
+- TC-P8-011 | stack: ui | command: rg -n "monitor fallback|prometheus_note|collect_prometheus_metrics" src/pages/Dashboard.tsx src-tauri/src/commands/monitor.rs | result: pass | note: nview 不可用时通过 monitor fallback 保持页面可用，并暴露降级说明
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: p8-5 合入后前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: Rust/前端快照测试共 142 项通过（仅剩 dead_code warning）
+
+### 12.4 Change Request Delta
+- 2026-03-12 15:39 +0800 执行推进：继续推进 S0008，完成 p8-5 Prometheus 查询与 Dashboard 指标映射落地。

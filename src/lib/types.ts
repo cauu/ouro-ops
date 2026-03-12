@@ -289,6 +289,18 @@ export interface MonitorSnapshot {
   stalled: boolean;
   collected_at: string;
   note: string | null;
+  epoch: number | null;
+  sync_percent: number | null;
+  tip_diff_blocks: number | null;
+  peer_count: number | null;
+  cpu_sys_percent: number | null;
+  mem_live_bytes: number | null;
+  mem_rss_bytes: number | null;
+  mem_heap_bytes: number | null;
+  gc_minor_total: number | null;
+  gc_major_total: number | null;
+  prometheus_source: string | null;
+  prometheus_note: string | null;
 }
 
 export interface MonitorPollingStatus {

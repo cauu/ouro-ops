@@ -40,6 +40,20 @@ function formatBlocksPerMinute(value: number | null): string {
   return value.toFixed(2);
 }
 
+function formatMemoryGigabytes(value: number | null): string {
+  if (value == null) {
+    return "--";
+  }
+  return `${(value / (1024 ** 3)).toFixed(1)}G`;
+}
+
+function formatCounter(value: number | null): string {
+  if (value == null) {
+    return "--";
+  }
+  return Math.round(value).toLocaleString();
+}
+
 function formatLovelace(value: number | null): string {
   if (value == null) {
     return "--";
@@ -92,6 +106,10 @@ function formatRelativeCollectedAt(value: string | null): string | null {
     return `${Math.floor(diffMs / 3_600_000)}h ago`;
   }
   return `${Math.floor(diffMs / 86_400_000)}d ago`;
+}
+
+function monitorSyncPercent(snapshot: MonitorSnapshot): number | null {
+  return snapshot.sync_percent ?? snapshot.sync_progress;
 }
 
 function telemetryDotClass(behavior: string): string {
@@ -314,16 +332,26 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
     return Math.max(...heights);
   }, [snapshots]);
 
+  const clusterEpoch = useMemo(() => {
+    const epochs = snapshots
+      .map((row) => row.epoch)
+      .filter((value): value is number => value != null);
+    if (epochs.length === 0) {
+      return null;
+    }
+    return Math.max(...epochs);
+  }, [snapshots]);
+
   const slowestNode = useMemo(() => {
     const sorted = snapshots
-      .filter((row) => row.sync_progress != null)
-      .sort((a, b) => (a.sync_progress ?? 0) - (b.sync_progress ?? 0));
+      .filter((row) => monitorSyncPercent(row) != null)
+      .sort((a, b) => (monitorSyncPercent(a) ?? 0) - (monitorSyncPercent(b) ?? 0));
     return sorted[0] ?? null;
   }, [snapshots]);
 
   const bestRelaySync = useMemo(() => {
     const values = relays
-      .map((row) => row.sync_progress)
+      .map((row) => monitorSyncPercent(row))
       .filter((value): value is number => value != null);
     if (values.length === 0) {
       return null;
@@ -409,16 +437,18 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
             </div>
           ) : (
             cardNodes.map((snapshot) => {
+              const syncPercent = monitorSyncPercent(snapshot);
               const blockDiff =
-                snapshot.block_height != null && headBlock != null ? snapshot.block_height - headBlock : null;
+                snapshot.tip_diff_blocks ??
+                (snapshot.block_height != null && headBlock != null ? snapshot.block_height - headBlock : null);
               const isCritical = snapshot.health_level === "critical" || snapshot.status === "unreachable";
               const isSlowest = slowestNode?.machine_id === snapshot.machine_id;
               const isBp = snapshot.role === "bp";
               const bpDrift =
-                isBp && snapshot.sync_progress != null && bestRelaySync != null
-                  ? snapshot.sync_progress - bestRelaySync
+                isBp && syncPercent != null && bestRelaySync != null
+                  ? syncPercent - bestRelaySync
                   : null;
-              const progressWidth = Math.max(0, Math.min(100, snapshot.sync_progress ?? 0));
+              const progressWidth = Math.max(0, Math.min(100, syncPercent ?? 0));
               const kesLabel =
                 isBp && bpKes?.remaining_days != null ? `KES remain ${bpKes.remaining_days}d` : "KES remain --";
               return (
@@ -450,6 +480,19 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                   </p>
 
                   <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
+                    <span>Epoch</span>
+                    <div className="inline-flex items-center gap-1.5">
+                      <strong className="text-sm text-slate-900">{snapshot.epoch ?? "--"}</strong>
+                      {isBp && clusterEpoch != null && (
+                        <TooltipBadge
+                          label={`cluster ${clusterEpoch}`}
+                          tip="Highest epoch observed in current cluster telemetry."
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-1.5 flex items-center justify-between text-xs text-slate-600">
                     <span>Height</span>
                     <div className="inline-flex items-center gap-1.5">
                       <strong className="text-sm text-slate-900">{snapshot.block_height ?? "--"}</strong>
@@ -465,7 +508,7 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                   <div className="mt-1.5 flex items-center justify-between text-xs text-slate-600">
                     <span>Sync</span>
                     <div className="inline-flex items-center gap-1.5">
-                      <strong className="text-sm text-slate-900">{formatProgress(snapshot.sync_progress)}</strong>
+                      <strong className="text-sm text-slate-900">{formatProgress(syncPercent)}</strong>
                       {isBp && (
                         <TooltipBadge
                           label={bpDrift == null ? "Δ --" : `Δ ${bpDrift.toFixed(2)}%`}
@@ -513,7 +556,7 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <div>
             <h2 className="text-sm font-semibold">Node Details</h2>
-            <p className="text-xs text-slate-600">Tab 切换 BP / Relay，资源指标将由 Prometheus 映射补齐。</p>
+            <p className="text-xs text-slate-600">Tab 切换 BP / Relay，资源指标优先来自 Prometheus，缺失字段自动兜底。</p>
           </div>
           <button
             type="button"
@@ -558,31 +601,32 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                     <dl className="mt-2 space-y-1.5 text-sm">
                       <div className="flex items-center justify-between">
                         <dt className="text-slate-600">CPU (sys)</dt>
-                        <dd className="font-medium text-slate-900">--</dd>
+                        <dd className="font-medium text-slate-900">{formatProgress(selectedNode.cpu_sys_percent)}</dd>
                       </div>
                       <div className="flex items-center justify-between">
                         <dt className="text-slate-600">Mem (Live)</dt>
-                        <dd className="font-medium text-slate-900">--</dd>
+                        <dd className="font-medium text-slate-900">{formatMemoryGigabytes(selectedNode.mem_live_bytes)}</dd>
                       </div>
                       <div className="flex items-center justify-between">
                         <dt className="text-slate-600">Mem (RSS)</dt>
-                        <dd className="font-medium text-slate-900">--</dd>
+                        <dd className="font-medium text-slate-900">{formatMemoryGigabytes(selectedNode.mem_rss_bytes)}</dd>
                       </div>
                       <div className="flex items-center justify-between">
                         <dt className="text-slate-600">Mem (Heap)</dt>
-                        <dd className="font-medium text-slate-900">--</dd>
+                        <dd className="font-medium text-slate-900">{formatMemoryGigabytes(selectedNode.mem_heap_bytes)}</dd>
                       </div>
                       <div className="flex items-center justify-between">
                         <dt className="text-slate-600">GC Minor</dt>
-                        <dd className="font-medium text-slate-900">--</dd>
+                        <dd className="font-medium text-slate-900">{formatCounter(selectedNode.gc_minor_total)}</dd>
                       </div>
                       <div className="flex items-center justify-between">
                         <dt className="text-slate-600">GC Major</dt>
-                        <dd className="font-medium text-slate-900">--</dd>
+                        <dd className="font-medium text-slate-900">{formatCounter(selectedNode.gc_major_total)}</dd>
                       </div>
                     </dl>
                     <p className="mt-2 text-xs text-slate-500">
-                      Prometheus resource mapping will be enabled in `p8-5`.
+                      Source: {selectedNode.prometheus_source ?? "monitor fallback"}
+                      {selectedNode.prometheus_note ? ` · ${selectedNode.prometheus_note}` : ""}
                     </p>
                   </article>
 
@@ -595,13 +639,21 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                       </div>
                       <div className="flex items-center justify-between">
                         <dt className="text-slate-600">Sync</dt>
-                        <dd className="font-medium text-slate-900">{formatProgress(selectedNode.sync_progress)}</dd>
+                        <dd className="font-medium text-slate-900">{formatProgress(monitorSyncPercent(selectedNode))}</dd>
                       </div>
                       <div className="flex items-center justify-between">
                         <dt className="text-slate-600">Blocks/min</dt>
                         <dd className="font-medium text-slate-900">
                           {formatBlocksPerMinute(selectedNode.blocks_per_minute)}
                         </dd>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <dt className="text-slate-600">Peers</dt>
+                        <dd className="font-medium text-slate-900">{formatCounter(selectedNode.peer_count)}</dd>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <dt className="text-slate-600">Epoch</dt>
+                        <dd className="font-medium text-slate-900">{selectedNode.epoch ?? "--"}</dd>
                       </div>
                       <div className="flex items-center justify-between">
                         <dt className="text-slate-600">Block Height</dt>

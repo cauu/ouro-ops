@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::process::Command;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -35,6 +36,18 @@ pub struct MonitorSnapshot {
     pub stalled: bool,
     pub collected_at: String,
     pub note: Option<String>,
+    pub epoch: Option<i64>,
+    pub sync_percent: Option<f64>,
+    pub tip_diff_blocks: Option<i64>,
+    pub peer_count: Option<i64>,
+    pub cpu_sys_percent: Option<f64>,
+    pub mem_live_bytes: Option<f64>,
+    pub mem_rss_bytes: Option<f64>,
+    pub mem_heap_bytes: Option<f64>,
+    pub gc_minor_total: Option<i64>,
+    pub gc_major_total: Option<i64>,
+    pub prometheus_source: Option<String>,
+    pub prometheus_note: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -55,6 +68,37 @@ struct RuntimeMonitorContext {
     restore_snapshot_requested: bool,
     protocol_magic_id_present: bool,
     recent_logs: String,
+}
+
+#[derive(Debug, Clone, Default)]
+struct PrometheusMetrics {
+    epoch: Option<i64>,
+    sync_percent: Option<f64>,
+    tip_diff_blocks: Option<i64>,
+    peer_count: Option<i64>,
+    cpu_sys_percent: Option<f64>,
+    mem_live_bytes: Option<f64>,
+    mem_rss_bytes: Option<f64>,
+    mem_heap_bytes: Option<f64>,
+    gc_minor_total: Option<i64>,
+    gc_major_total: Option<i64>,
+    source: Option<String>,
+    note: Option<String>,
+}
+
+impl PrometheusMetrics {
+    fn has_any_value(&self) -> bool {
+        self.epoch.is_some()
+            || self.sync_percent.is_some()
+            || self.tip_diff_blocks.is_some()
+            || self.peer_count.is_some()
+            || self.cpu_sys_percent.is_some()
+            || self.mem_live_bytes.is_some()
+            || self.mem_rss_bytes.is_some()
+            || self.mem_heap_bytes.is_some()
+            || self.gc_minor_total.is_some()
+            || self.gc_major_total.is_some()
+    }
 }
 
 fn classify_ssh_error(target: &str, stderr: &str) -> AppError {
@@ -118,6 +162,203 @@ fn parse_sync_progress(value: Option<&Value>) -> Option<f64> {
         Some(Value::String(raw)) => raw.trim().parse::<f64>().ok(),
         Some(Value::Number(raw)) => raw.as_f64(),
         _ => None,
+    }
+}
+
+fn parse_prometheus_line(raw: &str) -> Option<(String, f64)> {
+    let line = raw.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    let mut parts = line.split_whitespace();
+    let raw_name = parts.next()?;
+    let raw_value = parts.next()?;
+    let value = raw_value.parse::<f64>().ok()?;
+    if !value.is_finite() {
+        return None;
+    }
+    let name = raw_name
+        .split_once('{')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or(raw_name)
+        .to_string();
+    Some((name, value))
+}
+
+fn parse_prometheus_exposition(raw: &str) -> HashMap<String, f64> {
+    let mut metrics = HashMap::new();
+    for line in raw.lines() {
+        if let Some((name, value)) = parse_prometheus_line(line) {
+            metrics
+                .entry(name)
+                .and_modify(|previous| {
+                    if value > *previous {
+                        *previous = value;
+                    }
+                })
+                .or_insert(value);
+        }
+    }
+    metrics
+}
+
+fn pick_prometheus_value(metrics: &HashMap<String, f64>, keys: &[&str]) -> Option<f64> {
+    keys.iter().find_map(|key| metrics.get(*key).copied())
+}
+
+fn pick_prometheus_i64(metrics: &HashMap<String, f64>, keys: &[&str]) -> Option<i64> {
+    pick_prometheus_value(metrics, keys).map(|value| value.round() as i64)
+}
+
+fn normalize_percent(value: Option<f64>) -> Option<f64> {
+    value.map(|raw| {
+        if (0.0..=1.0).contains(&raw) {
+            raw * 100.0
+        } else {
+            raw
+        }
+    })
+}
+
+fn map_prometheus_metrics(source: &str, metrics: &HashMap<String, f64>) -> PrometheusMetrics {
+    PrometheusMetrics {
+        epoch: pick_prometheus_i64(
+            metrics,
+            &[
+                "nview_epoch",
+                "cardano_node_metrics_epoch_int",
+                "cardano_node_metrics_epoch",
+            ],
+        ),
+        sync_percent: normalize_percent(pick_prometheus_value(
+            metrics,
+            &[
+                "nview_sync_percent",
+                "cardano_node_metrics_syncPercent",
+                "cardano_node_metrics_syncProgress",
+                "cardano_node_metrics_syncProgress_int",
+            ],
+        )),
+        tip_diff_blocks: pick_prometheus_i64(
+            metrics,
+            &[
+                "nview_tip_diff_blocks",
+                "cardano_node_metrics_tipDiff_int",
+                "cardano_node_metrics_chainDensityTipDiff_int",
+            ],
+        ),
+        peer_count: pick_prometheus_i64(
+            metrics,
+            &[
+                "nview_peer_count",
+                "cardano_node_metrics_connectedPeers_int",
+                "cardano_node_metrics_connectedPeers",
+            ],
+        ),
+        cpu_sys_percent: normalize_percent(pick_prometheus_value(
+            metrics,
+            &[
+                "nview_cpu_sys_percent",
+                "cardano_node_resources_cpuSys_percent",
+                "cardano_node_resources_cpuSys_int",
+            ],
+        )),
+        mem_live_bytes: pick_prometheus_value(
+            metrics,
+            &[
+                "nview_mem_live_bytes",
+                "cardano_node_resources_memLive_bytes",
+                "cardano_node_resources_rts_mem_live_bytes",
+            ],
+        ),
+        mem_rss_bytes: pick_prometheus_value(
+            metrics,
+            &[
+                "nview_mem_rss_bytes",
+                "cardano_node_resources_memRss_bytes",
+                "cardano_node_resources_rts_mem_rss_bytes",
+                "process_resident_memory_bytes",
+            ],
+        ),
+        mem_heap_bytes: pick_prometheus_value(
+            metrics,
+            &[
+                "nview_mem_heap_bytes",
+                "cardano_node_resources_memHeap_bytes",
+                "cardano_node_resources_rts_mem_heap_bytes",
+            ],
+        ),
+        gc_minor_total: pick_prometheus_i64(
+            metrics,
+            &[
+                "nview_gc_minor_total",
+                "cardano_node_resources_gc_minor_total",
+                "rts_gc_minor_num",
+                "rts_gc_minor_num_gcs",
+            ],
+        ),
+        gc_major_total: pick_prometheus_i64(
+            metrics,
+            &[
+                "nview_gc_major_total",
+                "cardano_node_resources_gc_major_total",
+                "rts_gc_major_num",
+                "rts_gc_major_num_gcs",
+            ],
+        ),
+        source: Some(source.to_string()),
+        note: None,
+    }
+}
+
+fn collect_prometheus_metrics(machine: &MachineRow) -> PrometheusMetrics {
+    let candidates: [(&str, &str); 4] = [
+        (
+            "nview:9090",
+            "docker exec nview sh -lc 'wget -qO- http://127.0.0.1:9090/metrics 2>/dev/null || curl -fsS http://127.0.0.1:9090/metrics 2>/dev/null'",
+        ),
+        (
+            "cardano-node:12798",
+            "docker exec cardano-node sh -lc 'wget -qO- http://127.0.0.1:12798/metrics 2>/dev/null || curl -fsS http://127.0.0.1:12798/metrics 2>/dev/null'",
+        ),
+        (
+            "host:12798",
+            "sh -lc 'wget -qO- http://127.0.0.1:12798/metrics 2>/dev/null || curl -fsS http://127.0.0.1:12798/metrics 2>/dev/null'",
+        ),
+        (
+            "host:12788",
+            "sh -lc 'wget -qO- http://127.0.0.1:12788/metrics 2>/dev/null || curl -fsS http://127.0.0.1:12788/metrics 2>/dev/null'",
+        ),
+    ];
+    let mut last_error: Option<String> = None;
+    for (source, command) in candidates {
+        match ssh_exec(machine, command) {
+            Ok(raw) => {
+                if raw.trim().is_empty() {
+                    last_error = Some(format!("{source} returned empty metrics response"));
+                    continue;
+                }
+                let metrics = parse_prometheus_exposition(raw.as_str());
+                if metrics.is_empty() {
+                    last_error = Some(format!("{source} returned non-parseable metrics response"));
+                    continue;
+                }
+                let mut mapped = map_prometheus_metrics(source, &metrics);
+                if mapped.has_any_value() {
+                    return mapped;
+                }
+                mapped.note = Some(format!("{source} reachable but mapped fields are missing"));
+                return mapped;
+            }
+            Err(err) => {
+                last_error = Some(err.to_string());
+            }
+        }
+    }
+    PrometheusMetrics {
+        source: None,
+        note: last_error,
+        ..PrometheusMetrics::default()
     }
 }
 
@@ -471,6 +712,7 @@ fn collect_machine_snapshot(
                 runtime_context.as_ref(),
                 collected_at_epoch,
             ) {
+                let prometheus = collect_prometheus_metrics(machine);
                 insert_health_sample(
                     conn,
                     machine.id,
@@ -498,6 +740,18 @@ fn collect_machine_snapshot(
                     stalled: false,
                     collected_at,
                     note: sync_note,
+                    epoch: prometheus.epoch,
+                    sync_percent: prometheus.sync_percent.or(recovered_sync_progress),
+                    tip_diff_blocks: prometheus.tip_diff_blocks,
+                    peer_count: prometheus.peer_count,
+                    cpu_sys_percent: prometheus.cpu_sys_percent,
+                    mem_live_bytes: prometheus.mem_live_bytes,
+                    mem_rss_bytes: prometheus.mem_rss_bytes,
+                    mem_heap_bytes: prometheus.mem_heap_bytes,
+                    gc_minor_total: prometheus.gc_minor_total,
+                    gc_major_total: prometheus.gc_major_total,
+                    prometheus_source: prometheus.source,
+                    prometheus_note: prometheus.note,
                 });
             }
 
@@ -520,6 +774,18 @@ fn collect_machine_snapshot(
                 stalled: false,
                 collected_at,
                 note: Some(note),
+                epoch: None,
+                sync_percent: None,
+                tip_diff_blocks: None,
+                peer_count: None,
+                cpu_sys_percent: None,
+                mem_live_bytes: None,
+                mem_rss_bytes: None,
+                mem_heap_bytes: None,
+                gc_minor_total: None,
+                gc_major_total: None,
+                prometheus_source: None,
+                prometheus_note: None,
             });
         }
     };
@@ -527,6 +793,7 @@ fn collect_machine_snapshot(
     let (block_height, sync_progress) = match parse_tip(tip_raw.as_str()) {
         Ok(parsed) => parsed,
         Err(err) => {
+            let prometheus = collect_prometheus_metrics(machine);
             let note = err.to_string();
             return Ok(MonitorSnapshot {
                 machine_id: machine.id,
@@ -546,6 +813,18 @@ fn collect_machine_snapshot(
                 stalled: false,
                 collected_at,
                 note: Some(note),
+                epoch: prometheus.epoch,
+                sync_percent: prometheus.sync_percent,
+                tip_diff_blocks: prometheus.tip_diff_blocks,
+                peer_count: prometheus.peer_count,
+                cpu_sys_percent: prometheus.cpu_sys_percent,
+                mem_live_bytes: prometheus.mem_live_bytes,
+                mem_rss_bytes: prometheus.mem_rss_bytes,
+                mem_heap_bytes: prometheus.mem_heap_bytes,
+                gc_minor_total: prometheus.gc_minor_total,
+                gc_major_total: prometheus.gc_major_total,
+                prometheus_source: prometheus.source,
+                prometheus_note: prometheus.note,
             });
         }
     };
@@ -573,6 +852,7 @@ fn collect_machine_snapshot(
     };
     let health_level =
         determine_health_level(status.as_str(), sync_stage.as_str(), blocks_per_minute, stalled);
+    let prometheus = collect_prometheus_metrics(machine);
     insert_health_sample(
         conn,
         machine.id,
@@ -601,6 +881,18 @@ fn collect_machine_snapshot(
         stalled,
         collected_at,
         note: sync_note,
+        epoch: prometheus.epoch,
+        sync_percent: prometheus.sync_percent.or(sync_progress),
+        tip_diff_blocks: prometheus.tip_diff_blocks,
+        peer_count: prometheus.peer_count,
+        cpu_sys_percent: prometheus.cpu_sys_percent,
+        mem_live_bytes: prometheus.mem_live_bytes,
+        mem_rss_bytes: prometheus.mem_rss_bytes,
+        mem_heap_bytes: prometheus.mem_heap_bytes,
+        gc_minor_total: prometheus.gc_minor_total,
+        gc_major_total: prometheus.gc_major_total,
+        prometheus_source: prometheus.source,
+        prometheus_note: prometheus.note,
     })
 }
 

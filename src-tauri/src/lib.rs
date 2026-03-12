@@ -111,13 +111,12 @@ mod frontend_tests {
     fn tc_fe_002_sidebar_links_match_routes() {
         let sidebar = include_str!("../../src/components/Sidebar.tsx");
         assert!(sidebar.contains("to=\"/\""));
-        assert!(sidebar.contains("to=\"/machines\""));
         assert!(sidebar.contains("to=\"/kes\""));
         assert!(sidebar.contains("to=\"/deploy\""));
         assert!(sidebar.contains("to=\"/upgrade\""));
         assert!(sidebar.contains("to=\"/settings\""));
         assert!(sidebar.contains("Dashboard"));
-        assert!(sidebar.contains("Machines"));
+        assert!(!sidebar.contains("Machines"));
         assert!(sidebar.contains("KES"));
         assert!(sidebar.contains("Deploy"));
         assert!(sidebar.contains("Upgrade"));
@@ -145,14 +144,15 @@ mod frontend_tests {
         assert!(deploy.contains("restore_snapshot_bp (Mithril cold-start restore)"));
         assert!(deploy.contains("setRestoreSnapshotRelay(true)"));
         assert!(deploy.contains("setRestoreSnapshotBp(false)"));
-        assert!(deploy.contains("Default is enabled for relay cold-starts"));
+        assert!(deploy.contains("Default is enabled for relay and bp cold-starts"));
         assert!(deploy.contains("networkSupportsMithril"));
         assert!(deploy.contains("step === 1"));
         assert!(deploy.contains("step === 2"));
         assert!(deploy.contains("step === 3"));
-        assert!(deploy.contains("Loading machines..."));
-        assert!(deploy.contains("Requesting machine list from local app"));
-        assert!(deploy.contains("Still waiting for machine_list response"));
+        assert!(deploy.contains("Enter BP and relay nodes manually"));
+        assert!(deploy.contains("Moving to step 2 will create these machines"));
+        assert!(deploy.contains("Step 1 completed."));
+        assert!(deploy.contains("Creating nodes..."));
         assert!(deploy.contains("Resolving runtime state"));
     }
 
@@ -175,11 +175,15 @@ mod frontend_tests {
         assert!(dashboard.contains("stopMonitorStore()"));
         assert!(dashboard.contains("poolRefreshBoundOnchain()"));
         assert!(dashboard.contains("onPoolRefreshed(nextPool)"));
-        assert!(dashboard.contains("Recent Tasks"));
-        assert!(dashboard.contains("KES Rotation Watch"));
+        assert!(dashboard.contains("Cluster Overview (BP + Relays)"));
+        assert!(dashboard.contains("Node Details"));
+        assert!(dashboard.contains("Recent Operation Logs"));
+        assert!(dashboard.contains("KES remain"));
+        assert!(dashboard.contains("Rotate Now"));
         assert!(dashboard.contains("Blocks/min"));
-        assert!(dashboard.contains("Sync Progress"));
-        assert!(dashboard.contains("Snapshot Restore"));
+        assert!(dashboard.contains("Sync"));
+        assert!(dashboard.contains("Sync Stage"));
+        assert!(dashboard.contains("Source:"));
         assert!(dashboard.contains("Sync Stage"));
         assert!(dashboard.contains("snapshot.health_level"));
         assert!(dashboard.contains("snapshot restoring"));
@@ -489,18 +493,18 @@ mod frontend_tests {
     #[test]
     fn tc_fe_019_dashboard_truncates_recent_task_errors() {
         let dashboard = include_str!("../../src/pages/Dashboard.tsx");
-        assert!(dashboard.contains("truncatePreview("));
-        assert!(dashboard.contains("max-h-20 overflow-hidden"));
+        assert!(dashboard.contains("Recent Operation Logs"));
+        assert!(dashboard.contains("latest {Math.min(recentTasks.length, 6)} entries"));
         assert!(dashboard.contains("title={taskError}"));
     }
 
     #[test]
     fn tc_fe_020_dashboard_guards_other_long_text_blocks() {
         let dashboard = include_str!("../../src/pages/Dashboard.tsx");
-        assert!(dashboard.contains("title={status}"));
-        assert!(dashboard.contains("truncatePreview(status, 160)"));
-        assert!(dashboard.contains("title={snapshot.note}"));
-        assert!(dashboard.contains("truncatePreview(snapshot.note, 220)"));
+        assert!(dashboard.contains("role=\"tooltip\""));
+        assert!(dashboard.contains("max-w-[min(28rem,90vw)]"));
+        assert!(dashboard.contains("group-hover:opacity-100"));
+        assert!(dashboard.contains("group-focus-visible:opacity-100"));
     }
 
     #[test]
