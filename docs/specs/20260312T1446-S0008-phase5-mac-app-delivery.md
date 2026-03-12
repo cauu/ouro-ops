@@ -64,8 +64,8 @@ Spec-ID: S0008
 - [x] p8-4 实现 telemetry 三态体验：缓存优先、后台静默刷新、失败降级重试
 - [x] p8-5 接入 Prometheus 查询能力并完成 Dashboard 指标映射（含时间戳与空值兜底）
 - [x] p8-6 实现 Deploy Step1 手动节点输入 + 机器创建，落实默认开关策略与无 mithril 初始化约束
-- [ ] p8-7 实现 KES Rotate 向导生产化页面与关键风险闸门（含 KES remain 关联操作）
-- [ ] p8-8 实现 Upgrade 向导生产化页面与 BP gate / rollback 提示
+- [x] p8-7 实现 KES Rotate 向导生产化页面与关键风险闸门（含 KES remain 关联操作）
+- [x] p8-8 实现 Upgrade 向导生产化页面与 BP gate / rollback 提示
 - [ ] p8-9 打通审计与回归：关键操作日志、错误提示一致性、文案与状态对齐
 - [ ] p8-10 完成 mac 桌面场景验收与回归测试，准备阶段结项评审
 
@@ -244,3 +244,21 @@ Spec-ID: S0008
 
 ### 13.4 Change Request Delta
 - 2026-03-12 15:50 +0800 执行推进：继续推进 S0008，完成 p8-6 Deploy Step1 机器创建与默认策略约束落地。
+
+## 14. Addendum (append-only)
+### 14.1 Execution Plan Delta
+- [x] p8-7 实现 KES Rotate 向导生产化页面与关键风险闸门（含 KES remain 关联操作）
+- [x] p8-8 实现 Upgrade 向导生产化页面与 BP gate / rollback 提示
+
+### 14.2 Execution Log Delta
+- 2026-03-12 15:55 +0800 p8-7/p8-8 started: 对齐 KES/Upgrade 到原型分步向导结构，并收敛到浅色卡片层级。
+- 2026-03-12 16:03 +0800 p8-7/p8-8 completed: 完成 KES 风险闸门可视化与 Upgrade BP gate/rollback 分步化改造，并同步快照测试断言。
+
+### 14.3 Validation Evidence Delta
+- TC-P8-008 | stack: ui | command: rg -n "KES Rotate|Step 1: Generate KES request|Step 3: Push to BP \\(Risk Gate\\)|Type pool ticker|Confirm KES Push|Step 4: Validation" src/pages/KesManager.tsx src-tauri/src/lib.rs | result: pass | note: KES 向导已包含关键风险闸门、手动确认与最终校验步骤
+- TC-P8-008 | stack: ui | command: rg -n "wizardStep|1 Version Confirm|2 Rolling Upgrade|3 Health Check|Step 2: BP gate & rollback|Confirm Next Step|Rollback|unlock BP upgrade" src/pages/UpgradeWizard.tsx src-tauri/src/lib.rs | result: pass | note: Upgrade 向导已具备 BP gate 与 rollback 提示/操作
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: KES/Upgrade 页面结构改造后前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 142/142 通过（仅剩 dead_code warning）
+
+### 14.4 Change Request Delta
+- 2026-03-12 15:55 +0800 执行推进：继续推进 S0008，完成 p8-7/p8-8 的 KES/Upgrade 原型化落地。

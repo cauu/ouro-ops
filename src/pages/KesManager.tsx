@@ -16,25 +16,25 @@ function isTerminal(status: string): boolean {
 function severityTone(severity: string): string {
   switch (severity) {
     case "healthy":
-      return "text-emerald-300";
+      return "text-emerald-700";
     case "critical":
-      return "text-red-300";
+      return "text-red-700";
     default:
-      return "text-amber-300";
+      return "text-amber-700";
   }
 }
 
 function taskTone(status: string): string {
   switch (status) {
     case "success":
-      return "text-emerald-300";
+      return "text-emerald-700";
     case "failed":
     case "cancelled":
-      return "text-red-300";
+      return "text-red-700";
     case "running":
-      return "text-sky-300";
+      return "text-sky-700";
     default:
-      return "text-amber-300";
+      return "text-amber-700";
   }
 }
 
@@ -180,26 +180,40 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
   const normalizedTicker = poolTicker.trim();
 
   return (
-    <section className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">KES Manager</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Generate a new KES key, import a signed operational certificate, then push it to the BP.
+    <section className="space-y-5">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">KES Rotate</h1>
+        <p className="text-sm text-zinc-400">
+          Step 1-4 向导：生成 keypairs、离线签发 cert、执行 rotate、完成校验。
         </p>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full border border-sky-300 bg-sky-50 px-2.5 py-1 font-semibold text-sky-700">
+            1 Generate KES
+          </span>
+          <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-slate-600">
+            2 Offline Cert
+          </span>
+          <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-slate-600">
+            3 Rotate Gate
+          </span>
+          <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-slate-600">
+            4 Validate
+          </span>
+        </div>
       </header>
 
       {error && (
-        <p className="rounded-md border border-red-700/60 bg-red-900/20 px-3 py-2 text-sm text-red-300">
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </p>
       )}
 
       {loading ? (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-300">
-          <p className="font-medium text-zinc-100">Loading KES status...</p>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          <p className="font-medium text-slate-900">Loading KES status...</p>
         </div>
       ) : sortedStatuses.length === 0 ? (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-400">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
           No BP machines found.
         </div>
       ) : (
@@ -211,15 +225,17 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
             const canPush = task?.status === "pending";
             const pushConfirmArmed = pushConfirmMachineId === status.machine_id;
             const pushUnlocked = pushConfirmValue.trim() === normalizedTicker;
+            const taskError = formatTaskError(task?.error_msg);
+            const step4Ready = task?.status === "success";
             return (
               <article
                 key={status.machine_id}
-                className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4"
+                className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-base font-semibold text-zinc-100">{status.machine_name}</h2>
-                    <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
+                    <h2 className="text-base font-semibold">{status.machine_name}</h2>
+                    <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">
                       block producer
                     </p>
                   </div>
@@ -228,42 +244,42 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                   </span>
                 </div>
 
-                <dl className="mt-4 grid gap-3 md:grid-cols-4 text-sm">
+                <dl className="mt-4 grid gap-3 text-sm md:grid-cols-4">
                   <div>
-                    <dt className="text-zinc-500">Current Period</dt>
-                    <dd className="mt-1 font-medium text-zinc-100">
+                    <dt className="text-slate-500">Current Period</dt>
+                    <dd className="mt-1 font-semibold">
                       {status.kes_period_current ?? "--"}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-zinc-500">Max Period</dt>
-                    <dd className="mt-1 font-medium text-zinc-100">
+                    <dt className="text-slate-500">Max Period</dt>
+                    <dd className="mt-1 font-semibold">
                       {status.kes_period_max ?? "--"}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-zinc-500">Remaining Days</dt>
-                    <dd className="mt-1 font-medium text-zinc-100">
+                    <dt className="text-slate-500">Remaining Days</dt>
+                    <dd className="mt-1 font-semibold">
                       {status.remaining_days ?? "--"}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-zinc-500">Op Cert Counter</dt>
-                    <dd className="mt-1 font-medium text-zinc-100">
+                    <dt className="text-slate-500">Op Cert Counter</dt>
+                    <dd className="mt-1 font-semibold">
                       {status.op_cert_counter ?? "--"}
                     </dd>
                   </div>
                 </dl>
 
                 {status.expiry_date && (
-                  <p className="mt-3 text-xs text-zinc-400">Expiry date: {status.expiry_date}</p>
+                  <p className="mt-3 text-xs text-slate-500">Expiry date: {status.expiry_date}</p>
                 )}
 
-                <div className="mt-4 rounded-md border border-zinc-800 bg-black/20 p-3">
+                <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-zinc-100">Step 1: Generate KES request</p>
-                      <p className="mt-1 text-xs text-zinc-400">
+                      <p className="text-sm font-medium">Step 1: Generate KES request</p>
+                      <p className="mt-1 text-xs text-slate-500">
                         Create a new local KES keypair and copy the generated verification key to the cold environment.
                       </p>
                     </div>
@@ -271,24 +287,24 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                       type="button"
                       onClick={() => void handleGenerate(status.machine_id)}
                       disabled={busy}
-                      className="rounded-md border border-sky-700/70 px-3 py-1.5 text-xs text-sky-200 hover:bg-sky-950/30 disabled:opacity-60"
+                      className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
                     >
                       Generate KES
                     </button>
                   </div>
                   {request && (
-                    <div className="mt-3 rounded-md border border-zinc-700 bg-zinc-950/60 p-3 text-xs text-zinc-300">
-                      <p className="font-medium text-zinc-100">KES verification key</p>
+                    <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                      <p className="font-medium text-slate-900">KES verification key</p>
                       <p className="mt-1 break-all">{request.kes_vkey_path}</p>
-                      <p className="mt-3 font-medium text-zinc-100">Cold signing instructions</p>
-                      <pre className="mt-1 whitespace-pre-wrap text-zinc-300">{request.instructions}</pre>
+                      <p className="mt-3 font-medium text-slate-900">Step 2: Cold signing instructions</p>
+                      <pre className="mt-1 whitespace-pre-wrap text-slate-700">{request.instructions}</pre>
                     </div>
                   )}
                 </div>
 
-                <div className="mt-4 rounded-md border border-zinc-800 bg-black/20 p-3">
-                  <p className="text-sm font-medium text-zinc-100">Step 2: Import signed certificate</p>
-                  <p className="mt-1 text-xs text-zinc-400">
+                <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">
+                  <p className="text-sm font-medium">Step 3: Import signed certificate</p>
+                  <p className="mt-1 text-xs text-slate-500">
                     Paste the absolute path of the signed `node.cert` returned by the cold environment.
                   </p>
                   <div className="mt-3 flex flex-col gap-2 md:flex-row">
@@ -303,24 +319,24 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                       placeholder="/absolute/path/to/node.cert"
                       autoCapitalize="none"
                       autoCorrect="off"
-                      className="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                      className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                     />
                     <button
                       type="button"
                       onClick={() => void handleImport(status.machine_id)}
                       disabled={busy}
-                      className="rounded-md border border-amber-700/70 px-3 py-2 text-sm text-amber-200 hover:bg-amber-950/30 disabled:opacity-60"
+                      className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
                     >
                       Import Cert
                     </button>
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-md border border-zinc-800 bg-black/20 p-3">
+                <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-zinc-100">Step 3: Push to BP</p>
-                      <p className="mt-1 text-xs text-zinc-400">
+                      <p className="text-sm font-medium">Step 3: Push to BP (Risk Gate)</p>
+                      <p className="mt-1 text-xs text-slate-500">
                         Install the staged certificate on the BP and restart the runtime with readiness checks.
                       </p>
                     </div>
@@ -331,13 +347,13 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                         setPushConfirmValue("");
                       }}
                       disabled={busy || !canPush}
-                      className="rounded-md border border-emerald-700/70 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-950/30 disabled:opacity-60"
+                      className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
                     >
                       Push to BP
                     </button>
                   </div>
                   {canPush && pushConfirmArmed && (
-                    <div className="mt-3 rounded-md border border-red-800/60 bg-red-950/20 p-3 text-xs text-red-100">
+                    <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
                       <p className="font-medium">Type pool ticker {normalizedTicker} to unlock KES push.</p>
                       <div className="mt-3 flex flex-col gap-2 md:flex-row">
                         <input
@@ -345,14 +361,14 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                           onChange={(event) => setPushConfirmValue(event.target.value)}
                           autoCapitalize="none"
                           autoCorrect="off"
-                          className="flex-1 rounded-md border border-red-800/70 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                          className="flex-1 rounded-md border border-red-300 bg-white px-3 py-2 text-sm text-slate-900"
                         />
                         <div className="flex gap-2">
                           <button
                             type="button"
                             onClick={() => void handlePush(status.machine_id)}
                             disabled={busy || !pushUnlocked}
-                            className="rounded-md bg-red-400 px-3 py-2 text-sm font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-md bg-red-500 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             Confirm KES Push
                           </button>
@@ -362,7 +378,7 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                               setPushConfirmMachineId(null);
                               setPushConfirmValue("");
                             }}
-                            className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:border-zinc-500"
+                            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
                           >
                             Cancel
                           </button>
@@ -371,18 +387,38 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                     </div>
                   )}
                   {task && (
-                    <div className="mt-3 rounded-md border border-zinc-700 bg-zinc-950/60 p-3 text-xs text-zinc-300">
+                    <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                       <p className={`font-medium uppercase ${taskTone(task.status)}`}>
                         Task {formatTaskLabel(task.status)}
                       </p>
-                      <p className="mt-1 break-all text-zinc-400">Task ID: {task.task_id}</p>
-                      {formatTaskError(task.error_msg) && (
-                        <p className="mt-2 rounded-md border border-red-900 bg-red-950/30 px-3 py-2 text-red-200">
-                          {formatTaskError(task.error_msg)}
+                      <p className="mt-1 break-all text-slate-500">Task ID: {task.task_id}</p>
+                      {taskError && (
+                        <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-700">
+                          {taskError}
                         </p>
                       )}
                     </div>
                   )}
+                </div>
+
+                <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">
+                  <p className="text-sm font-medium">Step 4: Validation</p>
+                  <div className="mt-2 grid gap-2 text-xs text-slate-600 md:grid-cols-3">
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
+                      <span className="block text-slate-500">Operation</span>
+                      <strong className="text-slate-900">
+                        {step4Ready ? "success" : task ? formatTaskLabel(task.status) : "pending"}
+                      </strong>
+                    </div>
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
+                      <span className="block text-slate-500">KES remain</span>
+                      <strong className="text-slate-900">{status.remaining_days ?? "--"}d</strong>
+                    </div>
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
+                      <span className="block text-slate-500">BP health</span>
+                      <strong className="text-slate-900">{status.severity === "critical" ? "risk" : "online"}</strong>
+                    </div>
+                  </div>
                 </div>
               </article>
             );

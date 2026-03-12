@@ -413,7 +413,7 @@ mod frontend_tests {
     #[test]
     fn tc_fe_014_kes_manager_page_exists() {
         let page = include_str!("../../src/pages/KesManager.tsx");
-        assert!(page.contains("KES Manager"));
+        assert!(page.contains("KES Rotate"));
         assert!(page.contains("kesStatusAll()"));
         assert!(page.contains("kesGenerate("));
         assert!(page.contains("kesImportCert("));
@@ -424,6 +424,7 @@ mod frontend_tests {
         assert!(page.contains("Push to BP"));
         assert!(page.contains("Type pool ticker"));
         assert!(page.contains("Confirm KES Push"));
+        assert!(page.contains("Step 4: Validation"));
     }
 
     #[test]
