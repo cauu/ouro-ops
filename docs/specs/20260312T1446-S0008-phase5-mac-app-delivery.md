@@ -483,3 +483,19 @@ Spec-ID: S0008
 
 ### 27.4 Change Request Delta
 - 2026-03-12 17:42 +0800 需求修订：KES Rotate 对齐 prototype，补齐 titlebar、wizard-stepline、Step1 终端块与统一 action-bar。
+
+## 28. Addendum (append-only)
+### 28.1 Execution Plan Delta
+- [x] p8-23 修复 KES Rotate 顶栏空白拖拽区：空白区域 drag，交互元素 no-drag
+
+### 28.2 Execution Log Delta
+- 2026-03-12 17:44 +0800 p8-23 started: 根据反馈修复 KES Rotate 顶部标题栏空白区域不可拖拽问题。
+- 2026-03-12 17:44 +0800 p8-23 completed: 为 KES Rotate 顶栏容器补齐 `drag-region + data-tauri-drag-region`，并将按钮/标题/搜索/chip 标记为 `no-drag`，保证拖拽与点击不冲突。
+
+### 28.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "drag-region|data-tauri-drag-region|no-drag" src/pages/KesManager.tsx | result: pass | note: 顶栏空白区可拖拽、交互元素不可拖拽语义已落地
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 顶栏拖拽语义修复后前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 144/144 通过（仅 dead_code warning）
+
+### 28.4 Change Request Delta
+- 2026-03-12 17:44 +0800 需求修订：修复顶部标题栏空白区域拖不动问题，并严格遵循 drag/no-drag 规则。
