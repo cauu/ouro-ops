@@ -24,6 +24,8 @@ Design direction:
 - single-step focused wizard for Deploy / KES Rotate / Upgrade
 - Deploy Wizard is split into 4 independent views with fixed action bar
 - startup flow: lightweight Welcome Window -> immersive Deploy Wizard (no sidebar)
+- telemetry experience: local cached metrics first, then silent Prometheus refresh with graceful degraded hint
+- safety gates: KES / Upgrade include explicit high-risk confirmation and rollback policy hints
 
 Notes:
 

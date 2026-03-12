@@ -110,6 +110,40 @@
 
                   <article class="wizard-card">
                     <header class="wizard-card-head">
+                      <h3>执行闸门（高风险）</h3>
+                      <p>执行 Rotate 前必须完成人工确认，失败时立即中止并保留回滚入口。</p>
+                    </header>
+                    <div class="wizard-card-body">
+                      <div class="control-grid">
+                        <div class="control-row">
+                          <label class="control-label" for="confirm-kes-ticker">
+                            <strong>确认字符串</strong>
+                            <span>输入 Pool Ticker（示例：OURO）解锁执行按钮</span>
+                          </label>
+                          <div class="control-input">
+                            <input id="confirm-kes-ticker" type="text" placeholder="输入 Pool Ticker" />
+                          </div>
+                        </div>
+                      </div>
+                      <div class="flow-state" aria-label="rotate guard conditions">
+                        <div class="state-row">
+                          <strong>precheck pass rate</strong>
+                          <span>required = 100%</span>
+                        </div>
+                        <div class="state-row">
+                          <strong>bp restart timeout</strong>
+                          <span>trigger rollback if timeout</span>
+                        </div>
+                        <div class="state-row">
+                          <strong>post-check query tip</strong>
+                          <span>must recover before success</span>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+
+                  <article class="wizard-card">
+                    <header class="wizard-card-head">
                       <h3>Rotate 执行参数</h3>
                       <p>确认目标节点与目标证书，执行后会重启 BP 并做健康检查。</p>
                     </header>

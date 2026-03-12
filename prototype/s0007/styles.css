@@ -473,6 +473,43 @@ a {
   font-size: 12px;
 }
 
+.telemetry-strip {
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcff;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.telemetry-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #7aa8ea;
+}
+
+.telemetry-dot.syncing {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.telemetry-dot.live {
+  background: #2d875f;
+}
+
+.telemetry-dot.degraded {
+  background: #b67923;
+}
+
+.telemetry-strip strong {
+  color: var(--text);
+  font-weight: 620;
+}
+
 .status-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1563,6 +1600,16 @@ a {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
   }
 }
 

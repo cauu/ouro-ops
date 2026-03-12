@@ -111,12 +111,15 @@
                     <div class="check-grid" style="margin-top: 10px">
                       <label class="check-item"><input type="checkbox" checked /> enable-chrony</label>
                       <label class="check-item"><input type="checkbox" checked /> hardening</label>
-                      <label class="check-item"><input type="checkbox" checked /> takeover_existing_node</label>
+                      <label class="check-item"><input type="checkbox" /> takeover_existing_node</label>
                       <label class="check-item"><input type="checkbox" checked /> restore_snapshot_bp</label>
                       <label class="check-item"><input type="checkbox" checked /> restore_snapshot_relay</label>
                     </div>
 
-                    <p class="control-note" style="margin-top: 10px">以上开关默认均为 true，可在部署前按节点状态逐项调整。</p>
+                    <p class="control-note" style="margin-top: 10px">
+                      默认策略：takeover_existing_node = false，restore_snapshot_bp/relay = true（mainnet/preprod）。
+                      preview 网络默认关闭 restore 选项。
+                    </p>
                   </div>
                 </article>
               </div>

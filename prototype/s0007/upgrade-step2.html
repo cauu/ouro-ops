@@ -114,6 +114,42 @@
 
                   <article class="wizard-card">
                     <header class="wizard-card-head">
+                      <h3>BP Gate & Rollback Policy</h3>
+                      <p>Relay 完成后进入 BP gate，需人工确认后才继续；失败自动触发回滚。</p>
+                    </header>
+                    <div class="wizard-card-body">
+                      <div class="control-grid">
+                        <div class="control-row">
+                          <label class="control-label" for="confirm-bp-upgrade">
+                            <strong>BP Gate Confirm</strong>
+                            <span>输入 Pool Ticker 以解锁 BP 升级（示例：OURO）</span>
+                          </label>
+                          <div class="control-input with-end">
+                            <input id="confirm-bp-upgrade" type="text" placeholder="输入 Pool Ticker" />
+                            <button type="button" class="btn tiny" disabled>Confirm BP Gate</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="flow-state" aria-label="upgrade rollback rules">
+                        <div class="state-row">
+                          <strong>socket/query tip failed</strong>
+                          <span>rollback current node</span>
+                        </div>
+                        <div class="state-row">
+                          <strong>health-check timeout</strong>
+                          <span>stop rollout + rollback</span>
+                        </div>
+                        <div class="state-row">
+                          <strong>manual abort</strong>
+                          <span>keep rollback available</span>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+
+                  <article class="wizard-card">
+                    <header class="wizard-card-head">
                       <h3>执行日志</h3>
                       <p>滚动升级日志（示例）。</p>
                     </header>
