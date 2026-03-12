@@ -17,6 +17,8 @@ description: Execute software delivery with append-only specification documents 
 8. Allow `draft` specs to be edited freely before execution starts.
 9. Once a spec becomes `active`, treat it as append-only.
 
+---
+
 ## Spec Location And Naming
 
 Store specs under:
