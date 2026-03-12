@@ -717,3 +717,30 @@ Spec-ID: S0007
 
 ### 30.5 Change Request Delta
 - 2026-03-12 13:44 +0800 需求新增：Telemetry 两段提示文案过于生硬且占空间，改用动画图标与 tooltip 表达。
+
+## 31. Addendum (append-only)
+### 31.1 Execution Plan Delta
+- [x] p7-34 收敛 Dashboard 顶部集群指标到 BP 卡片，以 tooltip 轻量承载细节并降低纵向占用
+
+### 31.2 Acceptance Delta
+- TC-118 Dashboard 移除集群概览顶部 `cluster-summary` 指标区，释放纵向空间。
+- TC-119 `Cluster Epoch` 指标下沉至 BP 卡片 `Epoch` 行右侧，采用紧凑标签并通过 tooltip 展示差值说明。
+- TC-120 `BP vs Relay Drift` 指标下沉至 BP 卡片 `Sync` 行右侧，采用 `Δ-1e` 轻量标签并通过 tooltip 展示诊断建议。
+- TC-121 `Slowest Node` 指标下沉至 BP 卡片头部，采用 `slowest · BP` 标签并通过 tooltip 展示慢节点上下文。
+- TC-122 BP 卡片动作区展示 `KES remain`，采用风险胶囊 + 微动效 + tooltip，并与 `立即 Rotate` 操作并置。
+- TC-123 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 31.3 Execution Log Delta
+- 2026-03-12 13:50 +0800 p7-34 started: 按要求将顶部指标迁移到 BP 卡片，并设计更轻量的可交互承载方式。
+- 2026-03-12 13:57 +0800 p7-34 completed: 完成指标下沉、tooltip 交互、KES remain 风险胶囊与样式收敛。
+
+### 31.4 Validation Evidence Delta
+- TC-118 | stack: ui | command: rg -n "cluster-summary|summary-pill" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: 顶部摘要指标区已移除
+- TC-119 | stack: ui | command: rg -n "Epoch|cluster 532|查看集群 Epoch 对比" prototype/s0007/index.html | result: pass | note: Cluster Epoch 已嵌入 BP 的 Epoch 行并由 tooltip 承载说明
+- TC-120 | stack: ui | command: rg -n "Sync|Δ-1e|查看 BP 与 Relay 同步差" prototype/s0007/index.html | result: pass | note: Drift 指标已嵌入 BP 的 Sync 行并提供解释
+- TC-121 | stack: ui | command: rg -n "slowest · BP|查看最慢节点详情" prototype/s0007/index.html | result: pass | note: Slowest Node 已迁移到 BP 头部标签
+- TC-122 | stack: ui | command: rg -n "KES remain 3|kes-pulse|查看 KES 剩余窗口详情|立即 Rotate" prototype/s0007/index.html prototype/s0007/styles.css | result: pass | note: KES remain 与 Rotate 动作并置且具备轻量风险提示交互
+- TC-123 | stack: ui | command: rg -n "<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: 仍为纯静态原型
+
+### 31.5 Change Request Delta
+- 2026-03-12 13:50 +0800 需求新增：将集群概览顶部指标下沉到 BP 卡片，通过 tooltip 等轻量形式实现，并在 BP 卡片中突出展示 KES remain。

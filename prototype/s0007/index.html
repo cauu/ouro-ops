@@ -62,7 +62,7 @@
                 <header class="section-header">
                   <div>
                     <h3 class="section-title">集群概览（BP + Relays）</h3>
-                    <p class="section-meta">顶层展示 Epoch、同步差异和 KES 高危信号。</p>
+                    <p class="section-meta">关键风险收敛到 BP 卡片，用轻量标签和 tooltip 承载细节。</p>
                   </div>
                   <div class="telemetry-compact" aria-live="polite">
                     <span class="telemetry-orbit syncing" aria-hidden="true">
@@ -79,45 +79,65 @@
                   </div>
                 </header>
                 <div class="section-body">
-                  <div class="cluster-summary">
-                    <article class="summary-pill">
-                      <span>Cluster Epoch</span>
-                      <strong>532</strong>
-                    </article>
-                    <article class="summary-pill warn">
-                      <span>BP vs Relay Drift</span>
-                      <strong>BP 落后 1 epoch</strong>
-                    </article>
-                    <article class="summary-pill danger">
-                      <span>Slowest Node</span>
-                      <strong>BP · 98.41%</strong>
-                    </article>
-                    <article class="summary-pill danger">
-                      <span>KES Risk</span>
-                      <strong>period 428 · remain 3</strong>
-                    </article>
-                  </div>
-
                   <div class="node-matrix">
                     <article class="node-card">
                       <header class="node-head">
                         <strong>BP</strong>
-                        <span class="chip danger">critical</span>
+                        <div class="node-head-right">
+                          <span class="chip danger">critical</span>
+                          <span class="tooltip-wrap metric-tip-wrap">
+                            <button class="metric-badge-btn danger" type="button" aria-label="查看最慢节点详情">
+                              slowest · BP
+                            </button>
+                            <span class="tooltip-bubble compact-tip" role="tooltip">
+                              Slowest node: BP · sync 98.41%。该节点当前决定集群最慢同步速度。
+                            </span>
+                          </span>
+                        </div>
                       </header>
                       <p class="node-meta"><span class="state-dot danger"></span>online · uptime 9d 12h</p>
                       <div class="node-stats">
                         <span>Epoch</span>
-                        <strong>531</strong>
+                        <div class="metric-inline">
+                          <strong>531</strong>
+                          <span class="tooltip-wrap metric-tip-wrap">
+                            <button class="metric-badge-btn" type="button" aria-label="查看集群 Epoch 对比">
+                              cluster 532
+                            </button>
+                            <span class="tooltip-bubble compact-tip" role="tooltip">
+                              BP 当前 epoch 为 531，集群最新 epoch 为 532，差值 1。
+                            </span>
+                          </span>
+                        </div>
                       </div>
                       <div class="node-stats">
                         <span>Sync</span>
-                        <strong>98.41%</strong>
+                        <div class="metric-inline">
+                          <strong>98.41%</strong>
+                          <span class="tooltip-wrap metric-tip-wrap">
+                            <button class="metric-badge-btn warn" type="button" aria-label="查看 BP 与 Relay 同步差">
+                              Δ-1e
+                            </button>
+                            <span class="tooltip-bubble compact-tip" role="tooltip">
+                              BP 相比最快 Relay 落后 1 epoch；若持续扩大，优先检查网络连通与磁盘 I/O。
+                            </span>
+                          </span>
+                        </div>
                       </div>
                       <div class="progress-mini">
                         <span style="width: 98.41%"></span>
                       </div>
                       <p class="node-meta mono">tip diff: -1842 blocks</p>
-                      <div class="action-row compact-row">
+                      <div class="action-row compact-row bp-action-row">
+                        <span class="tooltip-wrap metric-tip-wrap">
+                          <button class="metric-badge-btn danger kes-remain" type="button" aria-label="查看 KES 剩余窗口详情">
+                            <span class="kes-pulse" aria-hidden="true"></span>
+                            KES remain 3
+                          </button>
+                          <span class="tooltip-bubble compact-tip" role="tooltip">
+                            KES period 428，剩余 3 个窗口。建议在 24h 内执行 Rotate；若剩余 ≤1 立即进入高优先级处置。
+                          </span>
+                        </span>
                         <a class="btn tiny primary" href="./kes-rotate.html">立即 Rotate</a>
                       </div>
                     </article>
