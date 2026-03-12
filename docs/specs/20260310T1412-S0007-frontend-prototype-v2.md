@@ -662,3 +662,32 @@ Spec-ID: S0007
 
 ### 28.5 Change Request Delta
 - 2026-03-12 11:22 +0800 需求新增：参考 Deploy 页面优化 Upgrade 页面，并补充完整 Upgrade 流程的所有页面设计。
+
+## 29. Addendum (append-only)
+### 29.1 Execution Plan Delta
+- [x] p7-32 补录遗漏的 spec 追踪：回填实现侧对齐提交与原型修复提交的可追溯证据
+
+### 29.2 Acceptance Delta
+- TC-106 active spec 新增对遗漏提交的追踪记录，覆盖 `2d5593b`（实现）与 `cbc461d`（原型）。
+- TC-107 当前实现的 Deploy Step1 采用手动节点输入，并在进入 Step2 时执行机器创建。
+- TC-108 当前实现与原型中的 Deploy 默认策略一致：`takeover_existing_node=false`，`restore_snapshot_bp/relay=true`（mainnet/preprod）。
+- TC-109 Telemetry 体验具备「本地缓存优先 + 后台静默刷新 + 失败降级提示」三态能力（实现与原型一致）。
+- TC-110 原型已补充 KES/Upgrade 高风险执行闸门与回滚触发规则。
+- TC-111 当前实现导航已去除机器中心化入口，仅保留 pool 运营主流程入口。
+- TC-112 原型保持纯静态 HTML/CSS，不引入业务逻辑脚本。
+
+### 29.3 Execution Log Delta
+- 2026-03-12 13:32 +0800 p7-32 started: 用户指出提交可能遗漏 spec 更新，开始核对提交与 active spec 映射关系。
+- 2026-03-12 13:45 +0800 p7-32 completed: 已在 active spec 追加缺失追踪项并补齐验证证据，覆盖实现侧与原型侧两次提交。
+
+### 29.4 Validation Evidence Delta
+- TC-106 | stack: other | command: git log --oneline -n 8 && git log --oneline -- docs/specs/20260310T1412-S0007-frontend-prototype-v2.md -n 5 | result: pass | note: 最近两次提交存在但未出现在 spec 提交链，已通过本条 addendum 回填追踪
+- TC-107 | stack: ui | command: rg -n "Enter BP and relay nodes manually|Moving to step 2 will create these machines|handlePersistStep1|machineAdd|setStep\\(2\\)" src/pages/DeployWizard.tsx | result: pass | note: Step1 手输节点并在进入 Step2 时执行机器创建
+- TC-108 | stack: ui | command: rg -n "takeover_existing_node|restore_snapshot_relay|restore_snapshot_bp|Default is enabled for relay and bp cold-starts" src/pages/DeployWizard.tsx prototype/s0007/deploy-step2.html | result: pass | note: takeover 默认关闭，restore 默认开启（支持 Mithril 的网络）
+- TC-109 | stack: ui | command: rg -n "TelemetryPhase|loading_cache|syncing_live|degraded|Loaded cached telemetry|Refreshing latest telemetry in background|telemetry-strip|Prometheus" src/lib/monitorStore.ts src/pages/Dashboard.tsx prototype/s0007/index.html prototype/s0007/styles.css | result: pass | note: 实现与原型均具备缓存优先、静默刷新、失败降级提示
+- TC-110 | stack: ui | command: rg -n "执行闸门（高风险）|trigger rollback if timeout|BP gate|rollback" prototype/s0007/kes-rotate-step3.html prototype/s0007/upgrade-step2.html | result: pass | note: KES/Upgrade 均包含高风险 gate 与回滚策略文案
+- TC-111 | stack: ui | command: rg -n "Dashboard|KES|Deploy|Upgrade|Settings|Machines|/machines" src/components/Sidebar.tsx src/App.tsx | result: pass | note: 导航与路由中无 Machines 入口，保留 pool 运维主流程入口
+- TC-112 | stack: ui | command: rg -n "<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/deploy-step2.html prototype/s0007/deploy-step3.html prototype/s0007/kes-rotate-step3.html prototype/s0007/upgrade-step2.html || true | result: pass | note: 相关原型页面保持纯静态
+
+### 29.5 Change Request Delta
+- 2026-03-12 13:32 +0800 需求新增：补齐遗漏的 spec 记录，确保提交与验收证据可追溯。
