@@ -391,21 +391,21 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
 
   return (
     <section className="space-y-4">
-      <header className="drag-region rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm" data-tauri-drag-region>
-        <div className="drag-region flex flex-wrap items-center justify-between gap-3" data-tauri-drag-region>
-          <div className="drag-region flex min-w-0 items-center gap-3" data-tauri-drag-region>
+      <header className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="flex items-center gap-1.5" aria-hidden="true">
               <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
               <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
             </div>
-            <button type="button" className="no-drag rounded-md border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs text-slate-600">
+            <button type="button" className="rounded-md border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs text-slate-600">
               Sidebar
             </button>
-            <h1 className="no-drag truncate text-sm font-semibold text-slate-900">Ouro Ops · KES Rotate</h1>
+            <h1 className="truncate text-sm font-semibold text-slate-900">Ouro Ops · KES Rotate</h1>
           </div>
-          <div className="no-drag flex items-center gap-2">
-            <label className="no-drag inline-flex min-h-8 items-center gap-2 rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs text-slate-600">
+          <div className="flex items-center gap-2">
+            <label className="inline-flex min-h-8 items-center gap-2 rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs text-slate-600">
               <span aria-hidden="true">⌕</span>
               <input
                 value={searchValue}
@@ -415,7 +415,7 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                 className="w-40 border-none bg-transparent text-xs text-slate-700 outline-none"
               />
             </label>
-            <span className="no-drag inline-flex min-h-8 items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 text-xs font-semibold text-amber-700">
+            <span className="inline-flex min-h-8 items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 text-xs font-semibold text-amber-700">
               Step {wizardStep} / 4
             </span>
           </div>

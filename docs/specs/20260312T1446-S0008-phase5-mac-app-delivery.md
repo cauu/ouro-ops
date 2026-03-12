@@ -499,3 +499,18 @@ Spec-ID: S0008
 
 ### 28.4 Change Request Delta
 - 2026-03-12 17:44 +0800 需求修订：修复顶部标题栏空白区域拖不动问题，并严格遵循 drag/no-drag 规则。
+
+## 29. Addendum (append-only)
+### 29.1 Execution Plan Delta
+- [x] p8-24 回退 p8-23：撤销 KES Rotate 页面顶栏 drag/no-drag 语义改造
+
+### 29.2 Execution Log Delta
+- 2026-03-12 17:52 +0800 p8-24 started: 用户要求回退本次改动，按最近一项回退 p8-23。
+- 2026-03-12 17:52 +0800 p8-24 completed: KES Rotate 顶栏恢复为普通 header（移除 `drag-region`/`data-tauri-drag-region` 与元素级 `no-drag` 标记）。
+
+### 29.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "<header className=\"rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm\"|<div className=\"flex flex-wrap items-center justify-between gap-3\"|<h1 className=\"truncate text-sm font-semibold text-slate-900\"" src/pages/KesManager.tsx | result: pass | note: 顶栏结构已回退到 p8-23 之前形态
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 回退后前端构建通过
+
+### 29.4 Change Request Delta
+- 2026-03-12 17:52 +0800 需求修订：回退“顶部标题栏空白区域可拖拽”这次改动。
