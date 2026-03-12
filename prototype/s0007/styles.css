@@ -878,7 +878,7 @@ a {
   display: grid;
 }
 
-.tab-panel {
+.tab-panels > .tab-panel {
   display: none;
 }
 

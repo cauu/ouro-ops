@@ -852,3 +852,24 @@ Spec-ID: S0007
 
 ### 35.5 Change Request Delta
 - 2026-03-12 14:31 +0800 需求新增：执行 audit 的 Suggested Commands。
+
+## 36. Addendum (append-only)
+### 36.1 Execution Plan Delta
+- [x] p7-39 修复 Dashboard 节点详情 tab 面板平铺问题，恢复单面板切换行为
+
+### 36.2 Acceptance Delta
+- TC-148 节点详情默认仅展示 BP 面板，不再三列平铺所有面板内容。
+- TC-149 点击 `BP / Relay 1 / Relay 2` 任一 tab 标签后，仅显示对应面板内容。
+- TC-150 该修复保持纯 HTML/CSS 静态实现，不引入 JS 脚本。
+
+### 36.3 Execution Log Delta
+- 2026-03-12 14:58 +0800 p7-39 started: 根据反馈定位 tab 无法切换原因为 CSS 优先级冲突。
+- 2026-03-12 15:00 +0800 p7-39 completed: 将隐藏规则从 `.tab-panel` 提升为 `.tab-panels > .tab-panel`，避免被 `.node-details-grid` 覆盖。
+
+### 36.4 Validation Evidence Delta
+- TC-148 | stack: ui | command: rg -n "\\.tab-panels > \\.tab-panel|\\.node-details-grid" prototype/s0007/styles.css | result: pass | note: 面板隐藏规则优先级高于基础网格规则
+- TC-149 | stack: ui | command: rg -n "#node-panel-bp:checked ~ \\\\.tab-panels \\\\.tab-panel-bp|#node-panel-relay-1:checked ~ \\\\.tab-panels \\\\.tab-panel-relay-1|#node-panel-relay-2:checked ~ \\\\.tab-panels \\\\.tab-panel-relay-2" prototype/s0007/styles.css | result: pass | note: 三个 tab 均具备 checked->panel 显示映射
+- TC-150 | stack: ui | command: rg -n "<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: 保持静态原型边界
+
+### 36.5 Change Request Delta
+- 2026-03-12 14:58 +0800 需求新增：Dashboard 节点详情 tab 当前全部平铺且没有切换逻辑，要求修复。
