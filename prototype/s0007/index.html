@@ -64,17 +64,21 @@
                     <h3 class="section-title">集群概览（BP + Relays）</h3>
                     <p class="section-meta">顶层展示 Epoch、同步差异和 KES 高危信号。</p>
                   </div>
+                  <div class="telemetry-compact" aria-live="polite">
+                    <span class="telemetry-orbit syncing" aria-hidden="true">
+                      <span class="ring"></span>
+                      <span class="dot"></span>
+                    </span>
+                    <span class="telemetry-label">Telemetry</span>
+                    <span class="tooltip-wrap">
+                      <button class="icon-tip" type="button" aria-label="查看 Telemetry 刷新说明">i</button>
+                      <span class="tooltip-bubble" role="tooltip">
+                        已加载本地缓存，后台静默刷新 Prometheus 最新数据中。若刷新超时则继续展示缓存指标，并在下一轮轮询自动重试。
+                      </span>
+                    </span>
+                  </div>
                 </header>
                 <div class="section-body">
-                  <div class="telemetry-strip" aria-live="polite">
-                    <span class="telemetry-dot syncing" aria-hidden="true"></span>
-                    <span><strong>Telemetry:</strong> 已加载本地缓存，后台静默刷新 Prometheus 最新数据中…</span>
-                  </div>
-                  <div class="telemetry-strip">
-                    <span class="telemetry-dot degraded" aria-hidden="true"></span>
-                    <span>若刷新超时则继续展示缓存指标，并在下一轮轮询自动重试。</span>
-                  </div>
-
                   <div class="cluster-summary">
                     <article class="summary-pill">
                       <span>Cluster Epoch</span>

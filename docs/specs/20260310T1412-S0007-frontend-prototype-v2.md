@@ -691,3 +691,29 @@ Spec-ID: S0007
 
 ### 29.5 Change Request Delta
 - 2026-03-12 13:32 +0800 需求新增：补齐遗漏的 spec 记录，确保提交与验收证据可追溯。
+
+## 30. Addendum (append-only)
+### 30.1 Execution Plan Delta
+- [x] p7-33 将 Dashboard Telemetry 双行提示改为紧凑动画图标 + tooltip 交互，降低垂直占用
+
+### 30.2 Acceptance Delta
+- TC-113 Dashboard 顶部不再使用两段 `telemetry-strip` 文案块，占位改为单个紧凑控件。
+- TC-114 Telemetry 状态入口包含可感知动画图标（刷新态）以提示后台静默加载。
+- TC-115 详细说明通过 tooltip 呈现，包含缓存优先、刷新超时回退与自动重试语义。
+- TC-116 该改造仅涉及原型 HTML/CSS，保持纯静态实现，不引入业务逻辑脚本。
+- TC-117 Telemetry 动画遵循 `prefers-reduced-motion`，可在低动效偏好下自动降级。
+
+### 30.3 Execution Log Delta
+- 2026-03-12 13:44 +0800 p7-33 started: 按反馈收敛 Dashboard Telemetry 提示的视觉占位与表达方式。
+- 2026-03-12 13:48 +0800 p7-33 completed: 完成紧凑 telemetry 控件、动画图标与 tooltip 说明替换。
+
+### 30.4 Validation Evidence Delta
+- TC-113 | stack: ui | command: rg -n "telemetry-strip|Telemetry: 已加载本地缓存" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: 旧的双行提示块已移除
+- TC-113 | stack: ui | command: rg -n "telemetry-compact" prototype/s0007/index.html prototype/s0007/styles.css | result: pass | note: 页面已改为单个紧凑控件入口
+- TC-114 | stack: ui | command: rg -n "telemetry-orbit syncing|animation: spin|pulseHalo" prototype/s0007/index.html prototype/s0007/styles.css | result: pass | note: 刷新态动画图标已配置
+- TC-115 | stack: ui | command: rg -n "tooltip-wrap|tooltip-bubble|已加载本地缓存，后台静默刷新 Prometheus 最新数据中。若刷新超时则继续展示缓存指标，并在下一轮轮询自动重试。" prototype/s0007/index.html prototype/s0007/styles.css | result: pass | note: 说明文案已迁移至 tooltip
+- TC-116 | stack: ui | command: rg -n "<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: 仍为纯静态原型
+- TC-117 | stack: ui | command: rg -n "prefers-reduced-motion|telemetry-orbit\\.syncing \\.ring|tooltip-bubble" prototype/s0007/styles.css | result: pass | note: 已为动画与 tooltip 过渡提供 reduced-motion 兜底
+
+### 30.5 Change Request Delta
+- 2026-03-12 13:44 +0800 需求新增：Telemetry 两段提示文案过于生硬且占空间，改用动画图标与 tooltip 表达。
