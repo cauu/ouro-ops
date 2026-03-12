@@ -60,7 +60,7 @@ Spec-ID: S0008
 ## 3. Execution Plan
 - [x] p8-1 启动 S0008 active spec，完成阶段目标与验收基线冻结
 - [x] p8-2 落地 pool-centric IA：收敛导航与入口，移除机器中心化主流程暴露
-- [ ] p8-3 实现 Dashboard 结构对齐：BP 卡片主承载、节点详情 tab、tooltip/标签体系统一
+- [x] p8-3 实现 Dashboard 结构对齐：BP 卡片主承载、节点详情 tab、tooltip/标签体系统一
 - [ ] p8-4 实现 telemetry 三态体验：缓存优先、后台静默刷新、失败降级重试
 - [ ] p8-5 接入 Prometheus 查询能力并完成 Dashboard 指标映射（含时间戳与空值兜底）
 - [ ] p8-6 实现 Deploy Step1 手动节点输入 + 机器创建，落实默认开关策略与无 mithril 初始化约束
@@ -174,3 +174,21 @@ Spec-ID: S0008
 
 ### 9.4 Change Request Delta
 - 2026-03-12 15:05 +0800 执行推进：按 S0008 计划继续推进并完成 p8-2。
+
+## 10. Addendum (append-only)
+### 10.1 Execution Plan Delta
+- [x] p8-3 实现 Dashboard 结构对齐：BP 卡片主承载、节点详情 tab、tooltip/标签体系统一
+
+### 10.2 Execution Log Delta
+- 2026-03-12 15:15 +0800 p8-3 started: 开始按 `prototype/s0007` 重构 Dashboard 页面结构。
+- 2026-03-12 15:27 +0800 p8-3 completed: 完成 BP 主卡片、节点详情 tabs、轻量 tooltip 与近期日志表结构对齐，并保留 on-chain bind/register 区域能力。
+
+### 10.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "Cluster Overview|Rotate Now|KES remain|slowest|tip diff" src/pages/Dashboard.tsx | result: pass | note: Dashboard 已引入 BP 主卡片承载关键风险与 KES remain 关联操作
+- TC-P8-003 | stack: ui | command: rg -n "Recent Operation Logs|Bound On-chain Pool|Bind Existing Pool" src/pages/Dashboard.tsx | result: pass | note: 页面主信息结构已收敛为概览+详情+日志，并保留 pool 绑定主流程
+- TC-P8-004 | stack: ui | command: rg -n "selectedNodeId|setSelectedNodeId|inline-grid grid-cols-3|min-h-8 items-center justify-center" src/pages/Dashboard.tsx | result: pass | note: 节点详情 tabs 可切换，tab 按钮使用等宽三列与垂直居中布局
+- TC-P8-004 | stack: ui | command: rg -n "role=\\\"tooltip\\\"|group-hover:opacity-100" src/pages/Dashboard.tsx | result: pass | note: 关键标签与 telemetry 已使用轻量 tooltip 交互
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: Dashboard 重构后前端构建通过
+
+### 10.4 Change Request Delta
+- 2026-03-12 15:15 +0800 执行推进：继续推进 S0008，并完成 p8-3 的 Dashboard 结构对齐实现。
