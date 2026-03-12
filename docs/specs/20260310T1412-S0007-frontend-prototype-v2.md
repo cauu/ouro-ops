@@ -524,3 +524,24 @@ Spec-ID: S0007
 
 ### 22.5 Change Request Delta
 - 2026-03-12 09:47 +0800 需求新增：去掉 Dashboard 的「集群看板」标题。
+
+## 23. Addendum (append-only)
+### 23.1 Execution Plan Delta
+- [x] p7-26 移除 Dashboard 顶部副标题文案
+
+### 23.2 Acceptance Delta
+- TC-83 Dashboard 主内容区不再显示“先看风险，再看节点细节，最后追溯操作历史。”副标题。
+- TC-84 保持 Dashboard 其余结构与内容不变。
+- TC-85 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 23.3 Execution Log Delta
+- 2026-03-12 09:52 +0800 p7-26 started: 按需求移除 Dashboard 副标题文案。
+- 2026-03-12 09:53 +0800 p7-26 completed: 副标题删除完成，页面其余结构保持不变。
+
+### 23.4 Validation Evidence Delta
+- TC-83 | stack: ui | command: rg -n "先看风险，再看节点细节，最后追溯操作历史" prototype/s0007/index.html || true | result: pass | note: 页面内已无该副标题
+- TC-84 | stack: ui | command: rg -n "集群概览|节点详情|近期操作日志" prototype/s0007/index.html | result: pass | note: 三段主体结构保持不变
+- TC-85 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html || true | result: pass | note: 仍为纯静态原型
+
+### 23.5 Change Request Delta
+- 2026-03-12 09:52 +0800 需求新增：去掉 Dashboard 副标题文案。
