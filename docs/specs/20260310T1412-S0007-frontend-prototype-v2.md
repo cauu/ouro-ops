@@ -503,3 +503,24 @@ Spec-ID: S0007
 
 ### 21.5 Change Request Delta
 - 2026-03-12 09:44 +0800 需求新增：去掉 Dashboard 右侧「高危提醒」与「快捷动作」。
+
+## 22. Addendum (append-only)
+### 22.1 Execution Plan Delta
+- [x] p7-25 移除 Dashboard 顶部「集群看板」标题文案
+
+### 22.2 Acceptance Delta
+- TC-80 Dashboard 主内容区域不再显示「集群看板」标题。
+- TC-81 保持其余 Dashboard 内容与结构不变。
+- TC-82 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 22.3 Execution Log Delta
+- 2026-03-12 09:47 +0800 p7-25 started: 按需求移除 Dashboard 页面主标题。
+- 2026-03-12 09:48 +0800 p7-25 completed: 删除「集群看板」标题，保留副标题与其余结构。
+
+### 22.4 Validation Evidence Delta
+- TC-80 | stack: ui | command: rg -n "集群看板" prototype/s0007/index.html || true | result: pass | note: 页面内已无该标题文本
+- TC-81 | stack: ui | command: rg -n "集群概览|节点详情|近期操作日志" prototype/s0007/index.html | result: pass | note: 主体分区结构保持不变
+- TC-82 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html || true | result: pass | note: 仍为纯静态原型
+
+### 22.5 Change Request Delta
+- 2026-03-12 09:47 +0800 需求新增：去掉 Dashboard 的「集群看板」标题。
