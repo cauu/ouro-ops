@@ -3,19 +3,11 @@ import { Outlet, useLocation } from "react-router-dom";
 import type { Pool } from "../lib/types";
 import Sidebar from "./Sidebar";
 
-type ToolbarActionTone = "primary" | "neutral" | "menu";
-
-interface ToolbarAction {
-  label: string;
-  tone: ToolbarActionTone;
-}
-
 interface ToolbarContext {
   section: string;
   title: string;
   status: string;
   statusTone: "info" | "warn" | "ok";
-  actions: ToolbarAction[];
 }
 
 interface LayoutProps {
@@ -39,11 +31,6 @@ function toolbarContextFromPath(pathname: string): ToolbarContext {
       title: "KES Rotate",
       status: "Ready",
       statusTone: "ok",
-      actions: [
-        { label: "Update", tone: "neutral" },
-        { label: "Open", tone: "menu" },
-        { label: "Rotate", tone: "primary" },
-      ],
     };
   }
   if (pathname === "/upgrade") {
@@ -52,11 +39,6 @@ function toolbarContextFromPath(pathname: string): ToolbarContext {
       title: "Upgrade",
       status: "Guarded",
       statusTone: "warn",
-      actions: [
-        { label: "Update", tone: "neutral" },
-        { label: "Open", tone: "menu" },
-        { label: "Commit", tone: "primary" },
-      ],
     };
   }
   if (pathname === "/deploy") {
@@ -65,11 +47,6 @@ function toolbarContextFromPath(pathname: string): ToolbarContext {
       title: "Deploy",
       status: "In Progress",
       statusTone: "info",
-      actions: [
-        { label: "Validate", tone: "neutral" },
-        { label: "Open", tone: "menu" },
-        { label: "Deploy", tone: "primary" },
-      ],
     };
   }
   if (pathname === "/settings") {
@@ -78,11 +55,6 @@ function toolbarContextFromPath(pathname: string): ToolbarContext {
       title: "Settings",
       status: "Editable",
       statusTone: "info",
-      actions: [
-        { label: "Reload", tone: "neutral" },
-        { label: "Open", tone: "menu" },
-        { label: "Save", tone: "primary" },
-      ],
     };
   }
   return {
@@ -90,11 +62,6 @@ function toolbarContextFromPath(pathname: string): ToolbarContext {
     title: "Dashboard",
     status: "Synced",
     statusTone: "ok",
-    actions: [
-      { label: "Update", tone: "neutral" },
-      { label: "Open", tone: "menu" },
-      { label: "Commit", tone: "primary" },
-    ],
   };
 }
 
@@ -106,14 +73,6 @@ function statusToneClass(tone: ToolbarContext["statusTone"]): string {
     return "border-amber-200 bg-amber-50 text-amber-700";
   }
   return "border-sky-200 bg-sky-50 text-sky-700";
-}
-
-function toolbarButtonClass(tone: ToolbarActionTone): string {
-  const base = "no-drag inline-flex h-8 items-center gap-1 rounded-md border px-3 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300";
-  if (tone === "primary") {
-    return `${base} border-blue-600 bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800`;
-  }
-  return `${base} border-slate-300 bg-white text-slate-700 hover:bg-slate-100 active:bg-slate-200`;
 }
 
 export default function Layout({ pool }: LayoutProps) {
@@ -135,32 +94,19 @@ export default function Layout({ pool }: LayoutProps) {
         <section className="flex min-w-0 flex-1 flex-col">
           <header className="drag-region border-b border-slate-200/80 bg-white/78 backdrop-blur-md" data-tauri-drag-region>
             <div className="drag-region flex h-14 items-center gap-4 px-5" data-tauri-drag-region>
-              <div className="min-w-0">
-                <p className="no-drag text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              <div className="drag-region min-w-0" data-tauri-drag-region>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   {toolbar.section} · {networkLabel(pool.network)}
                 </p>
                 <div className="mt-0.5 flex items-center gap-2">
-                  <h1 className="no-drag truncate text-[14px] font-semibold text-slate-900">{toolbar.title}</h1>
-                  <span className={`no-drag inline-flex min-h-6 items-center rounded-full border px-2 text-[11px] font-semibold ${statusToneClass(toolbar.statusTone)}`}>
+                  <h1 className="truncate text-[14px] font-semibold text-slate-900">{toolbar.title}</h1>
+                  <span className={`inline-flex min-h-6 items-center rounded-full border px-2 text-[11px] font-semibold ${statusToneClass(toolbar.statusTone)}`}>
                     {toolbar.status}
                   </span>
                 </div>
               </div>
 
               <div className="drag-region flex-1" data-tauri-drag-region />
-
-              <div className="no-drag flex shrink-0 items-center gap-2">
-                {toolbar.actions.map((action) => (
-                  <button key={`${toolbar.title}-${action.label}`} type="button" className={toolbarButtonClass(action.tone)}>
-                    <span>{action.label}</span>
-                    {action.tone === "menu" && (
-                      <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                        <path d="M5.5 8l4.5 4 4.5-4" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </button>
-                ))}
-              </div>
             </div>
           </header>
 

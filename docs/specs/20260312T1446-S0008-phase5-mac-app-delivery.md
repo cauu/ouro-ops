@@ -531,3 +531,19 @@ Spec-ID: S0008
 
 ### 30.4 Change Request Delta
 - 2026-03-12 17:53 +0800 需求修订：回退本次改动，范围包含 p8-23 与 p8-22。
+
+## 31. Addendum (append-only)
+### 31.1 Execution Plan Delta
+- [x] p8-26 扩大标题栏拖拽触发区域并移除未使用按钮
+
+### 31.2 Execution Log Delta
+- 2026-03-12 21:38 +0800 p8-26 started: 根据反馈优化标题栏拖拽体验，清理暂时未使用按钮。
+- 2026-03-12 21:38 +0800 p8-26 completed: 主标题栏右侧占位按钮全部移除；标题/状态区域恢复 drag 语义；侧边栏顶部移除“新建工作区”按钮，仅保留折叠按钮，空白区可拖拽。
+
+### 31.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: if rg -n "toolbarButtonClass|actions:\\s*\\[|\\{ label: \\\"Update\\\"|\\{ label: \\\"Open\\\"|\\{ label: \\\"Commit\\\"|\\{ label: \\\"Validate\\\"|\\{ label: \\\"Save\\\"|\\{ label: \\\"Reload\\\"" src/components/Layout.tsx; then echo "unexpected-toolbar-actions-found"; else echo "toolbar-actions-removed"; fi | result: pass | note: 主标题栏未使用按钮与映射逻辑已移除
+- TC-P8-003 | stack: ui | command: rg -n "data-tauri-drag-region|drag-region|收起侧边栏|展开侧边栏" src/components/Layout.tsx src/components/Sidebar.tsx | result: pass | note: 标题栏与侧栏顶部均保留 drag 区，交互元素仅保留必要按钮
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 标题栏交互与结构调整后构建通过
+
+### 31.4 Change Request Delta
+- 2026-03-12 21:38 +0800 需求修订：去掉标题栏暂未使用按钮，并扩大拖拽触发区域（所有无点击事件区域均可拖拽）。

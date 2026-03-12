@@ -58,13 +58,6 @@ export default function Sidebar({ network, collapsed, onToggleCollapse }: Sideba
       <header className="drag-region border-b border-slate-200/80" data-tauri-drag-region>
         <div className={`drag-region flex h-14 items-center pl-[74px] ${collapsed ? "pr-2" : "pr-3"}`} data-tauri-drag-region>
           <div className="no-drag flex items-center gap-2">
-            {!collapsed && (
-              <IconButton title="新建工作区">
-                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                  <path d="M10 4v12M4 10h12" strokeLinecap="round" />
-                </svg>
-              </IconButton>
-            )}
             <IconButton title={collapsed ? "展开侧边栏" : "收起侧边栏"} onClick={onToggleCollapse}>
               {collapsed ? (
                 <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
