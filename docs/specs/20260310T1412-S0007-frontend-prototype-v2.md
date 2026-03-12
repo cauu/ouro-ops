@@ -482,3 +482,24 @@ Spec-ID: S0007
 
 ### 20.5 Change Request Delta
 - 2026-03-12 00:10 +0800 需求新增：除顶层概览外，Dashboard 其余部分也需按 macOS 监控场景完成重构。
+
+## 21. Addendum (append-only)
+### 21.1 Execution Plan Delta
+- [x] p7-24 移除 Dashboard 右侧「高危提醒」和「快捷动作」面板
+
+### 21.2 Acceptance Delta
+- TC-77 Dashboard 页面不再渲染右侧 inspector 区域中的「高危提醒」「快捷动作」模块。
+- TC-78 Dashboard 主布局调整为仅侧边栏 + 主内容两列，不保留空白右栏。
+- TC-79 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 21.3 Execution Log Delta
+- 2026-03-12 09:44 +0800 p7-24 started: 按需求移除 Dashboard 右侧辅助面板。
+- 2026-03-12 09:46 +0800 p7-24 completed: 删除右侧两块内容并收敛为双列布局。
+
+### 21.4 Validation Evidence Delta
+- TC-77 | stack: ui | command: rg -n "高危提醒|快捷动作|右侧检查器" prototype/s0007/index.html || true | result: pass | note: 右侧两块内容与检查器已移除
+- TC-78 | stack: ui | command: rg -n "workspace no-inspector|workspace\.no-inspector" prototype/s0007/index.html prototype/s0007/styles.css | result: pass | note: Dashboard 已切换为两列布局
+- TC-79 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: 保持纯静态原型
+
+### 21.5 Change Request Delta
+- 2026-03-12 09:44 +0800 需求新增：去掉 Dashboard 右侧「高危提醒」与「快捷动作」。

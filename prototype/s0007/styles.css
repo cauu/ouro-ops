@@ -223,6 +223,10 @@ a {
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--inspector-width);
 }
 
+.workspace.no-inspector {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+}
+
 .sidebar {
   border-right: 1px solid var(--line);
   background: var(--sidebar-bg);
