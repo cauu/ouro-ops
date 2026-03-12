@@ -578,3 +578,18 @@ Spec-ID: S0008
 
 ### 33.4 Change Request Delta
 - 2026-03-12 23:55 +0800 需求修订：导航符号只在装饰位显示，展开态文案不再重复符号。
+
+## 34. Addendum (append-only)
+### 34.1 Execution Plan Delta
+- [x] p8-29 统一 Sidebar 导航图标风格并放大尺寸
+
+### 34.2 Execution Log Delta
+- 2026-03-12 23:59 +0800 p8-29 started: 根据反馈修复 Sidebar 导航图标偏小与风格不一致问题。
+- 2026-03-12 23:59 +0800 p8-29 completed: 将 Dashboard/KES Rotate/Upgrade 三项图标统一为线性 SVG（同描边风格），尺寸调整为 `17x17`，并移除符号字符图标。
+
+### 34.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "title=\"Dashboard\"|title=\"KES Rotate\"|title=\"Upgrade\"|h-\[17px\] w-\[17px\]|text-\[15px\]|⌂|↻|⬆" src/components/Sidebar.tsx | result: pass | note: 导航图标已统一为同尺寸线性 SVG，旧字符图标已移除
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 图标替换与尺寸调整后前端构建通过
+
+### 34.4 Change Request Delta
+- 2026-03-12 23:59 +0800 需求修订：Sidebar 图标偏小且风格不一致，需统一并放大。

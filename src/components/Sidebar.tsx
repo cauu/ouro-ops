@@ -50,8 +50,18 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
         <div className="space-y-5">
           <section>
             {!collapsed && <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Workspace</p>}
-            <NavLink to="/" end className={({ isActive }) => navClass(isActive, collapsed)} title="⌂ Dashboard">
-              <span aria-hidden="true" className="text-[15px] leading-none">⌂</span>
+            <NavLink to="/" end className={({ isActive }) => navClass(isActive, collapsed)} title="Dashboard">
+              <svg
+                viewBox="0 0 20 20"
+                className="h-[17px] w-[17px] shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                aria-hidden="true"
+              >
+                <path d="M3.5 8.8L10 3.8l6.5 5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M5.5 8.7V16h9V8.7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
               {!collapsed && <span>Dashboard</span>}
             </NavLink>
           </section>
@@ -59,12 +69,35 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
           <section>
             {!collapsed && <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Operations</p>}
             <nav className="space-y-2">
-              <NavLink to="/kes" className={({ isActive }) => navClass(isActive, collapsed)} title="↻ KES Rotate">
-                <span aria-hidden="true" className="text-[15px] leading-none">↻</span>
+              <NavLink to="/kes" className={({ isActive }) => navClass(isActive, collapsed)} title="KES Rotate">
+                <svg
+                  viewBox="0 0 20 20"
+                  className="h-[17px] w-[17px] shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  aria-hidden="true"
+                >
+                  <path d="M15.5 7.2A6 6 0 005 8.5" strokeLinecap="round" />
+                  <path d="M5.1 4.8v3.8h3.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M4.5 12.8A6 6 0 0015 11.5" strokeLinecap="round" />
+                  <path d="M14.9 15.2v-3.8h-3.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
                 {!collapsed && <span>KES Rotate</span>}
               </NavLink>
-              <NavLink to="/upgrade" className={({ isActive }) => navClass(isActive, collapsed)} title="⬆ Upgrade">
-                <span aria-hidden="true" className="text-[15px] leading-none">⬆</span>
+              <NavLink to="/upgrade" className={({ isActive }) => navClass(isActive, collapsed)} title="Upgrade">
+                <svg
+                  viewBox="0 0 20 20"
+                  className="h-[17px] w-[17px] shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  aria-hidden="true"
+                >
+                  <path d="M10 14.8V4.6" strokeLinecap="round" />
+                  <path d="M6.7 7.8L10 4.5l3.3 3.3" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M4.8 16h10.4" strokeLinecap="round" />
+                </svg>
                 {!collapsed && <span>Upgrade</span>}
               </NavLink>
             </nav>
