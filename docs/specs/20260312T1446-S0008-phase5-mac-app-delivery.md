@@ -331,3 +331,21 @@ Spec-ID: S0008
 
 ### 18.4 Change Request Delta
 - 2026-03-12 16:36 +0800 修复追加：补齐流程级共用组件（确认弹窗/日志流）的主题一致性，避免页面间深浅风格割裂。
+
+## 19. Addendum (append-only)
+### 19.1 Execution Plan Delta
+- [x] p8-14 对齐 Welcome/Sidebar 结构与文案：恢复设计稿分组导航、欢迎窗 titlebar 与中文主 CTA 节奏
+
+### 19.2 Execution Log Delta
+- 2026-03-12 16:40 +0800 p8-14 started: 根据最新验收反馈修复 Sidebar IA 与 Setup 欢迎窗结构偏差。
+- 2026-03-12 16:48 +0800 p8-14 completed: 完成 Sidebar 分组+符号导航、Welcome titlebar/hero/CTA/直达入口改造并回归通过。
+
+### 19.3 Validation Evidence Delta
+- TC-P8-002 | stack: ui | command: rg -n "OURO OPS|Mainnet Workspace|Workspace|Operations|⌂ Dashboard|↻ KES Rotate|⬆ Upgrade|日常操作入口统一" src/components/Sidebar.tsx | result: pass | note: Sidebar 结构与信息架构已按设计稿收敛（分组、符号、说明 note）
+- TC-P8-012 | stack: ui | command: rg -n "titlebar|traffic-lights|Welcome · Ouro Ops|Not Deployed|欢迎使用 Ouro Ops|开始部署|导入已有配置|直接进入 Dashboard|未检测到部署环境" src/pages/SetupWizard.tsx | result: pass | note: Welcome 页已恢复设计稿窗口形态与主 CTA 节奏
+- TC-P8-013 | stack: ui | command: rg -n "to=\"/deploy\"|to=\"/settings\"" src/components/Sidebar.tsx | result: pass | note: Sidebar 已移除 Deploy/Settings 主入口，与设计稿导航一致
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 142/142 通过（仅 dead_code warning）
+
+### 19.4 Change Request Delta
+- 2026-03-12 16:40 +0800 需求修订：按验收反馈修复 Sidebar 与 Welcome 窗体结构、文案和主流程入口节奏。

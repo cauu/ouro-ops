@@ -112,15 +112,17 @@ mod frontend_tests {
         let sidebar = include_str!("../../src/components/Sidebar.tsx");
         assert!(sidebar.contains("to=\"/\""));
         assert!(sidebar.contains("to=\"/kes\""));
-        assert!(sidebar.contains("to=\"/deploy\""));
         assert!(sidebar.contains("to=\"/upgrade\""));
-        assert!(sidebar.contains("to=\"/settings\""));
-        assert!(sidebar.contains("Dashboard"));
+        assert!(!sidebar.contains("to=\"/deploy\""));
+        assert!(!sidebar.contains("to=\"/settings\""));
+        assert!(sidebar.contains("⌂ Dashboard"));
         assert!(!sidebar.contains("Machines"));
-        assert!(sidebar.contains("KES"));
-        assert!(sidebar.contains("Deploy"));
-        assert!(sidebar.contains("Upgrade"));
-        assert!(sidebar.contains("Settings"));
+        assert!(sidebar.contains("↻ KES Rotate"));
+        assert!(sidebar.contains("⬆ Upgrade"));
+        assert!(sidebar.contains("Mainnet Workspace"));
+        assert!(sidebar.contains("Workspace"));
+        assert!(sidebar.contains("Operations"));
+        assert!(sidebar.contains("日常操作入口统一"));
     }
 
     #[test]
