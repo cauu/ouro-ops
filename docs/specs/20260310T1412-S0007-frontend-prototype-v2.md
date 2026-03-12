@@ -636,3 +636,29 @@ Spec-ID: S0007
 
 ### 27.5 Change Request Delta
 - 2026-03-12 11:05 +0800 需求新增：参考 Deploy 页面优化 KES Rotate 页面，并补充完整 KES Rotate 流程的所有页面设计。
+
+## 28. Addendum (append-only)
+### 28.1 Execution Plan Delta
+- [x] p7-31 参考 Deploy 向导优化 Upgrade UI，并补齐 Upgrade 全流程步骤页面设计
+
+### 28.2 Acceptance Delta
+- TC-101 Upgrade 按与 Deploy 一致的单步聚焦向导结构，拆分为 3 个独立页面（Step 1~3）。
+- TC-102 每个 Upgrade 步骤页均保留统一侧边菜单（Dashboard / KES Rotate / Upgrade），并保持 Upgrade 为激活态。
+- TC-103 每个 Upgrade 步骤页均提供固定底部 Action Bar（取消 + 上一步/下一步或完成）。
+- TC-104 Upgrade 三步流程覆盖：版本确认与策略 -> 滚动升级执行 -> 健康检查与完成。
+- TC-105 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 28.3 Execution Log Delta
+- 2026-03-12 11:22 +0800 p7-31 started: 参考 Deploy 页面重构 Upgrade 向导并补齐完整流程页面。
+- 2026-03-12 11:30 +0800 p7-31 completed: 完成 `upgrade-image.html`(Step1) 与 `upgrade-step2/3.html` 新增，统一向导骨架与交互。
+
+### 28.4 Validation Evidence Delta
+- TC-101 | stack: ui | command: rg --files prototype/s0007 | rg "upgrade(-image|-step2|-step3)\.html$" | result: pass | note: Upgrade Step1~3 页面齐全
+- TC-101 | stack: ui | command: rg -n "Step [1-3] / 3|wizard-page|wizard-stepline" prototype/s0007/upgrade-image.html prototype/s0007/upgrade-step2.html prototype/s0007/upgrade-step3.html | result: pass | note: 各步骤页具备单步向导结构
+- TC-102 | stack: ui | command: rg -n "Dashboard|KES Rotate|Upgrade|aria-current=\"page\"" prototype/s0007/upgrade-image.html prototype/s0007/upgrade-step2.html prototype/s0007/upgrade-step3.html | result: pass | note: 侧边菜单统一且 Upgrade 激活
+- TC-103 | stack: ui | command: rg -n "<footer class=\"action-bar\"|上一步|下一步|返回 Dashboard" prototype/s0007/upgrade-image.html prototype/s0007/upgrade-step2.html prototype/s0007/upgrade-step3.html | result: pass | note: 各页 Action Bar 完整
+- TC-104 | stack: ui | command: rg -n "版本确认与升级策略|滚动升级|健康检查与完成" prototype/s0007/upgrade-image.html prototype/s0007/upgrade-step2.html prototype/s0007/upgrade-step3.html | result: pass | note: 三阶段流程覆盖完整
+- TC-105 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/upgrade-image.html prototype/s0007/upgrade-step2.html prototype/s0007/upgrade-step3.html || true | result: pass | note: 保持纯静态原型
+
+### 28.5 Change Request Delta
+- 2026-03-12 11:22 +0800 需求新增：参考 Deploy 页面优化 Upgrade 页面，并补充完整 Upgrade 流程的所有页面设计。

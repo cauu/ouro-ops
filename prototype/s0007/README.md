@@ -13,6 +13,8 @@ Pure HTML prototype with five core pages:
 9. `kes-rotate-step3.html`
 10. `kes-rotate-step4.html`
 11. `upgrade-image.html`
+12. `upgrade-step2.html`
+13. `upgrade-step3.html`
 
 Design direction:
 

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Ouro Ops Prototype - Upgrade Step 1</title>
+    <title>Ouro Ops Prototype - Upgrade Step 2</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -21,11 +21,11 @@
           </div>
           <h1 class="window-title">Ouro Ops · Image Upgrade</h1>
           <div class="toolbar">
-            <label class="toolbar-search" for="search-upgrade-step1">
+            <label class="toolbar-search" for="search-upgrade-step2">
               <span aria-hidden="true">⌕</span>
-              <input id="search-upgrade-step1" type="search" placeholder="搜索升级任务" />
+              <input id="search-upgrade-step2" type="search" placeholder="搜索升级任务" />
             </label>
-            <button class="toolbar-chip" type="button">Step 1 / 3</button>
+            <button class="toolbar-chip" type="button">Step 2 / 3</button>
           </div>
         </header>
 
@@ -57,15 +57,15 @@
           </aside>
 
           <main id="main-content" class="content">
-            <section class="wizard-shell wide" aria-label="upgrade step 1">
+            <section class="wizard-shell wide" aria-label="upgrade step 2">
               <section class="wizard-page">
                 <header class="wizard-stage-head">
-                  <h2 class="page-title">Step 1 · 版本确认与升级策略</h2>
-                  <p class="page-subtitle">确认目标版本、升级顺序与回滚策略后，再进入滚动升级执行。</p>
+                  <h2 class="page-title">Step 2 · 执行滚动升级</h2>
+                  <p class="page-subtitle">按 relay -> bp 顺序执行镜像升级与重启，每个节点通过健康门禁后再进入下一节点。</p>
                   <div class="wizard-stepline" aria-label="wizard progress">
-                    <span class="pill-step current">1 版本确认</span>
+                    <span class="pill-step done">1 版本确认</span>
                     <span class="dot" aria-hidden="true"></span>
-                    <span class="pill-step">2 滚动升级</span>
+                    <span class="pill-step current">2 滚动升级</span>
                     <span class="dot" aria-hidden="true"></span>
                     <span class="pill-step">3 健康检查与完成</span>
                   </div>
@@ -74,58 +74,63 @@
                 <div class="wizard-scroll">
                   <article class="wizard-card">
                     <header class="wizard-card-head">
-                      <h3>升级目标</h3>
-                      <p>从当前镜像升级到指定 tag。</p>
+                      <h3>升级执行状态</h3>
+                      <p>当前阶段：relay 完成，bp 正在升级。</p>
                     </header>
                     <div class="wizard-card-body">
-                      <div class="control-grid">
-                        <div class="control-row">
-                          <label class="control-label" for="upgrade-registry">
-                            <strong>Image Registry</strong>
-                            <span>镜像仓库</span>
-                          </label>
-                          <div class="control-input">
-                            <input id="upgrade-registry" type="text" value="ghcr.io/blinklabs-io/cardano-node" />
-                          </div>
-                        </div>
+                      <div class="loading-row" aria-live="polite">
+                        <span class="spinner" aria-hidden="true"></span>
+                        <span class="inline-note">Upgrading... current stage: bp rollout (2/2)</span>
+                      </div>
 
-                        <div class="control-row">
-                          <label class="control-label" for="upgrade-current">
-                            <strong>Current Tag</strong>
-                            <span>当前运行版本</span>
-                          </label>
-                          <div class="control-input muted">
-                            <span>10.5.3-1</span>
-                          </div>
-                        </div>
-
-                        <div class="control-row">
-                          <label class="control-label" for="upgrade-target">
-                            <strong>Target Tag</strong>
-                            <span>升级目标版本</span>
-                          </label>
-                          <div class="control-input">
-                            <input id="upgrade-target" type="text" value="10.5.4-1" />
-                          </div>
-                        </div>
+                      <div class="table-wrap" style="margin-top: 10px">
+                        <table class="data-table">
+                          <thead>
+                            <tr>
+                              <th scope="col">Node</th>
+                              <th scope="col">Action</th>
+                              <th scope="col">Runtime</th>
+                              <th scope="col">Result</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td>relay-1</td>
+                              <td>pull + restart + health-check</td>
+                              <td>2m 12s</td>
+                              <td><span class="chip ok">done</span></td>
+                            </tr>
+                            <tr>
+                              <td>bp-1</td>
+                              <td>pull + restart + health-check</td>
+                              <td>running</td>
+                              <td><span class="chip warn">in progress</span></td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   </article>
 
                   <article class="wizard-card">
                     <header class="wizard-card-head">
-                      <h3>执行策略</h3>
-                      <p>升级顺序和健康门禁。</p>
+                      <h3>执行日志</h3>
+                      <p>滚动升级日志（示例）。</p>
                     </header>
                     <div class="wizard-card-body">
-                      <div class="kv-grid">
-                        <div class="kv-cell"><span>Rollout Order</span><strong>relay -> bp</strong></div>
-                        <div class="kv-cell"><span>Per-Node Gate</span><strong>port + socket + query tip</strong></div>
-                        <div class="kv-cell"><span>Failure Policy</span><strong>stop and rollback</strong></div>
-                        <div class="kv-cell"><span>Max Downtime</span><strong>&lt; 2 min per node</strong></div>
+                      <div class="terminal-block" role="region" aria-label="upgrade logs">
+                        <div class="terminal-head" aria-hidden="true">
+                          <span class="terminal-dot red"></span>
+                          <span class="terminal-dot yellow"></span>
+                          <span class="terminal-dot green"></span>
+                        </div>
+                        <pre class="terminal-body">TASK [relay] Pull image ghcr.io/blinklabs-io/cardano-node:10.5.4-1 ... ok
+TASK [relay] Restart container cardano-node ... changed
+TASK [relay] Wait for /opt/cardano/ipc/node.socket ... ok
+TASK [bp] Pull image ghcr.io/blinklabs-io/cardano-node:10.5.4-1 ... ok
+TASK [bp] Restart container cardano-node ... running
+...</pre>
                       </div>
-
-                      <div class="guard-alert" style="margin-top: 12px">升级开始后将按顺序重启节点。若任一节点健康检查失败，流程中止并回滚。</div>
                     </div>
                   </article>
                 </div>
@@ -133,8 +138,9 @@
                 <footer class="action-bar">
                   <a class="btn" href="./index.html">取消</a>
                   <div class="action-bar-right">
-                    <button type="button" class="btn" disabled>上一步</button>
-                    <a class="btn primary" href="./upgrade-step2.html">下一步</a>
+                    <a class="btn" href="./upgrade-image.html">上一步</a>
+                    <button type="button" class="btn">刷新状态</button>
+                    <a class="btn primary" href="./upgrade-step3.html">下一步</a>
                   </div>
                 </footer>
               </section>

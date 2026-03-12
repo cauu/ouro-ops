@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ouro Ops Prototype - Upgrade Step 3</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主内容</a>
+    <div class="window-shell">
+      <div class="window">
+        <header class="titlebar">
+          <div class="titlebar-leading">
+            <div class="traffic-lights" aria-hidden="true">
+              <span class="light red"></span>
+              <span class="light yellow"></span>
+              <span class="light green"></span>
+            </div>
+            <button class="sidebar-toggle" type="button">Sidebar</button>
+          </div>
+          <h1 class="window-title">Ouro Ops · Image Upgrade</h1>
+          <div class="toolbar">
+            <label class="toolbar-search" for="search-upgrade-step3">
+              <span aria-hidden="true">⌕</span>
+              <input id="search-upgrade-step3" type="search" placeholder="搜索升级任务" />
+            </label>
+            <button class="toolbar-chip" type="button">Step 3 / 3</button>
+          </div>
+        </header>
+
+        <div class="workspace no-inspector">
+          <aside class="sidebar">
+            <div class="brand">
+              <span class="brand-mark" aria-hidden="true"></span>
+              <div>
+                <h1>OURO OPS</h1>
+                <p>Mainnet Workspace</p>
+              </div>
+            </div>
+
+            <div class="nav-group">
+              <p class="group-title">Workspace</p>
+              <a class="nav-item" href="./index.html"><span class="nav-symbol" aria-hidden="true">⌂</span>Dashboard</a>
+            </div>
+
+            <div class="nav-group">
+              <p class="group-title">Operations</p>
+              <a class="nav-item" href="./kes-rotate.html"><span class="nav-symbol" aria-hidden="true">↻</span>KES Rotate</a>
+              <a class="nav-item active" aria-current="page" href="./upgrade-image.html"><span class="nav-symbol" aria-hidden="true">⬆</span>Upgrade</a>
+            </div>
+
+            <div class="sidebar-note">
+              日常操作入口统一：
+              <br />Dashboard / KES Rotate / Upgrade
+            </div>
+          </aside>
+
+          <main id="main-content" class="content">
+            <section class="wizard-shell wide" aria-label="upgrade step 3">
+              <section class="wizard-page">
+                <header class="wizard-stage-head">
+                  <h2 class="page-title">Step 3 · 健康检查与完成</h2>
+                  <p class="page-subtitle">全量节点健康检查通过后结束升级，并提供回到 Dashboard 的出口。</p>
+                  <div class="wizard-stepline" aria-label="wizard progress">
+                    <span class="pill-step done">1 版本确认</span>
+                    <span class="dot" aria-hidden="true"></span>
+                    <span class="pill-step done">2 滚动升级</span>
+                    <span class="dot" aria-hidden="true"></span>
+                    <span class="pill-step current">3 健康检查与完成</span>
+                  </div>
+                </header>
+
+                <div class="wizard-scroll">
+                  <article class="wizard-card">
+                    <header class="wizard-card-head">
+                      <h3>健康检查结果</h3>
+                      <p>升级后节点状态验收。</p>
+                    </header>
+                    <div class="wizard-card-body">
+                      <div class="table-wrap">
+                        <table class="data-table">
+                          <thead>
+                            <tr>
+                              <th scope="col">Node</th>
+                              <th scope="col">Image</th>
+                              <th scope="col">Socket</th>
+                              <th scope="col">Tip</th>
+                              <th scope="col">Result</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td>relay-1</td>
+                              <td>10.5.4-1</td>
+                              <td>ok</td>
+                              <td>ok</td>
+                              <td><span class="chip ok">pass</span></td>
+                            </tr>
+                            <tr>
+                              <td>bp-1</td>
+                              <td>10.5.4-1</td>
+                              <td>ok</td>
+                              <td>ok</td>
+                              <td><span class="chip ok">pass</span></td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div class="kv-grid" style="margin-top: 12px">
+                        <div class="kv-cell"><span>Upgrade Result</span><strong>success</strong></div>
+                        <div class="kv-cell"><span>Duration</span><strong>5m 41s</strong></div>
+                        <div class="kv-cell"><span>Rollback</span><strong>not required</strong></div>
+                        <div class="kv-cell"><span>Next Action</span><strong>monitor 15 min</strong></div>
+                      </div>
+                    </div>
+                  </article>
+
+                  <article class="wizard-card">
+                    <header class="wizard-card-head">
+                      <h3>完成日志</h3>
+                      <p>升级完成摘要（示例）。</p>
+                    </header>
+                    <div class="wizard-card-body">
+                      <div class="terminal-block" role="region" aria-label="upgrade completion logs">
+                        <div class="terminal-head" aria-hidden="true">
+                          <span class="terminal-dot red"></span>
+                          <span class="terminal-dot yellow"></span>
+                          <span class="terminal-dot green"></span>
+                        </div>
+                        <pre class="terminal-body">TASK [health-check] relay-1 query tip ... ok
+TASK [health-check] bp-1 query tip ... ok
+TASK [health-check] compare image tags ... ok
+PLAY RECAP: all nodes healthy
+Upgrade completed successfully.
+</pre>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+
+                <footer class="action-bar">
+                  <a class="btn" href="./index.html">取消</a>
+                  <div class="action-bar-right">
+                    <a class="btn" href="./upgrade-step2.html">上一步</a>
+                    <button type="button" class="btn">导出日志</button>
+                    <a class="btn primary" href="./index.html">返回 Dashboard</a>
+                  </div>
+                </footer>
+              </section>
+            </section>
+          </main>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
