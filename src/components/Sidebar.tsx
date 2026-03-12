@@ -25,11 +25,11 @@ export default function Sidebar({ ticker }: SidebarProps) {
         <NavLink to="/" end className={({ isActive }) => navClass(isActive)}>
           Dashboard
         </NavLink>
-        <NavLink to="/kes" className={({ isActive }) => navClass(isActive)}>
-          KES
-        </NavLink>
         <NavLink to="/deploy" className={({ isActive }) => navClass(isActive)}>
           Deploy
+        </NavLink>
+        <NavLink to="/kes" className={({ isActive }) => navClass(isActive)}>
+          KES
         </NavLink>
         <NavLink to="/upgrade" className={({ isActive }) => navClass(isActive)}>
           Upgrade

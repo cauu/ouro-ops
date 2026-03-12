@@ -59,7 +59,7 @@ Spec-ID: S0008
 
 ## 3. Execution Plan
 - [x] p8-1 启动 S0008 active spec，完成阶段目标与验收基线冻结
-- [ ] p8-2 落地 pool-centric IA：收敛导航与入口，移除机器中心化主流程暴露
+- [x] p8-2 落地 pool-centric IA：收敛导航与入口，移除机器中心化主流程暴露
 - [ ] p8-3 实现 Dashboard 结构对齐：BP 卡片主承载、节点详情 tab、tooltip/标签体系统一
 - [ ] p8-4 实现 telemetry 三态体验：缓存优先、后台静默刷新、失败降级重试
 - [ ] p8-5 接入 Prometheus 查询能力并完成 Dashboard 指标映射（含时间戳与空值兜底）
@@ -156,3 +156,21 @@ Spec-ID: S0008
 
 ### 8.9 Change Request Delta
 - 2026-03-12 15:01 +0800 需求修订：补齐 telemetry 状态映射、nview/monitor 关系、无 pool Welcome 路径、主题对齐边界、审计关键操作清单，以及 p8-5/p8-6 验收细化。
+
+## 9. Addendum (append-only)
+### 9.1 Execution Plan Delta
+- [x] p8-2 落地 pool-centric IA：收敛导航与入口，移除机器中心化主流程暴露
+
+### 9.2 Execution Log Delta
+- 2026-03-12 15:05 +0800 p8-2 started: 开始落地 pool-centric IA 与无 pool Welcome -> Deploy 主路径。
+- 2026-03-12 15:12 +0800 p8-2 completed: 完成 Setup Welcome 流程、Start Deploy 直达路径、主导航顺序收敛与 Settings 去机器中心文案。
+
+### 9.3 Validation Evidence Delta
+- TC-P8-002 | stack: ui | command: rg -n "NavLink to=\\\"/\\\"|NavLink to=\\\"/deploy\\\"|NavLink to=\\\"/kes\\\"|NavLink to=\\\"/upgrade\\\"|NavLink to=\\\"/settings\\\"" src/components/Sidebar.tsx | result: pass | note: 主导航已收敛为 Dashboard/Deploy/KES/Upgrade/Settings，无 Machines 入口
+- TC-P8-002 | stack: ui | command: rg -n "Machines|MachineManager|/machines" src/App.tsx src/components/Sidebar.tsx src/pages/Settings.tsx || true | result: pass | note: 应用路由与主导航无机器中心化入口暴露
+- TC-P8-012 | stack: ui | command: rg -n "Welcome|Start Deploy|initializeWorkspace\\(\"/deploy\"\\)|navigate\\(target, \\{ replace: true \\}\\)" src/pages/SetupWizard.tsx | result: pass | note: 无 pool 首屏已提供 Welcome 与 Start Deploy 可达路径
+- TC-P8-012 | stack: ui | command: rg -n "Node runtime operations stay within Deploy, KES and Upgrade flows" src/pages/Settings.tsx | result: pass | note: 设置页文案已去除 Machines 中心化描述
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 前端构建通过，IA 调整未引入编译回归
+
+### 9.4 Change Request Delta
+- 2026-03-12 15:05 +0800 执行推进：按 S0008 计划继续推进并完成 p8-2。

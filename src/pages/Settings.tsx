@@ -46,7 +46,7 @@ export default function Settings({ pool }: SettingsProps) {
               <li>`ticker`, `margin` and `fixed cost` are not edited here.</li>
               <li>Chain-facing pool parameters are read from the bound on-chain registration.</li>
               <li>Use Dashboard to bind an existing `pool_id` or continue with the registration flow.</li>
-              <li>Node runtime configuration stays under Machines, Deploy and Runtime actions.</li>
+              <li>Node runtime operations stay within Deploy, KES and Upgrade flows.</li>
             </ul>
           </div>
         </div>
