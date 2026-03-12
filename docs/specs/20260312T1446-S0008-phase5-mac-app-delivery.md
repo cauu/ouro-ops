@@ -315,3 +315,19 @@ Spec-ID: S0008
 
 ### 17.4 Change Request Delta
 - 2026-03-12 16:22 +0800 需求修订：当前版本验收未通过，需继续按 prototype 修复明显对齐问题后再结项。
+
+## 18. Addendum (append-only)
+### 18.1 Execution Plan Delta
+- [x] p8-13 修复流程组件主题不一致：ConfirmModal 与 TaskLogStream 对齐浅色体系
+
+### 18.2 Execution Log Delta
+- 2026-03-12 16:36 +0800 p8-13 started: 回归检查发现流程组件仍保留深色主题，影响主流程视觉一致性。
+- 2026-03-12 16:38 +0800 p8-13 completed: 完成 ConfirmModal/TaskLogStream 浅色改造并通过构建与测试回归。
+
+### 18.3 Validation Evidence Delta
+- TC-P8-013 | stack: ui | command: rg -n "border-slate-200 bg-white|text-slate-900|bg-slate-50" src/components/ConfirmModal.tsx src/components/TaskLogStream.tsx | result: pass | note: 主流程确认弹窗与日志流组件已对齐浅色主题
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 组件主题调整后前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 142/142 通过（仅 dead_code warning）
+
+### 18.4 Change Request Delta
+- 2026-03-12 16:36 +0800 修复追加：补齐流程级共用组件（确认弹窗/日志流）的主题一致性，避免页面间深浅风格割裂。

@@ -45,16 +45,16 @@ export default function TaskLogStream({ taskId }: TaskLogStreamProps) {
   const hasLogs = useMemo(() => logs.length > 0, [logs]);
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-3">
-      <p className="mb-2 text-xs text-zinc-400">TaskLogStream · task_id={taskId}</p>
-      <div ref={scrollRef} className="h-72 overflow-y-auto rounded-md bg-black/40 p-2 font-mono text-xs">
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <p className="mb-2 text-xs text-slate-500">TaskLogStream · task_id={taskId}</p>
+      <div ref={scrollRef} className="h-72 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2 font-mono text-xs">
         {!hasLogs ? (
-          <p className="text-zinc-500">Waiting for logs...</p>
+          <p className="text-slate-500">Waiting for logs...</p>
         ) : (
           <div className="space-y-1">
             {logs.map((log, idx) => (
-              <div key={`${log.timestamp}-${idx}`} className={log.stream === "stderr" ? "text-red-300" : "text-zinc-200"}>
-                <span className="mr-2 text-zinc-500">{log.timestamp || "-"}</span>
+              <div key={`${log.timestamp}-${idx}`} className={log.stream === "stderr" ? "text-red-700" : "text-slate-800"}>
+                <span className="mr-2 text-slate-500">{log.timestamp || "-"}</span>
                 <span>{log.line}</span>
               </div>
             ))}
