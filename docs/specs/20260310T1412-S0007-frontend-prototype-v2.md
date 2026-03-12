@@ -823,3 +823,32 @@ Spec-ID: S0007
 
 ### 34.5 Change Request Delta
 - 2026-03-12 14:19 +0800 需求新增：BP 概览卡存在 tag 高度不一致、按钮未垂直居中、tooltip 文案不清晰及遮挡问题。
+
+## 35. Addendum (append-only)
+### 35.1 Execution Plan Delta
+- [x] p7-38 执行 audit Suggested Commands：补齐可访问名称、移除误导状态、修复伪 tab、优化响应式宽度与动画性能
+
+### 35.2 Acceptance Delta
+- TC-141 所有原型页面顶部搜索框均具备可访问名称（`aria-label`）。
+- TC-142 `Sidebar` 按钮移除静态 `aria-expanded="true"`，避免错误状态宣告。
+- TC-143 Dashboard 节点详情由“仅语义 tab”改为“纯 CSS radio-segment + 可切换 panel”，无需 JS 也可在 BP/Relay 间切换。
+- TC-144 Telemetry/metric tooltip、toolbar search、审计表最小宽度改为响应式约束（`clamp/min`），减少固定宽度带来的窄窗布局压力。
+- TC-145 `pulseHalo/kesPulse` 动效改为 `transform + opacity`，移除 `box-shadow` 无限动画重绘热点。
+- TC-146 对关键交互色与品牌色补充 token（如 signal/brand/progress/tooltip/link/accent-ink），减少新增硬编码色值。
+- TC-147 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 35.3 Execution Log Delta
+- 2026-03-12 14:31 +0800 p7-38 started: 依据 audit 输出的 Suggested Commands 执行可访问性、响应式、性能和主题一致性修复。
+- 2026-03-12 14:46 +0800 p7-38 completed: 完成 8 个页面可访问属性修复与 Dashboard 结构/样式重构，静态验证通过。
+
+### 35.4 Validation Evidence Delta
+- TC-141 | stack: ui | command: rg -n "type=\\\"search\\\"[^\\n]*aria-label=\\\"" prototype/s0007/*.html | result: pass | note: 8 个页面搜索框均具备 `aria-label`
+- TC-142 | stack: ui | command: rg -n "aria-expanded=\\\"true\\\"" prototype/s0007/*.html || true | result: pass | note: 已无静态展开态误报
+- TC-143 | stack: ui | command: rg -n "node-panel-bp|tab-panel|#node-panel-bp:checked ~ \\\\.tab-panels" prototype/s0007/index.html prototype/s0007/styles.css | result: pass | note: tab 切换由 radio + CSS 选择器驱动
+- TC-144 | stack: ui | command: rg -n "inline-size: clamp\\(180px, 28vw, 320px\\)|inline-size: min\\(36ch|inline-size: min\\(30ch|min-width: clamp\\(420px, 64vw, 560px\\)" prototype/s0007/styles.css | result: pass | note: 关键固定宽度已改为响应式表达
+- TC-145 | stack: ui | command: rg -n "box-shadow: 0 0 0 0 rgba\\(79, 131, 204|box-shadow: 0 0 0 0 rgba\\(178, 72, 79" prototype/s0007/styles.css || true && rg -n "@keyframes pulseHalo|@keyframes kesPulse|will-change: transform, opacity" prototype/s0007/styles.css | result: pass | note: 已移除 box-shadow 脉冲并替换为 transform/opacity 动效
+- TC-146 | stack: ui | command: rg -n "--signal-red|--brand-start|--progress-start|--tooltip-bg|--link|--accent-ink|--metric-badge" prototype/s0007/styles.css | result: pass | note: 新增关键配色 token 并已在交互样式中引用
+- TC-147 | stack: ui | command: rg -n "<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/styles.css prototype/s0007/kes-rotate.html prototype/s0007/kes-rotate-step2.html prototype/s0007/kes-rotate-step3.html prototype/s0007/kes-rotate-step4.html prototype/s0007/upgrade-image.html prototype/s0007/upgrade-step2.html prototype/s0007/upgrade-step3.html || true | result: pass | note: 维持静态原型边界
+
+### 35.5 Change Request Delta
+- 2026-03-12 14:31 +0800 需求新增：执行 audit 的 Suggested Commands。

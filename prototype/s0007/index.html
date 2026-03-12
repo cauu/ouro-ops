@@ -17,13 +17,13 @@
               <span class="light yellow"></span>
               <span class="light green"></span>
             </div>
-            <button class="sidebar-toggle" type="button" aria-controls="app-sidebar" aria-expanded="true">Sidebar</button>
+            <button class="sidebar-toggle" type="button" aria-controls="app-sidebar">Sidebar</button>
           </div>
           <h1 class="window-title">Ouro Ops · Dashboard</h1>
           <div class="toolbar">
             <label class="toolbar-search" for="search-dashboard">
               <span aria-hidden="true">⌕</span>
-              <input id="search-dashboard" type="search" placeholder="搜索节点、任务或Pool" />
+              <input id="search-dashboard" type="search" placeholder="搜索节点、任务或Pool" aria-label="搜索节点、任务或Pool" />
             </label>
             <button class="toolbar-chip warn" type="button">KES remain 3</button>
           </div>
@@ -220,46 +220,38 @@
                   </div>
                 </header>
                 <div class="section-body">
-                  <div class="tab-segment" role="tablist" aria-label="node tabs">
-                    <button
-                      id="tab-node-bp"
-                      class="seg-btn active"
-                      role="tab"
-                      aria-selected="true"
+                  <div class="tab-controller">
+                    <input
+                      class="seg-radio sr-only"
+                      type="radio"
+                      name="node-panel"
+                      id="node-panel-bp"
                       aria-controls="panel-node-bp"
-                      tabindex="0"
-                    >
-                      BP
-                    </button>
-                    <button
-                      id="tab-node-relay-1"
-                      class="seg-btn"
-                      role="tab"
-                      aria-selected="false"
+                      checked
+                    />
+                    <input
+                      class="seg-radio sr-only"
+                      type="radio"
+                      name="node-panel"
+                      id="node-panel-relay-1"
                       aria-controls="panel-node-relay-1"
-                      tabindex="-1"
-                    >
-                      Relay 1
-                    </button>
-                    <button
-                      id="tab-node-relay-2"
-                      class="seg-btn"
-                      role="tab"
-                      aria-selected="false"
+                    />
+                    <input
+                      class="seg-radio sr-only"
+                      type="radio"
+                      name="node-panel"
+                      id="node-panel-relay-2"
                       aria-controls="panel-node-relay-2"
-                      tabindex="-1"
-                    >
-                      Relay 2
-                    </button>
-                  </div>
+                    />
+                    <fieldset class="tab-segment">
+                      <legend class="sr-only">选择节点</legend>
+                      <label class="seg-btn" for="node-panel-bp">BP</label>
+                      <label class="seg-btn" for="node-panel-relay-1">Relay 1</label>
+                      <label class="seg-btn" for="node-panel-relay-2">Relay 2</label>
+                    </fieldset>
 
-                  <div
-                    id="panel-node-bp"
-                    class="node-details-grid"
-                    role="tabpanel"
-                    aria-labelledby="tab-node-bp"
-                    tabindex="0"
-                  >
+                    <div class="tab-panels">
+                      <div id="panel-node-bp" class="node-details-grid tab-panel tab-panel-bp">
                     <article class="detail-card">
                       <h4>Resources</h4>
                       <div class="metric-row">
@@ -324,16 +316,9 @@
                         </div>
                       </div>
                     </article>
-                  </div>
+                      </div>
 
-                  <div
-                    id="panel-node-relay-1"
-                    class="node-details-grid"
-                    role="tabpanel"
-                    aria-labelledby="tab-node-relay-1"
-                    tabindex="0"
-                    hidden
-                  >
+                      <div id="panel-node-relay-1" class="node-details-grid tab-panel tab-panel-relay-1">
                     <article class="detail-card">
                       <h4>Resources</h4>
                       <div class="metric-row">
@@ -395,16 +380,9 @@
                         </div>
                       </div>
                     </article>
-                  </div>
+                      </div>
 
-                  <div
-                    id="panel-node-relay-2"
-                    class="node-details-grid"
-                    role="tabpanel"
-                    aria-labelledby="tab-node-relay-2"
-                    tabindex="0"
-                    hidden
-                  >
+                      <div id="panel-node-relay-2" class="node-details-grid tab-panel tab-panel-relay-2">
                     <article class="detail-card">
                       <h4>Resources</h4>
                       <div class="metric-row">
@@ -466,6 +444,8 @@
                         </div>
                       </div>
                     </article>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </section>
