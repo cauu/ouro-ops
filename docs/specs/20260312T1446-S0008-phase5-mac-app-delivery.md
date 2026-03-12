@@ -90,3 +90,69 @@ Spec-ID: S0008
 
 ## 7. Change Requests (append-only)
 - 2026-03-12 14:46 +0800 新阶段需求：结束 S0007，并基于其成果制定下一阶段（mac 应用实现）最合理执行规划。
+
+## 8. Addendum (append-only)
+### 8.1 Execution Plan Delta
+- [x] p8-11 收敛 Phase 5 规划基线：补齐 telemetry 映射、nview/monitor 关系、无 pool Welcome 流程、主题边界与审计清单
+
+### 8.2 Requirement Details Delta
+- Scope 增补
+  - 明确包含“无 pool 时 Welcome 与 `开始部署 -> Deploy`”流程，作为 pool-centric IA 的一部分（并入 `p8-2`）。
+  - 明确本阶段包含与 `S0007` 的浅色主题/色板对齐，不在本阶段引入新的视觉主题体系。
+  - 明确 nview Prometheus 与现有 monitor 为并行关系：以现有 monitor 为稳定主数据源，nview 为增量增强源，不作为一次性替代。
+
+### 8.3 Outline Design Delta
+- Data model and interfaces 增补
+  - telemetry 三态与 `monitorStore.telemetryPhase` 的行为映射如下（命名可保留）：
+    - `cache_ready` -> 行为对齐 `loading_cache`（优先渲染本地缓存）
+    - `syncing_live` -> 行为对齐 `syncing_live`（后台静默刷新）
+    - `degraded_retrying` -> 行为对齐 `degraded`（刷新失败后继续展示缓存并自动重试）
+  - nview 与 monitor 关系：
+    - monitor：主路径与兜底路径（必须可独立支撑 Dashboard）
+    - nview：指标补强路径（可用时合并映射，不可用时不阻塞页面）
+- Risk and rollback strategy 增补
+  - 风险 4：nview 端点不可用、延迟高或字段缺失。
+    - 策略：仅启用映射与兜底，不中断 monitor 主路径；记录缺失字段并降级展示。
+
+### 8.4 Execution Plan Delta (Clarification)
+- `p8-2` Clarification：显式覆盖“无 pool Welcome 与 `开始部署 -> Deploy`”路径落地与回归。
+- `p8-5` Clarification：显式覆盖“nview 不可用时保持 monitor 主数据源”的降级实现。
+- `p8-6` Clarification：验收以“Step1 点击 `下一步` 时触发机器创建”为准，要求有成功/失败反馈与幂等保护。
+
+### 8.5 Acceptance Delta
+- TC-P8-010 telemetry 三态与 `monitorStore.telemetryPhase` 行为对齐可验证；命名可保留，不要求强制重命名。
+- TC-P8-011 明确并验证 monitor/nview 并行策略：nview 不可用时 Dashboard 仍由 monitor 数据稳定驱动。
+- TC-P8-012 无 pool 场景下必须存在 Welcome 与 `开始部署 -> Deploy` 的可达主路径。
+- TC-P8-013 主题验收边界明确：实现与 `S0007` 浅色主题/色板对齐，不引入新主题分支。
+- TC-P8-014 `TC-P8-008` 的“可追溯审计”需覆盖关键操作清单：
+  - Deploy Step1 机器创建触发
+  - KES Rotate 执行
+  - Upgrade 执行
+  - Pool bind / unbind
+  - telemetry 降级重试事件
+- TC-P8-015 Deploy Step1 在点击 `下一步` 时完成机器创建，且失败可见、重试可控、重复点击不产生重复创建副作用。
+
+### 8.6 Appendix A: nview Prometheus 初始清单（V1）
+- 端点（引用）
+  - `GET <nview_base>/metrics`（Prometheus exposition）
+- Dashboard V1 目标映射指标（按现有页面字段）
+  - 同步与链状态：`epoch`、`sync_percent`、`tip_diff_blocks`
+  - 节点资源：`cpu_sys_percent`、`mem_live`、`mem_rss`、`mem_heap`
+  - 运行健康：`gc_minor_total`、`gc_major_total`、`peer_count`
+- 说明
+  - 以上为 Phase 5 首批映射集合；若 nview 实际指标名不同，以映射表适配，不直接改 UI 字段语义。
+
+### 8.7 Execution Log Delta
+- 2026-03-12 15:01 +0800 p8-11 started: 评估并吸收阶段规划修订建议。
+- 2026-03-12 15:01 +0800 p8-11 completed: 完成 Scope/Design/Plan/Acceptance 增补，形成可执行的 Phase 5 基线。
+
+### 8.8 Validation Evidence Delta
+- TC-P8-010 | stack: other | command: manual review of section 8.3 telemetry mapping | result: pass | note: telemetry 三态与 `monitorStore.telemetryPhase` 对齐关系已固化
+- TC-P8-011 | stack: other | command: manual review of section 8.2/8.3/8.4 | result: pass | note: nview 与 monitor 并行策略及 nview 不可用降级路径已明确
+- TC-P8-012 | stack: other | command: manual review of section 8.2 and 8.4 p8-2 clarification | result: pass | note: 无 pool Welcome 与开始部署主路径已纳入计划
+- TC-P8-013 | stack: other | command: manual review of section 8.2 theme scope | result: pass | note: 已明确本阶段与 S0007 浅色主题/色板对齐
+- TC-P8-014 | stack: other | command: manual review of TC-P8-014 checklist | result: pass | note: 审计关键操作清单已可用于后续逐项验收
+- TC-P8-015 | stack: other | command: manual review of section 8.4 p8-6 clarification and TC-P8-015 | result: pass | note: Step1 机器创建触发时机和行为要求已明确
+
+### 8.9 Change Request Delta
+- 2026-03-12 15:01 +0800 需求修订：补齐 telemetry 状态映射、nview/monitor 关系、无 pool Welcome 路径、主题对齐边界、审计关键操作清单，以及 p8-5/p8-6 验收细化。
