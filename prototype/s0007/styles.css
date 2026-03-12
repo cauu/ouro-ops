@@ -861,28 +861,6 @@ a {
   font-weight: 640;
 }
 
-.trend-list {
-  margin: 7px 0 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 4px;
-}
-
-.trend-list li {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-.trend-list strong {
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
 .dist-list {
   margin-top: 10px;
   display: grid;

@@ -775,3 +775,26 @@ Spec-ID: S0007
 
 ### 32.5 Change Request Delta
 - 2026-03-12 14:00 +0800 需求新增：项目是 mac 端桌面应用，需按该前提重审并修复审计问题。
+
+## 33. Addendum (append-only)
+### 33.1 Execution Plan Delta
+- [x] p7-36 调整节点 Resources 指标展示：改为 CPU(sys)/Mem Live/RSS/Heap/GC Minor/GC Major，并移除 avg 指标
+
+### 33.2 Acceptance Delta
+- TC-132 Dashboard 节点详情中 BP/Relay 的 Resources 均展示 6 项指标：`CPU (sys)`、`Mem (Live)`、`Mem (RSS)`、`Mem (Heap)`、`GC Minor`、`GC Major`。
+- TC-133 Resources 区域不再展示 `CPU/Memory` 的 `1m/5m/15m avg` 指标。
+- TC-134 相关样式中移除 `trend-list` 结构定义，避免残留未使用的 avg 视觉样式。
+- TC-135 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 33.3 Execution Log Delta
+- 2026-03-12 14:15 +0800 p7-36 started: 按需求重构节点 Resources 指标结构。
+- 2026-03-12 14:18 +0800 p7-36 completed: 三个节点 panel 均切换到 6 指标模板并移除 avg 趋势项。
+
+### 33.4 Validation Evidence Delta
+- TC-132 | stack: ui | command: rg -n "CPU \\(sys\\)|Mem \\(Live\\)|Mem \\(RSS\\)|Mem \\(Heap\\)|GC Minor|GC Major" prototype/s0007/index.html | result: pass | note: BP/Relay1/Relay2 Resources 均包含 6 项指标
+- TC-133 | stack: ui | command: rg -n "1m avg|5m avg|15m avg" prototype/s0007/index.html || true | result: pass | note: 页面已无 avg 指标文案
+- TC-134 | stack: ui | command: rg -n "trend-list" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: avg 趋势列表结构与样式均已移除
+- TC-135 | stack: ui | command: rg -n "<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: 保持纯静态原型
+
+### 33.5 Change Request Delta
+- 2026-03-12 14:15 +0800 需求新增：节点 Resources 使用指定 6 指标，不展示 CPU/Mem avg。
