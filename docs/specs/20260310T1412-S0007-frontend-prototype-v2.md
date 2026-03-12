@@ -545,3 +545,26 @@ Spec-ID: S0007
 
 ### 23.5 Change Request Delta
 - 2026-03-12 09:52 +0800 需求新增：去掉 Dashboard 副标题文案。
+
+## 24. Addendum (append-only)
+### 24.1 Execution Plan Delta
+- [x] p7-27 将 KES Rotate 页面改为保留左侧菜单的布局（与 Upgrade 一致）
+
+### 24.2 Acceptance Delta
+- TC-86 KES Rotate 页面恢复左侧 Sidebar 导航，不再使用 focused-workspace 单列布局。
+- TC-87 左侧菜单保留常态运维入口，且 KES Rotate 菜单为当前激活态。
+- TC-88 KES 主内容（Step 2 流程、命令区、上传区）保持不变。
+- TC-89 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 24.3 Execution Log Delta
+- 2026-03-12 09:55 +0800 p7-27 started: 按需求将 KES 页面切回带左侧菜单结构。
+- 2026-03-12 09:57 +0800 p7-27 completed: KES 页面已改为双列（Sidebar + Main），主流程内容保留。
+
+### 24.4 Validation Evidence Delta
+- TC-86 | stack: ui | command: rg -n "workspace no-inspector|<aside class=\"sidebar\"" prototype/s0007/kes-rotate.html | result: pass | note: KES 页面已恢复 Sidebar 并使用双列布局
+- TC-87 | stack: ui | command: rg -n "KES Rotate|aria-current=\"page\"" prototype/s0007/kes-rotate.html | result: pass | note: KES 菜单处于激活态
+- TC-88 | stack: ui | command: rg -n "Step 2 · 在冷环境生成并带回 node.cert|terminal-block|focused-dropzone|Auto Continue" prototype/s0007/kes-rotate.html | result: pass | note: 核心 KES Step2 内容未丢失
+- TC-89 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/kes-rotate.html || true | result: pass | note: 仍为纯静态原型
+
+### 24.5 Change Request Delta
+- 2026-03-12 09:55 +0800 需求新增：KES Rotate 需要和 Upgrade 一样保留左侧菜单。

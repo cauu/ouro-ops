@@ -17,17 +17,54 @@
               <span class="light yellow"></span>
               <span class="light green"></span>
             </div>
-            <a class="btn ghost" href="./index.html">返回 Dashboard</a>
+            <button class="sidebar-toggle" type="button">Sidebar</button>
           </div>
-          <h1 class="window-title">KES Rotate · Focused Wizard</h1>
+          <h1 class="window-title">Ouro Ops · KES Rotate</h1>
           <div class="toolbar">
-            <button class="toolbar-chip" type="button">Step 2 / 4</button>
+            <label class="toolbar-search" for="search-kes">
+              <span aria-hidden="true">⌕</span>
+              <input id="search-kes" type="search" placeholder="搜索 KES 操作" />
+            </label>
             <button class="toolbar-chip warn" type="button">KES Window 12.4d</button>
           </div>
         </header>
 
-        <div class="workspace focused-workspace">
-          <main id="main-content" class="content focused-content">
+        <div class="workspace no-inspector">
+          <aside class="sidebar">
+            <div class="brand">
+              <span class="brand-mark" aria-hidden="true"></span>
+              <div>
+                <h1>OURO OPS</h1>
+                <p>Mainnet Workspace</p>
+              </div>
+            </div>
+
+            <div class="nav-group">
+              <p class="group-title">Workspace</p>
+              <a class="nav-item" href="./index.html"><span class="nav-symbol" aria-hidden="true">⌂</span>Dashboard</a>
+              <a class="nav-item" href="#"><span class="nav-symbol" aria-hidden="true">▦</span>Nodes</a>
+            </div>
+
+            <div class="nav-group">
+              <p class="group-title">Operations</p>
+              <a class="nav-item active" aria-current="page" href="./kes-rotate.html"><span class="nav-symbol" aria-hidden="true">↻</span>KES Rotate</a>
+              <a class="nav-item" href="./upgrade-image.html"><span class="nav-symbol" aria-hidden="true">⬆</span>Upgrade</a>
+              <a class="nav-item" href="#"><span class="nav-symbol" aria-hidden="true">◍</span>Pool</a>
+            </div>
+
+            <div class="nav-group">
+              <p class="group-title">Audit</p>
+              <a class="nav-item" href="#"><span class="nav-symbol" aria-hidden="true">🕘</span>Activity</a>
+              <a class="nav-item" href="#"><span class="nav-symbol" aria-hidden="true">⚙</span>Settings</a>
+            </div>
+
+            <div class="sidebar-note">
+              KES 轮换是高优先级流程。
+              <br />建议在 remain <= 10 前完成准备。
+            </div>
+          </aside>
+
+          <main id="main-content" class="content">
             <section class="wizard-shell" aria-label="KES rotate step 2">
               <h2 class="page-title">Step 2 · 在冷环境生成并带回 node.cert</h2>
               <p class="page-subtitle">当前页面只做一件事：提供命令并接收 `node.cert`。上传成功后自动推进到 Step 3。</p>
