@@ -610,3 +610,29 @@ Spec-ID: S0007
 
 ### 26.5 Change Request Delta
 - 2026-03-12 10:55 +0800 需求新增：侧边菜单中的 Deploy 也应去掉。
+
+## 27. Addendum (append-only)
+### 27.1 Execution Plan Delta
+- [x] p7-30 参考 Deploy 向导优化 KES Rotate UI，并补齐 KES Rotate 全流程步骤页面设计
+
+### 27.2 Acceptance Delta
+- TC-96 KES Rotate 按与 Deploy 一致的单步聚焦向导结构，拆分为 4 个独立页面（Step 1~4）。
+- TC-97 每个 KES 步骤页均保留统一侧边菜单（Dashboard / KES Rotate / Upgrade），并保持 KES 为激活态。
+- TC-98 每个 KES 步骤页均提供固定底部 Action Bar（取消 + 上一步/下一步或执行/完成）。
+- TC-99 KES 四步流程覆盖：生成 KES keypairs -> 冷环境生成 node.cert -> 上传证书并执行 Rotate -> 执行日志与验收结果。
+- TC-100 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 27.3 Execution Log Delta
+- 2026-03-12 11:05 +0800 p7-30 started: 以 Deploy 向导为参考重构 KES Rotate UI 并补齐全流程页面。
+- 2026-03-12 11:15 +0800 p7-30 completed: 完成 `kes-rotate.html`(Step1) 与 `kes-rotate-step2/3/4.html` 新增，统一交互骨架和样式。
+
+### 27.4 Validation Evidence Delta
+- TC-96 | stack: ui | command: rg --files prototype/s0007 | rg "kes-rotate(\.html|-step2\.html|-step3\.html|-step4\.html)$" | result: pass | note: KES Step1~4 页面齐全
+- TC-96 | stack: ui | command: rg -n "Step [1-4] / 4|wizard-page|wizard-stepline" prototype/s0007/kes-rotate*.html | result: pass | note: 各步骤页具备单步向导结构
+- TC-97 | stack: ui | command: rg -n "Dashboard|KES Rotate|Upgrade|aria-current=\"page\"" prototype/s0007/kes-rotate*.html | result: pass | note: 侧边菜单统一且 KES 激活
+- TC-98 | stack: ui | command: rg -n "<footer class=\"action-bar\"|上一步|下一步|执行 Rotate|返回 Dashboard" prototype/s0007/kes-rotate*.html | result: pass | note: 各页 Action Bar 完整
+- TC-99 | stack: ui | command: rg -n "生成 KES Keypairs|冷环境生成 node.cert|上传 node.cert 并执行 Rotate|校验完成" prototype/s0007/kes-rotate*.html | result: pass | note: 四阶段流程覆盖完整
+- TC-100 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/kes-rotate*.html prototype/s0007/styles.css || true | result: pass | note: 保持纯静态原型
+
+### 27.5 Change Request Delta
+- 2026-03-12 11:05 +0800 需求新增：参考 Deploy 页面优化 KES Rotate 页面，并补充完整 KES Rotate 流程的所有页面设计。

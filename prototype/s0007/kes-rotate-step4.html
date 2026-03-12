@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Ouro Ops Prototype - KES Rotate Step 1</title>
+    <title>Ouro Ops Prototype - KES Rotate Step 4</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -21,11 +21,11 @@
           </div>
           <h1 class="window-title">Ouro Ops · KES Rotate</h1>
           <div class="toolbar">
-            <label class="toolbar-search" for="search-kes-step1">
+            <label class="toolbar-search" for="search-kes-step4">
               <span aria-hidden="true">⌕</span>
-              <input id="search-kes-step1" type="search" placeholder="搜索 KES 操作" />
+              <input id="search-kes-step4" type="search" placeholder="搜索 KES 操作" />
             </label>
-            <button class="toolbar-chip warn" type="button">Step 1 / 4</button>
+            <button class="toolbar-chip warn" type="button">Step 4 / 4</button>
           </div>
         </header>
 
@@ -57,68 +57,81 @@
           </aside>
 
           <main id="main-content" class="content">
-            <section class="wizard-shell wide" aria-label="kes rotate step 1">
+            <section class="wizard-shell wide" aria-label="kes rotate step 4">
               <section class="wizard-page">
                 <header class="wizard-stage-head">
-                  <h2 class="page-title">Step 1 · 生成 KES Keypairs</h2>
-                  <p class="page-subtitle">先在热环境生成新的 `kes.skey` 与 `kes.vkey`，作为后续离线签发 `node.cert` 的输入。</p>
+                  <h2 class="page-title">Step 4 · 校验完成</h2>
+                  <p class="page-subtitle">展示 Rotate 执行日志与最终验收结果。</p>
                   <div class="wizard-stepline" aria-label="wizard progress">
-                    <span class="pill-step current">1 生成 KES keypairs</span>
+                    <span class="pill-step done">1 生成 KES keypairs</span>
                     <span class="dot" aria-hidden="true"></span>
-                    <span class="pill-step">2 离线生成 node.cert</span>
+                    <span class="pill-step done">2 离线生成 node.cert</span>
                     <span class="dot" aria-hidden="true"></span>
-                    <span class="pill-step">3 上传证书并执行 Rotate</span>
+                    <span class="pill-step done">3 上传证书并执行 Rotate</span>
                     <span class="dot" aria-hidden="true"></span>
-                    <span class="pill-step">4 校验完成</span>
+                    <span class="pill-step current">4 校验完成</span>
                   </div>
                 </header>
 
                 <div class="wizard-scroll">
                   <article class="wizard-card">
                     <header class="wizard-card-head">
-                      <h3>执行上下文</h3>
-                      <p>确认 BP 环境和即将生成的文件路径。</p>
+                      <h3>Rotate 执行状态</h3>
+                      <p>执行中不允许返回上一步，完成后可回到 Dashboard。</p>
                     </header>
                     <div class="wizard-card-body">
-                      <div class="kv-grid">
-                        <div class="kv-cell"><span>Target Node</span><strong>bp-1 (31.220.95.72)</strong></div>
-                        <div class="kv-cell"><span>KES Period (current)</span><strong>428</strong></div>
-                        <div class="kv-cell"><span>Output Key Dir</span><strong>/opt/cardano/keys</strong></div>
-                        <div class="kv-cell"><span>Window Remain</span><strong>12.4d</strong></div>
+                      <div class="loading-row" aria-live="polite">
+                        <span class="spinner" aria-hidden="true"></span>
+                        <span class="inline-note">Rotating... 当前阶段：bp restart + post-check</span>
+                      </div>
+
+                      <div class="flow-state" aria-label="rotate stages">
+                        <div class="state-row">
+                          <strong>upload cert</strong>
+                          <span class="chip ok">done</span>
+                        </div>
+                        <div class="state-row">
+                          <strong>apply cert to bp</strong>
+                          <span class="chip ok">done</span>
+                        </div>
+                        <div class="state-row">
+                          <strong>bp restart</strong>
+                          <span class="chip warn">running</span>
+                        </div>
+                        <div class="state-row">
+                          <strong>kes window verify</strong>
+                          <span class="chip">pending</span>
+                        </div>
                       </div>
                     </div>
                   </article>
 
                   <article class="wizard-card">
                     <header class="wizard-card-head">
-                      <h3>Step 1 命令</h3>
-                      <p>在热环境执行，生成新的 KES 密钥对。</p>
+                      <h3>执行日志</h3>
+                      <p>Rotate 过程与最终 KES 指标。</p>
                     </header>
                     <div class="wizard-card-body">
-                      <div class="command-toolbar">
-                        <span class="inline-note">该命令执行后会写入 `kes.skey` / `kes.vkey`。</span>
-                        <div class="action-group">
-                          <button type="button" class="btn">Copy Command</button>
-                          <button type="button" class="btn">Copy + 参数说明</button>
-                        </div>
-                      </div>
-
-                      <div class="terminal-block" role="region" aria-label="kes keygen command">
+                      <div class="terminal-block" role="region" aria-label="rotate logs">
                         <div class="terminal-head" aria-hidden="true">
                           <span class="terminal-dot red"></span>
                           <span class="terminal-dot yellow"></span>
                           <span class="terminal-dot green"></span>
                         </div>
-                        <pre class="terminal-body">cardano-cli node key-gen-KES \
-  --verification-key-file /opt/cardano/keys/kes.vkey \
-  --signing-key-file /opt/cardano/keys/kes.skey</pre>
+                        <pre class="terminal-body">TASK [bp] Upload node.cert to /opt/cardano/keys/node.cert ... changed
+TASK [bp] Restart cardano-node container ... changed
+TASK [bp] Wait for /opt/cardano/ipc/node.socket ... ok
+TASK [bp] cardano-cli query tip ... ok
+TASK [bp] query kes-period ... ok
+Result: kes period 429, remain 61
+</pre>
                       </div>
 
-                      <div class="context-badges" aria-label="command context">
-                        <span class="badge-pill">Run In: bp hot environment</span>
-                        <span class="badge-pill">Output: kes.vkey</span>
-                        <span class="badge-pill">Output: kes.skey</span>
-                        <span class="badge-pill">Next Input: node.cert signing</span>
+                      <div class="kv-grid" style="margin-top: 12px">
+                        <div class="kv-cell"><span>KES Period</span><strong>429</strong></div>
+                        <div class="kv-cell"><span>KES Remain</span><strong>61</strong></div>
+                        <div class="kv-cell"><span>BP Health</span><strong>online</strong></div>
+                        <div class="kv-cell"><span>Operation</span><strong>success</strong></div>
                       </div>
                     </div>
                   </article>
@@ -127,8 +140,8 @@
                 <footer class="action-bar">
                   <a class="btn" href="./index.html">取消</a>
                   <div class="action-bar-right">
-                    <button type="button" class="btn" disabled>上一步</button>
-                    <a class="btn primary" href="./kes-rotate-step2.html">下一步</a>
+                    <button type="button" class="btn">导出日志</button>
+                    <a class="btn primary" href="./index.html">返回 Dashboard</a>
                   </div>
                 </footer>
               </section>

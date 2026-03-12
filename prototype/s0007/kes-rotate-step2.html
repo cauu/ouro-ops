@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Ouro Ops Prototype - KES Rotate Step 1</title>
+    <title>Ouro Ops Prototype - KES Rotate Step 2</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -21,11 +21,11 @@
           </div>
           <h1 class="window-title">Ouro Ops · KES Rotate</h1>
           <div class="toolbar">
-            <label class="toolbar-search" for="search-kes-step1">
+            <label class="toolbar-search" for="search-kes-step2">
               <span aria-hidden="true">⌕</span>
-              <input id="search-kes-step1" type="search" placeholder="搜索 KES 操作" />
+              <input id="search-kes-step2" type="search" placeholder="搜索 KES 操作" />
             </label>
-            <button class="toolbar-chip warn" type="button">Step 1 / 4</button>
+            <button class="toolbar-chip warn" type="button">Step 2 / 4</button>
           </div>
         </header>
 
@@ -57,15 +57,15 @@
           </aside>
 
           <main id="main-content" class="content">
-            <section class="wizard-shell wide" aria-label="kes rotate step 1">
+            <section class="wizard-shell wide" aria-label="kes rotate step 2">
               <section class="wizard-page">
                 <header class="wizard-stage-head">
-                  <h2 class="page-title">Step 1 · 生成 KES Keypairs</h2>
-                  <p class="page-subtitle">先在热环境生成新的 `kes.skey` 与 `kes.vkey`，作为后续离线签发 `node.cert` 的输入。</p>
+                  <h2 class="page-title">Step 2 · 冷环境生成 node.cert</h2>
+                  <p class="page-subtitle">带上 Step 1 生成的 `kes.vkey`，在 cold environment 生成新的运营证书。</p>
                   <div class="wizard-stepline" aria-label="wizard progress">
-                    <span class="pill-step current">1 生成 KES keypairs</span>
+                    <span class="pill-step done">1 生成 KES keypairs</span>
                     <span class="dot" aria-hidden="true"></span>
-                    <span class="pill-step">2 离线生成 node.cert</span>
+                    <span class="pill-step current">2 离线生成 node.cert</span>
                     <span class="dot" aria-hidden="true"></span>
                     <span class="pill-step">3 上传证书并执行 Rotate</span>
                     <span class="dot" aria-hidden="true"></span>
@@ -76,49 +76,60 @@
                 <div class="wizard-scroll">
                   <article class="wizard-card">
                     <header class="wizard-card-head">
-                      <h3>执行上下文</h3>
-                      <p>确认 BP 环境和即将生成的文件路径。</p>
+                      <h3>离线签发命令</h3>
+                      <p>在 cold environment 执行，不在热机保存 cold.skey。</p>
                     </header>
                     <div class="wizard-card-body">
-                      <div class="kv-grid">
-                        <div class="kv-cell"><span>Target Node</span><strong>bp-1 (31.220.95.72)</strong></div>
-                        <div class="kv-cell"><span>KES Period (current)</span><strong>428</strong></div>
-                        <div class="kv-cell"><span>Output Key Dir</span><strong>/opt/cardano/keys</strong></div>
-                        <div class="kv-cell"><span>Window Remain</span><strong>12.4d</strong></div>
+                      <div class="command-toolbar">
+                        <span class="inline-note">执行后生成 `node.cert`，供下一步上传。</span>
+                        <div class="action-group">
+                          <button type="button" class="btn">Copy Command</button>
+                          <button type="button" class="btn">下载离线说明</button>
+                        </div>
+                      </div>
+
+                      <div class="terminal-block" role="region" aria-label="issue op cert command">
+                        <div class="terminal-head" aria-hidden="true">
+                          <span class="terminal-dot red"></span>
+                          <span class="terminal-dot yellow"></span>
+                          <span class="terminal-dot green"></span>
+                        </div>
+                        <pre class="terminal-body">cardano-cli node issue-op-cert \
+  --kes-verification-key-file kes.vkey \
+  --cold-signing-key-file cold.skey \
+  --operational-certificate-issue-counter-file opcert.counter \
+  --kes-period 428 \
+  --out-file node.cert</pre>
+                      </div>
+
+                      <div class="context-badges" aria-label="command context">
+                        <span class="badge-pill">Input: kes.vkey</span>
+                        <span class="badge-pill">Input: cold.skey</span>
+                        <span class="badge-pill">Input: opcert.counter</span>
+                        <span class="badge-pill">Output: node.cert</span>
                       </div>
                     </div>
                   </article>
 
                   <article class="wizard-card">
                     <header class="wizard-card-head">
-                      <h3>Step 1 命令</h3>
-                      <p>在热环境执行，生成新的 KES 密钥对。</p>
+                      <h3>产物检查</h3>
+                      <p>完成离线执行后，确认文件完整再回到热环境。</p>
                     </header>
                     <div class="wizard-card-body">
-                      <div class="command-toolbar">
-                        <span class="inline-note">该命令执行后会写入 `kes.skey` / `kes.vkey`。</span>
-                        <div class="action-group">
-                          <button type="button" class="btn">Copy Command</button>
-                          <button type="button" class="btn">Copy + 参数说明</button>
+                      <div class="flow-state" aria-label="artifact checklist">
+                        <div class="state-row">
+                          <strong>node.cert exists</strong>
+                          <span>required</span>
                         </div>
-                      </div>
-
-                      <div class="terminal-block" role="region" aria-label="kes keygen command">
-                        <div class="terminal-head" aria-hidden="true">
-                          <span class="terminal-dot red"></span>
-                          <span class="terminal-dot yellow"></span>
-                          <span class="terminal-dot green"></span>
+                        <div class="state-row">
+                          <strong>opcert.counter updated</strong>
+                          <span>recommended</span>
                         </div>
-                        <pre class="terminal-body">cardano-cli node key-gen-KES \
-  --verification-key-file /opt/cardano/keys/kes.vkey \
-  --signing-key-file /opt/cardano/keys/kes.skey</pre>
-                      </div>
-
-                      <div class="context-badges" aria-label="command context">
-                        <span class="badge-pill">Run In: bp hot environment</span>
-                        <span class="badge-pill">Output: kes.vkey</span>
-                        <span class="badge-pill">Output: kes.skey</span>
-                        <span class="badge-pill">Next Input: node.cert signing</span>
+                        <div class="state-row">
+                          <strong>cold keys kept offline</strong>
+                          <span>mandatory</span>
+                        </div>
                       </div>
                     </div>
                   </article>
@@ -127,8 +138,8 @@
                 <footer class="action-bar">
                   <a class="btn" href="./index.html">取消</a>
                   <div class="action-bar-right">
-                    <button type="button" class="btn" disabled>上一步</button>
-                    <a class="btn primary" href="./kes-rotate-step2.html">下一步</a>
+                    <a class="btn" href="./kes-rotate.html">上一步</a>
+                    <a class="btn primary" href="./kes-rotate-step3.html">下一步</a>
                   </div>
                 </footer>
               </section>

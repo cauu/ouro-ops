@@ -9,7 +9,10 @@ Pure HTML prototype with five core pages:
 5. `deploy-step3.html`
 6. `deploy-step4.html`
 7. `kes-rotate.html`
-8. `upgrade-image.html`
+8. `kes-rotate-step2.html`
+9. `kes-rotate-step3.html`
+10. `kes-rotate-step4.html`
+11. `upgrade-image.html`
 
 Design direction:
 
