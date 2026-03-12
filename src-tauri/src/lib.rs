@@ -212,8 +212,13 @@ mod frontend_tests {
         assert!(sidebar.contains("data-tauri-drag-region"));
         assert!(layout.contains("no-drag"));
         assert!(sidebar.contains("no-drag"));
+        assert!(layout.contains("no-drag truncate text-[14px]"));
+        assert!(layout.contains("no-drag inline-flex min-h-6"));
+        assert!(sidebar.contains("pl-[74px]"));
+        assert!(sidebar.contains("flex-1"));
         assert!(css.contains(".drag-region"));
         assert!(css.contains(".no-drag"));
+        assert!(css.contains("user-select: text"));
     }
 
     #[test]

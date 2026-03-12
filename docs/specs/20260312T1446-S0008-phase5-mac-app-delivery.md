@@ -433,3 +433,20 @@ Spec-ID: S0008
 
 ### 24.4 Change Request Delta
 - 2026-03-12 17:27 +0800 需求修订：在当前项目直接实现 mac 沉浸式无边框/自定义标题栏布局与交互细节。
+
+## 25. Addendum (append-only)
+### 25.1 Execution Plan Delta
+- [x] p8-20 修正标题栏拖拽语义：仅空白区 drag，文本/chip/按钮等交互元素强制 no-drag
+
+### 25.2 Execution Log Delta
+- 2026-03-12 17:32 +0800 p8-20 started: 根据拖拽规则细化标题栏交互语义，避免 drag 与点击/选择冲突。
+- 2026-03-12 17:32 +0800 p8-20 completed: 为主内容标题文本与状态 chip 增加 `no-drag`，侧栏顶部显式保留空白拖拽区，`no-drag` 恢复文本可选择能力，并通过构建/测试回归。
+
+### 25.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "data-tauri-drag-region|no-drag truncate text-\\[14px\\]|no-drag inline-flex min-h-6|pl-\\[74px\\]|flex-1" src/components/Layout.tsx src/components/Sidebar.tsx | result: pass | note: 顶部空白 drag + 文本/chip/按钮 no-drag 规则已落地
+- TC-P8-003 | stack: ui | command: rg -n "drag-region|no-drag|user-select: text" src/index.css src-tauri/src/lib.rs | result: pass | note: 全局 drag/no-drag 基础样式与断言已更新
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 拖拽语义修正后前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 144/144 通过（仅 dead_code warning）
+
+### 25.4 Change Request Delta
+- 2026-03-12 17:32 +0800 需求修订：严格按 drag/no-drag 规则修复标题栏拖拽区域设计。

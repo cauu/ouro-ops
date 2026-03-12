@@ -56,25 +56,28 @@ export default function Sidebar({ network, collapsed, onToggleCollapse }: Sideba
       }`}
     >
       <header className="drag-region border-b border-slate-200/80" data-tauri-drag-region>
-        <div className={`flex h-14 items-center ${collapsed ? "justify-end pl-[74px] pr-2" : "gap-2 pl-[74px] pr-3"}`}>
-          {!collapsed && (
-            <IconButton title="新建工作区">
-              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                <path d="M10 4v12M4 10h12" strokeLinecap="round" />
-              </svg>
-            </IconButton>
-          )}
-          <IconButton title={collapsed ? "展开侧边栏" : "收起侧边栏"} onClick={onToggleCollapse}>
-            {collapsed ? (
-              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                <path d="M6 4l8 6-8 6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                <path d="M14 4l-8 6 8 6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+        <div className={`flex h-14 items-center pl-[74px] ${collapsed ? "pr-2" : "pr-3"}`}>
+          <div className="no-drag flex items-center gap-2">
+            {!collapsed && (
+              <IconButton title="新建工作区">
+                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <path d="M10 4v12M4 10h12" strokeLinecap="round" />
+                </svg>
+              </IconButton>
             )}
-          </IconButton>
+            <IconButton title={collapsed ? "展开侧边栏" : "收起侧边栏"} onClick={onToggleCollapse}>
+              {collapsed ? (
+                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <path d="M6 4l8 6-8 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <path d="M14 4l-8 6 8 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </IconButton>
+          </div>
+          <div className="flex-1" />
         </div>
       </header>
 

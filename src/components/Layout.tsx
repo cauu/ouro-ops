@@ -136,12 +136,12 @@ export default function Layout({ pool }: LayoutProps) {
           <header className="drag-region border-b border-slate-200/80 bg-white/78 backdrop-blur-md" data-tauri-drag-region>
             <div className="flex h-14 items-center justify-between gap-4 px-5">
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                <p className="no-drag text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   {toolbar.section} · {networkLabel(pool.network)}
                 </p>
                 <div className="mt-0.5 flex items-center gap-2">
-                  <h1 className="truncate text-[14px] font-semibold text-slate-900">{toolbar.title}</h1>
-                  <span className={`inline-flex min-h-6 items-center rounded-full border px-2 text-[11px] font-semibold ${statusToneClass(toolbar.statusTone)}`}>
+                  <h1 className="no-drag truncate text-[14px] font-semibold text-slate-900">{toolbar.title}</h1>
+                  <span className={`no-drag inline-flex min-h-6 items-center rounded-full border px-2 text-[11px] font-semibold ${statusToneClass(toolbar.statusTone)}`}>
                     {toolbar.status}
                   </span>
                 </div>
