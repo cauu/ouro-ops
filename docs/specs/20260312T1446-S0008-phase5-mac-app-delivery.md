@@ -514,3 +514,20 @@ Spec-ID: S0008
 
 ### 29.4 Change Request Delta
 - 2026-03-12 17:52 +0800 需求修订：回退“顶部标题栏空白区域可拖拽”这次改动。
+
+## 30. Addendum (append-only)
+### 30.1 Execution Plan Delta
+- [x] p8-25 回退 p8-22：撤销 KES Rotate prototype 向导壳重构
+
+### 30.2 Execution Log Delta
+- 2026-03-12 17:53 +0800 p8-25 started: 用户确认“回退本次改动包含 p8-22”，执行 KES Rotate 页面整体回退。
+- 2026-03-12 17:53 +0800 p8-25 completed: 将 `src/pages/KesManager.tsx` 恢复到 `p8-22` 之前版本（保留此前全局标题栏相关改动，不再保留 p8-22 的本地 titlebar/wizard-shell/terminal-block 重构）。
+
+### 30.3 Validation Evidence Delta
+- TC-P8-008 | stack: ui | command: rg -n "Ouro Ops · KES Rotate|Copy Command|Copy \+ 参数说明|terminal-head" src/pages/KesManager.tsx | result: pass | note: p8-22 引入的 prototype 关键标记已回退
+- TC-P8-008 | stack: ui | command: rg -n "const \[wizardStep, setWizardStep\]|Step 1: Generate KES request|Step 3: Push to BP \(Risk Gate\)|Confirm KES Push|Step 4: Validation" src/pages/KesManager.tsx | result: pass | note: 页面恢复为回退前的旧版 KES 流程结构
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 回退 p8-22 后前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试通过（含既有 dead_code warning）
+
+### 30.4 Change Request Delta
+- 2026-03-12 17:53 +0800 需求修订：回退本次改动，范围包含 p8-23 与 p8-22。
