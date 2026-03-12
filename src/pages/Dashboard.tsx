@@ -145,6 +145,60 @@ function formatMargin(value: number | null): string {
   return `${(value * 100).toFixed(2)}%`;
 }
 
+function monitorPhaseTone(phase: string): string {
+  switch (phase) {
+    case "live":
+      return "bg-emerald-400";
+    case "syncing_live":
+    case "loading_cache":
+      return "bg-sky-400 animate-pulse";
+    case "degraded":
+      return "bg-amber-400";
+    default:
+      return "bg-zinc-500";
+  }
+}
+
+function monitorPhaseLabel(phase: string, fallback: string, usingCachedData: boolean): string {
+  switch (phase) {
+    case "loading_cache":
+      return "Loading cached telemetry";
+    case "syncing_live":
+      return usingCachedData
+        ? "Refreshing latest telemetry in background"
+        : "Fetching latest telemetry";
+    case "live":
+      return "Telemetry updated";
+    case "degraded":
+      return usingCachedData
+        ? "Live telemetry delayed, using cached data"
+        : "Telemetry temporarily unavailable";
+    default:
+      return fallback;
+  }
+}
+
+function formatRelativeCollectedAt(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return null;
+  }
+  const diffMs = Date.now() - parsed;
+  if (diffMs < 60_000) {
+    return "just now";
+  }
+  if (diffMs < 3_600_000) {
+    return `${Math.floor(diffMs / 60_000)}m ago`;
+  }
+  if (diffMs < 86_400_000) {
+    return `${Math.floor(diffMs / 3_600_000)}h ago`;
+  }
+  return `${Math.floor(diffMs / 86_400_000)}d ago`;
+}
+
 interface DashboardProps {
   pool: Pool;
   onPoolRefreshed: (pool: Pool) => void;
@@ -159,7 +213,13 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
   const [recentTasks, setRecentTasks] = useState<RecentTaskSummary[]>([]);
   const [unbindError, setUnbindError] = useState<string | null>(null);
   const [unbinding, setUnbinding] = useState(false);
-  const { snapshots, status: monitorStatus } = useMonitorStore();
+  const {
+    snapshots,
+    status: monitorStatus,
+    telemetryPhase,
+    usingCachedData,
+    lastCollectedAt,
+  } = useMonitorStore();
 
   const refreshMonitor = useCallback(async () => {
     await refreshMonitorStore();
@@ -244,6 +304,8 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
   const healthyMachines = snapshots.filter((row) => row.health_level === "healthy").length;
   const warningMachines = snapshots.filter((row) => row.health_level === "warning").length;
   const criticalMachines = snapshots.filter((row) => row.health_level === "critical").length;
+  const monitorPhaseText = monitorPhaseLabel(telemetryPhase, monitorStatus, usingCachedData);
+  const monitorCollectedAge = formatRelativeCollectedAt(lastCollectedAt);
 
   return (
     <section className="space-y-4">
@@ -460,7 +522,13 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-zinc-100">Sync Monitor</h2>
-            <p className="text-xs text-zinc-400">{monitorStatus}</p>
+            <p className="mt-1 inline-flex items-center gap-2 text-xs text-zinc-400">
+              <span className={`h-1.5 w-1.5 rounded-full ${monitorPhaseTone(telemetryPhase)}`} aria-hidden="true" />
+              <span>
+                {monitorPhaseText}
+                {monitorCollectedAge ? ` · ${monitorCollectedAge}` : ""}
+              </span>
+            </p>
           </div>
           <button
             type="button"
@@ -473,7 +541,9 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {snapshots.length === 0 ? (
             <div className="rounded-md border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
-              No sync samples yet.
+              {telemetryPhase === "loading_cache" || telemetryPhase === "syncing_live"
+                ? "Loading telemetry snapshots..."
+                : "No sync samples yet."}
             </div>
           ) : (
             snapshots.map((snapshot) => (

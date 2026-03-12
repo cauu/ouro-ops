@@ -6,7 +6,6 @@ import type { Pool } from "./lib/types";
 import Dashboard from "./pages/Dashboard";
 import DeployWizard from "./pages/DeployWizard";
 import KesManager from "./pages/KesManager";
-import MachineManager from "./pages/MachineManager";
 import Settings from "./pages/Settings";
 import SetupWizard from "./pages/SetupWizard";
 import UpgradeWizard from "./pages/UpgradeWizard";
@@ -71,7 +70,6 @@ function App() {
             />
           }
         />
-        <Route path="/machines" element={pool ? <MachineManager pool={pool} /> : null} />
         <Route path="/kes" element={pool ? <KesManager poolTicker={pool.ticker} /> : null} />
         <Route path="/deploy" element={pool ? <DeployWizard pool={pool} /> : null} />
         <Route path="/upgrade" element={pool ? <UpgradeWizard poolTicker={pool.ticker} /> : null} />

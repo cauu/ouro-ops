@@ -2,8 +2,25 @@ import { useEffect, useMemo, useState } from "react";
 import ConfirmModal from "../components/ConfirmModal";
 import TaskLogStream from "../components/TaskLogStream";
 import { formatTaskError, toUserError } from "../lib/errors";
-import { deployCancel, deployStart, deployStatus, machineList, machineRuntimeProbe } from "../lib/ipc";
-import type { DeployPayload, DeployTaskStatus, Machine, Pool, RuntimeProbe } from "../lib/types";
+import {
+  deployCancel,
+  deployStart,
+  deployStatus,
+  machineAdd,
+  machineRemove,
+  machineRuntimeProbe,
+  sshAgentAddKey,
+  sshAgentListKeys,
+} from "../lib/ipc";
+import type {
+  DeployPayload,
+  DeployTaskStatus,
+  Machine,
+  MachineAddPayload,
+  Pool,
+  RuntimeProbe,
+  SshKeyInfo,
+} from "../lib/types";
 
 interface DeployWizardProps {
   pool: Pool;
@@ -17,26 +34,39 @@ function networkSupportsMithril(network: Pool["network"]): boolean {
   return network === "mainnet" || network === "preprod";
 }
 
-function formatMachineLoadStatus(elapsedSeconds: number): string {
-  if (elapsedSeconds < 3) {
-    return "Requesting machine list from local app...";
-  }
-  if (elapsedSeconds < 10) {
-    return `Still waiting for machine_list response (${elapsedSeconds}s)...`;
-  }
-  return `Still waiting for machine_list response (${elapsedSeconds}s). Local DB or Tauri command may be blocked.`;
+interface MachineDraft {
+  name: string;
+  ip: string;
+  port: string;
+  sshUser: string;
+  sshKeyFingerprint: string;
+}
+
+function emptyMachineDraft(role: MachineAddPayload["role"], index: number, keyFingerprint = ""): MachineDraft {
+  return {
+    name: role === "bp" ? "bp-1" : `relay-${index + 1}`,
+    ip: "",
+    port: "22",
+    sshUser: "root",
+    sshKeyFingerprint: keyFingerprint,
+  };
 }
 
 export default function DeployWizard({ pool }: DeployWizardProps) {
   const defaultRelayRestore = networkSupportsMithril(pool.network);
-  const defaultBpRestore = false;
-  const [loading, setLoading] = useState(true);
-  const [loadingElapsedSeconds, setLoadingElapsedSeconds] = useState(0);
+  const defaultBpRestore = networkSupportsMithril(pool.network);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const [step, setStep] = useState(1);
+  const [step1Completed, setStep1Completed] = useState(false);
+  const [creatingStep1, setCreatingStep1] = useState(false);
   const [selectedMachineIds, setSelectedMachineIds] = useState<number[]>([]);
+  const [keys, setKeys] = useState<SshKeyInfo[]>([]);
+  const [addingKey, setAddingKey] = useState(false);
+  const [keyPath, setKeyPath] = useState("~/.ssh/id_ed25519");
+  const [bpDraft, setBpDraft] = useState<MachineDraft>(emptyMachineDraft("bp", 0));
+  const [relayDrafts, setRelayDrafts] = useState<MachineDraft[]>([emptyMachineDraft("relay", 0)]);
 
   const [cardanoVersion, setCardanoVersion] = useState("10.5.4-1");
   const [imageRegistry, setImageRegistry] = useState("ghcr.io/blinklabs-io/cardano-node");
@@ -61,34 +91,27 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
   const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setLoadingElapsedSeconds(0);
+    void (async () => {
       setError(null);
       try {
-        const rows = await machineList();
-        setMachines(rows);
+        const loadedKeys = await sshAgentListKeys();
+        setKeys(loadedKeys);
+        const defaultFingerprint = loadedKeys[0]?.fingerprint ?? "";
+        if (defaultFingerprint) {
+          setBpDraft((prev) =>
+            prev.sshKeyFingerprint ? prev : { ...prev, sshKeyFingerprint: defaultFingerprint },
+          );
+          setRelayDrafts((prev) =>
+            prev.map((draft) =>
+              draft.sshKeyFingerprint ? draft : { ...draft, sshKeyFingerprint: defaultFingerprint },
+            ),
+          );
+        }
       } catch (e) {
         setError(toUserError(e));
-      } finally {
-        setLoading(false);
       }
-    };
-    void load();
+    })();
   }, []);
-
-  useEffect(() => {
-    if (!loading) {
-      return;
-    }
-    const startedAt = Date.now();
-    const timer = window.setInterval(() => {
-      setLoadingElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
-    }, 1000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [loading]);
 
   useEffect(() => {
     if (!taskId) {
@@ -136,13 +159,154 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
     [selectedMachines, runtimeProbeMap],
   );
 
-  const canNextFromStep1 = selectedMachineIds.length > 0;
+  const canNextFromStep1 =
+    step1Completed ||
+    (keys.length > 0 &&
+      bpDraft.ip.trim().length > 0 &&
+      relayDrafts.length > 0 &&
+      relayDrafts.every((draft) => draft.ip.trim().length > 0));
   const canNextFromStep2 = cardanoVersion.trim().length > 0 && swapSizeGb >= 8 && swapSizeGb <= 16;
 
-  const toggleMachine = (machineId: number) => {
-    setSelectedMachineIds((prev) =>
-      prev.includes(machineId) ? prev.filter((id) => id !== machineId) : [...prev, machineId],
+  const updateRelayDraft = (index: number, patch: Partial<MachineDraft>) => {
+    setRelayDrafts((prev) =>
+      prev.map((draft, current) => (current === index ? { ...draft, ...patch } : draft)),
     );
+  };
+
+  const addRelayDraft = () => {
+    const fallbackFingerprint = keys[0]?.fingerprint ?? "";
+    setRelayDrafts((prev) => [...prev, emptyMachineDraft("relay", prev.length, fallbackFingerprint)]);
+  };
+
+  const removeRelayDraft = (index: number) => {
+    setRelayDrafts((prev) => {
+      if (prev.length <= 1) {
+        return prev;
+      }
+      const next = prev.filter((_, current) => current !== index);
+      return next.map((draft, current) => ({
+        ...draft,
+        name: draft.name.startsWith("relay-") ? `relay-${current + 1}` : draft.name,
+      }));
+    });
+  };
+
+  const handleAddKey = async () => {
+    if (!keyPath.trim()) {
+      return;
+    }
+    setAddingKey(true);
+    setError(null);
+    try {
+      const updatedKeys = await sshAgentAddKey(keyPath.trim());
+      setKeys(updatedKeys);
+      const defaultFingerprint = updatedKeys[0]?.fingerprint ?? "";
+      if (defaultFingerprint) {
+        setBpDraft((prev) =>
+          prev.sshKeyFingerprint ? prev : { ...prev, sshKeyFingerprint: defaultFingerprint },
+        );
+        setRelayDrafts((prev) =>
+          prev.map((draft) =>
+            draft.sshKeyFingerprint ? draft : { ...draft, sshKeyFingerprint: defaultFingerprint },
+          ),
+        );
+      }
+    } catch (e) {
+      setError(toUserError(e));
+    } finally {
+      setAddingKey(false);
+    }
+  };
+
+  const validateDraft = (draft: MachineDraft, label: string): string | null => {
+    if (!draft.ip.trim()) {
+      return `${label}: IP is required.`;
+    }
+    const port = Number(draft.port);
+    if (!Number.isInteger(port) || port <= 0) {
+      return `${label}: SSH port must be a positive integer.`;
+    }
+    if (!draft.sshUser.trim()) {
+      return `${label}: SSH user is required.`;
+    }
+    if (!draft.sshKeyFingerprint.trim()) {
+      return `${label}: SSH key fingerprint is required.`;
+    }
+    return null;
+  };
+
+  const handlePersistStep1 = async () => {
+    if (step1Completed) {
+      setStep(2);
+      return;
+    }
+    setError(null);
+    if (keys.length === 0) {
+      setError("No ssh-agent key available. Add a key before creating nodes.");
+      return;
+    }
+
+    const bpValidation = validateDraft(bpDraft, "BP");
+    if (bpValidation) {
+      setError(bpValidation);
+      return;
+    }
+    for (let index = 0; index < relayDrafts.length; index += 1) {
+      const validation = validateDraft(relayDrafts[index], `Relay #${index + 1}`);
+      if (validation) {
+        setError(validation);
+        return;
+      }
+    }
+
+    const payloads: MachineAddPayload[] = [
+      {
+        name: bpDraft.name.trim() || "bp-1",
+        ip: bpDraft.ip.trim(),
+        port: Number(bpDraft.port),
+        ssh_user: bpDraft.sshUser.trim(),
+        role: "bp",
+        network: pool.network,
+        ssh_key_fingerprint: bpDraft.sshKeyFingerprint.trim(),
+      },
+      ...relayDrafts.map((draft, index) => ({
+        name: draft.name.trim() || `relay-${index + 1}`,
+        ip: draft.ip.trim(),
+        port: Number(draft.port),
+        ssh_user: draft.sshUser.trim(),
+        role: "relay" as const,
+        network: pool.network,
+        ssh_key_fingerprint: draft.sshKeyFingerprint.trim(),
+      })),
+    ];
+
+    setCreatingStep1(true);
+    const createdIds: number[] = [];
+    try {
+      const createdMachines: Machine[] = [];
+      for (const payload of payloads) {
+        const created = await machineAdd(payload);
+        createdMachines.push(created);
+        createdIds.push(created.id);
+      }
+      setMachines(createdMachines);
+      setSelectedMachineIds(createdMachines.map((machine) => machine.id));
+      setStep1Completed(true);
+      setStep(2);
+    } catch (e) {
+      await Promise.all(
+        createdIds.map(async (machineId) => {
+          try {
+            await machineRemove(machineId);
+          } catch {
+            // best effort cleanup to avoid partial node creation during step-1 failure
+          }
+        }),
+      );
+      setError(toUserError(e));
+    } finally {
+      setCreatingStep1(false);
+    }
   };
 
   const buildPayload = (): DeployPayload => ({
@@ -169,7 +333,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
     }
     if (!restoreSnapshotTouched) {
       setRestoreSnapshotRelay(true);
-      setRestoreSnapshotBp(false);
+      setRestoreSnapshotBp(true);
     }
   }, [mithrilSupported, restoreSnapshotTouched]);
 
@@ -268,37 +432,189 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
         </p>
       )}
 
-      {loading ? (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-300">
-          <p className="font-medium text-zinc-100">Loading machines...</p>
-          <p className="mt-2 text-zinc-400">{formatMachineLoadStatus(loadingElapsedSeconds)}</p>
-          <p className="mt-1 text-xs text-zinc-500">Elapsed: {loadingElapsedSeconds}s</p>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-          {step === 1 && (
-            <div className="space-y-3">
-              <h2 className="text-lg font-medium">1. Select Machines</h2>
-              {machines.length === 0 ? (
-                <p className="text-sm text-zinc-400">No machines available.</p>
-              ) : (
-                <div className="space-y-2">
-                  {machines.map((machine) => (
-                    <label key={machine.id} className="flex items-center gap-2 rounded-md border border-zinc-800 p-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedMachineIds.includes(machine.id)}
-                        onChange={() => toggleMachine(machine.id)}
-                      />
-                      <span className="text-sm">
-                        {machine.name} ({machine.role}) · {machine.ip}:{machine.port}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+        {step === 1 && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-lg font-medium">1. Configure Nodes</h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                Enter BP and relay nodes manually. Moving to step 2 will create these machines for the current pool.
+              </p>
             </div>
-          )}
+
+            {!step1Completed && (
+              <section className="space-y-3 rounded-md border border-zinc-800 bg-zinc-950/40 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-medium text-zinc-100">SSH Agent Key</h3>
+                  <span className="text-xs text-zinc-500">{keys.length} key(s)</span>
+                </div>
+                {keys.length === 0 ? (
+                  <div className="space-y-2">
+                    <p className="rounded-md border border-amber-700/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+                      No key loaded in ssh-agent. Add one before creating nodes.
+                    </p>
+                    <div className="flex flex-col gap-2 md:flex-row">
+                      <input
+                        value={keyPath}
+                        onChange={(event) => setKeyPath(event.target.value)}
+                        placeholder="~/.ssh/id_ed25519"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        className="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleAddKey()}
+                        disabled={addingKey || !keyPath.trim()}
+                        className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {addingKey ? "Adding key..." : "Add key to ssh-agent"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-400">
+                    Choose one fingerprint per node. Keys are resolved from local ssh-agent.
+                  </p>
+                )}
+              </section>
+            )}
+
+            <section className="space-y-3 rounded-md border border-zinc-800 bg-zinc-950/40 p-3">
+              <h3 className="text-sm font-medium text-zinc-100">BP Node</h3>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <input
+                  value={bpDraft.name}
+                  onChange={(event) => setBpDraft((prev) => ({ ...prev, name: event.target.value }))}
+                  placeholder="bp-1"
+                  className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                />
+                <input
+                  value={bpDraft.ip}
+                  onChange={(event) => setBpDraft((prev) => ({ ...prev, ip: event.target.value }))}
+                  placeholder="BP IP"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                />
+                <input
+                  value={bpDraft.sshUser}
+                  onChange={(event) => setBpDraft((prev) => ({ ...prev, sshUser: event.target.value }))}
+                  placeholder="SSH user"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                />
+                <input
+                  value={bpDraft.port}
+                  onChange={(event) => setBpDraft((prev) => ({ ...prev, port: event.target.value }))}
+                  placeholder="22"
+                  inputMode="numeric"
+                  className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                />
+                <select
+                  value={bpDraft.sshKeyFingerprint}
+                  onChange={(event) =>
+                    setBpDraft((prev) => ({ ...prev, sshKeyFingerprint: event.target.value }))
+                  }
+                  className="md:col-span-2 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                >
+                  <option value="">Select ssh-agent fingerprint</option>
+                  {keys.map((key) => (
+                    <option key={key.fingerprint} value={key.fingerprint}>
+                      {key.fingerprint}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </section>
+
+            <section className="space-y-3 rounded-md border border-zinc-800 bg-zinc-950/40 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-medium text-zinc-100">Relay Nodes</h3>
+                <button
+                  type="button"
+                  onClick={addRelayDraft}
+                  disabled={step1Completed}
+                  className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  + Add relay
+                </button>
+              </div>
+              {relayDrafts.map((draft, index) => (
+                <div key={`relay-draft-${index}`} className="rounded-md border border-zinc-800 bg-black/20 p-3">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">Relay #{index + 1}</p>
+                    <button
+                      type="button"
+                      onClick={() => removeRelayDraft(index)}
+                      disabled={relayDrafts.length <= 1 || step1Completed}
+                      className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <input
+                      value={draft.name}
+                      onChange={(event) => updateRelayDraft(index, { name: event.target.value })}
+                      placeholder={`relay-${index + 1}`}
+                      className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    />
+                    <input
+                      value={draft.ip}
+                      onChange={(event) => updateRelayDraft(index, { ip: event.target.value })}
+                      placeholder="Relay IP"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    />
+                    <input
+                      value={draft.sshUser}
+                      onChange={(event) => updateRelayDraft(index, { sshUser: event.target.value })}
+                      placeholder="SSH user"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    />
+                    <input
+                      value={draft.port}
+                      onChange={(event) => updateRelayDraft(index, { port: event.target.value })}
+                      placeholder="22"
+                      inputMode="numeric"
+                      className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    />
+                    <select
+                      value={draft.sshKeyFingerprint}
+                      onChange={(event) =>
+                        updateRelayDraft(index, { sshKeyFingerprint: event.target.value })
+                      }
+                      className="md:col-span-2 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    >
+                      <option value="">Select ssh-agent fingerprint</option>
+                      {keys.map((key) => (
+                        <option key={`${index}-${key.fingerprint}`} value={key.fingerprint}>
+                          {key.fingerprint}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ))}
+            </section>
+
+            {step1Completed && machines.length > 0 && (
+              <div className="rounded-md border border-emerald-700/40 bg-emerald-950/20 px-3 py-2 text-xs text-emerald-200">
+                Step 1 completed. {machines.length} machine(s) created for this deploy draft.
+              </div>
+            )}
+          </div>
+        )}
 
           {step === 2 && (
             <div className="space-y-3">
@@ -428,8 +744,9 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                 </label>
               </div>
               <p className="text-xs text-zinc-400">
-                Default is enabled for relay cold-starts on <code>mainnet</code>/<code>preprod</code>, disabled for bp and{" "}
-                <code>preview</code>. Relay and bp can be configured independently; existing DB will still be handled by deploy-side checks.
+                Default is enabled for relay and bp cold-starts on <code>mainnet</code>/<code>preprod</code>, and
+                disabled on <code>preview</code>. Relay and bp can be configured independently; existing DB will still
+                be handled by deploy-side checks.
               </p>
             </div>
           )}
@@ -466,26 +783,36 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
             </div>
           )}
 
-          <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={() => setStep((v) => Math.max(1, v - 1))}
-              disabled={step === 1}
-              className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm disabled:opacity-50"
-            >
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={() => setStep((v) => Math.min(3, v + 1))}
-              disabled={(step === 1 && !canNextFromStep1) || (step === 2 && !canNextFromStep2) || step === 3}
-              className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setStep((v) => Math.max(1, v - 1))}
+            disabled={step === 1 || creatingStep1}
+            className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (step === 1) {
+                void handlePersistStep1();
+                return;
+              }
+              setStep((v) => Math.min(3, v + 1));
+            }}
+            disabled={
+              creatingStep1 ||
+              (step === 1 && !canNextFromStep1) ||
+              (step === 2 && !canNextFromStep2) ||
+              step === 3
+            }
+            className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            {step === 1 && creatingStep1 ? "Creating nodes..." : "Next"}
+          </button>
         </div>
-      )}
+      </div>
 
       {taskId && (
         <section className="space-y-3">
