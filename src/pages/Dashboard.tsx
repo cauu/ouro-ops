@@ -1,12 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { formatTaskError, toUserError } from "../lib/errors";
-import {
-  dbVersion,
-  kesStatusAll,
-  ping,
-  taskRecentList,
-} from "../lib/ipc";
+import { formatTaskError } from "../lib/errors";
+import { kesStatusAll, taskRecentList } from "../lib/ipc";
 import {
   resolveTelemetryBehavior,
   startMonitorStore,
@@ -14,10 +9,8 @@ import {
   useMonitorStore,
 } from "../lib/monitorStore";
 import type {
-  DbVersionResult,
   KesStatus,
   MonitorSnapshot,
-  Pool,
   RecentTaskSummary,
 } from "../lib/types";
 
@@ -213,13 +206,7 @@ function TooltipBadge({ label, tip, tone = "muted" }: TooltipBadgeProps) {
   );
 }
 
-interface DashboardProps {
-  pool: Pool;
-}
-
-export default function Dashboard({ pool }: DashboardProps) {
-  const [status, setStatus] = useState<string>("loading");
-  const [dbInfo, setDbInfo] = useState<DbVersionResult | null>(null);
+export default function Dashboard() {
   const [kesStatuses, setKesStatuses] = useState<KesStatus[]>([]);
   const [recentTasks, setRecentTasks] = useState<RecentTaskSummary[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
@@ -235,26 +222,13 @@ export default function Dashboard({ pool }: DashboardProps) {
   useEffect(() => {
     void (async () => {
       try {
-        await ping();
-        setStatus("Sidecar OK");
-      } catch (error) {
-        setStatus(`Sidecar error: ${toUserError(error)}`);
-      }
-
-      try {
-        const version = await dbVersion();
-        setDbInfo(version);
-      } catch {
-        setDbInfo(null);
-      }
-
-      try {
         await startMonitorStore(30);
         const [nextKes, nextTasks] = await Promise.all([kesStatusAll(), taskRecentList(8)]);
         setKesStatuses(nextKes);
         setRecentTasks(nextTasks);
-      } catch (error) {
-        setStatus((prev) => `${prev} · monitor: ${toUserError(error)}`);
+      } catch {
+        setKesStatuses([]);
+        setRecentTasks([]);
       }
     })();
     return () => {
@@ -350,21 +324,6 @@ export default function Dashboard({ pool }: DashboardProps) {
 
   return (
     <section className="space-y-5">
-      <header className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5" aria-hidden="true">
-            <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-            <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-          </div>
-          <h1 className="text-sm font-semibold text-slate-900">Ouro Ops · Dashboard</h1>
-        </div>
-        <p className="text-xs text-slate-600">
-          {pool.ticker} · {pool.network}
-          {dbInfo ? ` · db v${dbInfo.user_version}` : ""} · {status}
-        </p>
-      </header>
-
       <section className="rounded-xl border border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <div>

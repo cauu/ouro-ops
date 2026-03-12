@@ -369,3 +369,19 @@ Spec-ID: S0008
 
 ### 20.4 Change Request Delta
 - 2026-03-12 16:52 +0800 需求修订：按 Dashboard 差异清单逐项修复标题、文案、节点卡语义、节点详情与日志结构。
+
+## 21. Addendum (append-only)
+### 21.1 Execution Plan Delta
+- [x] p8-16 收敛 mac 原生标题栏：移除 Dashboard 页面内 titlebar，改用系统窗口标题栏样式
+
+### 21.2 Execution Log Delta
+- 2026-03-12 17:00 +0800 p8-16 started: 根据反馈移除 Dashboard 页面内标题栏，并切换到 mac 原生标题栏样式。
+- 2026-03-12 17:00 +0800 p8-16 completed: 完成 Dashboard 伪 titlebar 删除、Tauri 窗口 `titleBarStyle/hiddenTitle` 配置、前端快照断言更新与回归通过。
+
+### 21.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "Ouro Ops · Dashboard|traffic-lights|titleBarStyle|hiddenTitle" src/pages/Dashboard.tsx src-tauri/tauri.conf.json src-tauri/src/lib.rs | result: pass | note: 页面内 titlebar 已移除，系统标题栏样式配置已落地且有测试断言
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 前端构建通过（Dashboard 去内嵌 titlebar 后无编译回归）
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 143/143 通过（仅 dead_code warning）
+
+### 21.4 Change Request Delta
+- 2026-03-12 17:00 +0800 需求修订：Dashboard 标题栏不放页面内部，改为优化系统自带标题栏样式。

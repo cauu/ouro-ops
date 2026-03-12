@@ -188,9 +188,16 @@ mod frontend_tests {
         assert!(dashboard.contains("role=\"tooltip\""));
         assert!(dashboard.contains("className=\"tab-controller\""));
         assert!(dashboard.contains("snapshot.health_level"));
-        assert!(dashboard.contains("Ouro Ops · Dashboard"));
+        assert!(!dashboard.contains("Ouro Ops · Dashboard"));
         assert!(dashboard.contains("Telemetry"));
         assert!(!dashboard.contains("Bind Existing Pool"));
+    }
+
+    #[test]
+    fn tc_fe_009_macos_uses_native_window_titlebar_style() {
+        let tauri_conf = include_str!("../../src-tauri/tauri.conf.json");
+        assert!(tauri_conf.contains("\"titleBarStyle\": \"Transparent\""));
+        assert!(tauri_conf.contains("\"hiddenTitle\": true"));
     }
 
     #[test]
@@ -481,7 +488,6 @@ mod frontend_tests {
         let machine = include_str!("../../src/pages/MachineManager.tsx");
         assert!(deploy.contains("toUserError"));
         assert!(deploy.contains("formatTaskError"));
-        assert!(dashboard.contains("toUserError"));
         assert!(dashboard.contains("formatTaskError"));
         assert!(machine.contains("toUserError"));
         assert!(machine.contains("formatTaskError"));
@@ -554,7 +560,7 @@ mod frontend_tests {
     fn tc_fe_024_app_wires_pool_binding_and_background_refresh() {
         let app = include_str!("../../src/App.tsx");
         assert!(app.contains("<Dashboard"));
-        assert!(app.contains("pool={pool!}"));
+        assert!(app.contains("<Dashboard />"));
         assert!(!app.contains("onPoolRefreshed={(nextPool) => {"));
         assert!(!app.contains("path=\"/pool-status\""));
     }

@@ -62,7 +62,7 @@ function App() {
         <Route
           path="/"
           element={
-            <Dashboard pool={pool!} />
+            <Dashboard />
           }
         />
         <Route path="/kes" element={pool ? <KesManager poolTicker={pool.ticker} /> : null} />
