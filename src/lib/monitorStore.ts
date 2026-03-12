@@ -3,7 +3,8 @@ import { useSyncExternalStore } from "react";
 import { monitorSnapshot, monitorStartPolling, monitorStopPolling } from "./ipc";
 import type { MonitorSnapshot } from "./types";
 
-type TelemetryPhase = "idle" | "loading_cache" | "syncing_live" | "live" | "degraded";
+export type TelemetryPhase = "idle" | "loading_cache" | "syncing_live" | "live" | "degraded";
+export type TelemetryBehavior = "idle" | "cache_ready" | "syncing_live" | "live" | "degraded_retrying";
 
 type MonitorStoreState = {
   snapshots: MonitorSnapshot[];
@@ -41,6 +42,26 @@ function setState(partial: Partial<MonitorStoreState>): void {
   emit();
 }
 
+export function resolveTelemetryBehavior(input: {
+  telemetryPhase: TelemetryPhase;
+  usingCachedData: boolean;
+  snapshots: MonitorSnapshot[];
+}): TelemetryBehavior {
+  if (input.telemetryPhase === "degraded") {
+    return "degraded_retrying";
+  }
+  if (input.telemetryPhase === "syncing_live") {
+    return "syncing_live";
+  }
+  if (input.telemetryPhase === "loading_cache") {
+    return input.usingCachedData || input.snapshots.length > 0 ? "cache_ready" : "syncing_live";
+  }
+  if (input.telemetryPhase === "live") {
+    return input.usingCachedData ? "cache_ready" : "live";
+  }
+  return "idle";
+}
+
 function pickLatestCollectedAt(snapshots: MonitorSnapshot[]): string | null {
   let latest: string | null = null;
   snapshots.forEach((snapshot) => {
@@ -73,7 +94,7 @@ async function ensureEventListeners(): Promise<void> {
   const errorUnlisten = await listen<{ message?: string }>("monitor:error", (event) => {
     const message = event.payload?.message ?? "unknown error";
     setState({
-      status: "Live telemetry delayed, showing cached data.",
+      status: "Telemetry refresh failed; keeping cached data and retrying.",
       polling: true,
       telemetryPhase: "degraded",
       usingCachedData: state.snapshots.length > 0,
@@ -115,7 +136,7 @@ export async function startMonitorStore(intervalSeconds = 30): Promise<void> {
     const cachedSnapshots = await monitorSnapshot();
     setState({
       snapshots: cachedSnapshots,
-      status: cachedSnapshots.length > 0 ? "Loaded cached telemetry" : "No cached telemetry yet",
+      status: cachedSnapshots.length > 0 ? "Loaded cached telemetry." : "No cached telemetry yet.",
       usingCachedData: cachedSnapshots.length > 0,
       lastCollectedAt: pickLatestCollectedAt(cachedSnapshots),
     });
@@ -129,7 +150,10 @@ export async function startMonitorStore(intervalSeconds = 30): Promise<void> {
   }
 
   setState({
-    status: state.snapshots.length > 0 ? "Refreshing live telemetry..." : "Waiting for live telemetry...",
+    status:
+      state.snapshots.length > 0
+        ? "Cached telemetry shown, refreshing latest data in background..."
+        : "Waiting for first live telemetry sample...",
     telemetryPhase: "syncing_live",
   });
 
@@ -141,8 +165,8 @@ export async function startMonitorStore(intervalSeconds = 30): Promise<void> {
     setState({
       status:
         state.snapshots.length > 0
-          ? "Live telemetry unavailable, showing cached data."
-          : "Live telemetry unavailable",
+          ? "Live telemetry unavailable; showing cached data and retrying."
+          : "Live telemetry unavailable; retrying.",
       polling: false,
       telemetryPhase: "degraded",
       usingCachedData: state.snapshots.length > 0,
@@ -153,14 +177,14 @@ export async function startMonitorStore(intervalSeconds = 30): Promise<void> {
 
 export async function refreshMonitorStore(): Promise<void> {
   setState({
-    status: "Refreshing live telemetry...",
+    status: "Refreshing live telemetry in background...",
     telemetryPhase: "syncing_live",
   });
   try {
     const snapshots = await monitorSnapshot();
     setState({
       snapshots,
-      status: "Live telemetry updated",
+      status: "Live telemetry updated.",
       telemetryPhase: "live",
       usingCachedData: false,
       lastCollectedAt: pickLatestCollectedAt(snapshots),
@@ -168,7 +192,7 @@ export async function refreshMonitorStore(): Promise<void> {
     });
   } catch (error) {
     setState({
-      status: "Live telemetry delayed, showing cached data.",
+      status: "Telemetry refresh failed; keeping cached data and retrying.",
       telemetryPhase: "degraded",
       usingCachedData: state.snapshots.length > 0,
       lastError: String(error),

@@ -11,6 +11,7 @@ import {
 } from "../lib/ipc";
 import {
   refreshMonitorStore,
+  resolveTelemetryBehavior,
   startMonitorStore,
   stopMonitorStore,
   useMonitorStore,
@@ -93,34 +94,31 @@ function formatRelativeCollectedAt(value: string | null): string | null {
   return `${Math.floor(diffMs / 86_400_000)}d ago`;
 }
 
-function telemetryDotClass(phase: string): string {
-  switch (phase) {
+function telemetryDotClass(behavior: string): string {
+  switch (behavior) {
     case "syncing_live":
-    case "loading_cache":
       return "border-sky-300 border-t-sky-600 animate-spin";
+    case "cache_ready":
+      return "border-sky-300 border-t-sky-600";
     case "live":
       return "border-emerald-300 border-t-emerald-600";
-    case "degraded":
+    case "degraded_retrying":
       return "border-amber-300 border-t-amber-500";
     default:
       return "border-slate-300 border-t-slate-500";
   }
 }
 
-function monitorPhaseLabel(phase: string, fallback: string, usingCachedData: boolean): string {
-  switch (phase) {
-    case "loading_cache":
-      return "Loading cached telemetry";
+function monitorPhaseLabel(behavior: string, fallback: string): string {
+  switch (behavior) {
+    case "cache_ready":
+      return "Loaded cached telemetry";
     case "syncing_live":
-      return usingCachedData
-        ? "Refreshing latest telemetry in background"
-        : "Fetching latest telemetry";
+      return "Refreshing latest telemetry in background";
     case "live":
       return "Telemetry updated";
-    case "degraded":
-      return usingCachedData
-        ? "Live telemetry delayed, using cached data"
-        : "Telemetry temporarily unavailable";
+    case "degraded_retrying":
+      return "Telemetry delayed, keeping cached metrics and retrying";
     default:
       return fallback;
   }
@@ -207,6 +205,7 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
     telemetryPhase,
     usingCachedData,
     lastCollectedAt,
+    lastError,
   } = useMonitorStore();
 
   const refreshMonitor = useCallback(async () => {
@@ -339,7 +338,16 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
     return kesStatuses.find((row) => row.machine_id === bpNode.machine_id) ?? null;
   }, [bpNode, kesStatuses]);
 
-  const monitorPhaseText = monitorPhaseLabel(telemetryPhase, monitorStatus, usingCachedData);
+  const telemetryBehavior = useMemo(
+    () =>
+      resolveTelemetryBehavior({
+        telemetryPhase,
+        usingCachedData,
+        snapshots,
+      }),
+    [telemetryPhase, usingCachedData, snapshots],
+  );
+  const monitorPhaseText = monitorPhaseLabel(telemetryBehavior, monitorStatus);
   const monitorCollectedAge = formatRelativeCollectedAt(lastCollectedAt);
 
   const handleUnbindPool = async () => {
@@ -374,7 +382,7 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700">
             <span
               aria-hidden="true"
-              className={`h-3 w-3 rounded-full border-2 ${telemetryDotClass(telemetryPhase)}`}
+              className={`h-3 w-3 rounded-full border-2 ${telemetryDotClass(telemetryBehavior)}`}
             />
             <span className="font-semibold text-slate-900">Telemetry</span>
             <span className="group relative inline-flex" tabIndex={0}>
@@ -386,8 +394,9 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                 className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-20 w-72 max-w-[min(28rem,90vw)] rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs leading-5 text-white opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-visible:opacity-100"
               >
                 {monitorPhaseText}
-                {monitorCollectedAge ? ` · ${monitorCollectedAge}` : ""}. Cached data stays visible while background
-                refresh retries automatically.
+                {monitorCollectedAge ? ` · ${monitorCollectedAge}` : ""}.
+                {lastError ? ` Last error: ${lastError}.` : ""}
+                {" "}Cached metrics stay visible while background retries continue automatically.
               </span>
             </span>
           </div>

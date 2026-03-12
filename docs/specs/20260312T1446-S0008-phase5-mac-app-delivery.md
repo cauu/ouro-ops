@@ -61,7 +61,7 @@ Spec-ID: S0008
 - [x] p8-1 启动 S0008 active spec，完成阶段目标与验收基线冻结
 - [x] p8-2 落地 pool-centric IA：收敛导航与入口，移除机器中心化主流程暴露
 - [x] p8-3 实现 Dashboard 结构对齐：BP 卡片主承载、节点详情 tab、tooltip/标签体系统一
-- [ ] p8-4 实现 telemetry 三态体验：缓存优先、后台静默刷新、失败降级重试
+- [x] p8-4 实现 telemetry 三态体验：缓存优先、后台静默刷新、失败降级重试
 - [ ] p8-5 接入 Prometheus 查询能力并完成 Dashboard 指标映射（含时间戳与空值兜底）
 - [ ] p8-6 实现 Deploy Step1 手动节点输入 + 机器创建，落实默认开关策略与无 mithril 初始化约束
 - [ ] p8-7 实现 KES Rotate 向导生产化页面与关键风险闸门（含 KES remain 关联操作）
@@ -192,3 +192,19 @@ Spec-ID: S0008
 
 ### 10.4 Change Request Delta
 - 2026-03-12 15:15 +0800 执行推进：继续推进 S0008，并完成 p8-3 的 Dashboard 结构对齐实现。
+
+## 11. Addendum (append-only)
+### 11.1 Execution Plan Delta
+- [x] p8-4 实现 telemetry 三态体验：缓存优先、后台静默刷新、失败降级重试
+
+### 11.2 Execution Log Delta
+- 2026-03-12 15:31 +0800 p8-4 started: 审查 monitorStore 状态机与 Dashboard telemetry 提示交互，收敛三态语义。
+- 2026-03-12 15:38 +0800 p8-4 completed: 增加 telemetry 行为映射（cache_ready/syncing_live/degraded_retrying），并将失败细节收敛到轻量 tooltip（含 last error）。
+
+### 11.3 Validation Evidence Delta
+- TC-P8-005 | stack: ui | command: rg -n "resolveTelemetryBehavior|TelemetryBehavior|degraded_retrying|cache_ready" src/lib/monitorStore.ts src/pages/Dashboard.tsx | result: pass | note: telemetry 三态行为映射已落地，前端消费行为对齐
+- TC-P8-005 | stack: ui | command: rg -n "Telemetry refresh failed; keeping cached data and retrying|Live telemetry unavailable; showing cached data and retrying|Last error:" src/lib/monitorStore.ts src/pages/Dashboard.tsx | result: pass | note: 失败降级保留缓存且自动重试语义可见，失败详情通过 tooltip 低干扰展示
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: telemetry 三态调整后前端构建通过
+
+### 11.4 Change Request Delta
+- 2026-03-12 15:31 +0800 执行推进：继续推进 S0008，完成 p8-4 telemetry 三态体验收口。
