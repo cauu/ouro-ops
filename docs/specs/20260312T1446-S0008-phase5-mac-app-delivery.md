@@ -400,3 +400,18 @@ Spec-ID: S0008
 
 ### 22.4 Change Request Delta
 - 2026-03-12 17:09 +0800 需求修订：日志详情需支持复制与 hover 查看全文，同时不得横向撑开页面。
+
+## 23. Addendum (append-only)
+### 23.1 Execution Plan Delta
+- [x] p8-18 修复日志详情横向滚动：移除浮层撑宽风险，改为文案右侧常驻图标复制
+
+### 23.2 Execution Log Delta
+- 2026-03-12 17:15 +0800 p8-18 started: 根据反馈修复日志详情在复制/tooltip 改造后出现的横向滚动条问题。
+- 2026-03-12 17:15 +0800 p8-18 completed: 详情列容器改为 `overflow-x-hidden`，移除自定义浮层 tooltip，保留原生 `title` 全文提示，并将复制入口改为右侧常驻图标按钮。
+
+### 23.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "overflow-x-hidden|aria-label|复制详情|h-6 w-6|viewBox=\\\"0 0 20 20\\\"" src/pages/Dashboard.tsx | result: pass | note: 详情列无横向滚动风险，复制入口为文案右侧常驻图标
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 日志详情布局与交互二次收敛后前端构建通过
+
+### 23.4 Change Request Delta
+- 2026-03-12 17:15 +0800 需求修订：修复详情横向滚动条，复制入口改为文案右侧图标触发。

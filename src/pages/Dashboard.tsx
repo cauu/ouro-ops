@@ -655,7 +655,7 @@ export default function Dashboard() {
           <h2 className="text-sm font-semibold">近期操作日志</h2>
           <span className="text-xs text-slate-500">最近 {Math.min(recentTasks.length, 6)} 条</span>
         </header>
-        <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <div className="mt-3 overflow-x-hidden rounded-lg border border-slate-200 bg-white">
           <table className="w-full table-fixed text-left text-xs">
             <colgroup>
               <col className="w-[168px]" />
@@ -693,10 +693,10 @@ export default function Dashboard() {
                         <span className={statusToneClass(task.status)}>{formatTaskLabel(task.status)}</span>
                       </td>
                       <td className="w-0 max-w-[360px] px-3 py-2 text-slate-600">
-                        <div className="group relative">
+                        <div className="flex items-center gap-1.5 min-w-0">
                           <span
                             title={detailText}
-                            className={`block max-w-[360px] overflow-hidden pr-14 text-ellipsis whitespace-nowrap select-text ${
+                            className={`block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap select-text ${
                               taskError ? "text-rose-700" : "text-slate-600"
                             }`}
                           >
@@ -707,17 +707,21 @@ export default function Dashboard() {
                             onClick={() => {
                               void handleCopyDetail(task.task_id, detailText);
                             }}
-                            className="absolute right-0 top-1/2 inline-flex min-h-6 -translate-y-1/2 items-center rounded border border-slate-300 bg-white px-2 text-[11px] font-medium text-slate-700 opacity-0 transition hover:bg-slate-100 focus-visible:opacity-100 group-hover:opacity-100"
-                            title="复制详情"
+                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+                            title={copiedTaskId === task.task_id ? "已复制" : "复制详情"}
+                            aria-label={copiedTaskId === task.task_id ? "已复制" : "复制详情"}
                           >
-                            {copiedTaskId === task.task_id ? "已复制" : "复制"}
+                            {copiedTaskId === task.task_id ? (
+                              <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                <path d="M4 10.5l3.2 3.2L16 5.9" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            ) : (
+                              <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                                <rect x="7" y="7" width="9" height="9" rx="1.6" />
+                                <path d="M5.2 12.8H4a1.6 1.6 0 0 1-1.6-1.6V4a1.6 1.6 0 0 1 1.6-1.6h7.2A1.6 1.6 0 0 1 12.8 4v1.2" strokeLinecap="round" />
+                              </svg>
+                            )}
                           </button>
-                          <span
-                            role="tooltip"
-                            className="pointer-events-none absolute left-0 top-[calc(100%+6px)] z-20 w-[min(36rem,85vw)] max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs leading-5 text-white opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100"
-                          >
-                            {detailText}
-                          </span>
                         </div>
                       </td>
                     </tr>
