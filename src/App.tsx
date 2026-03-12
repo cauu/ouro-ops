@@ -12,7 +12,7 @@ import UpgradeWizard from "./pages/UpgradeWizard";
 
 function LoadingScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-300">
+    <div className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-600">
       <p className="text-sm">Initializing...</p>
     </div>
   );

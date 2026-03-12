@@ -295,3 +295,23 @@ Spec-ID: S0008
 
 ### 16.4 Change Request Delta
 - 2026-03-12 16:05 +0800 执行推进：继续推进 S0008，完成 p8-10 mac 桌面验收与回归测试收口。
+
+## 17. Addendum (append-only)
+### 17.1 Execution Plan Delta
+- [x] p8-12 修复验收阻塞问题：对齐 prototype 分步流程、Dashboard 节点完整性与浅色主题一致性
+
+### 17.2 Execution Log Delta
+- 2026-03-12 16:22 +0800 p8-12 started: 收敛验收失败问题，按 P0/P1 优先级修复 Dashboard/Deploy/KES/Upgrade 与 Welcome 差异。
+- 2026-03-12 16:34 +0800 p8-12 completed: 完成节点截断修复、向导分步重构、浅色主题统一及 Welcome 导入入口补齐。
+
+### 17.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "formatTargetLabel|Target|inline-flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 bg-slate-100 p-1" src/pages/Dashboard.tsx | result: pass | note: Dashboard 日志信息结构补齐 target 字段，节点 tabs 改为全量可切换
+- TC-P8-004 | stack: ui | command: rg -n "nodes.map\(|min-w-28 items-center justify-center" src/pages/Dashboard.tsx | result: pass | note: Node Details tab 不再截断前三项，tab 宽度与垂直居中统一
+- TC-P8-008 | stack: ui | command: rg -n "Step 4 · 执行部署|Step 3 · 配置确认|Step 4 · 校验完成|Step 3 · 健康检查与完成" src/pages/DeployWizard.tsx src/pages/KesManager.tsx src/pages/UpgradeWizard.tsx | result: pass | note: Deploy/KES/Upgrade 已改为与原型对齐的分步向导结构
+- TC-P8-012 | stack: ui | command: rg -n "Import Existing Config|Start Deploy" src/pages/SetupWizard.tsx | result: pass | note: Welcome 页面已具备开始部署与导入入口（导入入口当前占位）
+- TC-P8-013 | stack: ui | command: rg -n "bg-slate-100|bg-white|text-slate-900" src/components/Layout.tsx src/components/Sidebar.tsx src/pages/SetupWizard.tsx src/pages/Dashboard.tsx src/pages/DeployWizard.tsx src/pages/KesManager.tsx src/pages/UpgradeWizard.tsx | result: pass | note: 主流程页面已统一至浅色主题基线
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 142/142 通过（仅 dead_code warning）
+
+### 17.4 Change Request Delta
+- 2026-03-12 16:22 +0800 需求修订：当前版本验收未通过，需继续按 prototype 修复明显对齐问题后再结项。

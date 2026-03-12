@@ -248,8 +248,8 @@ export default function UpgradeWizard({ poolTicker }: UpgradeWizardProps) {
   return (
     <section className="space-y-5">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Upgrade Wizard</h1>
-        <p className="text-sm text-zinc-400">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Upgrade Wizard</h1>
+        <p className="text-sm text-slate-600">
           Run relay-first rolling upgrades, then confirm the BP cutover when the gate event arrives.
         </p>
         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -295,189 +295,184 @@ export default function UpgradeWizard({ poolTicker }: UpgradeWizardProps) {
         </p>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
-        <div className="space-y-6">
-          <section className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-base font-semibold">Step 1: Upgrade plan</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Relay machines are upgraded first. BP waits for an explicit gate confirmation.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void loadMachines()}
-                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-              >
-                Refresh Machines
-              </button>
+      {wizardStep === 1 && (
+        <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-base font-semibold">Step 1 · 版本确认与升级策略</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Relay machines are upgraded first. BP waits for an explicit gate confirmation.
+              </p>
             </div>
+            <button
+              type="button"
+              onClick={() => void loadMachines()}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              Refresh Machines
+            </button>
+          </div>
 
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <label className="text-sm">
-                <span className="mb-1 block text-slate-600">Target Version</span>
-                <input
-                  value={targetVersion}
-                  onChange={(event) => setTargetVersion(event.target.value)}
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900"
-                />
-              </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-slate-600">Image Registry</span>
-                <input
-                  value={imageRegistry}
-                  onChange={(event) => setImageRegistry(event.target.value)}
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900"
-                />
-              </label>
-              <label className="text-sm md:col-span-2">
-                <span className="mb-1 block text-slate-600">Image Digest (optional)</span>
-                <input
-                  value={imageDigest}
-                  onChange={(event) => setImageDigest(event.target.value)}
-                  placeholder="sha256:..."
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900"
-                />
-              </label>
-            </div>
-
-            <label className="mt-4 flex items-center gap-3 rounded-md border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <label className="text-sm">
+              <span className="mb-1 block text-slate-600">Target Version</span>
               <input
-                type="checkbox"
-                checked={autoContinue}
-                onChange={(event) => setAutoContinue(event.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 bg-white text-sky-600"
+                value={targetVersion}
+                onChange={(event) => setTargetVersion(event.target.value)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900"
               />
-              <span>Auto-continue relay sequence without waiting at each relay gate.</span>
             </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-slate-600">Image Registry</span>
+              <input
+                value={imageRegistry}
+                onChange={(event) => setImageRegistry(event.target.value)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900"
+              />
+            </label>
+            <label className="text-sm md:col-span-2">
+              <span className="mb-1 block text-slate-600">Image Digest (optional)</span>
+              <input
+                value={imageDigest}
+                onChange={(event) => setImageDigest(event.target.value)}
+                placeholder="sha256:..."
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900"
+              />
+            </label>
+          </div>
 
-            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-700">
-              This flow is disruptive. Relay hosts are upgraded in order; BP cutover requires a
-              separate confirmation gate.
-            </div>
+          <label className="mt-4 flex items-center gap-3 rounded-md border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={autoContinue}
+              onChange={(event) => setAutoContinue(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 bg-white text-sky-600"
+            />
+            <span>Auto-continue relay sequence without waiting at each relay gate.</span>
+          </label>
 
-            <div className="mt-4">
-              <h3 className="text-sm font-medium">Selected machines</h3>
-              {loading ? (
-                <p className="mt-2 text-sm text-slate-500">Loading upgrade candidates...</p>
-              ) : machines.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-500">No relay or BP machines found.</p>
-              ) : (
-                <div className="mt-3 grid gap-3">
-                  {machines.map((machine) => {
-                    const checked = selectedMachineIds.includes(machine.id);
-                    return (
-                      <label
-                        key={machine.id}
-                        className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-3 text-sm"
-                      >
-                        <span className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleMachine(machine.id)}
-                            className="h-4 w-4 rounded border-slate-300 bg-white text-sky-600"
-                          />
-                          <span>
-                            <span className="block font-medium text-slate-900">{machine.name}</span>
-                            <span className="text-slate-500">
-                              {machine.role} · {machine.ip} · {machine.cardano_version ?? "--"}
-                            </span>
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-700">
+            This flow is disruptive. Relay hosts are upgraded in order; BP cutover requires a separate confirmation gate.
+          </div>
+
+          <div className="mt-4">
+            <h3 className="text-sm font-medium">Selected machines</h3>
+            {loading ? (
+              <p className="mt-2 text-sm text-slate-500">Loading upgrade candidates...</p>
+            ) : machines.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-500">No relay or BP machines found.</p>
+            ) : (
+              <div className="mt-3 grid gap-3">
+                {machines.map((machine) => {
+                  const checked = selectedMachineIds.includes(machine.id);
+                  return (
+                    <label
+                      key={machine.id}
+                      className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-3 text-sm"
+                    >
+                      <span className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleMachine(machine.id)}
+                          className="h-4 w-4 rounded border-slate-300 bg-white text-sky-600"
+                        />
+                        <span>
+                          <span className="block font-medium text-slate-900">{machine.name}</span>
+                          <span className="text-slate-500">
+                            {machine.role} · {machine.ip} · {machine.cardano_version ?? "--"}
                           </span>
                         </span>
-                        <span className="text-xs uppercase tracking-wide text-slate-500">
-                          {machine.role}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-4 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => void handleStart()}
-                disabled={starting || loading || selectedMachineIds.length === 0}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {starting ? "Starting Upgrade..." : "Start Upgrade"}
-              </button>
-              {taskId && <span className="text-xs text-slate-500">task_id={taskId}</span>}
-            </div>
-          </section>
-
-          {taskId && <TaskLogStream taskId={taskId} />}
-        </div>
-
-        <aside className="space-y-6">
-          <section className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
-            <h2 className="text-base font-semibold">Step 2: Task status</h2>
-            {taskStatus ? (
-              <div className="mt-4 space-y-4 text-sm">
-                <dl className="grid gap-3">
-                  <div>
-                    <dt className="text-slate-500">Status</dt>
-                    <dd className={`mt-1 font-medium uppercase ${taskTone(taskStatus.status)}`}>
-                      {formatTaskStatus(taskStatus.status)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-slate-500">Phase</dt>
-                    <dd className="mt-1 font-medium text-slate-900">{readPhase(taskStatus)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-slate-500">Created</dt>
-                    <dd className="mt-1 font-medium text-slate-900">{taskStatus.created_at}</dd>
-                  </div>
-                </dl>
-
-                <div>
-                  <h3 className="text-sm font-medium">Machine progress</h3>
-                  <div className="mt-3 space-y-2">
-                    {selectedMachines.map((machine) => {
-                      const status = machineStatusMap[machine.id] ?? "pending";
-                      return (
-                        <div
-                          key={machine.id}
-                          className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2"
-                        >
-                          <div>
-                            <p className="font-medium text-slate-900">{machine.name}</p>
-                            <p className="text-xs uppercase tracking-wide text-slate-500">
-                              {machine.role}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className={`text-xs uppercase ${taskTone(status)}`}>
-                              {formatTaskStatus(status)}
-                            </span>
-                            {(status === "running" || status === "success" || status === "failed") && (
-                              <button
-                                type="button"
-                                onClick={() => void handleRollback(machine.id)}
-                                disabled={rollbackMachineId === machine.id}
-                                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {rollbackMachineId === machine.id ? "Rolling Back..." : "Rollback"}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                      </span>
+                      <span className="text-xs uppercase tracking-wide text-slate-500">{machine.role}</span>
+                    </label>
+                  );
+                })}
               </div>
-            ) : (
-              <p className="mt-3 text-sm text-slate-500">No upgrade task started yet.</p>
             )}
+          </div>
+
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void handleStart()}
+              disabled={starting || loading || selectedMachineIds.length === 0}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {starting ? "Starting Upgrade..." : "Start Upgrade"}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {wizardStep === 2 && (
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+          <section className="space-y-6">
+            <article className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
+              <h2 className="text-base font-semibold">Step 2 · 执行滚动升级</h2>
+              {taskStatus ? (
+                <div className="mt-4 space-y-4 text-sm">
+                  <dl className="grid gap-3">
+                    <div>
+                      <dt className="text-slate-500">Status</dt>
+                      <dd className={`mt-1 font-medium uppercase ${taskTone(taskStatus.status)}`}>
+                        {formatTaskStatus(taskStatus.status)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-500">Phase</dt>
+                      <dd className="mt-1 font-medium text-slate-900">{readPhase(taskStatus)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-500">Created</dt>
+                      <dd className="mt-1 font-medium text-slate-900">{taskStatus.created_at}</dd>
+                    </div>
+                  </dl>
+
+                  <div>
+                    <h3 className="text-sm font-medium">Machine progress</h3>
+                    <div className="mt-3 space-y-2">
+                      {selectedMachines.map((machine) => {
+                        const status = machineStatusMap[machine.id] ?? "pending";
+                        return (
+                          <div
+                            key={machine.id}
+                            className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2"
+                          >
+                            <div>
+                              <p className="font-medium text-slate-900">{machine.name}</p>
+                              <p className="text-xs uppercase tracking-wide text-slate-500">{machine.role}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className={`text-xs uppercase ${taskTone(status)}`}>
+                                {formatTaskStatus(status)}
+                              </span>
+                              {(status === "running" || status === "success" || status === "failed") && (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleRollback(machine.id)}
+                                  disabled={rollbackMachineId === machine.id}
+                                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {rollbackMachineId === machine.id ? "Rolling Back..." : "Rollback"}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-slate-500">No upgrade task started yet.</p>
+              )}
+            </article>
+            {taskId && <TaskLogStream taskId={taskId} />}
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
-            <h2 className="text-base font-semibold">Step 2: BP gate & rollback</h2>
+          <aside className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
+            <h2 className="text-base font-semibold">Step 2 · BP gate & rollback</h2>
             {gateEvent && gateEvent.task_id === taskId ? (
               <div className="mt-4 space-y-4 text-sm">
                 <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-amber-700">
@@ -516,13 +511,76 @@ export default function UpgradeWizard({ poolTicker }: UpgradeWizardProps) {
               </div>
             ) : (
               <p className="mt-3 text-sm text-slate-500">
-                Waiting for an `upgrade:gate` event. Relay auto-continue can skip intermediate relay
-                gates, but BP still pauses for manual confirmation.
+                Waiting for an `upgrade:gate` event. Relay auto-continue can skip intermediate relay gates, but BP still
+                pauses for manual confirmation.
               </p>
             )}
-          </section>
-        </aside>
-      </div>
+          </aside>
+        </section>
+      )}
+
+      {wizardStep === 3 && (
+        <section className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
+          <h2 className="text-base font-semibold">Step 3 · 健康检查与完成</h2>
+          <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+            <table className="min-w-full text-left text-xs">
+              <thead className="bg-slate-100 text-slate-600">
+                <tr>
+                  <th className="px-3 py-2">Node</th>
+                  <th className="px-3 py-2">Role</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedMachines.map((machine) => {
+                  const status = machineStatusMap[machine.id] ?? "pending";
+                  const passed = status === "success";
+                  return (
+                    <tr key={machine.id} className="border-t border-slate-200">
+                      <td className="px-3 py-2 font-medium text-slate-900">{machine.name}</td>
+                      <td className="px-3 py-2 text-slate-600">{machine.role}</td>
+                      <td className="px-3 py-2 text-slate-600">{formatTaskStatus(status)}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded-full border px-2 py-0.5 ${
+                            passed
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                              : "border-amber-300 bg-amber-50 text-amber-700"
+                          }`}
+                        >
+                          {passed ? "pass" : "check"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {taskStatus && (
+            <div className="grid gap-2 text-xs text-slate-600 md:grid-cols-4">
+              <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                <span className="block text-slate-500">Upgrade Result</span>
+                <strong className="text-slate-900">{formatTaskStatus(taskStatus.status)}</strong>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                <span className="block text-slate-500">Phase</span>
+                <strong className="text-slate-900">{readPhase(taskStatus)}</strong>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                <span className="block text-slate-500">Started</span>
+                <strong className="text-slate-900">{taskStatus.started_at ?? "--"}</strong>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                <span className="block text-slate-500">Finished</span>
+                <strong className="text-slate-900">{taskStatus.finished_at ?? "--"}</strong>
+              </div>
+            </div>
+          )}
+          {taskId && <TaskLogStream taskId={taskId} />}
+        </section>
+      )}
     </section>
   );
 }

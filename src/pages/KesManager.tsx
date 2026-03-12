@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import TaskLogStream from "../components/TaskLogStream";
 import { formatTaskError, toUserError } from "../lib/errors";
 import {
   kesGenerate,
@@ -56,6 +57,8 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
   const [busyMachineId, setBusyMachineId] = useState<number | null>(null);
   const [pushConfirmMachineId, setPushConfirmMachineId] = useState<number | null>(null);
   const [pushConfirmValue, setPushConfirmValue] = useState("");
+  const [selectedMachineId, setSelectedMachineId] = useState<number | null>(null);
+  const [wizardStep, setWizardStep] = useState(1);
 
   const loadKes = async () => {
     setLoading(true);
@@ -128,6 +131,68 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
     [statuses],
   );
 
+  useEffect(() => {
+    if (sortedStatuses.length === 0) {
+      setSelectedMachineId(null);
+      return;
+    }
+    if (selectedMachineId == null || !sortedStatuses.some((row) => row.machine_id === selectedMachineId)) {
+      setSelectedMachineId(sortedStatuses[0].machine_id);
+    }
+  }, [selectedMachineId, sortedStatuses]);
+
+  const selectedStatus = useMemo(
+    () => sortedStatuses.find((row) => row.machine_id === selectedMachineId) ?? null,
+    [selectedMachineId, sortedStatuses],
+  );
+
+  const selectedRequest = useMemo(
+    () => (selectedMachineId == null ? undefined : requests[selectedMachineId]),
+    [requests, selectedMachineId],
+  );
+
+  const selectedTask = useMemo(
+    () => (selectedMachineId == null ? undefined : rotationTasks[selectedMachineId]),
+    [rotationTasks, selectedMachineId],
+  );
+
+  useEffect(() => {
+    if (selectedMachineId == null) {
+      setWizardStep(1);
+      return;
+    }
+    if (selectedTask && isTerminal(selectedTask.status)) {
+      setWizardStep(4);
+      return;
+    }
+    if (selectedTask) {
+      setWizardStep(3);
+      return;
+    }
+    if (selectedRequest) {
+      setWizardStep(2);
+      return;
+    }
+    setWizardStep(1);
+  }, [selectedMachineId]);
+
+  useEffect(() => {
+    if (selectedMachineId == null) {
+      return;
+    }
+    if (selectedTask && isTerminal(selectedTask.status) && wizardStep < 4) {
+      setWizardStep(4);
+      return;
+    }
+    if (selectedTask && wizardStep < 3) {
+      setWizardStep(3);
+      return;
+    }
+    if (selectedRequest && wizardStep < 2) {
+      setWizardStep(2);
+    }
+  }, [selectedMachineId, selectedRequest, selectedTask, wizardStep]);
+
   const handleGenerate = async (machineId: number) => {
     setBusyMachineId(machineId);
     setError(null);
@@ -178,27 +243,38 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
   };
 
   const normalizedTicker = poolTicker.trim();
+  const selectedBusy = selectedMachineId != null && busyMachineId === selectedMachineId;
+  const canPush = selectedTask?.status === "pending";
+  const pushConfirmArmed = selectedMachineId != null && pushConfirmMachineId === selectedMachineId;
+  const pushUnlocked = pushConfirmValue.trim() === normalizedTicker;
+  const selectedTaskError = formatTaskError(selectedTask?.error_msg);
 
   return (
     <section className="space-y-5">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">KES Rotate</h1>
-        <p className="text-sm text-zinc-400">
-          Step 1-4 向导：生成 keypairs、离线签发 cert、执行 rotate、完成校验。
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">KES Rotate</h1>
+        <p className="text-sm text-slate-600">Step 1-4 向导：生成 keypairs、离线签发 cert、执行 rotate、完成校验。</p>
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-full border border-sky-300 bg-sky-50 px-2.5 py-1 font-semibold text-sky-700">
-            1 Generate KES
-          </span>
-          <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-slate-600">
-            2 Offline Cert
-          </span>
-          <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-slate-600">
-            3 Rotate Gate
-          </span>
-          <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-slate-600">
-            4 Validate
-          </span>
+          {[1, 2, 3, 4].map((step) => (
+            <span
+              key={`kes-step-${step}`}
+              className={`rounded-full border px-2.5 py-1 ${
+                wizardStep === step
+                  ? "border-blue-300 bg-blue-50 font-semibold text-blue-700"
+                  : wizardStep > step
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                    : "border-slate-300 bg-slate-50 text-slate-600"
+              }`}
+            >
+              {step === 1
+                ? "1 生成 KES keypairs"
+                : step === 2
+                  ? "2 离线生成 cert"
+                  : step === 3
+                    ? "3 上传并执行 Rotate"
+                    : "4 校验完成"}
+            </span>
+          ))}
         </div>
       </header>
 
@@ -217,212 +293,223 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
           No BP machines found.
         </div>
       ) : (
-        <div className="grid gap-4">
-          {sortedStatuses.map((status) => {
-            const request = requests[status.machine_id];
-            const task = rotationTasks[status.machine_id];
-            const busy = busyMachineId === status.machine_id;
-            const canPush = task?.status === "pending";
-            const pushConfirmArmed = pushConfirmMachineId === status.machine_id;
-            const pushUnlocked = pushConfirmValue.trim() === normalizedTicker;
-            const taskError = formatTaskError(task?.error_msg);
-            const step4Ready = task?.status === "success";
-            return (
-              <article
-                key={status.machine_id}
-                className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-base font-semibold">{status.machine_name}</h2>
-                    <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">
-                      block producer
-                    </p>
-                  </div>
-                  <span className={`text-xs font-medium uppercase ${severityTone(status.severity)}`}>
-                    {status.severity}
-                  </span>
+        <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
+          <div className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 bg-slate-100 p-1">
+            {sortedStatuses.map((status) => {
+              const active = selectedMachineId === status.machine_id;
+              return (
+                <button
+                  key={status.machine_id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedMachineId(status.machine_id);
+                    setPushConfirmMachineId(null);
+                    setPushConfirmValue("");
+                  }}
+                  className={`inline-flex min-h-8 min-w-28 items-center justify-center rounded-md border px-3 text-xs font-semibold ${
+                    active
+                      ? "border-blue-300 bg-white text-blue-700"
+                      : "border-transparent bg-transparent text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {status.machine_name}
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedStatus && (
+            <>
+              <div className="grid gap-3 text-sm md:grid-cols-4">
+                <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-xs text-slate-500">Current Period</p>
+                  <p className="font-semibold text-slate-900">{selectedStatus.kes_period_current ?? "--"}</p>
                 </div>
-
-                <dl className="mt-4 grid gap-3 text-sm md:grid-cols-4">
-                  <div>
-                    <dt className="text-slate-500">Current Period</dt>
-                    <dd className="mt-1 font-semibold">
-                      {status.kes_period_current ?? "--"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-slate-500">Max Period</dt>
-                    <dd className="mt-1 font-semibold">
-                      {status.kes_period_max ?? "--"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-slate-500">Remaining Days</dt>
-                    <dd className="mt-1 font-semibold">
-                      {status.remaining_days ?? "--"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-slate-500">Op Cert Counter</dt>
-                    <dd className="mt-1 font-semibold">
-                      {status.op_cert_counter ?? "--"}
-                    </dd>
-                  </div>
-                </dl>
-
-                {status.expiry_date && (
-                  <p className="mt-3 text-xs text-slate-500">Expiry date: {status.expiry_date}</p>
-                )}
-
-                <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium">Step 1: Generate KES request</p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Create a new local KES keypair and copy the generated verification key to the cold environment.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void handleGenerate(status.machine_id)}
-                      disabled={busy}
-                      className="rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
-                    >
-                      Generate KES
-                    </button>
-                  </div>
-                  {request && (
-                    <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-                      <p className="font-medium text-slate-900">KES verification key</p>
-                      <p className="mt-1 break-all">{request.kes_vkey_path}</p>
-                      <p className="mt-3 font-medium text-slate-900">Step 2: Cold signing instructions</p>
-                      <pre className="mt-1 whitespace-pre-wrap text-slate-700">{request.instructions}</pre>
-                    </div>
-                  )}
+                <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-xs text-slate-500">Max Period</p>
+                  <p className="font-semibold text-slate-900">{selectedStatus.kes_period_max ?? "--"}</p>
                 </div>
-
-                <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">
-                  <p className="text-sm font-medium">Step 3: Import signed certificate</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Paste the absolute path of the signed `node.cert` returned by the cold environment.
+                <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-xs text-slate-500">Remaining Days</p>
+                  <p className="font-semibold text-slate-900">{selectedStatus.remaining_days ?? "--"}</p>
+                </div>
+                <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-xs text-slate-500">Severity</p>
+                  <p className={`font-semibold uppercase ${severityTone(selectedStatus.severity)}`}>
+                    {selectedStatus.severity}
                   </p>
-                  <div className="mt-3 flex flex-col gap-2 md:flex-row">
-                    <input
-                      value={certPaths[status.machine_id] ?? ""}
-                      onChange={(event) =>
-                        setCertPaths((prev) => ({
-                          ...prev,
-                          [status.machine_id]: event.target.value,
-                        }))
-                      }
-                      placeholder="/absolute/path/to/node.cert"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void handleImport(status.machine_id)}
-                      disabled={busy}
-                      className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
-                    >
-                      Import Cert
-                    </button>
-                  </div>
                 </div>
+              </div>
 
-                <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium">Step 3: Push to BP (Risk Gate)</p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Install the staged certificate on the BP and restart the runtime with readiness checks.
-                      </p>
+              {wizardStep === 1 && (
+                <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <h2 className="text-sm font-semibold">Step 1 · 生成 KES Keypairs</h2>
+                  <p className="text-xs text-slate-500">
+                    在热环境执行 KES keygen，生成新的 `kes.skey` 与 `kes.vkey`。
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerate(selectedStatus.machine_id)}
+                    disabled={selectedBusy}
+                    className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                  >
+                    {selectedBusy ? "Generating..." : "Generate KES"}
+                  </button>
+                </section>
+              )}
+
+              {wizardStep === 2 && (
+                <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <h2 className="text-sm font-semibold">Step 2 · 冷环境生成 node.cert</h2>
+                  {selectedRequest ? (
+                    <div className="space-y-3">
+                      <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
+                        <p className="font-medium text-slate-900">KES verification key</p>
+                        <p className="mt-1 break-all text-slate-700">{selectedRequest.kes_vkey_path}</p>
+                      </div>
+                      <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
+                        <p className="font-medium text-slate-900">Cold signing instructions</p>
+                        <pre className="mt-1 whitespace-pre-wrap text-slate-700">{selectedRequest.instructions}</pre>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setWizardStep(3)}
+                        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                      >
+                        下一步：上传 node.cert
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPushConfirmMachineId(status.machine_id);
-                        setPushConfirmValue("");
-                      }}
-                      disabled={busy || !canPush}
-                      className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-                    >
-                      Push to BP
-                    </button>
+                  ) : (
+                    <p className="text-sm text-slate-600">先完成 Step 1，生成 KES keypairs。</p>
+                  )}
+                </section>
+              )}
+
+              {wizardStep === 3 && (
+                <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <h2 className="text-sm font-semibold">Step 3 · 上传证书并执行 Rotate</h2>
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-500">
+                      上传离线签发后的 `node.cert`，通过预检后执行 BP Rotate。
+                    </p>
+                    <div className="flex flex-col gap-2 md:flex-row">
+                      <input
+                        value={certPaths[selectedStatus.machine_id] ?? ""}
+                        onChange={(event) =>
+                          setCertPaths((prev) => ({
+                            ...prev,
+                            [selectedStatus.machine_id]: event.target.value,
+                          }))
+                        }
+                        placeholder="/absolute/path/to/node.cert"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleImport(selectedStatus.machine_id)}
+                        disabled={selectedBusy}
+                        className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+                      >
+                        {selectedBusy ? "Importing..." : "Import Cert"}
+                      </button>
+                    </div>
                   </div>
-                  {canPush && pushConfirmArmed && (
-                    <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-                      <p className="font-medium">Type pool ticker {normalizedTicker} to unlock KES push.</p>
-                      <div className="mt-3 flex flex-col gap-2 md:flex-row">
-                        <input
-                          value={pushConfirmValue}
-                          onChange={(event) => setPushConfirmValue(event.target.value)}
-                          autoCapitalize="none"
-                          autoCorrect="off"
-                          className="flex-1 rounded-md border border-red-300 bg-white px-3 py-2 text-sm text-slate-900"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void handlePush(status.machine_id)}
-                            disabled={busy || !pushUnlocked}
-                            className="rounded-md bg-red-500 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            Confirm KES Push
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPushConfirmMachineId(null);
-                              setPushConfirmValue("");
-                            }}
-                            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-                          >
-                            Cancel
-                          </button>
+
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">Risk Gate</p>
+                        <p className="text-xs text-slate-500">输入 ticker 解锁高风险 Rotate 操作。</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPushConfirmMachineId(selectedStatus.machine_id);
+                          setPushConfirmValue("");
+                        }}
+                        disabled={selectedBusy || !canPush}
+                        className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                      >
+                        Push to BP
+                      </button>
+                    </div>
+                    {canPush && pushConfirmArmed && (
+                      <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                        <p className="font-medium">Type pool ticker {normalizedTicker} to unlock KES push.</p>
+                        <div className="mt-3 flex flex-col gap-2 md:flex-row">
+                          <input
+                            value={pushConfirmValue}
+                            onChange={(event) => setPushConfirmValue(event.target.value)}
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            className="flex-1 rounded-md border border-red-300 bg-white px-3 py-2 text-sm text-slate-900"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handlePush(selectedStatus.machine_id)}
+                              disabled={selectedBusy || !pushUnlocked}
+                              className="rounded-md bg-red-500 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Confirm KES Push
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPushConfirmMachineId(null);
+                                setPushConfirmValue("");
+                              }}
+                              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                  {task && (
-                    <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-                      <p className={`font-medium uppercase ${taskTone(task.status)}`}>
-                        Task {formatTaskLabel(task.status)}
-                      </p>
-                      <p className="mt-1 break-all text-slate-500">Task ID: {task.task_id}</p>
-                      {taskError && (
-                        <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-700">
-                          {taskError}
+                    )}
+                    {selectedTask && (
+                      <div className="mt-3 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700">
+                        <p className={`font-medium uppercase ${taskTone(selectedTask.status)}`}>
+                          Task {formatTaskLabel(selectedTask.status)}
                         </p>
-                      )}
-                    </div>
-                  )}
-                </div>
+                        <p className="mt-1 break-all text-slate-500">Task ID: {selectedTask.task_id}</p>
+                        {selectedTaskError && (
+                          <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-700">
+                            {selectedTaskError}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
 
-                <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">
-                  <p className="text-sm font-medium">Step 4: Validation</p>
-                  <div className="mt-2 grid gap-2 text-xs text-slate-600 md:grid-cols-3">
+              {wizardStep === 4 && (
+                <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <h2 className="text-sm font-semibold">Step 4 · 校验完成</h2>
+                  <div className="grid gap-2 text-xs text-slate-600 md:grid-cols-3">
                     <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
                       <span className="block text-slate-500">Operation</span>
                       <strong className="text-slate-900">
-                        {step4Ready ? "success" : task ? formatTaskLabel(task.status) : "pending"}
+                        {selectedTask?.status ? formatTaskLabel(selectedTask.status) : "pending"}
                       </strong>
                     </div>
                     <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
                       <span className="block text-slate-500">KES remain</span>
-                      <strong className="text-slate-900">{status.remaining_days ?? "--"}d</strong>
+                      <strong className="text-slate-900">{selectedStatus.remaining_days ?? "--"}d</strong>
                     </div>
                     <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
                       <span className="block text-slate-500">BP health</span>
-                      <strong className="text-slate-900">{status.severity === "critical" ? "risk" : "online"}</strong>
+                      <strong className="text-slate-900">{selectedStatus.severity === "critical" ? "risk" : "online"}</strong>
                     </div>
                   </div>
-                </div>
-              </article>
-            );
-          })}
+                  {selectedTask && <TaskLogStream taskId={selectedTask.task_id} />}
+                </section>
+              )}
+            </>
+          )}
         </div>
       )}
     </section>

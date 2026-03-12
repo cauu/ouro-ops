@@ -140,8 +140,8 @@ mod frontend_tests {
         assert!(deploy.contains("useState(\"10.5.4-1\")"));
         assert!(deploy.contains("ghcr.io/blinklabs-io/cardano-node"));
         assert!(deploy.contains("takeover_existing_node"));
-        assert!(deploy.contains("restore_snapshot_relay (Mithril cold-start restore)"));
-        assert!(deploy.contains("restore_snapshot_bp (Mithril cold-start restore)"));
+        assert!(deploy.contains("restore_snapshot_relay"));
+        assert!(deploy.contains("restore_snapshot_bp"));
         assert!(deploy.contains("mithrilInitializationAllowed = false"));
         assert!(deploy.contains("setRestoreSnapshotBp(false)"));
         assert!(deploy.contains("Mithril cold-start restore is disabled in this mac app stage"));
@@ -149,8 +149,9 @@ mod frontend_tests {
         assert!(deploy.contains("step === 1"));
         assert!(deploy.contains("step === 2"));
         assert!(deploy.contains("step === 3"));
-        assert!(deploy.contains("Enter BP and relay nodes manually"));
-        assert!(deploy.contains("Moving to step 2 will create these machines"));
+        assert!(deploy.contains("step === 4"));
+        assert!(deploy.contains("手动输入 BP/Relay 节点"));
+        assert!(deploy.contains("点击下一步时会执行机器创建"));
         assert!(deploy.contains("Step 1 completed."));
         assert!(deploy.contains("Creating nodes..."));
         assert!(deploy.contains("Resolving runtime state"));
@@ -424,7 +425,7 @@ mod frontend_tests {
         assert!(page.contains("Push to BP"));
         assert!(page.contains("Type pool ticker"));
         assert!(page.contains("Confirm KES Push"));
-        assert!(page.contains("Step 4: Validation"));
+        assert!(page.contains("Step 4 · 校验完成"));
     }
 
     #[test]

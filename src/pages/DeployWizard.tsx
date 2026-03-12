@@ -401,6 +401,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
       setTaskId(createdTaskId);
       const status = await deployStatus(createdTaskId);
       setTaskStatus(status);
+      setStep(4);
       setShowConfirm(false);
     } catch (e) {
       setError(toUserError(e));
@@ -427,37 +428,61 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
   };
 
   return (
-    <section className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Deploy Wizard</h1>
-        <p className="mt-1 text-sm text-zinc-400">step === {step} · Pool network: {pool.network}</p>
+    <section className="space-y-5">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Deploy Wizard</h1>
+        <p className="text-sm text-slate-600">
+          Step {step} / 4 · pool {pool.ticker} · network {pool.network}
+        </p>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {[1, 2, 3, 4].map((index) => (
+            <span
+              key={`deploy-step-${index}`}
+              className={`rounded-full border px-2.5 py-1 ${
+                step === index
+                  ? "border-blue-300 bg-blue-50 font-semibold text-blue-700"
+                  : step > index
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                    : "border-slate-300 bg-slate-50 text-slate-600"
+              }`}
+            >
+              {index === 1
+                ? "1 节点配置"
+                : index === 2
+                  ? "2 参数设置"
+                  : index === 3
+                    ? "3 配置确认"
+                    : "4 执行部署"}
+            </span>
+          ))}
+        </div>
       </header>
 
       {error && (
-        <p className="rounded-md border border-red-700/60 bg-red-900/20 px-3 py-2 text-sm text-red-300">
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </p>
       )}
 
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+      <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
         {step === 1 && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-lg font-medium">1. Configure Nodes</h2>
-              <p className="mt-1 text-sm text-zinc-400">
-                Enter BP and relay nodes manually. Moving to step 2 will create these machines for the current pool.
+              <h2 className="text-lg font-semibold">Step 1 · 节点配置</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                手动输入 BP/Relay 节点。点击下一步时会执行机器创建。
               </p>
             </div>
 
             {!step1Completed && (
-              <section className="space-y-3 rounded-md border border-zinc-800 bg-zinc-950/40 p-3">
+              <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-medium text-zinc-100">SSH Agent Key</h3>
-                  <span className="text-xs text-zinc-500">{keys.length} key(s)</span>
+                  <h3 className="text-sm font-semibold">SSH Agent Key</h3>
+                  <span className="text-xs text-slate-500">{keys.length} key(s)</span>
                 </div>
                 {keys.length === 0 ? (
                   <div className="space-y-2">
-                    <p className="rounded-md border border-amber-700/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+                    <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
                       No key loaded in ssh-agent. Add one before creating nodes.
                     </p>
                     <div className="flex flex-col gap-2 md:flex-row">
@@ -468,34 +493,34 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                         autoCapitalize="none"
                         autoCorrect="off"
                         spellCheck={false}
-                        className="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                        className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                       />
                       <button
                         type="button"
                         onClick={() => void handleAddKey()}
                         disabled={addingKey || !keyPath.trim()}
-                        className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {addingKey ? "Adding key..." : "Add key to ssh-agent"}
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-zinc-400">
+                  <p className="text-xs text-slate-500">
                     Choose one fingerprint per node. Keys are resolved from local ssh-agent.
                   </p>
                 )}
               </section>
             )}
 
-            <section className="space-y-3 rounded-md border border-zinc-800 bg-zinc-950/40 p-3">
-              <h3 className="text-sm font-medium text-zinc-100">BP Node</h3>
+            <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+              <h3 className="text-sm font-semibold">BP Node</h3>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <input
                   value={bpDraft.name}
                   onChange={(event) => setBpDraft((prev) => ({ ...prev, name: event.target.value }))}
                   placeholder="bp-1"
-                  className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                 />
                 <input
                   value={bpDraft.ip}
@@ -504,7 +529,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                 />
                 <input
                   value={bpDraft.sshUser}
@@ -513,21 +538,21 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                 />
                 <input
                   value={bpDraft.port}
                   onChange={(event) => setBpDraft((prev) => ({ ...prev, port: event.target.value }))}
                   placeholder="22"
                   inputMode="numeric"
-                  className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                 />
                 <select
                   value={bpDraft.sshKeyFingerprint}
                   onChange={(event) =>
                     setBpDraft((prev) => ({ ...prev, sshKeyFingerprint: event.target.value }))
                   }
-                  className="md:col-span-2 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  className="md:col-span-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                 >
                   <option value="">Select ssh-agent fingerprint</option>
                   {keys.map((key) => (
@@ -539,27 +564,27 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
               </div>
             </section>
 
-            <section className="space-y-3 rounded-md border border-zinc-800 bg-zinc-950/40 p-3">
+            <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-medium text-zinc-100">Relay Nodes</h3>
+                <h3 className="text-sm font-semibold">Relay Nodes</h3>
                 <button
                   type="button"
                   onClick={addRelayDraft}
                   disabled={step1Completed}
-                  className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   + Add relay
                 </button>
               </div>
               {relayDrafts.map((draft, index) => (
-                <div key={`relay-draft-${index}`} className="rounded-md border border-zinc-800 bg-black/20 p-3">
+                <div key={`relay-draft-${index}`} className="rounded-md border border-slate-200 bg-slate-50 p-3">
                   <div className="mb-3 flex items-center justify-between">
-                    <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">Relay #{index + 1}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Relay #{index + 1}</p>
                     <button
                       type="button"
                       onClick={() => removeRelayDraft(index)}
                       disabled={relayDrafts.length <= 1 || step1Completed}
-                      className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Remove
                     </button>
@@ -569,7 +594,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                       value={draft.name}
                       onChange={(event) => updateRelayDraft(index, { name: event.target.value })}
                       placeholder={`relay-${index + 1}`}
-                      className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                      className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                     />
                     <input
                       value={draft.ip}
@@ -578,7 +603,7 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                       autoCapitalize="none"
                       autoCorrect="off"
                       spellCheck={false}
-                      className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                      className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                     />
                     <input
                       value={draft.sshUser}
@@ -587,21 +612,21 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
                       autoCapitalize="none"
                       autoCorrect="off"
                       spellCheck={false}
-                      className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                      className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                     />
                     <input
                       value={draft.port}
                       onChange={(event) => updateRelayDraft(index, { port: event.target.value })}
                       placeholder="22"
                       inputMode="numeric"
-                      className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                      className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                     />
                     <select
                       value={draft.sshKeyFingerprint}
                       onChange={(event) =>
                         updateRelayDraft(index, { sshKeyFingerprint: event.target.value })
                       }
-                      className="md:col-span-2 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                      className="md:col-span-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                     >
                       <option value="">Select ssh-agent fingerprint</option>
                       {keys.map((key) => (
@@ -616,233 +641,236 @@ export default function DeployWizard({ pool }: DeployWizardProps) {
             </section>
 
             {step1Completed && machines.length > 0 && (
-              <div className="rounded-md border border-emerald-700/40 bg-emerald-950/20 px-3 py-2 text-xs text-emerald-200">
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
                 Step 1 completed. {machines.length} machine(s) created for this deploy draft.
               </div>
             )}
           </div>
         )}
 
-          {step === 2 && (
-            <div className="space-y-3">
-              <h2 className="text-lg font-medium">2. Configure Parameters</h2>
-              {probingRuntime && (
-                <p className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300">
-                  {runtimeProbeStatus ?? "Probing runtime containers on selected machines..."}
+        {step === 2 && (
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold">Step 2 · 参数设置</h2>
+            {probingRuntime && (
+              <p className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs text-slate-600">
+                {runtimeProbeStatus ?? "Probing runtime containers on selected machines..."}
+              </p>
+            )}
+            {!probingRuntime && runtimeProbeStatus && (
+              <p className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                {runtimeProbeStatus}
+              </p>
+            )}
+            {selectedWithRuntime.length > 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+                <p>
+                  Detected running <code>cardano-node</code> on: {selectedWithRuntime.map((m) => m.name).join(", ")}
                 </p>
-              )}
-              {!probingRuntime && runtimeProbeStatus && (
-                <p className="rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs text-zinc-400">
-                  {runtimeProbeStatus}
+                <p className="mt-1">
+                  Enabling takeover will migrate DB/keys to <code>/opt/cardano/*</code> and switch to app-managed
+                  runtime with automatic rollback on health-check failure.
                 </p>
-              )}
-              {selectedWithRuntime.length > 0 && (
-                <div className="rounded-md border border-amber-700/60 bg-amber-950/20 p-3 text-xs text-amber-200">
-                  <p>
-                    Detected running <code>cardano-node</code> on:{" "}
-                    {selectedWithRuntime.map((m) => m.name).join(", ")}
-                  </p>
-                  <p className="mt-1">
-                    Enabling takeover will migrate DB/keys to <code>/opt/cardano/*</code> and switch to app-managed
-                    runtime with automatic rollback on health-check failure.
-                  </p>
-                </div>
-              )}
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <input
-                  className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-                  value={cardanoVersion}
-                  onChange={(e) => setCardanoVersion(e.target.value)}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  placeholder="cardano version"
-                />
-                <input
-                  className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-                  value={imageRegistry}
-                  onChange={(e) => setImageRegistry(e.target.value)}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  placeholder="image registry"
-                />
-                <select
-                  className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-                  value={network}
-                  onChange={(e) => setNetwork(e.target.value as Pool["network"])}
-                >
-                  <option value="mainnet">mainnet</option>
-                  <option value="preprod">preprod</option>
-                  <option value="preview">preview</option>
-                </select>
-                <input
-                  type="number"
-                  min={8}
-                  max={16}
-                  className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-                  value={swapSizeGb}
-                  onChange={(e) => setSwapSizeGb(Number(e.target.value))}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={enableSwap} onChange={(e) => setEnableSwap(e.target.checked)} />
-                  enable_swap
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={enableChrony}
-                    onChange={(e) => setEnableChrony(e.target.checked)}
-                  />
-                  enable_chrony
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={enableHardening}
-                    onChange={(e) => setEnableHardening(e.target.checked)}
-                  />
-                  enable_hardening
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={safeValidationMode}
-                    onChange={(e) => setSafeValidationMode(e.target.checked)}
-                  />
-                  safe_validation_mode (read-only)
-                </label>
-                {selectedWithRuntime.length > 0 && (
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={takeoverExistingNode}
-                      onChange={(e) => setTakeoverExistingNode(e.target.checked)}
-                    />
-                    takeover_existing_node
-                  </label>
-                )}
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={restoreSnapshotRelay}
-                    disabled={!mithrilInitializationAllowed || !mithrilSupported || selectedRelayCount === 0}
-                    onChange={(e) => {
-                      setRestoreSnapshotRelay(e.target.checked);
-                      setRestoreSnapshotTouched(true);
-                    }}
-                  />
-                  restore_snapshot_relay (Mithril cold-start restore)
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={restoreSnapshotBp}
-                    disabled={!mithrilInitializationAllowed || !mithrilSupported || selectedBpCount === 0}
-                    onChange={(e) => {
-                      setRestoreSnapshotBp(e.target.checked);
-                      setRestoreSnapshotTouched(true);
-                    }}
-                  />
-                  restore_snapshot_bp (Mithril cold-start restore)
-                </label>
               </div>
-              <p className="text-xs text-zinc-400">
-                Mithril cold-start restore is disabled in this mac app stage to avoid long initialization time. Keep
-                <code> restore_snapshot_relay/bp </code>
-                off unless this policy is explicitly changed later.
-              </p>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="space-y-3">
-              <h2 className="text-lg font-medium">3. Confirm</h2>
-              <p className="text-sm text-zinc-300">
-                Machines: {selectedMachines.map((m) => m.name).join(", ") || "-"}
-              </p>
-              <p className="text-sm text-zinc-300">Version: {cardanoVersion}</p>
-              <p className="text-sm text-zinc-300">Network: {network}</p>
-              <p className="text-sm text-zinc-300">Image: {imageRegistry} (default tag: 10.5.4-1, overridable)</p>
-              <p className="text-sm text-zinc-300">
-                swap={String(enableSwap)} ({swapSizeGb}G) · chrony={String(enableChrony)} · hardening=
-                {String(enableHardening)}
-              </p>
-              <p className="text-sm text-zinc-300">safe_validation_mode={String(safeValidationMode)}</p>
-              <p className="text-sm text-zinc-300">takeover_existing_node={String(takeoverExistingNode)}</p>
-              <p className="text-sm text-zinc-300">restore_snapshot_relay={String(restoreSnapshotRelay)}</p>
-              <p className="text-sm text-zinc-300">restore_snapshot_bp={String(restoreSnapshotBp)}</p>
-              <button
-                type="button"
-                onClick={() => setShowConfirm(true)}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            )}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <input
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                value={cardanoVersion}
+                onChange={(e) => setCardanoVersion(e.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="cardano version"
+              />
+              <input
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                value={imageRegistry}
+                onChange={(e) => setImageRegistry(e.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="image registry"
+              />
+              <select
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                value={network}
+                onChange={(e) => setNetwork(e.target.value as Pool["network"])}
               >
-                Execute Deploy
-              </button>
-              {safeValidationMode && (
-                <p className="text-xs text-yellow-300">
-                  Safe validation mode only runs read-only checks and will not change host config or restart cardano-node.
-                </p>
+                <option value="mainnet">mainnet</option>
+                <option value="preprod">preprod</option>
+                <option value="preview">preview</option>
+              </select>
+              <input
+                type="number"
+                min={8}
+                max={16}
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                value={swapSizeGb}
+                onChange={(e) => setSwapSizeGb(Number(e.target.value))}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={enableSwap} onChange={(e) => setEnableSwap(e.target.checked)} />
+                enable_swap
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={enableChrony}
+                  onChange={(e) => setEnableChrony(e.target.checked)}
+                />
+                enable_chrony
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={enableHardening}
+                  onChange={(e) => setEnableHardening(e.target.checked)}
+                />
+                enable_hardening
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={safeValidationMode}
+                  onChange={(e) => setSafeValidationMode(e.target.checked)}
+                />
+                safe_validation_mode (read-only)
+              </label>
+              {selectedWithRuntime.length > 0 && (
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={takeoverExistingNode}
+                    onChange={(e) => setTakeoverExistingNode(e.target.checked)}
+                  />
+                  takeover_existing_node
+                </label>
               )}
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={restoreSnapshotRelay}
+                  disabled={!mithrilInitializationAllowed || !mithrilSupported || selectedRelayCount === 0}
+                  onChange={(e) => {
+                    setRestoreSnapshotRelay(e.target.checked);
+                    setRestoreSnapshotTouched(true);
+                  }}
+                />
+                restore_snapshot_relay
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={restoreSnapshotBp}
+                  disabled={!mithrilInitializationAllowed || !mithrilSupported || selectedBpCount === 0}
+                  onChange={(e) => {
+                    setRestoreSnapshotBp(e.target.checked);
+                    setRestoreSnapshotTouched(true);
+                  }}
+                />
+                restore_snapshot_bp
+              </label>
             </div>
-          )}
+            <p className="text-xs text-slate-500">
+              Mithril cold-start restore is disabled in this mac app stage to avoid long initialization time. Keep
+              <code> restore_snapshot_relay/bp </code>
+              off unless this policy is explicitly changed later.
+            </p>
+          </div>
+        )}
 
-        <div className="mt-4 flex gap-2">
+        {step === 3 && (
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold">Step 3 · 配置确认</h2>
+            <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 md:grid-cols-2">
+              <p>Machines: {selectedMachines.map((m) => m.name).join(", ") || "-"}</p>
+              <p>Version: {cardanoVersion}</p>
+              <p>Network: {network}</p>
+              <p>Image: {imageRegistry}</p>
+              <p>Swap: {String(enableSwap)} ({swapSizeGb}G)</p>
+              <p>Chrony: {String(enableChrony)}</p>
+              <p>Hardening: {String(enableHardening)}</p>
+              <p>Safe Validation: {String(safeValidationMode)}</p>
+              <p>Takeover: {String(takeoverExistingNode)}</p>
+              <p>Restore relay: {String(restoreSnapshotRelay)}</p>
+              <p>Restore bp: {String(restoreSnapshotBp)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowConfirm(true)}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              进入执行部署
+            </button>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold">Step 4 · 执行部署</h2>
+            {!taskId ? (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                Deployment task is not started yet. Return to Step 3 and execute deploy.
+              </p>
+            ) : (
+              <>
+                <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+                  <p>TaskId: {taskId}</p>
+                  <p>Status: {taskStatus?.status ?? "pending"}</p>
+                  {formatTaskError(taskStatus?.error_msg) && (
+                    <p className="text-red-700">Error: {formatTaskError(taskStatus?.error_msg)}</p>
+                  )}
+                  {(taskStatus?.status === "running" || taskStatus?.status === "pending") && (
+                    <button
+                      type="button"
+                      onClick={() => void handleCancel()}
+                      disabled={cancelling}
+                      className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-1 text-xs text-red-700 hover:bg-red-100 disabled:opacity-60"
+                    >
+                      {cancelling ? "Cancelling..." : "Cancel Deploy"}
+                    </button>
+                  )}
+                </div>
+                <TaskLogStream taskId={taskId} />
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 border-t border-slate-200 pt-3">
           <button
             type="button"
             onClick={() => setStep((v) => Math.max(1, v - 1))}
-            disabled={step === 1 || creatingStep1}
-            className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm disabled:opacity-50"
+            disabled={step === 1 || creatingStep1 || starting || step === 4}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
           >
-            Back
+            上一步
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (step === 1) {
-                void handlePersistStep1();
-                return;
+          {step < 3 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (step === 1) {
+                  void handlePersistStep1();
+                  return;
+                }
+                setStep(3);
+              }}
+              disabled={
+                creatingStep1 ||
+                (step === 1 && !canNextFromStep1) ||
+                (step === 2 && !canNextFromStep2)
               }
-              setStep((v) => Math.min(3, v + 1));
-            }}
-            disabled={
-              creatingStep1 ||
-              (step === 1 && !canNextFromStep1) ||
-              (step === 2 && !canNextFromStep2) ||
-              step === 3
-            }
-            className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm disabled:opacity-50"
-          >
-            {step === 1 && creatingStep1 ? "Creating nodes..." : "Next"}
-          </button>
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+            >
+              {step === 1 && creatingStep1 ? "Creating nodes..." : "下一步"}
+            </button>
+          )}
         </div>
       </div>
-
-      {taskId && (
-        <section className="space-y-3">
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm">
-            <p>TaskId: {taskId}</p>
-            <p>Status: {taskStatus?.status ?? "pending"}</p>
-            {formatTaskError(taskStatus?.error_msg) && (
-              <p className="text-red-300">Error: {formatTaskError(taskStatus?.error_msg)}</p>
-            )}
-            {(taskStatus?.status === "running" || taskStatus?.status === "pending") && (
-              <button
-                type="button"
-                onClick={() => void handleCancel()}
-                disabled={cancelling}
-                className="mt-2 rounded-md border border-red-700/70 px-3 py-1 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-60"
-              >
-                {cancelling ? "Cancelling..." : "Cancel Deploy"}
-              </button>
-            )}
-          </div>
-          <TaskLogStream taskId={taskId} />
-        </section>
-      )}
 
       <ConfirmModal
         open={showConfirm}

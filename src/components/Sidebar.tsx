@@ -5,9 +5,9 @@ const linkBase =
 
 function navClass(isActive: boolean): string {
   if (isActive) {
-    return `${linkBase} bg-zinc-100 text-zinc-900`;
+    return `${linkBase} border border-blue-200 bg-blue-50 text-blue-700`;
   }
-  return `${linkBase} text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100`;
+  return `${linkBase} border border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900`;
 }
 
 interface SidebarProps {
@@ -16,10 +16,10 @@ interface SidebarProps {
 
 export default function Sidebar({ ticker }: SidebarProps) {
   return (
-    <aside className="w-full max-w-64 border-r border-zinc-800 bg-zinc-900 p-4">
+    <aside className="w-full max-w-64 border-r border-slate-200 bg-white p-4">
       <div className="mb-6">
-        <p className="text-xs uppercase tracking-widest text-zinc-500">Ouro Ops</p>
-        <p className="mt-2 text-lg font-semibold text-zinc-100">{ticker}</p>
+        <p className="text-xs uppercase tracking-widest text-slate-500">Ouro Ops</p>
+        <p className="mt-2 text-lg font-semibold text-slate-900">{ticker}</p>
       </div>
       <nav className="space-y-2">
         <NavLink to="/" end className={({ isActive }) => navClass(isActive)}>

@@ -72,6 +72,16 @@ function formatTaskLabel(value: string): string {
   return value.split("_").join(" ");
 }
 
+function formatTargetLabel(machineCount: number): string {
+  if (machineCount <= 0) {
+    return "--";
+  }
+  if (machineCount === 1) {
+    return "single node";
+  }
+  return `cluster (${machineCount})`;
+}
+
 function formatStage(stage: string): string {
   switch (stage) {
     case "snapshot_restoring":
@@ -311,15 +321,13 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
     if (bpNode) {
       picked.push(bpNode);
     }
-    picked.push(...relays.slice(0, 2));
-    if (picked.length < 3) {
-      nodes.forEach((row) => {
-        if (!picked.some((entry) => entry.machine_id === row.machine_id)) {
-          picked.push(row);
-        }
-      });
-    }
-    return picked.slice(0, 3);
+    picked.push(...relays);
+    nodes.forEach((row) => {
+      if (!picked.some((entry) => entry.machine_id === row.machine_id)) {
+        picked.push(row);
+      }
+    });
+    return picked;
   }, [bpNode, relays, nodes]);
 
   const headBlock = useMemo(() => {
@@ -394,9 +402,9 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
   return (
     <section className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Dashboard</h1>
-        <p className="text-xs text-zinc-400">
-          Pool: <span className="font-medium text-zinc-200">{pool.ticker}</span> · network {pool.network}
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Dashboard</h1>
+        <p className="text-xs text-slate-600">
+          Pool: <span className="font-medium text-slate-900">{pool.ticker}</span> · network {pool.network}
           {dbInfo ? ` · db v${dbInfo.user_version}` : ""} · {status}
         </p>
       </header>
@@ -574,15 +582,15 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
             </div>
           ) : (
             <>
-              <div className="inline-grid grid-cols-3 justify-start gap-2 rounded-lg border border-slate-300 bg-slate-100 p-1">
-                {nodes.slice(0, 3).map((row) => {
+              <div className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 bg-slate-100 p-1">
+                {nodes.map((row) => {
                   const active = selectedNodeId === row.machine_id;
                   return (
                     <button
                       key={row.machine_id}
                       type="button"
                       onClick={() => setSelectedNodeId(row.machine_id)}
-                      className={`inline-flex min-h-8 items-center justify-center rounded-md border px-3 text-xs font-semibold leading-none ${
+                      className={`inline-flex min-h-8 min-w-28 items-center justify-center rounded-md border px-3 text-xs font-semibold leading-none ${
                         active
                           ? "border-blue-300 bg-white text-blue-700"
                           : "border-transparent bg-transparent text-slate-600 hover:text-slate-900"
@@ -681,17 +689,17 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
         </div>
       </section>
 
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 text-zinc-100">
+      <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
         {pool.onchain_registered && pool.onchain_pool_id ? (
           <>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold text-zinc-100">Bound On-chain Pool</h2>
-                <p className="mt-1 text-xs text-zinc-400">
+                <h2 className="text-sm font-semibold text-slate-900">Bound On-chain Pool</h2>
+                <p className="mt-1 text-xs text-slate-600">
                   Dashboard silently refreshes this data in the background on each visit.
                 </p>
               </div>
-              <span className="rounded-full bg-emerald-900/40 px-2 py-1 text-xs font-medium text-emerald-300">
+              <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
                 bound
               </span>
             </div>
@@ -700,61 +708,61 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                 type="button"
                 onClick={handleUnbindPool}
                 disabled={unbinding}
-                className="rounded-md border border-red-800 bg-red-950/30 px-3 py-2 text-sm font-medium text-red-200 transition hover:border-red-700 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {unbinding ? "Unbinding..." : "Unbind Pool"}
               </button>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-slate-600">
                 Clears the workspace&apos;s on-chain binding and cached on-chain fields. Running nodes are not changed.
               </p>
             </div>
             {unbindError && (
-              <div className="mt-3 rounded-md border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+              <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {unbindError}
               </div>
             )}
             <dl className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
               <div>
-                <dt className="text-zinc-500">Pool ID</dt>
-                <dd className="mt-1 break-all font-medium text-zinc-100">{pool.onchain_pool_id}</dd>
+                <dt className="text-slate-500">Pool ID</dt>
+                <dd className="mt-1 break-all font-medium text-slate-900">{pool.onchain_pool_id}</dd>
               </div>
               <div>
-                <dt className="text-zinc-500">Ticker</dt>
-                <dd className="mt-1 font-medium text-zinc-100">{pool.ticker}</dd>
+                <dt className="text-slate-500">Ticker</dt>
+                <dd className="mt-1 font-medium text-slate-900">{pool.ticker}</dd>
               </div>
               <div>
-                <dt className="text-zinc-500">Last Synced</dt>
-                <dd className="mt-1 font-medium text-zinc-100">{pool.onchain_synced_at ?? "--"}</dd>
+                <dt className="text-slate-500">Last Synced</dt>
+                <dd className="mt-1 font-medium text-slate-900">{pool.onchain_synced_at ?? "--"}</dd>
               </div>
               <div>
-                <dt className="text-zinc-500">Margin</dt>
-                <dd className="mt-1 font-medium text-zinc-100">{formatMargin(pool.margin)}</dd>
+                <dt className="text-slate-500">Margin</dt>
+                <dd className="mt-1 font-medium text-slate-900">{formatMargin(pool.margin)}</dd>
               </div>
               <div>
-                <dt className="text-zinc-500">Fixed Cost</dt>
-                <dd className="mt-1 font-medium text-zinc-100">{formatLovelace(pool.fixed_cost)}</dd>
+                <dt className="text-slate-500">Fixed Cost</dt>
+                <dd className="mt-1 font-medium text-slate-900">{formatLovelace(pool.fixed_cost)}</dd>
               </div>
               <div>
-                <dt className="text-zinc-500">Pledge</dt>
-                <dd className="mt-1 font-medium text-zinc-100">{formatLovelace(pool.pledge)}</dd>
+                <dt className="text-slate-500">Pledge</dt>
+                <dd className="mt-1 font-medium text-slate-900">{formatLovelace(pool.pledge)}</dd>
               </div>
             </dl>
           </>
         ) : (
           <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-4">
+            <div className="rounded-md border border-slate-200 bg-white p-4">
               <div className="mb-4">
-                <h2 className="text-sm font-semibold text-zinc-100">Bind Existing Pool</h2>
-                <p className="mt-1 text-sm text-zinc-400">
+                <h2 className="text-sm font-semibold text-slate-900">Bind Existing Pool</h2>
+                <p className="mt-1 text-sm text-slate-600">
                   This workspace has no on-chain pool binding yet. If the pool is already registered on-chain, query it
                   by `pool_id` and bind it here.
                 </p>
               </div>
               <PoolRegistrationStatus poolTicker={pool.ticker} onBound={onPoolRefreshed} embedded />
             </div>
-            <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-4">
-              <h2 className="text-sm font-semibold text-zinc-100">Register New Pool</h2>
-              <p className="mt-2 text-sm text-zinc-400">
+            <div className="rounded-md border border-slate-200 bg-white p-4">
+              <h2 className="text-sm font-semibold text-slate-900">Register New Pool</h2>
+              <p className="mt-2 text-sm text-slate-600">
                 If this workspace does not correspond to an existing on-chain `pool_id`, use the registration flow
                 below. The hot node only prepares an unsigned transaction and submits a pre-signed transaction;
                 certificate generation and signing stay in the cold environment.
@@ -778,8 +786,8 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
               <tr>
                 <th className="px-3 py-2">Time</th>
                 <th className="px-3 py-2">Task</th>
+                <th className="px-3 py-2">Target</th>
                 <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Phase</th>
                 <th className="px-3 py-2">Detail</th>
               </tr>
             </thead>
@@ -797,17 +805,17 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                     <tr key={task.task_id} className="border-t border-slate-200">
                       <td className="px-3 py-2 text-slate-600">{task.created_at}</td>
                       <td className="px-3 py-2 font-medium text-slate-900">{formatTaskLabel(task.task_type)}</td>
+                      <td className="px-3 py-2 text-slate-600">{formatTargetLabel(task.machine_count)}</td>
                       <td className="px-3 py-2">
                         <span className={statusToneClass(task.status)}>{formatTaskLabel(task.status)}</span>
                       </td>
-                      <td className="px-3 py-2 text-slate-600">{task.phase ? formatTaskLabel(task.phase) : "--"}</td>
                       <td className="px-3 py-2 text-slate-600">
                         {taskError ? (
                           <span title={taskError} className="text-rose-700">
                             {taskError}
                           </span>
                         ) : (
-                          `${task.machine_count} machine(s)`
+                          task.phase ? formatTaskLabel(task.phase) : `${task.machine_count} machine(s)`
                         )}
                       </td>
                     </tr>
