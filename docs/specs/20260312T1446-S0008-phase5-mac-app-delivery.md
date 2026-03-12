@@ -349,3 +349,23 @@ Spec-ID: S0008
 
 ### 19.4 Change Request Delta
 - 2026-03-12 16:40 +0800 需求修订：按验收反馈修复 Sidebar 与 Welcome 窗体结构、文案和主流程入口节奏。
+
+## 20. Addendum (append-only)
+### 20.1 Execution Plan Delta
+- [x] p8-15 修复 Dashboard 设计对齐问题：titlebar 语义、中文信息架构、节点卡与详情交互、日志表头统一
+
+### 20.2 Execution Log Delta
+- 2026-03-12 16:52 +0800 p8-15 started: 根据最新审查清单修复 Dashboard 与 prototype 的结构和文案偏差。
+- 2026-03-12 17:06 +0800 p8-15 completed: 完成 Dashboard titlebar/Telemetry orbit/节点卡语义/详情 tabs 语义化/日志中文化，并移除非设计主区块。
+
+### 20.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "Ouro Ops · Dashboard|集群概览（BP \+ Relays）|节点详情|近期操作日志|Telemetry" src/pages/Dashboard.tsx | result: pass | note: Dashboard 主结构、标题与中文区块文案已对齐
+- TC-P8-004 | stack: ui | command: rg -n "fieldset|legend className=\"sr-only\"|type=\"radio\"|htmlFor=\"node-tab-" src/pages/Dashboard.tsx | result: pass | note: 节点详情 Tab 改为语义化 segment 控件（fieldset/legend/radio/label）
+- TC-P8-003 | stack: ui | command: rg -n "Within 1s|0-50ms|50-100ms|100-500ms|>1s|block: .* slot:" src/pages/Dashboard.tsx | result: pass | note: Connections & Peers 与 Resources 底部摘要结构已对齐设计稿
+- TC-P8-003 | stack: ui | command: rg -n "KES remain|立即 Rotate|animate-pulse|Δ.*e" src/pages/Dashboard.tsx | result: pass | note: BP 卡片 KES remain/CTA 文案、脉冲提示与 epoch 差语义已收敛
+- TC-P8-003 | stack: ui | command: rg -n "Bound On-chain Pool|Bind Existing Pool|Register New Pool|PoolRegistrationStatus|PoolRegistrationWizard" src/pages/Dashboard.tsx | result: pass | note: Dashboard 已移除非设计主区块（绑定/注册）
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 142/142 通过（仅 dead_code warning）
+
+### 20.4 Change Request Delta
+- 2026-03-12 16:52 +0800 需求修订：按 Dashboard 差异清单逐项修复标题、文案、节点卡语义、节点详情与日志结构。

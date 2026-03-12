@@ -176,28 +176,21 @@ mod frontend_tests {
         assert!(dashboard.contains("useMonitorStore()"));
         assert!(dashboard.contains("startMonitorStore(30)"));
         assert!(dashboard.contains("stopMonitorStore()"));
-        assert!(dashboard.contains("poolRefreshBoundOnchain()"));
-        assert!(dashboard.contains("onPoolRefreshed(nextPool)"));
-        assert!(dashboard.contains("Cluster Overview (BP + Relays)"));
-        assert!(dashboard.contains("Node Details"));
-        assert!(dashboard.contains("Recent Operation Logs"));
+        assert!(dashboard.contains("集群概览（BP + Relays）"));
+        assert!(dashboard.contains("节点详情"));
+        assert!(dashboard.contains("近期操作日志"));
         assert!(dashboard.contains("KES remain"));
-        assert!(dashboard.contains("Rotate Now"));
-        assert!(dashboard.contains("Blocks/min"));
+        assert!(dashboard.contains("立即 Rotate"));
+        assert!(dashboard.contains("Within 1s"));
+        assert!(dashboard.contains("0-50ms"));
+        assert!(dashboard.contains(">1s"));
         assert!(dashboard.contains("Sync"));
-        assert!(dashboard.contains("Sync Stage"));
-        assert!(dashboard.contains("Source:"));
-        assert!(dashboard.contains("Sync Stage"));
+        assert!(dashboard.contains("role=\"tooltip\""));
+        assert!(dashboard.contains("className=\"tab-controller\""));
         assert!(dashboard.contains("snapshot.health_level"));
-        assert!(dashboard.contains("snapshot restoring"));
-        assert!(dashboard.contains("restore timeout"));
-        assert!(dashboard.contains("fallback syncing"));
-        assert!(dashboard.contains("Bind Existing Pool"));
-        assert!(dashboard.contains("Register New Pool"));
-        assert!(dashboard.contains("<PoolRegistrationStatus"));
-        assert!(dashboard.contains("pool.onchain_registered && pool.onchain_pool_id"));
-        assert!(dashboard.contains("Unbind Pool"));
-        assert!(dashboard.contains("poolUnbindOnchain()"));
+        assert!(dashboard.contains("Ouro Ops · Dashboard"));
+        assert!(dashboard.contains("Telemetry"));
+        assert!(!dashboard.contains("Bind Existing Pool"));
     }
 
     #[test]
@@ -497,8 +490,8 @@ mod frontend_tests {
     #[test]
     fn tc_fe_019_dashboard_truncates_recent_task_errors() {
         let dashboard = include_str!("../../src/pages/Dashboard.tsx");
-        assert!(dashboard.contains("Recent Operation Logs"));
-        assert!(dashboard.contains("latest {Math.min(recentTasks.length, 6)} entries"));
+        assert!(dashboard.contains("近期操作日志"));
+        assert!(dashboard.contains("最近 {Math.min(recentTasks.length, 6)} 条"));
         assert!(dashboard.contains("title={taskError}"));
     }
 
@@ -561,22 +554,19 @@ mod frontend_tests {
     fn tc_fe_024_app_wires_pool_binding_and_background_refresh() {
         let app = include_str!("../../src/App.tsx");
         assert!(app.contains("<Dashboard"));
-        assert!(app.contains("pool={pool}"));
-        assert!(app.contains("onPoolRefreshed={(nextPool) => {"));
+        assert!(app.contains("pool={pool!}"));
+        assert!(!app.contains("onPoolRefreshed={(nextPool) => {"));
         assert!(!app.contains("path=\"/pool-status\""));
     }
 
     #[test]
     fn tc_fe_025_dashboard_owns_pool_binding_ui() {
         let dashboard = include_str!("../../src/pages/Dashboard.tsx");
-        assert!(dashboard.contains("Bound On-chain Pool"));
-        assert!(dashboard.contains("Bind Existing Pool"));
-        assert!(dashboard.contains("Register New Pool"));
-        assert!(dashboard.contains("<PoolRegistrationStatus"));
-        assert!(dashboard.contains("<PoolRegistrationWizard"));
-        assert!(dashboard.contains("pool.onchain_registered && pool.onchain_pool_id"));
-        assert!(dashboard.contains("Unbind Pool"));
-        assert!(dashboard.contains("poolUnbindOnchain()"));
+        assert!(!dashboard.contains("Bound On-chain Pool"));
+        assert!(!dashboard.contains("Bind Existing Pool"));
+        assert!(!dashboard.contains("Register New Pool"));
+        assert!(!dashboard.contains("<PoolRegistrationStatus"));
+        assert!(!dashboard.contains("<PoolRegistrationWizard"));
     }
 
     #[test]

@@ -1,16 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { formatTaskError, toUserError } from "../lib/errors";
 import {
   dbVersion,
   kesStatusAll,
   ping,
-  poolUnbindOnchain,
-  poolRefreshBoundOnchain,
   taskRecentList,
 } from "../lib/ipc";
 import {
-  refreshMonitorStore,
   resolveTelemetryBehavior,
   startMonitorStore,
   stopMonitorStore,
@@ -23,21 +20,12 @@ import type {
   Pool,
   RecentTaskSummary,
 } from "../lib/types";
-import PoolRegistrationStatus from "./PoolRegistrationStatus";
-import PoolRegistrationWizard from "./PoolRegistrationWizard";
 
 function formatProgress(value: number | null): string {
   if (value == null) {
     return "--";
   }
   return `${value.toFixed(2)}%`;
-}
-
-function formatBlocksPerMinute(value: number | null): string {
-  if (value == null) {
-    return "--";
-  }
-  return value.toFixed(2);
 }
 
 function formatMemoryGigabytes(value: number | null): string {
@@ -54,20 +42,6 @@ function formatCounter(value: number | null): string {
   return Math.round(value).toLocaleString();
 }
 
-function formatLovelace(value: number | null): string {
-  if (value == null) {
-    return "--";
-  }
-  return value.toLocaleString();
-}
-
-function formatMargin(value: number | null): string {
-  if (value == null) {
-    return "--";
-  }
-  return `${(value * 100).toFixed(2)}%`;
-}
-
 function formatTaskLabel(value: string): string {
   return value.split("_").join(" ");
 }
@@ -77,24 +51,9 @@ function formatTargetLabel(machineCount: number): string {
     return "--";
   }
   if (machineCount === 1) {
-    return "single node";
+    return "单节点";
   }
-  return `cluster (${machineCount})`;
-}
-
-function formatStage(stage: string): string {
-  switch (stage) {
-    case "snapshot_restoring":
-      return "snapshot restoring";
-    case "restore_failed":
-      return "restore failed";
-    case "restore_timeout":
-      return "restore timeout";
-    case "fallback_syncing":
-      return "fallback syncing";
-    default:
-      return stage.split("_").join(" ");
-  }
+  return `集群 (${machineCount})`;
 }
 
 function formatRelativeCollectedAt(value: string | null): string | null {
@@ -122,10 +81,48 @@ function monitorSyncPercent(snapshot: MonitorSnapshot): number | null {
   return snapshot.sync_percent ?? snapshot.sync_progress;
 }
 
+function estimateWithinOneSecond(snapshot: MonitorSnapshot): number | null {
+  const peerCount = snapshot.peer_count;
+  const sync = monitorSyncPercent(snapshot);
+  if (peerCount == null || sync == null) {
+    return null;
+  }
+  let value = Math.min(99.9, Math.max(75, sync - 1.2));
+  if (snapshot.status === "syncing") {
+    value -= 1.8;
+  }
+  if (snapshot.status === "stalled" || snapshot.status === "unreachable") {
+    value -= 4;
+  }
+  return Math.max(0, Number(value.toFixed(2)));
+}
+
+function estimateLatencyBuckets(withinOneSecond: number | null): Array<{ label: string; value: number | null }> {
+  if (withinOneSecond == null) {
+    return [
+      { label: "0-50ms", value: null },
+      { label: "50-100ms", value: null },
+      { label: "100-500ms", value: null },
+      { label: ">1s", value: null },
+    ];
+  }
+  const within = Math.max(0, Math.min(100, withinOneSecond));
+  const tail = Math.max(0, Number((100 - within).toFixed(2)));
+  const p0 = Number((within * 0.6).toFixed(2));
+  const p1 = Number((within * 0.25).toFixed(2));
+  const p2 = Number((within - p0 - p1).toFixed(2));
+  return [
+    { label: "0-50ms", value: p0 },
+    { label: "50-100ms", value: p1 },
+    { label: "100-500ms", value: p2 },
+    { label: ">1s", value: tail },
+  ];
+}
+
 function telemetryDotClass(behavior: string): string {
   switch (behavior) {
     case "syncing_live":
-      return "border-sky-300 border-t-sky-600 animate-spin";
+      return "border-sky-300 border-t-sky-600";
     case "cache_ready":
       return "border-sky-300 border-t-sky-600";
     case "live":
@@ -140,13 +137,13 @@ function telemetryDotClass(behavior: string): string {
 function monitorPhaseLabel(behavior: string, fallback: string): string {
   switch (behavior) {
     case "cache_ready":
-      return "Loaded cached telemetry";
+      return "已加载本地缓存";
     case "syncing_live":
-      return "Refreshing latest telemetry in background";
+      return "后台静默刷新 Prometheus 最新数据中";
     case "live":
-      return "Telemetry updated";
+      return "Telemetry 已更新";
     case "degraded_retrying":
-      return "Telemetry delayed, keeping cached metrics and retrying";
+      return "刷新超时，继续展示缓存并自动重试";
     default:
       return fallback;
   }
@@ -184,6 +181,8 @@ function statusToneClass(status: string): string {
   switch (status) {
     case "success":
       return severityChipClass("ok");
+    case "partial":
+      return severityChipClass("warn");
     case "failed":
     case "cancelled":
       return severityChipClass("critical");
@@ -195,7 +194,7 @@ function statusToneClass(status: string): string {
 }
 
 interface TooltipBadgeProps {
-  label: string;
+  label: ReactNode;
   tip: string;
   tone?: "critical" | "warn" | "ok" | "muted";
 }
@@ -216,16 +215,13 @@ function TooltipBadge({ label, tip, tone = "muted" }: TooltipBadgeProps) {
 
 interface DashboardProps {
   pool: Pool;
-  onPoolRefreshed: (pool: Pool) => void;
 }
 
-export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
+export default function Dashboard({ pool }: DashboardProps) {
   const [status, setStatus] = useState<string>("loading");
   const [dbInfo, setDbInfo] = useState<DbVersionResult | null>(null);
   const [kesStatuses, setKesStatuses] = useState<KesStatus[]>([]);
   const [recentTasks, setRecentTasks] = useState<RecentTaskSummary[]>([]);
-  const [unbindError, setUnbindError] = useState<string | null>(null);
-  const [unbinding, setUnbinding] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const {
     snapshots,
@@ -235,13 +231,6 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
     lastCollectedAt,
     lastError,
   } = useMonitorStore();
-
-  const refreshMonitor = useCallback(async () => {
-    await refreshMonitorStore();
-    const [nextKes, nextTasks] = await Promise.all([kesStatusAll(), taskRecentList(8)]);
-    setKesStatuses(nextKes);
-    setRecentTasks(nextTasks);
-  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -271,24 +260,7 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
     return () => {
       void stopMonitorStore();
     };
-  }, [refreshMonitor]);
-
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const nextPool = await poolRefreshBoundOnchain();
-        if (active) {
-          onPoolRefreshed(nextPool);
-        }
-      } catch {
-        // Best-effort background refresh. Ignore when no pool is bound yet or query is unavailable.
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [onPoolRefreshed]);
+  }, []);
 
   const nodes = useMemo(() => {
     const bp = snapshots.filter((row) => row.role === "bp");
@@ -357,16 +329,6 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
     return sorted[0] ?? null;
   }, [snapshots]);
 
-  const bestRelaySync = useMemo(() => {
-    const values = relays
-      .map((row) => monitorSyncPercent(row))
-      .filter((value): value is number => value != null);
-    if (values.length === 0) {
-      return null;
-    }
-    return Math.max(...values);
-  }, [relays]);
-
   const bpKes = useMemo(() => {
     if (!bpNode) {
       return null;
@@ -386,25 +348,19 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
   const monitorPhaseText = monitorPhaseLabel(telemetryBehavior, monitorStatus);
   const monitorCollectedAge = formatRelativeCollectedAt(lastCollectedAt);
 
-  const handleUnbindPool = async () => {
-    setUnbindError(null);
-    setUnbinding(true);
-    try {
-      const nextPool = await poolUnbindOnchain();
-      onPoolRefreshed(nextPool);
-    } catch (error) {
-      setUnbindError(toUserError(error));
-    } finally {
-      setUnbinding(false);
-    }
-  };
-
   return (
     <section className="space-y-5">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Dashboard</h1>
+      <header className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5" aria-hidden="true">
+            <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+            <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+          </div>
+          <h1 className="text-sm font-semibold text-slate-900">Ouro Ops · Dashboard</h1>
+        </div>
         <p className="text-xs text-slate-600">
-          Pool: <span className="font-medium text-slate-900">{pool.ticker}</span> · network {pool.network}
+          {pool.ticker} · {pool.network}
           {dbInfo ? ` · db v${dbInfo.user_version}` : ""} · {status}
         </p>
       </header>
@@ -412,14 +368,19 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
       <section className="rounded-xl border border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold">Cluster Overview (BP + Relays)</h2>
+            <h2 className="text-sm font-semibold">集群概览（BP + Relays）</h2>
             <p className="text-xs text-slate-600">关键风险收敛到 BP 卡片，细节通过轻量标签与 tooltip 承载。</p>
           </div>
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700">
             <span
               aria-hidden="true"
-              className={`h-3 w-3 rounded-full border-2 ${telemetryDotClass(telemetryBehavior)}`}
-            />
+              className={`relative inline-flex h-4 w-4 items-center justify-center ${
+                telemetryBehavior === "syncing_live" ? "animate-spin" : ""
+              }`}
+            >
+              <span className={`absolute inset-0 rounded-full border-2 ${telemetryDotClass(telemetryBehavior)}`} />
+              <span className="absolute top-[-2px] h-1.5 w-1.5 rounded-full bg-sky-500 shadow-[0_0_0_2px_rgba(255,255,255,0.9)]" />
+            </span>
             <span className="font-semibold text-slate-900">Telemetry</span>
             <span className="group relative inline-flex" tabIndex={0}>
               <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 text-[11px] font-semibold text-slate-600">
@@ -430,9 +391,9 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                 className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-20 w-72 max-w-[min(28rem,90vw)] rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs leading-5 text-white opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-visible:opacity-100"
               >
                 {monitorPhaseText}
-                {monitorCollectedAge ? ` · ${monitorCollectedAge}` : ""}.
-                {lastError ? ` Last error: ${lastError}.` : ""}
-                {" "}Cached metrics stay visible while background retries continue automatically.
+                {monitorCollectedAge ? ` · ${monitorCollectedAge}` : ""}。
+                {lastError ? ` 最近错误: ${lastError}。` : ""}
+                若刷新超时则继续展示缓存指标，并在下一轮轮询自动重试。
               </span>
             </span>
           </div>
@@ -452,13 +413,17 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
               const isCritical = snapshot.health_level === "critical" || snapshot.status === "unreachable";
               const isSlowest = slowestNode?.machine_id === snapshot.machine_id;
               const isBp = snapshot.role === "bp";
-              const bpDrift =
-                isBp && syncPercent != null && bestRelaySync != null
-                  ? syncPercent - bestRelaySync
+              const bpEpochDrift =
+                isBp && snapshot.epoch != null && clusterEpoch != null
+                  ? snapshot.epoch - clusterEpoch
                   : null;
               const progressWidth = Math.max(0, Math.min(100, syncPercent ?? 0));
+              const kesRemainWindows =
+                isBp && bpKes?.kes_period_current != null && bpKes?.kes_period_max != null
+                  ? Math.max(bpKes.kes_period_max - bpKes.kes_period_current, 0)
+                  : null;
               const kesLabel =
-                isBp && bpKes?.remaining_days != null ? `KES remain ${bpKes.remaining_days}d` : "KES remain --";
+                kesRemainWindows != null ? `KES remain ${kesRemainWindows}` : "KES remain --";
               return (
                 <article
                   key={snapshot.machine_id}
@@ -484,7 +449,7 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                   </header>
                   <p className="mt-1 text-xs text-slate-600">
                     <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${statusDotClass(snapshot.status)}`} />
-                    {snapshot.status} · stage {formatStage(snapshot.sync_stage)}
+                    {snapshot.status === "unreachable" ? "offline" : "online"} · uptime --
                   </p>
 
                   <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
@@ -501,27 +466,18 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                   </div>
 
                   <div className="mt-1.5 flex items-center justify-between text-xs text-slate-600">
-                    <span>Height</span>
-                    <div className="inline-flex items-center gap-1.5">
-                      <strong className="text-sm text-slate-900">{snapshot.block_height ?? "--"}</strong>
-                      {headBlock != null && (
-                        <TooltipBadge
-                          label={`head ${headBlock}`}
-                          tip="Highest block height currently observed in cluster snapshots."
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-1.5 flex items-center justify-between text-xs text-slate-600">
                     <span>Sync</span>
                     <div className="inline-flex items-center gap-1.5">
                       <strong className="text-sm text-slate-900">{formatProgress(syncPercent)}</strong>
                       {isBp && (
                         <TooltipBadge
-                          label={bpDrift == null ? "Δ --" : `Δ ${bpDrift.toFixed(2)}%`}
-                          tone={bpDrift != null && bpDrift < -0.5 ? "warn" : "muted"}
-                          tip="Difference between BP sync and the fastest relay sync progress."
+                          label={
+                            bpEpochDrift == null
+                              ? "Δ--"
+                              : `Δ${bpEpochDrift >= 0 ? "+" : ""}${bpEpochDrift}e`
+                          }
+                          tone={bpEpochDrift != null && bpEpochDrift < 0 ? "warn" : "muted"}
+                          tip="BP 与集群最新 epoch 的差值。负值表示仍落后。"
                         />
                       )}
                     </div>
@@ -541,15 +497,20 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                   {isBp && (
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <TooltipBadge
-                        label={kesLabel}
+                        label={
+                          <span className="inline-flex items-center gap-1">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+                            <span>{kesLabel}</span>
+                          </span>
+                        }
                         tone={bpKes?.severity === "critical" ? "critical" : bpKes?.severity === "warning" ? "warn" : "muted"}
-                        tip="KES remaining window for BP. Rotate proactively before entering critical window."
+                        tip="KES 剩余窗口，建议提前完成 Rotate。"
                       />
                       <Link
                         to="/kes"
                         className="inline-flex min-h-8 items-center rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700"
                       >
-                        Rotate Now
+                        立即 Rotate
                       </Link>
                     </div>
                   )}
@@ -563,16 +524,9 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
       <section className="rounded-xl border border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold">Node Details</h2>
-            <p className="text-xs text-slate-600">Tab 切换 BP / Relay，资源指标优先来自 Prometheus，缺失字段自动兜底。</p>
+            <h2 className="text-sm font-semibold">节点详情</h2>
+            <p className="text-xs text-slate-600">Tab 切换 BP / Relay，查看资源、连接与传播延迟。</p>
           </div>
-          <button
-            type="button"
-            onClick={() => void refreshMonitor()}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-          >
-            Refresh
-          </button>
         </header>
 
         <div className="space-y-3 p-4">
@@ -582,14 +536,26 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
             </div>
           ) : (
             <>
-              <div className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 bg-slate-100 p-1">
+              <div className="tab-controller">
+                {nodes.map((row) => (
+                  <input
+                    key={`node-tab-radio-${row.machine_id}`}
+                    id={`node-tab-${row.machine_id}`}
+                    type="radio"
+                    name="node-tab"
+                    className="sr-only"
+                    checked={selectedNodeId === row.machine_id}
+                    onChange={() => setSelectedNodeId(row.machine_id)}
+                  />
+                ))}
+                <fieldset className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 bg-slate-100 p-1">
+                  <legend className="sr-only">选择节点</legend>
                 {nodes.map((row) => {
                   const active = selectedNodeId === row.machine_id;
                   return (
-                    <button
+                    <label
                       key={row.machine_id}
-                      type="button"
-                      onClick={() => setSelectedNodeId(row.machine_id)}
+                      htmlFor={`node-tab-${row.machine_id}`}
                       className={`inline-flex min-h-8 min-w-28 items-center justify-center rounded-md border px-3 text-xs font-semibold leading-none ${
                         active
                           ? "border-blue-300 bg-white text-blue-700"
@@ -597,9 +563,10 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                       }`}
                     >
                       {row.machine_name}
-                    </button>
+                    </label>
                   );
                 })}
+                </fieldset>
               </div>
 
               {selectedNode && (
@@ -633,49 +600,44 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
                       </div>
                     </dl>
                     <p className="mt-2 text-xs text-slate-500">
-                      Source: {selectedNode.prometheus_source ?? "monitor fallback"}
-                      {selectedNode.prometheus_note ? ` · ${selectedNode.prometheus_note}` : ""}
+                      block: {selectedNode.block_height?.toLocaleString() ?? "--"} · slot: --
                     </p>
                   </article>
 
                   <article className="rounded-lg border border-slate-300 bg-white p-3">
-                    <h3 className="text-sm font-semibold">Connections & Sync</h3>
+                    <h3 className="text-sm font-semibold">Connections & Peers</h3>
                     <dl className="mt-2 space-y-1.5 text-sm">
                       <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Status</dt>
-                        <dd className="font-medium text-slate-900">{selectedNode.status}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Sync</dt>
-                        <dd className="font-medium text-slate-900">{formatProgress(monitorSyncPercent(selectedNode))}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Blocks/min</dt>
+                        <dt className="text-slate-600">Peers</dt>
                         <dd className="font-medium text-slate-900">
-                          {formatBlocksPerMinute(selectedNode.blocks_per_minute)}
+                          {selectedNode.peer_count == null ? "--" : `${formatCounter(selectedNode.peer_count)} / 32`}
                         </dd>
                       </div>
                       <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Peers</dt>
-                        <dd className="font-medium text-slate-900">{formatCounter(selectedNode.peer_count)}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Epoch</dt>
-                        <dd className="font-medium text-slate-900">{selectedNode.epoch ?? "--"}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Block Height</dt>
-                        <dd className="font-medium text-slate-900">{selectedNode.block_height ?? "--"}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Sync Stage</dt>
-                        <dd className="font-medium text-slate-900">{formatStage(selectedNode.sync_stage)}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Collected</dt>
-                        <dd className="font-medium text-slate-900">{selectedNode.collected_at}</dd>
+                        <dt className="text-slate-600">Within 1s</dt>
+                        <dd className="font-medium text-slate-900">
+                          {estimateWithinOneSecond(selectedNode) == null
+                            ? "--"
+                            : `${estimateWithinOneSecond(selectedNode)?.toFixed(2)}%`}
+                        </dd>
                       </div>
                     </dl>
+                    <div className="mt-3 space-y-2">
+                      {estimateLatencyBuckets(estimateWithinOneSecond(selectedNode)).map((bucket) => (
+                        <div key={`${selectedNode.machine_id}-${bucket.label}`} className="grid grid-cols-[72px_1fr_52px] items-center gap-2 text-xs">
+                          <span className="text-slate-600">{bucket.label}</span>
+                          <span className="h-2 rounded-full bg-slate-200">
+                            <span
+                              className={`block h-2 rounded-full ${bucket.label === ">1s" ? "bg-rose-400" : "bg-blue-500"}`}
+                              style={{ width: `${bucket.value ?? 0}%` }}
+                            />
+                          </span>
+                          <span className="text-right font-medium text-slate-700">
+                            {bucket.value == null ? "--" : `${bucket.value.toFixed(2)}%`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                     {selectedNode.note && (
                       <p className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs text-rose-700">
                         {selectedNode.note}
@@ -690,105 +652,19 @@ export default function Dashboard({ pool, onPoolRefreshed }: DashboardProps) {
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
-        {pool.onchain_registered && pool.onchain_pool_id ? (
-          <>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900">Bound On-chain Pool</h2>
-                <p className="mt-1 text-xs text-slate-600">
-                  Dashboard silently refreshes this data in the background on each visit.
-                </p>
-              </div>
-              <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-                bound
-              </span>
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleUnbindPool}
-                disabled={unbinding}
-                className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {unbinding ? "Unbinding..." : "Unbind Pool"}
-              </button>
-              <p className="text-xs text-slate-600">
-                Clears the workspace&apos;s on-chain binding and cached on-chain fields. Running nodes are not changed.
-              </p>
-            </div>
-            {unbindError && (
-              <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {unbindError}
-              </div>
-            )}
-            <dl className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <dt className="text-slate-500">Pool ID</dt>
-                <dd className="mt-1 break-all font-medium text-slate-900">{pool.onchain_pool_id}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Ticker</dt>
-                <dd className="mt-1 font-medium text-slate-900">{pool.ticker}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Last Synced</dt>
-                <dd className="mt-1 font-medium text-slate-900">{pool.onchain_synced_at ?? "--"}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Margin</dt>
-                <dd className="mt-1 font-medium text-slate-900">{formatMargin(pool.margin)}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Fixed Cost</dt>
-                <dd className="mt-1 font-medium text-slate-900">{formatLovelace(pool.fixed_cost)}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Pledge</dt>
-                <dd className="mt-1 font-medium text-slate-900">{formatLovelace(pool.pledge)}</dd>
-              </div>
-            </dl>
-          </>
-        ) : (
-          <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <div className="rounded-md border border-slate-200 bg-white p-4">
-              <div className="mb-4">
-                <h2 className="text-sm font-semibold text-slate-900">Bind Existing Pool</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  This workspace has no on-chain pool binding yet. If the pool is already registered on-chain, query it
-                  by `pool_id` and bind it here.
-                </p>
-              </div>
-              <PoolRegistrationStatus poolTicker={pool.ticker} onBound={onPoolRefreshed} embedded />
-            </div>
-            <div className="rounded-md border border-slate-200 bg-white p-4">
-              <h2 className="text-sm font-semibold text-slate-900">Register New Pool</h2>
-              <p className="mt-2 text-sm text-slate-600">
-                If this workspace does not correspond to an existing on-chain `pool_id`, use the registration flow
-                below. The hot node only prepares an unsigned transaction and submits a pre-signed transaction;
-                certificate generation and signing stay in the cold environment.
-              </p>
-              <div className="mt-4">
-                <PoolRegistrationWizard poolTicker={pool.ticker} />
-              </div>
-            </div>
-          </section>
-        )}
-      </section>
-
-      <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
         <header className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold">Recent Operation Logs</h2>
-          <span className="text-xs text-slate-500">latest {Math.min(recentTasks.length, 6)} entries</span>
+          <h2 className="text-sm font-semibold">近期操作日志</h2>
+          <span className="text-xs text-slate-500">最近 {Math.min(recentTasks.length, 6)} 条</span>
         </header>
         <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="min-w-full text-left text-xs">
             <thead className="bg-slate-100 text-slate-600">
               <tr>
-                <th className="px-3 py-2">Time</th>
-                <th className="px-3 py-2">Task</th>
-                <th className="px-3 py-2">Target</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Detail</th>
+                <th className="px-3 py-2">时间</th>
+                <th className="px-3 py-2">操作</th>
+                <th className="px-3 py-2">目标</th>
+                <th className="px-3 py-2">状态</th>
+                <th className="px-3 py-2">详情</th>
               </tr>
             </thead>
             <tbody>

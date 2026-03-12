@@ -62,12 +62,7 @@ function App() {
         <Route
           path="/"
           element={
-            <Dashboard
-              pool={pool!}
-              onPoolRefreshed={(nextPool) => {
-                setPool(nextPool);
-              }}
-            />
+            <Dashboard pool={pool!} />
           }
         />
         <Route path="/kes" element={pool ? <KesManager poolTicker={pool.ticker} /> : null} />
