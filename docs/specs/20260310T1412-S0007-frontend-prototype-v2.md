@@ -873,3 +873,26 @@ Spec-ID: S0007
 
 ### 36.5 Change Request Delta
 - 2026-03-12 14:58 +0800 需求新增：Dashboard 节点详情 tab 当前全部平铺且没有切换逻辑，要求修复。
+
+## 37. Addendum (append-only)
+### 37.1 Execution Plan Delta
+- [x] p7-40 优化 Dashboard 节点详情 tab 样式：统一 item 宽度、文字垂直居中、容器按内容收缩
+
+### 37.2 Acceptance Delta
+- TC-151 节点详情 tab 的三个 tab item 宽度一致，不再因文案长度产生视觉不齐。
+- TC-152 tab item 文案在垂直方向精确居中。
+- TC-153 tab 容器宽度按内容收缩（`fit-content` + `justify-self: start`），不占满整行容器。
+- TC-154 该修复保持纯 HTML/CSS 静态实现，不引入 JS 脚本。
+
+### 37.3 Execution Log Delta
+- 2026-03-12 15:08 +0800 p7-40 started: 根据反馈修正 tab 栏尺寸与对齐策略。
+- 2026-03-12 15:10 +0800 p7-40 completed: 改为等宽三列 inline-grid，并将 tab item 改为 flex 居中。
+
+### 37.4 Validation Evidence Delta
+- TC-151 | stack: ui | command: rg -n "grid-template-columns: repeat\\(3, clamp\\(84px, 10vw, 108px\\)\\)" prototype/s0007/styles.css | result: pass | note: 三个 tab item 使用统一列宽模板
+- TC-152 | stack: ui | command: rg -n "\\.seg-btn \\{|display: inline-flex;|align-items: center;|justify-content: center;|line-height: 1" prototype/s0007/styles.css | result: pass | note: 文案已使用 flex 垂直居中
+- TC-153 | stack: ui | command: rg -n "justify-self: start;|inline-size: fit-content;" prototype/s0007/styles.css | result: pass | note: tab 容器按内容宽度收缩并左对齐
+- TC-154 | stack: ui | command: rg -n "<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: 保持静态原型边界
+
+### 37.5 Change Request Delta
+- 2026-03-12 15:08 +0800 需求新增：tab 样式存在 item 宽度不一致、文本未垂直居中、容器宽度不合理的问题。

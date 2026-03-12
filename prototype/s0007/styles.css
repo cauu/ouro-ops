@@ -839,8 +839,11 @@ a {
   margin: 0;
   border: 1px solid var(--line);
   min-inline-size: 0;
-  display: inline-flex;
-  align-items: center;
+  display: inline-grid;
+  grid-template-columns: repeat(3, clamp(84px, 10vw, 108px));
+  justify-self: start;
+  inline-size: fit-content;
+  align-items: stretch;
   gap: 6px;
   border-radius: 10px;
   background: var(--surface-3);
@@ -856,6 +859,11 @@ a {
   font-size: 12px;
   font-weight: 620;
   padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1;
   cursor: pointer;
 }
 
