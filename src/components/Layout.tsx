@@ -134,7 +134,7 @@ export default function Layout({ pool }: LayoutProps) {
 
         <section className="flex min-w-0 flex-1 flex-col">
           <header className="drag-region border-b border-slate-200/80 bg-white/78 backdrop-blur-md" data-tauri-drag-region>
-            <div className="flex h-14 items-center justify-between gap-4 px-5">
+            <div className="drag-region flex h-14 items-center gap-4 px-5" data-tauri-drag-region>
               <div className="min-w-0">
                 <p className="no-drag text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   {toolbar.section} · {networkLabel(pool.network)}
@@ -146,6 +146,8 @@ export default function Layout({ pool }: LayoutProps) {
                   </span>
                 </div>
               </div>
+
+              <div className="drag-region flex-1" data-tauri-drag-region />
 
               <div className="no-drag flex shrink-0 items-center gap-2">
                 {toolbar.actions.map((action) => (

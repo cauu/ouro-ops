@@ -56,7 +56,7 @@ export default function Sidebar({ network, collapsed, onToggleCollapse }: Sideba
       }`}
     >
       <header className="drag-region border-b border-slate-200/80" data-tauri-drag-region>
-        <div className={`flex h-14 items-center pl-[74px] ${collapsed ? "pr-2" : "pr-3"}`}>
+        <div className={`drag-region flex h-14 items-center pl-[74px] ${collapsed ? "pr-2" : "pr-3"}`} data-tauri-drag-region>
           <div className="no-drag flex items-center gap-2">
             {!collapsed && (
               <IconButton title="新建工作区">
@@ -77,7 +77,7 @@ export default function Sidebar({ network, collapsed, onToggleCollapse }: Sideba
               )}
             </IconButton>
           </div>
-          <div className="flex-1" />
+          <div className="drag-region flex-1" data-tauri-drag-region />
         </div>
       </header>
 

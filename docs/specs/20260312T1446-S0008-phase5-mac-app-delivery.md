@@ -450,3 +450,19 @@ Spec-ID: S0008
 
 ### 25.4 Change Request Delta
 - 2026-03-12 17:32 +0800 需求修订：严格按 drag/no-drag 规则修复标题栏拖拽区域设计。
+
+## 26. Addendum (append-only)
+### 26.1 Execution Plan Delta
+- [x] p8-21 修复顶部空白区不可拖拽：为被覆盖的 header 内层容器与空白 spacer 显式添加 drag 标记
+
+### 26.2 Execution Log Delta
+- 2026-03-12 17:34 +0800 p8-21 started: 定位顶部空白区拖拽失败问题，确认由 header 内层全宽容器覆盖且缺失 drag 标记引发。
+- 2026-03-12 17:34 +0800 p8-21 completed: 为主内容与侧栏顶部内层容器及空白 `flex-1` 区域补充 `drag-region + data-tauri-drag-region`，保持交互元素 `no-drag` 不变，并通过构建/测试回归。
+
+### 26.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "data-tauri-drag-region|drag-region flex h-14|flex-1\\\" data-tauri-drag-region" src/components/Layout.tsx src/components/Sidebar.tsx | result: pass | note: 顶部空白区域已具备明确 drag 标记，覆盖层不再吞掉拖拽行为
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 拖拽修复后前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 144/144 通过（仅 dead_code warning）
+
+### 26.4 Change Request Delta
+- 2026-03-12 17:34 +0800 需求修订：修复顶部标题栏空白区域拖不动的问题。
