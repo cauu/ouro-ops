@@ -415,3 +415,21 @@ Spec-ID: S0008
 
 ### 23.4 Change Request Delta
 - 2026-03-12 17:15 +0800 需求修订：修复详情横向滚动条，复制入口改为文案右侧图标触发。
+
+## 24. Addendum (append-only)
+### 24.1 Execution Plan Delta
+- [x] p8-19 落地沉浸式自定义标题栏：Sidebar Header 红绿灯安全区 + 主内容动态 Toolbar + drag/no-drag 交互
+
+### 24.2 Execution Log Delta
+- 2026-03-12 17:27 +0800 p8-19 started: 根据最新要求将 mac 顶部布局改为沉浸式自定义标题栏，覆盖侧栏与主内容双头部结构。
+- 2026-03-12 17:27 +0800 p8-19 completed: 完成 `Overlay` 标题栏配置、traffic lights 定位、Sidebar 专属顶部操作区、主内容动态上下文 Toolbar、拖拽区域与 no-drag 交互约束，并通过构建与测试回归。
+
+### 24.3 Validation Evidence Delta
+- TC-P8-003 | stack: ui | command: rg -n "data-tauri-drag-region|toolbarContextFromPath|Update|Commit|Open|statusToneClass|onToggleCollapse|pl-\\[74px\\]" src/components/Layout.tsx src/components/Sidebar.tsx | result: pass | note: 左侧 header 与右侧动态 toolbar 结构、按钮分组、红绿灯安全区与侧栏折叠交互已落地
+- TC-P8-003 | stack: ui | command: rg -n "titleBarStyle|Overlay|trafficLightPosition|hiddenTitle" src-tauri/tauri.conf.json src-tauri/src/lib.rs | result: pass | note: mac 标题栏已切换 Overlay，并固定红绿灯位置到安全边距
+- TC-P8-003 | stack: ui | command: rg -n "drag-region|no-drag|-webkit-app-region|#root" src/index.css src/components/Layout.tsx src/components/Sidebar.tsx | result: pass | note: drag/no-drag 与全窗口高度基础样式已生效
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 自定义标题栏结构改造后前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 144/144 通过（仅 dead_code warning）
+
+### 24.4 Change Request Delta
+- 2026-03-12 17:27 +0800 需求修订：在当前项目直接实现 mac 沉浸式无边框/自定义标题栏布局与交互细节。

@@ -196,8 +196,24 @@ mod frontend_tests {
     #[test]
     fn tc_fe_009_macos_uses_native_window_titlebar_style() {
         let tauri_conf = include_str!("../../src-tauri/tauri.conf.json");
-        assert!(tauri_conf.contains("\"titleBarStyle\": \"Transparent\""));
+        assert!(tauri_conf.contains("\"titleBarStyle\": \"Overlay\""));
         assert!(tauri_conf.contains("\"hiddenTitle\": true"));
+        assert!(tauri_conf.contains("\"trafficLightPosition\""));
+        assert!(tauri_conf.contains("\"x\": 14"));
+        assert!(tauri_conf.contains("\"y\": 14"));
+    }
+
+    #[test]
+    fn tc_fe_010_layout_uses_custom_titlebar_drag_regions() {
+        let layout = include_str!("../../src/components/Layout.tsx");
+        let sidebar = include_str!("../../src/components/Sidebar.tsx");
+        let css = include_str!("../../src/index.css");
+        assert!(layout.contains("data-tauri-drag-region"));
+        assert!(sidebar.contains("data-tauri-drag-region"));
+        assert!(layout.contains("no-drag"));
+        assert!(sidebar.contains("no-drag"));
+        assert!(css.contains(".drag-region"));
+        assert!(css.contains(".no-drag"));
     }
 
     #[test]
@@ -498,7 +514,7 @@ mod frontend_tests {
         let dashboard = include_str!("../../src/pages/Dashboard.tsx");
         assert!(dashboard.contains("近期操作日志"));
         assert!(dashboard.contains("最近 {Math.min(recentTasks.length, 6)} 条"));
-        assert!(dashboard.contains("title={taskError}"));
+        assert!(dashboard.contains("title={detailText}"));
     }
 
     #[test]

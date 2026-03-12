@@ -5,3 +5,18 @@
 body {
   margin: 0;
 }
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}

@@ -14,8 +14,12 @@
     "windows": [
       {
         "title": "Ouro Ops",
-        "titleBarStyle": "Transparent",
+        "titleBarStyle": "Overlay",
         "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 14,
+          "y": 14
+        },
         "width": 1200,
         "height": 800,
         "minWidth": 1000,
