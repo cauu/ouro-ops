@@ -10,7 +10,7 @@ use rusqlite::{params, Connection};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::db::{machine_list as repo_machine_list, DbState, MachineRow};
+use crate::db::{audit_log_insert, machine_list as repo_machine_list, DbState, MachineRow};
 use crate::error::AppError;
 
 pub struct MonitorPollingState(pub Mutex<Option<MonitorPollingHandle>>);
@@ -926,6 +926,17 @@ async fn collect_snapshots_from_db_state(
     Ok(snapshots)
 }
 
+fn audit_telemetry_degraded_retry(db: &DbState, machine_ids: &Option<Vec<i64>>, message: &str) {
+    let Ok(conn) = db.0.lock() else {
+        return;
+    };
+    let detail = serde_json::json!({
+        "machine_ids": machine_ids,
+        "reason": message,
+    });
+    let _ = audit_log_insert(&conn, "telemetry_degraded_retry", &detail);
+}
+
 #[tauri::command]
 pub async fn monitor_start_polling(
     machine_ids: Option<Vec<i64>>,
@@ -974,9 +985,11 @@ pub async fn monitor_start_polling(
                     let _ = app_handle_for_task.emit("monitor:snapshot", &snapshots);
                 }
                 Err(err) => {
+                    let err_message = err.to_string();
+                    audit_telemetry_degraded_retry(&db_state, &machine_ids, err_message.as_str());
                     let _ = app_handle_for_task.emit(
                         "monitor:error",
-                        serde_json::json!({ "message": err.to_string() }),
+                        serde_json::json!({ "message": err_message }),
                     );
                 }
             }

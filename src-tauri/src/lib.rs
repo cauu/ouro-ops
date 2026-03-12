@@ -613,6 +613,7 @@ mod frontend_tests {
         let runtime = include_str!("commands/runtime.rs");
         let kes = include_str!("commands/kes.rs");
         let upgrade = include_str!("commands/upgrade.rs");
+        let monitor = include_str!("commands/monitor.rs");
 
         assert!(pool.contains("\"pool_init\""));
         assert!(pool.contains("\"pool_update\""));
@@ -629,5 +630,6 @@ mod frontend_tests {
         assert!(upgrade.contains("\"upgrade_start\""));
         assert!(upgrade.contains("\"upgrade_confirm_next\""));
         assert!(upgrade.contains("\"upgrade_rollback\""));
+        assert!(monitor.contains("\"telemetry_degraded_retry\""));
     }
 }

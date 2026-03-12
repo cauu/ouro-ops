@@ -66,8 +66,8 @@ Spec-ID: S0008
 - [x] p8-6 实现 Deploy Step1 手动节点输入 + 机器创建，落实默认开关策略与无 mithril 初始化约束
 - [x] p8-7 实现 KES Rotate 向导生产化页面与关键风险闸门（含 KES remain 关联操作）
 - [x] p8-8 实现 Upgrade 向导生产化页面与 BP gate / rollback 提示
-- [ ] p8-9 打通审计与回归：关键操作日志、错误提示一致性、文案与状态对齐
-- [ ] p8-10 完成 mac 桌面场景验收与回归测试，准备阶段结项评审
+- [x] p8-9 打通审计与回归：关键操作日志、错误提示一致性、文案与状态对齐
+- [x] p8-10 完成 mac 桌面场景验收与回归测试，准备阶段结项评审
 
 ## 4. Test And Acceptance Criteria
 - TC-P8-001 `docs/specs/` 根目录仅保留 `S0008` 作为 active spec，`S0007` 进入 completed，文档入口一致。
@@ -262,3 +262,36 @@ Spec-ID: S0008
 
 ### 14.4 Change Request Delta
 - 2026-03-12 15:55 +0800 执行推进：继续推进 S0008，完成 p8-7/p8-8 的 KES/Upgrade 原型化落地。
+
+## 15. Addendum (append-only)
+### 15.1 Execution Plan Delta
+- [x] p8-9 打通审计与回归：关键操作日志、错误提示一致性、文案与状态对齐
+
+### 15.2 Execution Log Delta
+- 2026-03-12 16:04 +0800 p8-9 started: 复核关键操作审计清单与前端错误提示一致性覆盖。
+- 2026-03-12 16:05 +0800 p8-9 completed: 补齐 telemetry 降级重试事件审计，并通过全量构建/测试回归。
+
+### 15.3 Validation Evidence Delta
+- TC-P8-014 | stack: rust | command: rg -n "telemetry_degraded_retry|pool_unbind_onchain|pool_bind_onchain|deploy_start|kes_push_start|upgrade_start|upgrade_rollback" src-tauri/src/commands/*.rs src-tauri/src/lib.rs | result: pass | note: 审计关键操作清单已覆盖，新增 telemetry 降级重试审计动作
+- TC-P8-014 | stack: ui | command: rg -n "toUserError|formatTaskError" src/pages/Dashboard.tsx src/pages/DeployWizard.tsx src/pages/KesManager.tsx src/pages/UpgradeWizard.tsx | result: pass | note: 主流程页面错误提示辅助函数使用一致
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: p8-9 审计与文案调整后前端构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 全量测试 142/142 通过
+
+### 15.4 Change Request Delta
+- 2026-03-12 16:04 +0800 执行推进：继续推进 S0008，完成 p8-9 审计与一致性回归收口。
+
+## 16. Addendum (append-only)
+### 16.1 Execution Plan Delta
+- [x] p8-10 完成 mac 桌面场景验收与回归测试，准备阶段结项评审
+
+### 16.2 Execution Log Delta
+- 2026-03-12 16:05 +0800 p8-10 started: 执行 mac 桌面场景下主流程页面的构建、测试与响应式结构回归检查。
+- 2026-03-12 16:06 +0800 p8-10 completed: 完成桌面主流程回归验证，输出阶段结项前验收证据。
+
+### 16.3 Validation Evidence Delta
+- TC-P8-009 | stack: ui | command: rg -n "xl:grid-cols|md:grid-cols|lg:grid-cols|max-w-\\[min\\(28rem,90vw\\)\\]|overflow-x-auto|inline-grid grid-cols-3" src/pages/Dashboard.tsx src/pages/DeployWizard.tsx src/pages/KesManager.tsx src/pages/UpgradeWizard.tsx | result: pass | note: 主流程页面在桌面宽度下具备响应式网格、滚动兜底和 tooltip 防遮挡策略
+- TC-P8-009 | stack: node | command: pnpm build | result: pass | note: 前端生产构建通过
+- TC-P8-009 | stack: rust | command: cargo test -q | result: pass | note: 后端与前端快照回归 142/142 通过
+
+### 16.4 Change Request Delta
+- 2026-03-12 16:05 +0800 执行推进：继续推进 S0008，完成 p8-10 mac 桌面验收与回归测试收口。
