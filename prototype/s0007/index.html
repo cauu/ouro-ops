@@ -17,7 +17,7 @@
               <span class="light yellow"></span>
               <span class="light green"></span>
             </div>
-            <button class="sidebar-toggle" type="button">Sidebar</button>
+            <button class="sidebar-toggle" type="button" aria-controls="app-sidebar" aria-expanded="true">Sidebar</button>
           </div>
           <h1 class="window-title">Ouro Ops · Dashboard</h1>
           <div class="toolbar">
@@ -30,11 +30,11 @@
         </header>
 
         <div class="workspace no-inspector">
-          <aside class="sidebar">
+          <aside class="sidebar" id="app-sidebar">
             <div class="brand">
               <span class="brand-mark" aria-hidden="true"></span>
               <div>
-                <h1>OURO OPS</h1>
+                <p class="brand-title">OURO OPS</p>
                 <p>Mainnet Workspace</p>
               </div>
             </div>
@@ -71,8 +71,15 @@
                     </span>
                     <span class="telemetry-label">Telemetry</span>
                     <span class="tooltip-wrap">
-                      <button class="icon-tip" type="button" aria-label="查看 Telemetry 刷新说明">i</button>
-                      <span class="tooltip-bubble" role="tooltip">
+                      <button
+                        class="icon-tip"
+                        type="button"
+                        aria-label="查看 Telemetry 刷新说明"
+                        aria-describedby="tip-telemetry"
+                      >
+                        i
+                      </button>
+                      <span class="tooltip-bubble" role="tooltip" id="tip-telemetry">
                         已加载本地缓存，后台静默刷新 Prometheus 最新数据中。若刷新超时则继续展示缓存指标，并在下一轮轮询自动重试。
                       </span>
                     </span>
@@ -86,10 +93,15 @@
                         <div class="node-head-right">
                           <span class="chip danger">critical</span>
                           <span class="tooltip-wrap metric-tip-wrap">
-                            <button class="metric-badge-btn danger" type="button" aria-label="查看最慢节点详情">
+                            <button
+                              class="metric-badge-btn danger"
+                              type="button"
+                              aria-label="查看最慢节点详情"
+                              aria-describedby="tip-slowest-node"
+                            >
                               slowest · BP
                             </button>
-                            <span class="tooltip-bubble compact-tip" role="tooltip">
+                            <span class="tooltip-bubble compact-tip" role="tooltip" id="tip-slowest-node">
                               Slowest node: BP · sync 98.41%。该节点当前决定集群最慢同步速度。
                             </span>
                           </span>
@@ -101,10 +113,15 @@
                         <div class="metric-inline">
                           <strong>531</strong>
                           <span class="tooltip-wrap metric-tip-wrap">
-                            <button class="metric-badge-btn" type="button" aria-label="查看集群 Epoch 对比">
+                            <button
+                              class="metric-badge-btn"
+                              type="button"
+                              aria-label="查看集群 Epoch 对比"
+                              aria-describedby="tip-cluster-epoch"
+                            >
                               cluster 532
                             </button>
-                            <span class="tooltip-bubble compact-tip" role="tooltip">
+                            <span class="tooltip-bubble compact-tip" role="tooltip" id="tip-cluster-epoch">
                               BP 当前 epoch 为 531，集群最新 epoch 为 532，差值 1。
                             </span>
                           </span>
@@ -115,10 +132,15 @@
                         <div class="metric-inline">
                           <strong>98.41%</strong>
                           <span class="tooltip-wrap metric-tip-wrap">
-                            <button class="metric-badge-btn warn" type="button" aria-label="查看 BP 与 Relay 同步差">
+                            <button
+                              class="metric-badge-btn warn"
+                              type="button"
+                              aria-label="查看 BP 与 Relay 同步差"
+                              aria-describedby="tip-bp-drift"
+                            >
                               Δ-1e
                             </button>
-                            <span class="tooltip-bubble compact-tip" role="tooltip">
+                            <span class="tooltip-bubble compact-tip" role="tooltip" id="tip-bp-drift">
                               BP 相比最快 Relay 落后 1 epoch；若持续扩大，优先检查网络连通与磁盘 I/O。
                             </span>
                           </span>
@@ -130,11 +152,16 @@
                       <p class="node-meta mono">tip diff: -1842 blocks</p>
                       <div class="action-row compact-row bp-action-row">
                         <span class="tooltip-wrap metric-tip-wrap">
-                          <button class="metric-badge-btn danger kes-remain" type="button" aria-label="查看 KES 剩余窗口详情">
+                          <button
+                            class="metric-badge-btn danger kes-remain"
+                            type="button"
+                            aria-label="查看 KES 剩余窗口详情"
+                            aria-describedby="tip-kes-remain"
+                          >
                             <span class="kes-pulse" aria-hidden="true"></span>
                             KES remain 3
                           </button>
-                          <span class="tooltip-bubble compact-tip" role="tooltip">
+                          <span class="tooltip-bubble compact-tip" role="tooltip" id="tip-kes-remain">
                             KES period 428，剩余 3 个窗口。建议在 24h 内执行 Rotate；若剩余 ≤1 立即进入高优先级处置。
                           </span>
                         </span>
@@ -194,29 +221,66 @@
                 </header>
                 <div class="section-body">
                   <div class="tab-segment" role="tablist" aria-label="node tabs">
-                    <button class="seg-btn active" role="tab" aria-selected="true">BP</button>
-                    <button class="seg-btn" role="tab" aria-selected="false">Relay 1</button>
-                    <button class="seg-btn" role="tab" aria-selected="false">Relay 2</button>
+                    <button
+                      id="tab-node-bp"
+                      class="seg-btn active"
+                      role="tab"
+                      aria-selected="true"
+                      aria-controls="panel-node-bp"
+                      tabindex="0"
+                    >
+                      BP
+                    </button>
+                    <button
+                      id="tab-node-relay-1"
+                      class="seg-btn"
+                      role="tab"
+                      aria-selected="false"
+                      aria-controls="panel-node-relay-1"
+                      tabindex="-1"
+                    >
+                      Relay 1
+                    </button>
+                    <button
+                      id="tab-node-relay-2"
+                      class="seg-btn"
+                      role="tab"
+                      aria-selected="false"
+                      aria-controls="panel-node-relay-2"
+                      tabindex="-1"
+                    >
+                      Relay 2
+                    </button>
                   </div>
 
-                  <div class="node-details-grid">
+                  <div
+                    id="panel-node-bp"
+                    class="node-details-grid"
+                    role="tabpanel"
+                    aria-labelledby="tab-node-bp"
+                    tabindex="0"
+                  >
                     <article class="detail-card">
                       <h4>Resources</h4>
                       <div class="metric-row">
                         <span>CPU</span>
                         <strong class="mono-num">42.8%</strong>
                       </div>
-                      <div class="sparkline" aria-hidden="true">
-                        <span style="height: 30%"></span><span style="height: 45%"></span><span style="height: 38%"></span><span style="height: 54%"></span><span style="height: 48%"></span><span style="height: 62%"></span><span style="height: 50%"></span><span style="height: 58%"></span>
-                      </div>
+                      <ul class="trend-list" aria-label="bp cpu trend">
+                        <li><span>1m avg</span><strong class="mono-num">41.6%</strong></li>
+                        <li><span>5m avg</span><strong class="mono-num">42.1%</strong></li>
+                        <li><span>15m avg</span><strong class="mono-num">43.0%</strong></li>
+                      </ul>
 
                       <div class="metric-row" style="margin-top: 10px">
                         <span>Memory</span>
                         <strong class="mono-num">68.2%</strong>
                       </div>
-                      <div class="sparkline" aria-hidden="true">
-                        <span style="height: 56%"></span><span style="height: 60%"></span><span style="height: 66%"></span><span style="height: 64%"></span><span style="height: 70%"></span><span style="height: 68%"></span><span style="height: 72%"></span><span style="height: 69%"></span>
-                      </div>
+                      <ul class="trend-list" aria-label="bp memory trend">
+                        <li><span>1m avg</span><strong class="mono-num">67.9%</strong></li>
+                        <li><span>5m avg</span><strong class="mono-num">68.4%</strong></li>
+                        <li><span>15m avg</span><strong class="mono-num">69.1%</strong></li>
+                      </ul>
 
                       <p class="node-meta mono" style="margin-top: 10px">block: 112,904,332 · slot: 181,312,980</p>
                     </article>
@@ -256,6 +320,136 @@
                       </div>
                     </article>
                   </div>
+
+                  <div
+                    id="panel-node-relay-1"
+                    class="node-details-grid"
+                    role="tabpanel"
+                    aria-labelledby="tab-node-relay-1"
+                    tabindex="0"
+                    hidden
+                  >
+                    <article class="detail-card">
+                      <h4>Resources</h4>
+                      <div class="metric-row">
+                        <span>CPU</span>
+                        <strong class="mono-num">29.7%</strong>
+                      </div>
+                      <ul class="trend-list" aria-label="relay 1 cpu trend">
+                        <li><span>1m avg</span><strong class="mono-num">29.3%</strong></li>
+                        <li><span>5m avg</span><strong class="mono-num">30.1%</strong></li>
+                        <li><span>15m avg</span><strong class="mono-num">30.8%</strong></li>
+                      </ul>
+                      <div class="metric-row" style="margin-top: 10px">
+                        <span>Memory</span>
+                        <strong class="mono-num">54.9%</strong>
+                      </div>
+                      <ul class="trend-list" aria-label="relay 1 memory trend">
+                        <li><span>1m avg</span><strong class="mono-num">54.4%</strong></li>
+                        <li><span>5m avg</span><strong class="mono-num">55.0%</strong></li>
+                        <li><span>15m avg</span><strong class="mono-num">55.6%</strong></li>
+                      </ul>
+                      <p class="node-meta mono" style="margin-top: 10px">block: 112,906,176 · slot: 181,313,401</p>
+                    </article>
+                    <article class="detail-card">
+                      <h4>Connections & Peers</h4>
+                      <div class="metric-row">
+                        <span>Peers</span>
+                        <strong class="mono-num">31 / 32</strong>
+                      </div>
+                      <div class="metric-row">
+                        <span>Within 1s</span>
+                        <strong class="mono-num">99.13%</strong>
+                      </div>
+                      <div class="dist-list">
+                        <div class="dist-row">
+                          <span>0-50ms</span>
+                          <div class="dist-track"><span class="dist-fill" style="width: 64%"></span></div>
+                          <strong class="mono-num">64%</strong>
+                        </div>
+                        <div class="dist-row">
+                          <span>50-100ms</span>
+                          <div class="dist-track"><span class="dist-fill" style="width: 22%"></span></div>
+                          <strong class="mono-num">22%</strong>
+                        </div>
+                        <div class="dist-row">
+                          <span>100-500ms</span>
+                          <div class="dist-track"><span class="dist-fill" style="width: 12%"></span></div>
+                          <strong class="mono-num">12%</strong>
+                        </div>
+                        <div class="dist-row">
+                          <span>&gt;1s</span>
+                          <div class="dist-track"><span class="dist-fill danger" style="width: 2%"></span></div>
+                          <strong class="mono-num">2%</strong>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+
+                  <div
+                    id="panel-node-relay-2"
+                    class="node-details-grid"
+                    role="tabpanel"
+                    aria-labelledby="tab-node-relay-2"
+                    tabindex="0"
+                    hidden
+                  >
+                    <article class="detail-card">
+                      <h4>Resources</h4>
+                      <div class="metric-row">
+                        <span>CPU</span>
+                        <strong class="mono-num">34.1%</strong>
+                      </div>
+                      <ul class="trend-list" aria-label="relay 2 cpu trend">
+                        <li><span>1m avg</span><strong class="mono-num">33.8%</strong></li>
+                        <li><span>5m avg</span><strong class="mono-num">34.4%</strong></li>
+                        <li><span>15m avg</span><strong class="mono-num">35.2%</strong></li>
+                      </ul>
+                      <div class="metric-row" style="margin-top: 10px">
+                        <span>Memory</span>
+                        <strong class="mono-num">58.3%</strong>
+                      </div>
+                      <ul class="trend-list" aria-label="relay 2 memory trend">
+                        <li><span>1m avg</span><strong class="mono-num">57.9%</strong></li>
+                        <li><span>5m avg</span><strong class="mono-num">58.6%</strong></li>
+                        <li><span>15m avg</span><strong class="mono-num">59.2%</strong></li>
+                      </ul>
+                      <p class="node-meta mono" style="margin-top: 10px">block: 112,905,224 · slot: 181,313,103</p>
+                    </article>
+                    <article class="detail-card">
+                      <h4>Connections & Peers</h4>
+                      <div class="metric-row">
+                        <span>Peers</span>
+                        <strong class="mono-num">29 / 32</strong>
+                      </div>
+                      <div class="metric-row">
+                        <span>Within 1s</span>
+                        <strong class="mono-num">98.41%</strong>
+                      </div>
+                      <div class="dist-list">
+                        <div class="dist-row">
+                          <span>0-50ms</span>
+                          <div class="dist-track"><span class="dist-fill" style="width: 56%"></span></div>
+                          <strong class="mono-num">56%</strong>
+                        </div>
+                        <div class="dist-row">
+                          <span>50-100ms</span>
+                          <div class="dist-track"><span class="dist-fill" style="width: 25%"></span></div>
+                          <strong class="mono-num">25%</strong>
+                        </div>
+                        <div class="dist-row">
+                          <span>100-500ms</span>
+                          <div class="dist-track"><span class="dist-fill" style="width: 16%"></span></div>
+                          <strong class="mono-num">16%</strong>
+                        </div>
+                        <div class="dist-row">
+                          <span>&gt;1s</span>
+                          <div class="dist-track"><span class="dist-fill danger" style="width: 3%"></span></div>
+                          <strong class="mono-num">3%</strong>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
                 </div>
               </section>
 
@@ -280,32 +474,32 @@
                       </thead>
                       <tbody>
                         <tr>
-                          <td class="mono-num">2026-03-12 00:01</td>
-                          <td>KES Rotate Prepare</td>
-                          <td>BP</td>
-                          <td><span class="chip ok">success</span></td>
-                          <td>generated kes.vkey / kes.skey</td>
+                          <td class="mono-num" data-label="时间">2026-03-12 00:01</td>
+                          <td data-label="操作">KES Rotate Prepare</td>
+                          <td data-label="目标">BP</td>
+                          <td data-label="状态"><span class="chip ok">success</span></td>
+                          <td data-label="详情">generated kes.vkey / kes.skey</td>
                         </tr>
                         <tr>
-                          <td class="mono-num">2026-03-11 22:49</td>
-                          <td>Apply Runtime Config</td>
-                          <td>Relay-1</td>
-                          <td><span class="chip ok">success</span></td>
-                          <td>topology updated and restarted</td>
+                          <td class="mono-num" data-label="时间">2026-03-11 22:49</td>
+                          <td data-label="操作">Apply Runtime Config</td>
+                          <td data-label="目标">Relay-1</td>
+                          <td data-label="状态"><span class="chip ok">success</span></td>
+                          <td data-label="详情">topology updated and restarted</td>
                         </tr>
                         <tr>
-                          <td class="mono-num">2026-03-11 21:10</td>
-                          <td>Upgrade Image</td>
-                          <td>Relay-2</td>
-                          <td><span class="chip warn">partial</span></td>
-                          <td>health-check retry 2 times</td>
+                          <td class="mono-num" data-label="时间">2026-03-11 21:10</td>
+                          <td data-label="操作">Upgrade Image</td>
+                          <td data-label="目标">Relay-2</td>
+                          <td data-label="状态"><span class="chip warn">partial</span></td>
+                          <td data-label="详情">health-check retry 2 times</td>
                         </tr>
                         <tr>
-                          <td class="mono-num">2026-03-11 20:36</td>
-                          <td>Bind Pool ID</td>
-                          <td>Cluster</td>
-                          <td><span class="chip ok">success</span></td>
-                          <td>metadata ticker synced</td>
+                          <td class="mono-num" data-label="时间">2026-03-11 20:36</td>
+                          <td data-label="操作">Bind Pool ID</td>
+                          <td data-label="目标">Cluster</td>
+                          <td data-label="状态"><span class="chip ok">success</span></td>
+                          <td data-label="详情">metadata ticker synced</td>
                         </tr>
                       </tbody>
                     </table>

@@ -744,3 +744,34 @@ Spec-ID: S0007
 
 ### 31.5 Change Request Delta
 - 2026-03-12 13:50 +0800 需求新增：将集群概览顶部指标下沉到 BP 卡片，通过 tooltip 等轻量形式实现，并在 BP 卡片中突出展示 KES remain。
+
+## 32. Addendum (append-only)
+### 32.1 Execution Plan Delta
+- [x] p7-35 按 mac 桌面应用标准修复审计问题（A11y 语义、对比度、主题 token、桌面窗口适配与信息降噪）
+
+### 32.2 Acceptance Delta
+- TC-124 Dashboard tooltip 触发器与说明内容建立可访问语义关联（`aria-describedby` + `role="tooltip"` + 唯一 `id`）。
+- TC-125 节点详情 Tabs 建立完整语义骨架（`tablist/tab/tabpanel` + `aria-controls` + `aria-labelledby` + `tabindex`）。
+- TC-126 次要文本对比度提升到 WCAG AA（普通文本 ≥ 4.5:1）。
+- TC-127 页面结构消除 OURO OPS 双 `h1` 语义冲突，并为 Sidebar 开关补充 `aria-controls/aria-expanded`。
+- TC-128 将装饰性 sparkline 替换为可读的趋势列表，降低信息噪声。
+- TC-129 增加桌面主题能力（`color-scheme: light dark` + `prefers-color-scheme: dark` token 覆盖）。
+- TC-130 改善桌面小窗口下审计表可读性（`data-label` + 窄窗口 card 化行布局）。
+- TC-131 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 32.3 Execution Log Delta
+- 2026-03-12 14:00 +0800 p7-35 started: 基于“mac 桌面应用”前提重排审计优先级并开始修复。
+- 2026-03-12 14:13 +0800 p7-35 completed: 完成桌面语义、可访问性、主题与小窗口适配修复并通过静态验证。
+
+### 32.4 Validation Evidence Delta
+- TC-124 | stack: ui | command: rg -n "aria-describedby=\"tip-|role=\"tooltip\" id=\"tip-" prototype/s0007/index.html | result: pass | note: Telemetry 与 BP 卡片内 tooltip 已建立可访问关联
+- TC-125 | stack: ui | command: rg -n "role=\"tab\"|aria-controls=\"panel-node-|role=\"tabpanel\"|node-details-grid\\[hidden\\]" prototype/s0007/index.html prototype/s0007/styles.css | result: pass | note: Tab 与面板语义映射完整
+- TC-126 | stack: ui | command: node 对比度脚本（#5e6f88 on #ffffff） | result: pass | note: contrast=5.12，满足 AA
+- TC-127 | stack: ui | command: rg -n "<h1>OURO OPS</h1>|brand-title|aria-controls=\"app-sidebar\"|id=\"app-sidebar\"" prototype/s0007/*.html | result: pass | note: 双 h1 已消除，Sidebar 开关语义已补齐
+- TC-128 | stack: ui | command: rg -n "sparkline" prototype/s0007/index.html prototype/s0007/styles.css || true | result: pass | note: 装饰性 sparkline 已移除
+- TC-129 | stack: ui | command: rg -n "color-scheme: light dark|@media \\(prefers-color-scheme: dark\\)|--surface-0|--surface-4" prototype/s0007/styles.css | result: pass | note: 主题 token 与 dark 覆盖已建立
+- TC-130 | stack: ui | command: rg -n "audit-table td::before|min-width: 560px|data-label=\"时间\"|data-label=\"状态\"" prototype/s0007/styles.css prototype/s0007/index.html | result: pass | note: 小窗口日志表已可按字段标签阅读
+- TC-131 | stack: ui | command: rg -n "<script|fetch\\(|invoke\\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/styles.css prototype/s0007/upgrade-image.html prototype/s0007/upgrade-step2.html prototype/s0007/upgrade-step3.html prototype/s0007/kes-rotate.html prototype/s0007/kes-rotate-step2.html prototype/s0007/kes-rotate-step3.html prototype/s0007/kes-rotate-step4.html || true | result: pass | note: 维持静态原型边界
+
+### 32.5 Change Request Delta
+- 2026-03-12 14:00 +0800 需求新增：项目是 mac 端桌面应用，需按该前提重审并修复审计问题。
