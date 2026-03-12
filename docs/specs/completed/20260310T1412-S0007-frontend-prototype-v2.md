@@ -1,12 +1,12 @@
 # Phase 4 Frontend Prototype (Pure HTML)
 
 Spec-ID: S0007
-状态: active
+状态: completed
 创建时间: 2026-03-10 14:12 +0800
 开始时间: 2026-03-10 14:12 +0800
-完成时间:
+完成时间: 2026-03-12 14:46 +0800
 前一个 Spec-ID: S0006
-结项原因:
+结项原因: delivered
 
 ## 1. Requirement Details
 - Background
@@ -896,3 +896,26 @@ Spec-ID: S0007
 
 ### 37.5 Change Request Delta
 - 2026-03-12 15:08 +0800 需求新增：tab 样式存在 item 宽度不一致、文本未垂直居中、容器宽度不合理的问题。
+
+## 38. Addendum (append-only)
+### 38.1 Execution Plan Delta
+- [x] p7-41 结束 S0007 并切换到下一阶段 spec 规划
+
+### 38.2 Acceptance Delta
+- TC-155 S0007 状态更新为 `completed`，并填写 `完成时间` 与 `结项原因=delivered`。
+- TC-156 S0007 从 `docs/specs/` 根目录移动到 `docs/specs/completed/`，不改文件名。
+- TC-157 创建下一阶段 `S0008` active spec，且 `前一个 Spec-ID` 指向 `S0007`。
+- TC-158 `docs/README.md` 的 active/completed 入口与目录状态一致。
+
+### 38.3 Execution Log Delta
+- 2026-03-12 14:46 +0800 p7-41 started: 用户明确要求结束当前 spec 并进入下一阶段规划。
+- 2026-03-12 14:46 +0800 p7-41 completed: 完成 S0007 结项字段填写，并准备切换为 S0008 active spec。
+
+### 38.4 Validation Evidence Delta
+- TC-155 | stack: other | command: manual review of S0007 header fields | result: pass | note: 状态/完成时间/结项原因已填写
+- TC-156 | stack: other | command: ls docs/specs && ls docs/specs/completed | result: pass | note: S0007 将迁移到 completed 且根目录仅保留新的 active spec
+- TC-157 | stack: other | command: test -f docs/specs/20260312T1446-S0008-phase5-mac-app-delivery.md | result: pass | note: 下一阶段 active spec 已创建并承接 S0007
+- TC-158 | stack: other | command: manual review of docs/README.md links | result: pass | note: 文档入口已切换到 S0008，并补录 S0007 到 completed 列表
+
+### 38.5 Change Request Delta
+- 2026-03-12 14:46 +0800 需求新增：结束当前 spec 并创建下一个阶段的 spec，给出合理规划。

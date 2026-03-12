@@ -4,7 +4,7 @@ The project now uses the immutable-spec workflow for active delivery.
 
 ## Current Active Spec
 
-- [20260310T1412-S0007-frontend-prototype-v2.md](./specs/20260310T1412-S0007-frontend-prototype-v2.md)
+- [20260312T1446-S0008-phase5-mac-app-delivery.md](./specs/20260312T1446-S0008-phase5-mac-app-delivery.md)
 
 如需开始新需求，请先在 `docs/specs/draft/` 创建新的 draft spec，并在启动执行时提升为 `docs/specs/` 根目录中的唯一 active spec。
 
@@ -14,6 +14,7 @@ The project now uses the immutable-spec workflow for active delivery.
 
 ## Completed Specs
 
+- [20260310T1412-S0007-frontend-prototype-v2.md](./specs/completed/20260310T1412-S0007-frontend-prototype-v2.md)
 - [20260309T1602-S0006-stake-pool-onchain-registration.md](./specs/completed/20260309T1602-S0006-stake-pool-onchain-registration.md)
 - [20260308T0000-S0005-phase4.md](./specs/completed/20260308T0000-S0005-phase4.md)
 - [20260306T0010-S0002-phase1-phase3.md](./specs/completed/20260306T0010-S0002-phase1-phase3.md)
