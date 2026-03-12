@@ -589,3 +589,24 @@ Spec-ID: S0007
 
 ### 25.5 Change Request Delta
 - 2026-03-12 10:45 +0800 需求新增：以 upgrade 页面为基准，统一其他页面侧边菜单，菜单仅保留 Dashboard / Deploy / KES Rotate / Upgrade。
+
+## 26. Addendum (append-only)
+### 26.1 Execution Plan Delta
+- [x] p7-29 从统一侧边菜单中移除 Deploy 入口
+
+### 26.2 Acceptance Delta
+- TC-93 Dashboard、KES Rotate、Upgrade 三个页面侧边菜单统一为：Dashboard / KES Rotate / Upgrade。
+- TC-94 三个页面侧边菜单与侧边说明文案中均不再出现 Deploy。
+- TC-95 保持纯 HTML/CSS 静态原型，不引入业务逻辑脚本。
+
+### 26.3 Execution Log Delta
+- 2026-03-12 10:55 +0800 p7-29 started: 按需求从侧边菜单移除 Deploy。
+- 2026-03-12 10:57 +0800 p7-29 completed: 已更新 `index.html`、`kes-rotate.html`、`upgrade-image.html` 菜单与说明文案。
+
+### 26.4 Validation Evidence Delta
+- TC-93 | stack: ui | command: rg -n "nav-item.*(Dashboard|KES Rotate|Upgrade)" prototype/s0007/index.html prototype/s0007/kes-rotate.html prototype/s0007/upgrade-image.html | result: pass | note: 三个页面菜单均保留三项入口
+- TC-94 | stack: ui | command: rg -n "nav-item[^\n]*Deploy|Dashboard / Deploy / KES Rotate / Upgrade" prototype/s0007/index.html prototype/s0007/kes-rotate.html prototype/s0007/upgrade-image.html || true | result: pass | note: 菜单与说明中 Deploy 均已移除
+- TC-95 | stack: ui | command: rg -n "<script|fetch\(|invoke\(|tauri|axios|XMLHttpRequest" prototype/s0007/index.html prototype/s0007/kes-rotate.html prototype/s0007/upgrade-image.html || true | result: pass | note: 仍为纯静态原型
+
+### 26.5 Change Request Delta
+- 2026-03-12 10:55 +0800 需求新增：侧边菜单中的 Deploy 也应去掉。
