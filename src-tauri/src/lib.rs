@@ -644,6 +644,15 @@ mod frontend_tests {
     }
 
     #[test]
+    fn tc_dep_019_observability_rollback_playbook_exists() {
+        let playbook = include_str!("../../ansible/playbooks/observability-rollback.yml");
+        assert!(playbook.contains("target_hosts | default('relay')"));
+        assert!(playbook.contains("ouro-ops-metrics.conf"));
+        assert!(playbook.contains("nginx -t"));
+        assert!(playbook.contains("state: reloaded"));
+    }
+
+    #[test]
     fn tc_audit_001_key_operations_write_audit_log() {
         let pool = include_str!("commands/pool.rs");
         let deploy = include_str!("commands/deploy.rs");

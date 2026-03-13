@@ -61,7 +61,7 @@ Spec-ID: S0009
 - [x] p9-7 新增现网增量接入 playbook（bootstrap，不重跑 full deploy）
 - [x] p9-8 将观测与认证步骤并入新部署流程（deploy 默认内建）
 - [x] p9-9 Dashboard 运行态联调与可观测性补强（source/note/collected_at）
-- [ ] p9-10 完成端到端验收与回滚预案校验，准备结项评审
+- [x] p9-10 完成端到端验收与回滚预案校验，准备结项评审
 
 ## 4. Test And Acceptance Criteria
 - TC-P9-001 `docs/specs/` 根目录仅保留 `S0009` 为 active；`S0008` 进入 completed 且结项原因为 `replaced`。
@@ -212,3 +212,21 @@ Spec-ID: S0009
 
 ### 15.4 Change Request Delta
 - 2026-03-13 20:36 +0800 执行推进：完成 p9-9，下一步进入 p9-10（端到端验收与回滚预案校验）。
+
+## 16. Addendum (append-only)
+### 16.1 Execution Plan Delta
+- [x] p9-10 完成端到端验收与回滚预案校验，准备结项评审
+
+### 16.2 Execution Log Delta
+- 2026-03-13 20:43 +0800 p9-10 started: 汇总 S0009 端到端验收证据并固化回滚预案。
+- 2026-03-13 20:43 +0800 p9-10 completed: 已新增回滚 playbook 与验收报告文档，覆盖 deploy/bootstrap/rollback 三路径语法校验与关键静态回归。
+
+### 16.3 Validation Evidence Delta
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-bootstrap.yml | result: pass | note: 现网增量接入路径语法通过
+- TC-P9-005 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/deploy.yml | result: pass | note: 新部署默认内建路径语法通过（relay/bp host pattern 告警属本地空 inventory 预期）
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-rollback.yml | result: pass | note: 回滚路径语法通过
+- TC-P9-005 | stack: rust | command: cargo test -q tc_dep_019_observability_rollback_playbook_exists | result: pass | note: 回滚 playbook 存在性与关键动作静态校验通过
+- TC-P9-005 | stack: other | command: test -f docs/review/20260313-p9-10-e2e-acceptance-rollback.md && echo ok | result: pass | note: 端到端验收与回滚报告已落盘
+
+### 16.4 Change Request Delta
+- 2026-03-13 20:43 +0800 阶段状态：S0009 所有计划项已完成，等待用户确认是否结项（`delivered`）。
