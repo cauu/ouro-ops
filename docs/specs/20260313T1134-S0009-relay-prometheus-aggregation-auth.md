@@ -55,7 +55,7 @@ Spec-ID: S0009
 - [x] p9-1 启动 S0009 active spec，冻结目标与验收标准
 - [x] p9-2 输出 p8-5 失败运行态根因报告（端点、映射、fallback 分支）
 - [x] p9-3 设计 relay 白名单 API 契约与字段映射表（含空值/时间戳兜底）
-- [ ] p9-4 实现 relay 网关 Basic Auth + HTTPS + 白名单 API 路由模板
+- [x] p9-4 实现 relay 网关 Basic Auth + HTTPS + 白名单 API 路由模板
 - [ ] p9-5 实现/修复 monitor 数据源：relay API 优先，local monitor fallback
 - [ ] p9-6 实现多 relay 主备切换策略（超时、退避、最新时间戳选优）
 - [ ] p9-7 新增现网增量接入 playbook（bootstrap，不重跑 full deploy）
@@ -116,3 +116,20 @@ Spec-ID: S0009
 
 ### 9.4 Change Request Delta
 - 2026-03-13 11:53 +0800 执行推进：完成 p9-3 契约冻结，下一步进入 p9-4（Nginx Basic Auth + 白名单 API 模板实现）。
+
+## 10. Addendum (append-only)
+### 10.1 Execution Plan Delta
+- [x] p9-4 实现 relay 网关 Basic Auth + HTTPS + 白名单 API 路由模板
+
+### 10.2 Execution Log Delta
+- 2026-03-13 11:59 +0800 p9-4 started: 新增 relay 网关角色，落地 Basic Auth + HTTPS + 固定查询白名单路由。
+- 2026-03-13 11:59 +0800 p9-4 completed: 已实现 `ops-observability-gateway` 角色（defaults/tasks/handlers/template），覆盖认证、TLS 材料校验、Nginx 配置渲染与 10 个 telemetry 白名单端点。
+
+### 10.3 Validation Evidence Delta
+- TC-P9-002 | stack: other | command: rg -n "auth_basic|auth_request|ops_metrics_htpasswd_path|ssl_certificate|ssl_certificate_key" ansible/roles/ops-observability-gateway/templates/ouro-ops-metrics.conf.j2 ansible/roles/ops-observability-gateway/tasks/main.yml | result: pass | note: 认证与 HTTPS 核心配置已落地
+- TC-P9-003 | stack: other | command: rg -n "if \(\$args != \"\"\) \{ return 400; \}|api/v1/query\?query=" ansible/roles/ops-observability-gateway/templates/ouro-ops-metrics.conf.j2 | result: pass | note: 白名单端点已禁用任意 query 参数透传
+- TC-P9-006 | stack: other | command: rg -n "telemetry/epoch|telemetry/sync-percent|telemetry/tip-diff-blocks|telemetry/peer-count|telemetry/cpu-sys-percent|telemetry/mem-live-bytes|telemetry/mem-rss-bytes|telemetry/mem-heap-bytes|telemetry/gc-minor-total|telemetry/gc-major-total" ansible/roles/ops-observability-gateway/templates/ouro-ops-metrics.conf.j2 | result: pass | note: 10 项核心指标端点已在网关模板中固化
+- TC-P9-002 | stack: other | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local /tmp/ops-observability-syntax.yml | result: pass | note: 角色语法检查通过
+
+### 10.4 Change Request Delta
+- 2026-03-13 11:59 +0800 执行推进：完成 p9-4，下一步进入 p9-5（monitor 数据源切换为 relay API 优先 + local fallback）。

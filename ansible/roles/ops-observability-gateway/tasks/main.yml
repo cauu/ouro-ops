@@ -1,0 +1,79 @@
+---
+- name: Ensure nginx and htpasswd tools are installed
+  apt:
+    name:
+      - nginx
+      - apache2-utils
+    state: present
+    update_cache: true
+
+- name: Fail when Basic Auth password is missing
+  fail:
+    msg: "ops_metrics_basic_auth_password is required"
+  when: (ops_metrics_basic_auth_password | default('') | trim | length) == 0
+
+- name: Ensure ouro-ops auth directory exists
+  file:
+    path: /etc/ouro-ops
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Check TLS certificate file
+  stat:
+    path: "{{ ops_metrics_tls_cert_path }}"
+  register: ops_metrics_tls_cert_stat
+  when: ops_metrics_require_tls_materials | bool
+
+- name: Check TLS private key file
+  stat:
+    path: "{{ ops_metrics_tls_key_path }}"
+  register: ops_metrics_tls_key_stat
+  when: ops_metrics_require_tls_materials | bool
+
+- name: Fail when TLS certificate is missing
+  fail:
+    msg: "TLS certificate not found: {{ ops_metrics_tls_cert_path }}"
+  when:
+    - ops_metrics_require_tls_materials | bool
+    - not (ops_metrics_tls_cert_stat.stat.exists | default(false))
+
+- name: Fail when TLS private key is missing
+  fail:
+    msg: "TLS private key not found: {{ ops_metrics_tls_key_path }}"
+  when:
+    - ops_metrics_require_tls_materials | bool
+    - not (ops_metrics_tls_key_stat.stat.exists | default(false))
+
+- name: Render htpasswd file for metrics gateway
+  shell: "htpasswd -bc {{ ops_metrics_htpasswd_path }} {{ ops_metrics_basic_auth_username }} {{ ops_metrics_basic_auth_password }}"
+  args:
+    executable: /bin/bash
+  no_log: true
+
+- name: Restrict htpasswd file permissions
+  file:
+    path: "{{ ops_metrics_htpasswd_path }}"
+    owner: root
+    group: www-data
+    mode: "0640"
+
+- name: Render metrics gateway nginx config
+  template:
+    src: ouro-ops-metrics.conf.j2
+    dest: "{{ ops_metrics_gateway_conf_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Validate nginx configuration
+  command: nginx -t
+  changed_when: false
+
+- name: Ensure nginx is enabled and running
+  service:
+    name: nginx
+    state: started
+    enabled: true

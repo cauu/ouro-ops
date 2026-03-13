@@ -1,0 +1,95 @@
+limit_req_zone $binary_remote_addr zone=ouro_ops_api_rl:10m rate=5r/s;
+
+server {
+  listen {{ ops_metrics_gateway_listen_port }} ssl http2;
+  server_name {{ ops_metrics_gateway_server_name }};
+
+  ssl_certificate {{ ops_metrics_tls_cert_path }};
+  ssl_certificate_key {{ ops_metrics_tls_key_path }};
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_prefer_server_ciphers off;
+
+  add_header X-Content-Type-Options nosniff always;
+  add_header X-Frame-Options DENY always;
+
+  location = /_ops_auth {
+    internal;
+    auth_basic "{{ ops_metrics_basic_auth_realm }}";
+    auth_basic_user_file {{ ops_metrics_htpasswd_path }};
+    return 204;
+  }
+
+  location = /api/ops/v1/telemetry/epoch {
+    if ($args != "") { return 400; }
+    auth_request /_ops_auth;
+    limit_req zone=ouro_ops_api_rl burst=20 nodelay;
+    proxy_pass {{ ops_metrics_prometheus_upstream }}/api/v1/query?query=max%20by(node,role,instance)%20(cardano_node_metrics_epoch_int);
+  }
+
+  location = /api/ops/v1/telemetry/sync-percent {
+    if ($args != "") { return 400; }
+    auth_request /_ops_auth;
+    limit_req zone=ouro_ops_api_rl burst=20 nodelay;
+    proxy_pass {{ ops_metrics_prometheus_upstream }}/api/v1/query?query=max%20by(node,role,instance)%20(cardano_node_metrics_syncProgress);
+  }
+
+  location = /api/ops/v1/telemetry/tip-diff-blocks {
+    if ($args != "") { return 400; }
+    auth_request /_ops_auth;
+    limit_req zone=ouro_ops_api_rl burst=20 nodelay;
+    proxy_pass {{ ops_metrics_prometheus_upstream }}/api/v1/query?query=max%20by(node,role,instance)%20(cardano_node_metrics_chainDensityTipDiff_int);
+  }
+
+  location = /api/ops/v1/telemetry/peer-count {
+    if ($args != "") { return 400; }
+    auth_request /_ops_auth;
+    limit_req zone=ouro_ops_api_rl burst=20 nodelay;
+    proxy_pass {{ ops_metrics_prometheus_upstream }}/api/v1/query?query=max%20by(node,role,instance)%20(cardano_node_metrics_connectedPeers_int);
+  }
+
+  location = /api/ops/v1/telemetry/cpu-sys-percent {
+    if ($args != "") { return 400; }
+    auth_request /_ops_auth;
+    limit_req zone=ouro_ops_api_rl burst=20 nodelay;
+    proxy_pass {{ ops_metrics_prometheus_upstream }}/api/v1/query?query=max%20by(node,role,instance)%20(cardano_node_resources_cpuSys_percent);
+  }
+
+  location = /api/ops/v1/telemetry/mem-live-bytes {
+    if ($args != "") { return 400; }
+    auth_request /_ops_auth;
+    limit_req zone=ouro_ops_api_rl burst=20 nodelay;
+    proxy_pass {{ ops_metrics_prometheus_upstream }}/api/v1/query?query=max%20by(node,role,instance)%20(cardano_node_resources_memLive_bytes);
+  }
+
+  location = /api/ops/v1/telemetry/mem-rss-bytes {
+    if ($args != "") { return 400; }
+    auth_request /_ops_auth;
+    limit_req zone=ouro_ops_api_rl burst=20 nodelay;
+    proxy_pass {{ ops_metrics_prometheus_upstream }}/api/v1/query?query=max%20by(node,role,instance)%20(cardano_node_resources_memRss_bytes);
+  }
+
+  location = /api/ops/v1/telemetry/mem-heap-bytes {
+    if ($args != "") { return 400; }
+    auth_request /_ops_auth;
+    limit_req zone=ouro_ops_api_rl burst=20 nodelay;
+    proxy_pass {{ ops_metrics_prometheus_upstream }}/api/v1/query?query=max%20by(node,role,instance)%20(cardano_node_resources_memHeap_bytes);
+  }
+
+  location = /api/ops/v1/telemetry/gc-minor-total {
+    if ($args != "") { return 400; }
+    auth_request /_ops_auth;
+    limit_req zone=ouro_ops_api_rl burst=20 nodelay;
+    proxy_pass {{ ops_metrics_prometheus_upstream }}/api/v1/query?query=max%20by(node,role,instance)%20(rts_gc_minor_num_gcs);
+  }
+
+  location = /api/ops/v1/telemetry/gc-major-total {
+    if ($args != "") { return 400; }
+    auth_request /_ops_auth;
+    limit_req zone=ouro_ops_api_rl burst=20 nodelay;
+    proxy_pass {{ ops_metrics_prometheus_upstream }}/api/v1/query?query=max%20by(node,role,instance)%20(rts_gc_major_num_gcs);
+  }
+
+  location / {
+    return 404;
+  }
+}

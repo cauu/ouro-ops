@@ -1,0 +1,14 @@
+---
+ops_metrics_gateway_server_name: "_"
+ops_metrics_gateway_listen_port: 443
+ops_metrics_prometheus_upstream: "http://127.0.0.1:9090"
+ops_metrics_gateway_conf_path: "/etc/nginx/conf.d/ouro-ops-metrics.conf"
+
+ops_metrics_basic_auth_realm: "ouro-ops-metrics"
+ops_metrics_basic_auth_username: "ouro_app"
+ops_metrics_basic_auth_password: ""
+ops_metrics_htpasswd_path: "/etc/ouro-ops/.htpasswd"
+
+ops_metrics_tls_cert_path: "/etc/ssl/certs/ouro-ops.crt"
+ops_metrics_tls_key_path: "/etc/ssl/private/ouro-ops.key"
+ops_metrics_require_tls_materials: true
