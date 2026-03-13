@@ -1,0 +1,1452 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-03-13",
+  "sourceDocument": "docs/review/20260313-p9-12-fix8-raw-metrics-catalog.md",
+  "endpoint": "/api/ops/v1/telemetry/raw",
+  "groups": [
+    {
+      "id": "chain_sync",
+      "label": "Chain & Sync",
+      "order": 1
+    },
+    {
+      "id": "tx_mempool",
+      "label": "Transactions & Mempool",
+      "order": 2
+    },
+    {
+      "id": "connection_manager",
+      "label": "Connection Manager",
+      "order": 3
+    },
+    {
+      "id": "inbound_governor",
+      "label": "Inbound Governor",
+      "order": 4
+    },
+    {
+      "id": "peer_selection_state",
+      "label": "Peer Selection State",
+      "order": 5
+    },
+    {
+      "id": "peer_selection_events",
+      "label": "Peer Selection Events",
+      "order": 6
+    },
+    {
+      "id": "peer_selection_churn",
+      "label": "Peer Selection Churn",
+      "order": 7
+    },
+    {
+      "id": "runtime_gc_rts",
+      "label": "Runtime GC/RTS",
+      "order": 8
+    },
+    {
+      "id": "metadata",
+      "label": "Metadata",
+      "order": 9
+    }
+  ],
+  "metrics": [
+    {
+      "key": "cardano_node_metrics_epoch_int",
+      "label": "cardano_node_metrics_epoch_int",
+      "description": "当前 epoch 编号。",
+      "groupId": "chain_sync",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 1
+    },
+    {
+      "key": "cardano_node_metrics_blockNum_int",
+      "label": "cardano_node_metrics_blockNum_int",
+      "description": "当前链上块高（block number）。",
+      "groupId": "chain_sync",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 2
+    },
+    {
+      "key": "cardano_node_metrics_slotNum_int",
+      "label": "cardano_node_metrics_slotNum_int",
+      "description": "当前全局 slot 编号。",
+      "groupId": "chain_sync",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 3
+    },
+    {
+      "key": "cardano_node_metrics_blockfetchclient_lateblocks",
+      "label": "cardano_node_metrics_blockfetchclient_lateblocks",
+      "description": "落后块数量（同步落后程度）。",
+      "groupId": "chain_sync",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 4
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_EstablishedPeers",
+      "label": "cardano_node_metrics_peerSelection_EstablishedPeers",
+      "description": "已建立连接 peers 总数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 5
+    },
+    {
+      "key": "cardano_node_metrics_connectionManager_duplexConns",
+      "label": "cardano_node_metrics_connectionManager_duplexConns",
+      "description": "双向连接总数。",
+      "groupId": "connection_manager",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 6
+    },
+    {
+      "key": "cardano_node_metrics_Mem_resident_int",
+      "label": "cardano_node_metrics_Mem_resident_int",
+      "description": "进程 RSS 常驻内存字节。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 7
+    },
+    {
+      "key": "cardano_node_metrics_RTS_gcLiveBytes_int",
+      "label": "cardano_node_metrics_RTS_gcLiveBytes_int",
+      "description": "GC live bytes（存活对象字节）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 8
+    },
+    {
+      "key": "cardano_node_metrics_RTS_gcHeapBytes_int",
+      "label": "cardano_node_metrics_RTS_gcHeapBytes_int",
+      "description": "GC heap bytes（堆总字节）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 9
+    },
+    {
+      "key": "cardano_node_metrics_RTS_gcMinorNum_int",
+      "label": "cardano_node_metrics_RTS_gcMinorNum_int",
+      "description": "minor GC 次数。",
+      "groupId": "runtime_gc_rts",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 10
+    },
+    {
+      "key": "cardano_node_metrics_RTS_gcMajorNum_int",
+      "label": "cardano_node_metrics_RTS_gcMajorNum_int",
+      "description": "major GC 次数。",
+      "groupId": "runtime_gc_rts",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 11
+    },
+    {
+      "key": "cardano_node_metrics_txsInMempool_int",
+      "label": "cardano_node_metrics_txsInMempool_int",
+      "description": "当前 mempool 交易数。",
+      "groupId": "tx_mempool",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 12
+    },
+    {
+      "key": "cardano_node_metrics_mempoolBytes_int",
+      "label": "cardano_node_metrics_mempoolBytes_int",
+      "description": "当前 mempool 占用字节数。",
+      "groupId": "tx_mempool",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 13
+    },
+    {
+      "key": "cardano_node_metrics_forks_int",
+      "label": "cardano_node_metrics_forks_int",
+      "description": "检测到的分叉累计计数。",
+      "groupId": "chain_sync",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 14
+    },
+    {
+      "key": "cardano_node_metrics_forging_enabled",
+      "label": "cardano_node_metrics_forging_enabled",
+      "description": "是否启用 forging（1 启用，0 禁用）。",
+      "groupId": "chain_sync",
+      "unit": "bool_01",
+      "formatter": "bool_01",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 15
+    },
+    {
+      "key": "cardano_node_metrics_blockfetchclient_blockdelay_cdfFive",
+      "label": "cardano_node_metrics_blockfetchclient_blockdelay_cdfFive",
+      "description": "区块延迟 CDF（阈值 five）。",
+      "groupId": "chain_sync",
+      "unit": "ratio",
+      "formatter": "ratio",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_blockfetchclient_blockdelay_cdfOne",
+      "label": "cardano_node_metrics_blockfetchclient_blockdelay_cdfOne",
+      "description": "区块延迟 CDF（阈值 one）。",
+      "groupId": "chain_sync",
+      "unit": "ratio",
+      "formatter": "ratio",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_blockfetchclient_blockdelay_cdfThree",
+      "label": "cardano_node_metrics_blockfetchclient_blockdelay_cdfThree",
+      "description": "区块延迟 CDF（阈值 three）。",
+      "groupId": "chain_sync",
+      "unit": "ratio",
+      "formatter": "ratio",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_blockfetchclient_blockdelay_s",
+      "label": "cardano_node_metrics_blockfetchclient_blockdelay_s",
+      "description": "区块获取延迟（秒）。",
+      "groupId": "chain_sync",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_blockfetchclient_blocksize",
+      "label": "cardano_node_metrics_blockfetchclient_blocksize",
+      "description": "最近拉取区块大小。",
+      "groupId": "chain_sync",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_cardano_build_info",
+      "label": "cardano_node_metrics_cardano_build_info",
+      "description": "节点版本/编译器/架构等构建元数据（label 中包含 version、revision、compiler、os 等）。",
+      "groupId": "metadata",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_connectionManager_fullDuplexConns",
+      "label": "cardano_node_metrics_connectionManager_fullDuplexConns",
+      "description": "全双工连接数。",
+      "groupId": "connection_manager",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_connectionManager_incomingConns",
+      "label": "cardano_node_metrics_connectionManager_incomingConns",
+      "description": "入站连接数。",
+      "groupId": "connection_manager",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_connectionManager_outgoingConns",
+      "label": "cardano_node_metrics_connectionManager_outgoingConns",
+      "description": "出站连接数。",
+      "groupId": "connection_manager",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_connectionManager_unidirectionalConns",
+      "label": "cardano_node_metrics_connectionManager_unidirectionalConns",
+      "description": "单向连接数。",
+      "groupId": "connection_manager",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_density_real",
+      "label": "cardano_node_metrics_density_real",
+      "description": "链密度（最近窗口内出块密度）。",
+      "groupId": "chain_sync",
+      "unit": "ratio",
+      "formatter": "ratio",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_inboundGovernor_cold",
+      "label": "cardano_node_metrics_inboundGovernor_cold",
+      "description": "cold 状态入站连接数。",
+      "groupId": "inbound_governor",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_inboundGovernor_hot",
+      "label": "cardano_node_metrics_inboundGovernor_hot",
+      "description": "hot 状态入站连接数。",
+      "groupId": "inbound_governor",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_inboundGovernor_idle",
+      "label": "cardano_node_metrics_inboundGovernor_idle",
+      "description": "idle 状态入站连接数。",
+      "groupId": "inbound_governor",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_inboundGovernor_warm",
+      "label": "cardano_node_metrics_inboundGovernor_warm",
+      "description": "warm 状态入站连接数。",
+      "groupId": "inbound_governor",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_nodeStartTime_int",
+      "label": "cardano_node_metrics_nodeStartTime_int",
+      "description": "节点启动时间（unix epoch）。",
+      "groupId": "chain_sync",
+      "unit": "timestamp_s",
+      "formatter": "timestamp_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ActiveBigLedgerPeers",
+      "label": "cardano_node_metrics_peerSelection_ActiveBigLedgerPeers",
+      "description": "活跃 big-ledger peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ActiveBigLedgerPeersDemotions",
+      "label": "cardano_node_metrics_peerSelection_ActiveBigLedgerPeersDemotions",
+      "description": "active big-ledger peers 降级事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ActiveBootstrapPeers",
+      "label": "cardano_node_metrics_peerSelection_ActiveBootstrapPeers",
+      "description": "活跃 bootstrap peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ActiveBootstrapPeersDemotions",
+      "label": "cardano_node_metrics_peerSelection_ActiveBootstrapPeersDemotions",
+      "description": "active bootstrap peers 降级事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ActiveLocalRootPeers",
+      "label": "cardano_node_metrics_peerSelection_ActiveLocalRootPeers",
+      "description": "活跃本地 root peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ActiveLocalRootPeersDemotions",
+      "label": "cardano_node_metrics_peerSelection_ActiveLocalRootPeersDemotions",
+      "description": "active local-root peers 降级事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ActiveNonRootPeers",
+      "label": "cardano_node_metrics_peerSelection_ActiveNonRootPeers",
+      "description": "活跃非 root peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ActiveNonRootPeersDemotions",
+      "label": "cardano_node_metrics_peerSelection_ActiveNonRootPeersDemotions",
+      "description": "active non-root peers 降级事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ActivePeers",
+      "label": "cardano_node_metrics_peerSelection_ActivePeers",
+      "description": "活跃 peers 总数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ActivePeersDemotions",
+      "label": "cardano_node_metrics_peerSelection_ActivePeersDemotions",
+      "description": "active peers 降级事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_DecreasedActiveBigLedgerPeers",
+      "label": "cardano_node_metrics_peerSelection_churn_DecreasedActiveBigLedgerPeers",
+      "description": "ActiveBigLedgerPeers 减量。",
+      "groupId": "peer_selection_churn",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_DecreasedActiveBigLedgerPeers_duration",
+      "label": "cardano_node_metrics_peerSelection_churn_DecreasedActiveBigLedgerPeers_duration",
+      "description": "ActiveBigLedgerPeers 减少阶段耗时。",
+      "groupId": "peer_selection_churn",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_DecreasedActivePeers",
+      "label": "cardano_node_metrics_peerSelection_churn_DecreasedActivePeers",
+      "description": "ActivePeers 减量。",
+      "groupId": "peer_selection_churn",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_DecreasedActivePeers_duration",
+      "label": "cardano_node_metrics_peerSelection_churn_DecreasedActivePeers_duration",
+      "description": "ActivePeers 减少阶段耗时。",
+      "groupId": "peer_selection_churn",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_DecreasedEstablishedBigLedgerPeers",
+      "label": "cardano_node_metrics_peerSelection_churn_DecreasedEstablishedBigLedgerPeers",
+      "description": "EstablishedBigLedgerPeers 减量。",
+      "groupId": "peer_selection_churn",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_DecreasedEstablishedBigLedgerPeers_duration",
+      "label": "cardano_node_metrics_peerSelection_churn_DecreasedEstablishedBigLedgerPeers_duration",
+      "description": "EstablishedBigLedgerPeers 减少阶段耗时。",
+      "groupId": "peer_selection_churn",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_DecreasedEstablishedPeers",
+      "label": "cardano_node_metrics_peerSelection_churn_DecreasedEstablishedPeers",
+      "description": "EstablishedPeers 减量。",
+      "groupId": "peer_selection_churn",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_DecreasedEstablishedPeers_duration",
+      "label": "cardano_node_metrics_peerSelection_churn_DecreasedEstablishedPeers_duration",
+      "description": "EstablishedPeers 减少阶段耗时。",
+      "groupId": "peer_selection_churn",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_DecreasedKnownBigLedgerPeers",
+      "label": "cardano_node_metrics_peerSelection_churn_DecreasedKnownBigLedgerPeers",
+      "description": "KnownBigLedgerPeers 减量。",
+      "groupId": "peer_selection_churn",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_DecreasedKnownBigLedgerPeers_duration",
+      "label": "cardano_node_metrics_peerSelection_churn_DecreasedKnownBigLedgerPeers_duration",
+      "description": "KnownBigLedgerPeers 减少阶段耗时。",
+      "groupId": "peer_selection_churn",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_DecreasedKnownPeers",
+      "label": "cardano_node_metrics_peerSelection_churn_DecreasedKnownPeers",
+      "description": "KnownPeers 减量。",
+      "groupId": "peer_selection_churn",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_DecreasedKnownPeers_duration",
+      "label": "cardano_node_metrics_peerSelection_churn_DecreasedKnownPeers_duration",
+      "description": "KnownPeers 减少阶段耗时。",
+      "groupId": "peer_selection_churn",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_IncreasedActiveBigLedgerPeers",
+      "label": "cardano_node_metrics_peerSelection_churn_IncreasedActiveBigLedgerPeers",
+      "description": "ActiveBigLedgerPeers 增量。",
+      "groupId": "peer_selection_churn",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_IncreasedActiveBigLedgerPeers_duration",
+      "label": "cardano_node_metrics_peerSelection_churn_IncreasedActiveBigLedgerPeers_duration",
+      "description": "ActiveBigLedgerPeers 增长阶段耗时。",
+      "groupId": "peer_selection_churn",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_IncreasedActivePeers",
+      "label": "cardano_node_metrics_peerSelection_churn_IncreasedActivePeers",
+      "description": "ActivePeers 增量。",
+      "groupId": "peer_selection_churn",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_IncreasedActivePeers_duration",
+      "label": "cardano_node_metrics_peerSelection_churn_IncreasedActivePeers_duration",
+      "description": "ActivePeers 增长阶段耗时。",
+      "groupId": "peer_selection_churn",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_IncreasedEstablishedBigLedgerPeers",
+      "label": "cardano_node_metrics_peerSelection_churn_IncreasedEstablishedBigLedgerPeers",
+      "description": "EstablishedBigLedgerPeers 增量。",
+      "groupId": "peer_selection_churn",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_IncreasedEstablishedBigLedgerPeers_duration",
+      "label": "cardano_node_metrics_peerSelection_churn_IncreasedEstablishedBigLedgerPeers_duration",
+      "description": "EstablishedBigLedgerPeers 增长阶段耗时。",
+      "groupId": "peer_selection_churn",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_IncreasedEstablishedPeers",
+      "label": "cardano_node_metrics_peerSelection_churn_IncreasedEstablishedPeers",
+      "description": "EstablishedPeers 增量。",
+      "groupId": "peer_selection_churn",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_IncreasedEstablishedPeers_duration",
+      "label": "cardano_node_metrics_peerSelection_churn_IncreasedEstablishedPeers_duration",
+      "description": "EstablishedPeers 增长阶段耗时。",
+      "groupId": "peer_selection_churn",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_IncreasedKnownBigLedgerPeers",
+      "label": "cardano_node_metrics_peerSelection_churn_IncreasedKnownBigLedgerPeers",
+      "description": "KnownBigLedgerPeers 增量。",
+      "groupId": "peer_selection_churn",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_IncreasedKnownBigLedgerPeers_duration",
+      "label": "cardano_node_metrics_peerSelection_churn_IncreasedKnownBigLedgerPeers_duration",
+      "description": "KnownBigLedgerPeers 增长阶段耗时。",
+      "groupId": "peer_selection_churn",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_IncreasedKnownPeers",
+      "label": "cardano_node_metrics_peerSelection_churn_IncreasedKnownPeers",
+      "description": "KnownPeers 增量。",
+      "groupId": "peer_selection_churn",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_churn_IncreasedKnownPeers_duration",
+      "label": "cardano_node_metrics_peerSelection_churn_IncreasedKnownPeers_duration",
+      "description": "KnownPeers 增长阶段耗时。",
+      "groupId": "peer_selection_churn",
+      "unit": "seconds",
+      "formatter": "duration_s",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_cold",
+      "label": "cardano_node_metrics_peerSelection_cold",
+      "description": "cold peers 总数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_coldBigLedgerPeers",
+      "label": "cardano_node_metrics_peerSelection_coldBigLedgerPeers",
+      "description": "cold big-ledger peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ColdBigLedgerPeersPromotions",
+      "label": "cardano_node_metrics_peerSelection_ColdBigLedgerPeersPromotions",
+      "description": "cold big-ledger peers 晋升事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ColdBootstrapPeersPromotions",
+      "label": "cardano_node_metrics_peerSelection_ColdBootstrapPeersPromotions",
+      "description": "cold bootstrap peers 晋升事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ColdNonRootPeersPromotions",
+      "label": "cardano_node_metrics_peerSelection_ColdNonRootPeersPromotions",
+      "description": "cold non-root peers 晋升事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_ColdPeersPromotions",
+      "label": "cardano_node_metrics_peerSelection_ColdPeersPromotions",
+      "description": "cold peers 晋升事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_EstablishedBigLedgerPeers",
+      "label": "cardano_node_metrics_peerSelection_EstablishedBigLedgerPeers",
+      "description": "已建立 big-ledger peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_EstablishedBootstrapPeers",
+      "label": "cardano_node_metrics_peerSelection_EstablishedBootstrapPeers",
+      "description": "已建立 bootstrap peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_EstablishedLocalRootPeers",
+      "label": "cardano_node_metrics_peerSelection_EstablishedLocalRootPeers",
+      "description": "已建立本地 root peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_EstablishedNonRootPeers",
+      "label": "cardano_node_metrics_peerSelection_EstablishedNonRootPeers",
+      "description": "已建立非 root peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_hot",
+      "label": "cardano_node_metrics_peerSelection_hot",
+      "description": "hot peers 总数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_hotBigLedgerPeers",
+      "label": "cardano_node_metrics_peerSelection_hotBigLedgerPeers",
+      "description": "hot big-ledger peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_KnownBigLedgerPeers",
+      "label": "cardano_node_metrics_peerSelection_KnownBigLedgerPeers",
+      "description": "已知 big-ledger peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_KnownBootstrapPeers",
+      "label": "cardano_node_metrics_peerSelection_KnownBootstrapPeers",
+      "description": "已知 bootstrap peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_KnownLocalRootPeers",
+      "label": "cardano_node_metrics_peerSelection_KnownLocalRootPeers",
+      "description": "已知本地 root peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_KnownNonRootPeers",
+      "label": "cardano_node_metrics_peerSelection_KnownNonRootPeers",
+      "description": "已知非 root peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_KnownPeers",
+      "label": "cardano_node_metrics_peerSelection_KnownPeers",
+      "description": "已知 peers 总数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_RootPeers",
+      "label": "cardano_node_metrics_peerSelection_RootPeers",
+      "description": "root peers 总数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_warm",
+      "label": "cardano_node_metrics_peerSelection_warm",
+      "description": "warm peers 总数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_warmBigLedgerPeers",
+      "label": "cardano_node_metrics_peerSelection_warmBigLedgerPeers",
+      "description": "warm big-ledger peers 数。",
+      "groupId": "peer_selection_state",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_WarmBigLedgerPeersDemotions",
+      "label": "cardano_node_metrics_peerSelection_WarmBigLedgerPeersDemotions",
+      "description": "warm big-ledger peers 降级事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_WarmBigLedgerPeersPromotions",
+      "label": "cardano_node_metrics_peerSelection_WarmBigLedgerPeersPromotions",
+      "description": "warm big-ledger peers 晋升事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_WarmBootstrapPeersDemotions",
+      "label": "cardano_node_metrics_peerSelection_WarmBootstrapPeersDemotions",
+      "description": "warm bootstrap peers 降级事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_WarmBootstrapPeersPromotions",
+      "label": "cardano_node_metrics_peerSelection_WarmBootstrapPeersPromotions",
+      "description": "warm bootstrap peers 晋升事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_WarmLocalRootPeersPromotions",
+      "label": "cardano_node_metrics_peerSelection_WarmLocalRootPeersPromotions",
+      "description": "warm local-root peers 晋升事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_WarmNonRootPeersDemotions",
+      "label": "cardano_node_metrics_peerSelection_WarmNonRootPeersDemotions",
+      "description": "warm non-root peers 降级事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_WarmNonRootPeersPromotions",
+      "label": "cardano_node_metrics_peerSelection_WarmNonRootPeersPromotions",
+      "description": "warm non-root peers 晋升事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_WarmPeersDemotions",
+      "label": "cardano_node_metrics_peerSelection_WarmPeersDemotions",
+      "description": "warm peers 降级事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_peerSelection_WarmPeersPromotions",
+      "label": "cardano_node_metrics_peerSelection_WarmPeersPromotions",
+      "description": "warm peers 晋升事件计数。",
+      "groupId": "peer_selection_events",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_RTS_gcticks_int",
+      "label": "cardano_node_metrics_RTS_gcticks_int",
+      "description": "GC tick 计数。",
+      "groupId": "runtime_gc_rts",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_RTS_mutticks_int",
+      "label": "cardano_node_metrics_RTS_mutticks_int",
+      "description": "mutator tick 计数。",
+      "groupId": "runtime_gc_rts",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_served_block_count_int",
+      "label": "cardano_node_metrics_served_block_count_int",
+      "description": "节点对外服务的区块总量。",
+      "groupId": "chain_sync",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_served_block_latest_count_int",
+      "label": "cardano_node_metrics_served_block_latest_count_int",
+      "description": "最近窗口内服务区块数量。",
+      "groupId": "chain_sync",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_served_header_counter_int",
+      "label": "cardano_node_metrics_served_header_counter_int",
+      "description": "节点对外服务的区块头总量。",
+      "groupId": "chain_sync",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_slotInEpoch_int",
+      "label": "cardano_node_metrics_slotInEpoch_int",
+      "description": "当前 epoch 内 slot 编号。",
+      "groupId": "chain_sync",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_Stat_cputicks_int",
+      "label": "cardano_node_metrics_Stat_cputicks_int",
+      "description": "CPU tick 计数。",
+      "groupId": "runtime_gc_rts",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_Stat_threads_int",
+      "label": "cardano_node_metrics_Stat_threads_int",
+      "description": "进程线程数。",
+      "groupId": "runtime_gc_rts",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_txsProcessedNum_int",
+      "label": "cardano_node_metrics_txsProcessedNum_int",
+      "description": "已处理交易累计数。",
+      "groupId": "tx_mempool",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_txsSyncDuration_int",
+      "label": "cardano_node_metrics_txsSyncDuration_int",
+      "description": "交易同步耗时（按命名推断为时长）。",
+      "groupId": "tx_mempool",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "ekg_server_timestamp_ms",
+      "label": "ekg_server_timestamp_ms",
+      "description": "EKG 服务器时间戳（毫秒）。",
+      "groupId": "metadata",
+      "unit": "timestamp_ms",
+      "formatter": "timestamp_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_bytes_allocated",
+      "label": "rts_gc_bytes_allocated",
+      "description": "累计分配字节。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_bytes_copied",
+      "label": "rts_gc_bytes_copied",
+      "description": "累计复制字节（GC 拷贝成本）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_cpu_ms",
+      "label": "rts_gc_cpu_ms",
+      "description": "GC 总 CPU 时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_cumulative_bytes_used",
+      "label": "rts_gc_cumulative_bytes_used",
+      "description": "累计使用字节。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_current_bytes_slop",
+      "label": "rts_gc_current_bytes_slop",
+      "description": "当前 GC slop 字节（保留/碎片空间）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_current_bytes_used",
+      "label": "rts_gc_current_bytes_used",
+      "description": "当前 GC 使用字节数。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_gc_cpu_ms",
+      "label": "rts_gc_gc_cpu_ms",
+      "description": "GC 阶段 CPU 时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_gc_wall_ms",
+      "label": "rts_gc_gc_wall_ms",
+      "description": "GC 阶段墙钟时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_init_cpu_ms",
+      "label": "rts_gc_init_cpu_ms",
+      "description": "GC 初始化 CPU 时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_init_wall_ms",
+      "label": "rts_gc_init_wall_ms",
+      "description": "GC 初始化墙钟时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_max_bytes_slop",
+      "label": "rts_gc_max_bytes_slop",
+      "description": "历史最大 GC slop 字节。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_max_bytes_used",
+      "label": "rts_gc_max_bytes_used",
+      "description": "历史最大 GC 使用字节。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_max_compact_bytes_used",
+      "label": "rts_gc_max_compact_bytes_used",
+      "description": "历史最大 compact 区使用字节。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_max_large_bytes_used",
+      "label": "rts_gc_max_large_bytes_used",
+      "description": "历史最大 large object 区使用字节。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_mutator_cpu_ms",
+      "label": "rts_gc_mutator_cpu_ms",
+      "description": "mutator CPU 时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_mutator_wall_ms",
+      "label": "rts_gc_mutator_wall_ms",
+      "description": "mutator 墙钟时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_nm_cpu_ms",
+      "label": "rts_gc_nm_cpu_ms",
+      "description": "non-moving GC CPU 时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_nm_elapsed_ms",
+      "label": "rts_gc_nm_elapsed_ms",
+      "description": "non-moving GC 墙钟时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_nm_max_elapsed_ms",
+      "label": "rts_gc_nm_max_elapsed_ms",
+      "description": "non-moving GC 最大墙钟时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_nm_sync_cpu_ms",
+      "label": "rts_gc_nm_sync_cpu_ms",
+      "description": "non-moving GC 同步 CPU 时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_nm_sync_elapsed_ms",
+      "label": "rts_gc_nm_sync_elapsed_ms",
+      "description": "non-moving GC 同步墙钟时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_nm_sync_max_elapsed_ms",
+      "label": "rts_gc_nm_sync_max_elapsed_ms",
+      "description": "non-moving GC 同步最大墙钟时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_num_bytes_usage_samples",
+      "label": "rts_gc_num_bytes_usage_samples",
+      "description": "内存使用采样次数。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_num_gcs",
+      "label": "rts_gc_num_gcs",
+      "description": "GC 总次数。",
+      "groupId": "runtime_gc_rts",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_par_avg_bytes_copied",
+      "label": "rts_gc_par_avg_bytes_copied",
+      "description": "并行 GC 平均复制字节。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_par_balanced_bytes_copied",
+      "label": "rts_gc_par_balanced_bytes_copied",
+      "description": "并行 GC 平衡复制字节。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_par_max_bytes_copied",
+      "label": "rts_gc_par_max_bytes_copied",
+      "description": "并行 GC 最大复制字节。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_par_tot_bytes_copied",
+      "label": "rts_gc_par_tot_bytes_copied",
+      "description": "并行 GC 总复制字节。",
+      "groupId": "runtime_gc_rts",
+      "unit": "bytes",
+      "formatter": "bytes",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_peak_megabytes_allocated",
+      "label": "rts_gc_peak_megabytes_allocated",
+      "description": "峰值分配内存（MB）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false
+    },
+    {
+      "key": "rts_gc_wall_ms",
+      "label": "rts_gc_wall_ms",
+      "description": "GC 相关总墙钟时间（ms）。",
+      "groupId": "runtime_gc_rts",
+      "unit": "ms",
+      "formatter": "duration_ms",
+      "priority": 3,
+      "defaultVisible": false
+    }
+  ],
+  "presets": {
+    "dashboard_core": [
+      "cardano_node_metrics_epoch_int",
+      "cardano_node_metrics_blockNum_int",
+      "cardano_node_metrics_slotNum_int",
+      "cardano_node_metrics_blockfetchclient_lateblocks",
+      "cardano_node_metrics_peerSelection_EstablishedPeers",
+      "cardano_node_metrics_connectionManager_duplexConns",
+      "cardano_node_metrics_Mem_resident_int",
+      "cardano_node_metrics_RTS_gcLiveBytes_int",
+      "cardano_node_metrics_RTS_gcHeapBytes_int",
+      "cardano_node_metrics_RTS_gcMinorNum_int",
+      "cardano_node_metrics_RTS_gcMajorNum_int",
+      "cardano_node_metrics_txsInMempool_int",
+      "cardano_node_metrics_mempoolBytes_int",
+      "cardano_node_metrics_forks_int",
+      "cardano_node_metrics_forging_enabled"
+    ],
+    "node_resources": [
+      "cardano_node_metrics_Mem_resident_int",
+      "cardano_node_metrics_RTS_gcLiveBytes_int",
+      "cardano_node_metrics_RTS_gcHeapBytes_int",
+      "cardano_node_metrics_RTS_gcMinorNum_int",
+      "cardano_node_metrics_RTS_gcMajorNum_int"
+    ],
+    "connectivity": [
+      "cardano_node_metrics_peerSelection_EstablishedPeers",
+      "cardano_node_metrics_connectionManager_duplexConns",
+      "cardano_node_metrics_connectionManager_incomingConns",
+      "cardano_node_metrics_connectionManager_outgoingConns"
+    ]
+  }
+}

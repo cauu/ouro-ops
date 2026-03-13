@@ -450,3 +450,18 @@ Spec-ID: S0009
 
 ### 26.4 Change Request Delta
 - 2026-03-13 21:58 +0800 新增交付：通过文档化方式冻结 raw 指标字典，后续前端可直接按文档选取展示指标。
+
+## 27. Addendum (append-only)
+### 27.1 Execution Plan Delta
+- [x] p9-12-fix9 生成前端可直接消费的 telemetry 指标 JSON 配置
+
+### 27.2 Execution Log Delta
+- 2026-03-13 22:06 +0800 p9-12-fix9 started: 将 `p9-12-fix8` 的 Markdown 指标字典转换为前端可直接消费的 JSON 配置结构。
+- 2026-03-13 22:06 +0800 p9-12-fix9 completed: 已新增 `src/config/telemetry-metrics-catalog.json`，包含分组、单位、格式化规则、优先级与 preset 清单。
+
+### 27.3 Validation Evidence Delta
+- TC-P9-006 | stack: other | command: node -e \"const fs=require('fs');const p='src/config/telemetry-metrics-catalog.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));console.log('metrics',j.metrics.length,'groups',j.groups.length,'core',j.presets.dashboard_core.length);\" | result: pass | note: JSON 可解析，metrics=135 groups=9 core=15
+- TC-P9-006 | stack: other | command: rg -n \"\\\"schemaVersion\\\"|\\\"endpoint\\\"|\\\"dashboard_core\\\"|cardano_node_metrics_epoch_int|cardano_node_metrics_peerSelection_EstablishedPeers|cardano_node_metrics_RTS_gcLiveBytes_int\" src/config/telemetry-metrics-catalog.json | result: pass | note: 关键 schema 字段与核心指标映射存在
+
+### 27.4 Change Request Delta
+- 2026-03-13 22:06 +0800 新增交付：前端后续可直接读取 JSON 配置决定“展示哪些指标、如何分组与格式化”。
