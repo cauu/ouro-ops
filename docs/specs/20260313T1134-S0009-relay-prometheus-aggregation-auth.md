@@ -414,3 +414,24 @@ Spec-ID: S0009
 
 ### 24.4 Change Request Delta
 - 2026-03-13 20:32 +0800 修复完成：Enable API 现在会在 relay 本地自动补齐 Prometheus Query API 上游，不再依赖外部预置 `127.0.0.1:9090` 服务。
+
+## 25. Addendum (append-only)
+### 25.1 Execution Plan Delta
+- [x] p9-12-fix7 收敛 telemetry API 为单一 `raw` 端点并移除旧端点依赖
+
+### 25.2 Execution Log Delta
+- 2026-03-13 21:42 +0800 p9-12-fix7 started: 按最新需求移除旧 telemetry 细粒度端点，仅保留全量 `raw` 返回。
+- 2026-03-13 21:42 +0800 p9-12-fix7 completed: Nginx 网关已仅暴露 `GET /api/ops/v1/telemetry/raw`；monitor 改为单次拉取并在客户端完成指标映射；补齐 series payload 兼容解析。
+
+### 25.3 Validation Evidence Delta
+- TC-P9-003 | stack: other | command: rg -n "telemetry/(epoch|sync-percent|tip-diff-blocks|peer-count|cpu-sys-percent|mem-live-bytes|mem-rss-bytes|mem-heap-bytes|gc-minor-total|gc-major-total|snapshot)" ansible src-tauri src -S | result: pass | note: 可执行代码中已无旧 telemetry 端点依赖
+- TC-P9-003 | stack: other | command: test -f docs/review/20260313-p9-12-fix7-telemetry-raw-contract.md && echo ok | result: pass | note: raw 单端点契约与字段映射文档已落盘
+- TC-P9-003 | stack: other | command: rg -n "location = /api/ops/v1/telemetry/raw|proxy_pass .*/api/v1/query\\?query=%7B__name__%3D~%22.%2B%22%7D" ansible/roles/ops-observability-gateway/templates/ouro-ops-metrics.conf.j2 | result: pass | note: 网关仅暴露 raw 端点并转发全量指标查询
+- TC-P9-006 | stack: rust | command: cargo test -q tc_mon_ | result: pass | note: monitor 21 项单测通过，包含 raw payload 解析与字段映射回归
+- TC-P9-005 | stack: rust | command: cargo test -q tc_obs_ | result: pass | note: observability 命令链路回归通过
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-bootstrap.yml | result: pass | note: bootstrap 语法检查通过
+- TC-P9-005 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/deploy.yml | result: pass | note: deploy 语法检查通过（relay/bp host pattern 警告为本地空 inventory 预期）
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-rollback.yml | result: pass | note: rollback 语法检查通过
+
+### 25.4 Change Request Delta
+- 2026-03-13 21:42 +0800 需求落地：旧 telemetry 细粒度端点已下线，当前实现仅保留单一 `raw` 端点。

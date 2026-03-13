@@ -100,8 +100,10 @@ struct RelayTelemetryConfig {
 
 #[derive(Debug, Clone)]
 struct RelayMetricSample {
+    metric_name: Option<String>,
     node: Option<String>,
     role: Option<String>,
+    host_ip: Option<String>,
     instance: Option<String>,
     timestamp: Option<i64>,
     value: f64,
@@ -114,17 +116,56 @@ struct RelayMetricsAttempt {
     endpoint_errors: usize,
 }
 
-const RELAY_TELEMETRY_ENDPOINTS: [(&str, &str); 10] = [
-    ("epoch", "epoch"),
-    ("sync_percent", "sync-percent"),
-    ("tip_diff_blocks", "tip-diff-blocks"),
-    ("peer_count", "peer-count"),
-    ("cpu_sys_percent", "cpu-sys-percent"),
-    ("mem_live_bytes", "mem-live-bytes"),
-    ("mem_rss_bytes", "mem-rss-bytes"),
-    ("mem_heap_bytes", "mem-heap-bytes"),
-    ("gc_minor_total", "gc-minor-total"),
-    ("gc_major_total", "gc-major-total"),
+const RELAY_TELEMETRY_RAW_ENDPOINT: &str = "raw";
+const RELAY_TELEMETRY_FIELD_METRICS: [(&str, &[&str]); 10] = [
+    ("epoch", &["cardano_node_metrics_epoch_int"]),
+    ("sync_percent", &["cardano_node_metrics_syncProgress"]),
+    (
+        "tip_diff_blocks",
+        &[
+            "cardano_node_metrics_chainDensityTipDiff_int",
+            "cardano_node_metrics_blockfetchclient_lateblocks",
+        ],
+    ),
+    (
+        "peer_count",
+        &[
+            "cardano_node_metrics_connectedPeers_int",
+            "cardano_node_metrics_connectionManager_duplexConns",
+            "cardano_node_metrics_peerSelection_EstablishedPeers",
+        ],
+    ),
+    ("cpu_sys_percent", &["cardano_node_resources_cpuSys_percent"]),
+    (
+        "mem_live_bytes",
+        &[
+            "cardano_node_resources_memLive_bytes",
+            "cardano_node_metrics_RTS_gcLiveBytes_int",
+            "rts_gc_current_bytes_used",
+        ],
+    ),
+    (
+        "mem_rss_bytes",
+        &[
+            "cardano_node_resources_memRss_bytes",
+            "cardano_node_metrics_Mem_resident_int",
+        ],
+    ),
+    (
+        "mem_heap_bytes",
+        &[
+            "cardano_node_resources_memHeap_bytes",
+            "cardano_node_metrics_RTS_gcHeapBytes_int",
+        ],
+    ),
+    (
+        "gc_minor_total",
+        &["rts_gc_minor_num_gcs", "cardano_node_metrics_RTS_gcMinorNum_int"],
+    ),
+    (
+        "gc_major_total",
+        &["rts_gc_major_num_gcs", "cardano_node_metrics_RTS_gcMajorNum_int"],
+    ),
 ];
 
 impl PrometheusMetrics {
@@ -452,17 +493,30 @@ fn parse_metric_sample_value(value: Option<&Value>) -> Option<f64> {
 
 fn parse_relay_metric_samples(payload: &Value) -> Result<Vec<RelayMetricSample>, AppError> {
     if let Some(series) = payload.get("series").and_then(Value::as_array) {
+        let series_metric_name = payload
+            .get("metric")
+            .and_then(Value::as_str)
+            .map(|raw| raw.to_string());
         let samples = series
             .iter()
             .filter_map(|entry| {
                 let value = parse_metric_sample_value(entry.get("value"))?;
                 Some(RelayMetricSample {
+                    metric_name: entry
+                        .get("metric_name")
+                        .and_then(Value::as_str)
+                        .map(|raw| raw.to_string())
+                        .or_else(|| series_metric_name.clone()),
                     node: entry
                         .get("node")
                         .and_then(Value::as_str)
                         .map(|raw| raw.to_string()),
                     role: entry
                         .get("role")
+                        .and_then(Value::as_str)
+                        .map(|raw| raw.to_string()),
+                    host_ip: entry
+                        .get("host_ip")
                         .and_then(Value::as_str)
                         .map(|raw| raw.to_string()),
                     instance: entry
@@ -500,12 +554,20 @@ fn parse_relay_metric_samples(payload: &Value) -> Result<Vec<RelayMetricSample>,
             let timestamp = parse_metric_sample_timestamp(value_vector.first());
             let value = parse_metric_sample_value(value_vector.get(1))?;
             Some(RelayMetricSample {
+                metric_name: metric
+                    .get("__name__")
+                    .and_then(Value::as_str)
+                    .map(|raw| raw.to_string()),
                 node: metric
                     .get("node")
                     .and_then(Value::as_str)
                     .map(|raw| raw.to_string()),
                 role: metric
                     .get("role")
+                    .and_then(Value::as_str)
+                    .map(|raw| raw.to_string()),
+                host_ip: metric
+                    .get("host_ip")
                     .and_then(Value::as_str)
                     .map(|raw| raw.to_string()),
                 instance: metric
@@ -572,12 +634,24 @@ fn fetch_relay_metric_samples(
 fn select_relay_metric_sample<'a>(
     machine: &MachineRow,
     samples: &'a [RelayMetricSample],
+    metric_names: &[&str],
 ) -> Option<&'a RelayMetricSample> {
     let mut selected: Option<&RelayMetricSample> = None;
     let mut selected_score = 0_u8;
     let mut selected_timestamp = i64::MIN;
 
     for sample in samples {
+        if !metric_names.is_empty() {
+            let metric_matches = sample
+                .metric_name
+                .as_deref()
+                .map(|metric_name| metric_names.iter().any(|candidate| metric_name == *candidate))
+                .unwrap_or(false);
+            if !metric_matches {
+                continue;
+            }
+        }
+
         let role_matches = sample
             .role
             .as_deref()
@@ -596,11 +670,18 @@ fn select_relay_metric_sample<'a>(
             .as_deref()
             .map(|instance| instance.contains(machine.ip.as_str()))
             .unwrap_or(false);
+        let host_ip_matches = sample
+            .host_ip
+            .as_deref()
+            .map(|host_ip| host_ip == machine.ip.as_str())
+            .unwrap_or(false);
 
         let score = if node_matches {
             3
-        } else if instance_matches {
+        } else if host_ip_matches {
             2
+        } else if instance_matches {
+            1
         } else {
             0
         };
@@ -614,7 +695,30 @@ fn select_relay_metric_sample<'a>(
             selected_timestamp = timestamp;
         }
     }
-    selected
+    if selected.is_some() {
+        return selected;
+    }
+
+    let mut role_only: Vec<&RelayMetricSample> = samples
+        .iter()
+        .filter(|sample| {
+            let metric_matches = sample
+                .metric_name
+                .as_deref()
+                .map(|metric_name| metric_names.iter().any(|candidate| metric_name == *candidate))
+                .unwrap_or(false);
+            let role_matches = sample
+                .role
+                .as_deref()
+                .map(|role| role.eq_ignore_ascii_case(machine.role.as_str()))
+                .unwrap_or(false);
+            metric_matches && role_matches
+        })
+        .collect();
+    if role_only.len() == 1 {
+        return role_only.pop();
+    }
+    None
 }
 
 fn apply_relay_metric_value(
@@ -658,11 +762,12 @@ fn collect_relay_metrics_from_single_relay(
     };
     let mut latest_timestamp: Option<i64> = None;
     let mut errors: Vec<String> = Vec::new();
+    let mut endpoint_errors = 0_usize;
 
-    for (metric_key, endpoint) in RELAY_TELEMETRY_ENDPOINTS {
-        match fetch_relay_metric_samples(config, relay, endpoint) {
-            Ok(samples) => {
-                if let Some(sample) = select_relay_metric_sample(machine, &samples) {
+    match fetch_relay_metric_samples(config, relay, RELAY_TELEMETRY_RAW_ENDPOINT) {
+        Ok(samples) => {
+            for (metric_key, metric_names) in RELAY_TELEMETRY_FIELD_METRICS {
+                if let Some(sample) = select_relay_metric_sample(machine, &samples, metric_names) {
                     apply_relay_metric_value(
                         &mut mapped,
                         metric_key,
@@ -672,9 +777,10 @@ fn collect_relay_metrics_from_single_relay(
                     );
                 }
             }
-            Err(err) => {
-                errors.push(err.to_string());
-            }
+        }
+        Err(err) => {
+            endpoint_errors = 1;
+            errors.push(err.to_string());
         }
     }
 
@@ -683,9 +789,8 @@ fn collect_relay_metrics_from_single_relay(
             None
         } else {
             Some(format!(
-                "relay api partial data on {}: {} endpoint(s) failed",
+                "relay api partial data on {}: raw endpoint degraded",
                 relay.name,
-                errors.len()
             ))
         };
         mapped.collected_at_epoch = latest_timestamp;
@@ -708,7 +813,7 @@ fn collect_relay_metrics_from_single_relay(
     RelayMetricsAttempt {
         metrics: mapped,
         latest_timestamp,
-        endpoint_errors: errors.len(),
+        endpoint_errors,
     }
 }
 
@@ -1799,13 +1904,22 @@ mod tests {
             "data": {
                 "resultType": "vector",
                 "result": [{
-                    "metric": {"node": "bp-1", "role": "bp", "instance": "10.0.0.12:12798"},
+                    "metric": {
+                        "__name__": "cardano_node_metrics_syncProgress",
+                        "node": "bp-1",
+                        "role": "bp",
+                        "instance": "10.0.0.12:12798"
+                    },
                     "value": [1773374400, "98.41"]
                 }]
             }
         });
         let samples = parse_relay_metric_samples(&payload).expect("samples");
         assert_eq!(samples.len(), 1);
+        assert_eq!(
+            samples[0].metric_name.as_deref(),
+            Some("cardano_node_metrics_syncProgress")
+        );
         assert_eq!(samples[0].node.as_deref(), Some("bp-1"));
         assert_eq!(samples[0].role.as_deref(), Some("bp"));
         assert_eq!(samples[0].timestamp, Some(1_773_374_400));
@@ -1817,21 +1931,30 @@ mod tests {
         let machine = sample_machine("bp-1", "bp", "10.0.0.12");
         let samples = vec![
             RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_syncProgress".into()),
                 node: Some("relay-1".into()),
                 role: Some("relay".into()),
+                host_ip: Some("10.0.0.10".into()),
                 instance: Some("10.0.0.10:12798".into()),
                 timestamp: Some(100),
                 value: 10.0,
             },
             RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_syncProgress".into()),
                 node: Some("bp-1".into()),
                 role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
                 instance: Some("10.0.0.12:12798".into()),
                 timestamp: Some(120),
                 value: 98.41,
             },
         ];
-        let selected = select_relay_metric_sample(&machine, &samples).expect("selected");
+        let selected = select_relay_metric_sample(
+            &machine,
+            &samples,
+            &["cardano_node_metrics_syncProgress"],
+        )
+        .expect("selected");
         assert_eq!(selected.value, 98.41);
         assert_eq!(selected.timestamp, Some(120));
     }
@@ -1859,6 +1982,7 @@ mod tests {
         });
         let samples = parse_relay_metric_samples(&payload).expect("samples");
         assert_eq!(samples.len(), 1);
+        assert_eq!(samples[0].metric_name.as_deref(), Some("sync_percent"));
         assert_eq!(samples[0].node.as_deref(), Some("relay-1"));
         assert_eq!(samples[0].timestamp, Some(1_773_374_410));
         assert_eq!(samples[0].value, 100.0);

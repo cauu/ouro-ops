@@ -8,4 +8,6 @@ scrape_configs:
       - targets:
           - "{{ ops_metrics_local_scrape_target }}"
         labels:
+          node: "{{ inventory_hostname }}"
           role: relay
+          host_ip: "{{ ansible_host | default(inventory_hostname) }}"
