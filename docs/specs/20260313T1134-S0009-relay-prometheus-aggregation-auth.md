@@ -381,3 +381,19 @@ Spec-ID: S0009
 
 ### 22.4 Change Request Delta
 - 2026-03-13 18:00 +0800 修复完成：Enable API 在未预置 TLS 证书场景可自动生成并继续执行，无需人工先下发证书文件。
+
+## 23. Addendum (append-only)
+### 23.1 Execution Plan Delta
+- [x] p9-12-fix5 修复 GUI 触发时可能读取旧版 ansible 源的问题
+
+### 23.2 Execution Log Delta
+- 2026-03-13 19:11 +0800 p9-12-fix5 started: 用户仍命中旧版 role 行号，判断运行时 playbook 源路径可能未指向当前工作区。
+- 2026-03-13 19:11 +0800 p9-12-fix5 completed: observability playbook 路径解析改为优先 `OURO_OPS_WORKSPACE_ROOT` 与当前工作区 `./ansible/playbooks`，再回退 `CARGO_MANIFEST_DIR`。
+
+### 23.3 Validation Evidence Delta
+- TC-P9-004 | stack: rust | command: rg -n "OURO_OPS_WORKSPACE_ROOT|current_dir\(\)|observability playbook not found" src-tauri/src/commands/observability.rs | result: pass | note: playbook 路径已优先解析当前工作区，避免读到旧构建目录
+- TC-P9-005 | stack: rust | command: cargo test -q tc_obs_ | result: pass | note: observability 命令相关单测通过
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-bootstrap.yml | result: pass | note: bootstrap 语法检查通过
+
+### 23.4 Change Request Delta
+- 2026-03-13 19:11 +0800 修复完成：GUI 触发 observability 任务时优先使用当前仓库最新 ansible 脚本，避免旧源码路径导致的假修复。

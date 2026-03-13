@@ -105,6 +105,23 @@ fn ssh_exec(machine: &MachineRow, remote_cmd: &str) -> Result<String, AppError> 
 }
 
 fn observability_playbook_path(filename: &str) -> Result<String, AppError> {
+    if let Ok(workspace_root) = std::env::var("OURO_OPS_WORKSPACE_ROOT") {
+        let path = std::path::PathBuf::from(workspace_root)
+            .join("ansible")
+            .join("playbooks")
+            .join(filename);
+        if path.is_file() {
+            return Ok(path.display().to_string());
+        }
+    }
+
+    if let Ok(current_dir) = std::env::current_dir() {
+        let path = current_dir.join("ansible").join("playbooks").join(filename);
+        if path.is_file() {
+            return Ok(path.display().to_string());
+        }
+    }
+
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .map_err(|_| AppError::Internal("CARGO_MANIFEST_DIR not set".into()))?;
     let path = std::path::PathBuf::from(manifest_dir)
@@ -113,7 +130,14 @@ fn observability_playbook_path(filename: &str) -> Result<String, AppError> {
         .join("ansible")
         .join("playbooks")
         .join(filename);
-    Ok(path.display().to_string())
+    if path.is_file() {
+        Ok(path.display().to_string())
+    } else {
+        Err(AppError::Internal(format!(
+            "observability playbook not found: {}",
+            path.display()
+        )))
+    }
 }
 
 fn observability_bootstrap_playbook_path() -> Result<String, AppError> {
