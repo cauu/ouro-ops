@@ -230,3 +230,73 @@ Spec-ID: S0009
 
 ### 16.4 Change Request Delta
 - 2026-03-13 20:43 +0800 阶段状态：S0009 所有计划项已完成，等待用户确认是否结项（`delivered`）。
+
+## 17. Addendum (append-only)
+### 17.1 Execution Plan Delta
+- [x] p9-11 在 spec 中补充人工验收清单（UAT Checklist）
+
+### 17.2 Execution Log Delta
+- 2026-03-13 20:56 +0800 p9-11 started: 按用户要求补充可直接执行的人工验收清单。
+- 2026-03-13 20:56 +0800 p9-11 completed: 已在 S0009 增加分步骤人工验收清单，覆盖安全、采集、展示、failover 与回滚。
+
+### 17.3 Manual UAT Checklist
+- [ ] UAT-01 / 基础可用性检查（TC-P9-001）
+  操作：
+  `ls -la docs/specs docs/specs/completed`
+  预期：
+  `docs/specs/` 根目录仅存在 `20260313T1134-S0009-relay-prometheus-aggregation-auth.md` 为 active；`S0008` 在 completed 且为 replaced。
+
+- [ ] UAT-02 / 现网增量接入执行（TC-P9-004）
+  操作：
+  `ansible-playbook -i <inventory> ansible/playbooks/observability-bootstrap.yml -e "ops_metrics_basic_auth_password=<API_KEY>" -e "ops_metrics_tls_cert_path=<CERT_PATH>" -e "ops_metrics_tls_key_path=<KEY_PATH>"`
+  预期：
+  playbook 成功，无需 full deploy 即完成 relay 观测网关接入。
+
+- [ ] UAT-03 / 白名单 API 认证校验（TC-P9-002）
+  操作：
+  `curl -i https://<relay>/api/ops/v1/telemetry/epoch`
+  `curl -i -u ouro_app:<API_KEY> https://<relay>/api/ops/v1/telemetry/epoch`
+  预期：
+  未认证返回 `401`；认证后返回 `200`。
+
+- [ ] UAT-04 / 禁止任意 PromQL 校验（TC-P9-003）
+  操作：
+  `curl -i -u ouro_app:<API_KEY> "https://<relay>/api/ops/v1/telemetry/epoch?query=up"`
+  预期：
+  返回 `400`（或被拒绝），客户端无法透传任意 query。
+
+- [ ] UAT-05 / 新部署默认内建校验（TC-P9-005）
+  操作：
+  正常执行一次 deploy（不显式关闭 `enable_ops_observability_gateway`）。
+  预期：
+  relay 上自动完成网关配置（nginx conf + htpasswd），部署后 API 可直接查询。
+
+- [ ] UAT-06 / Dashboard 指标映射校验（TC-P9-006）
+  操作：
+  启动 App 并进入 Dashboard，至少 1 BP + 1 Relay 场景下观察节点卡与 Resources。
+  预期：
+  每节点 10 项核心字段中至少 6 项非空；可看到 source/sample/note 的 tooltip 信息。
+
+- [ ] UAT-07 / relay 不可用兜底校验（TC-P9-007）
+  操作：
+  临时使主 relay 网关不可用（停 nginx 或封禁端口），保持节点本地采集链路可用。
+  预期：
+  Dashboard 不崩溃，继续展示缓存或 local fallback 数据，出现降级提示但可持续轮询。
+
+- [ ] UAT-08 / 多 relay 自动切换校验（TC-P9-008）
+  操作：
+  配置至少两个 relay；让 relay-1 不可用，relay-2 可用；观察一段时间后恢复 relay-1。
+  预期：
+  数据自动切换到可用 relay；恢复后按最新 `collected_at` 选优，无需手工干预。
+
+- [ ] UAT-09 / 回滚预案演练（TC-P9-004, TC-P9-005）
+  操作：
+  `ansible-playbook -i <inventory> ansible/playbooks/observability-rollback.yml`
+  预期：
+  `ouro-ops-metrics.conf` 与 htpasswd 被移除，nginx reload 成功；观测 API 不再可用或返回 404。
+
+### 17.4 Validation Evidence Delta
+- TC-P9-004 | stack: other | command: rg -n "## 17\\.3 Manual UAT Checklist|UAT-01|UAT-09" docs/specs/20260313T1134-S0009-relay-prometheus-aggregation-auth.md | result: pass | note: 人工验收清单已追加到 active spec，覆盖核心验收路径
+
+### 17.5 Change Request Delta
+- 2026-03-13 20:56 +0800 按用户要求补充人工验收清单，等待用户逐项验收结果反馈。
