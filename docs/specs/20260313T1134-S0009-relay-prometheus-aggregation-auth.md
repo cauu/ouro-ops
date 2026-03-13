@@ -53,7 +53,7 @@ Spec-ID: S0009
 
 ## 3. Execution Plan
 - [x] p9-1 启动 S0009 active spec，冻结目标与验收标准
-- [ ] p9-2 输出 p8-5 失败运行态根因报告（端点、映射、fallback 分支）
+- [x] p9-2 输出 p8-5 失败运行态根因报告（端点、映射、fallback 分支）
 - [ ] p9-3 设计 relay 白名单 API 契约与字段映射表（含空值/时间戳兜底）
 - [ ] p9-4 实现 relay 网关 Basic Auth + HTTPS + 白名单 API 路由模板
 - [ ] p9-5 实现/修复 monitor 数据源：relay API 优先，local monitor fallback
@@ -82,3 +82,20 @@ Spec-ID: S0009
 
 ## 7. Change Requests (append-only)
 - 2026-03-13 11:34 +0800 新需求建立：在已部署环境最小成本接入 relay 聚合观测与认证能力，并纳入新部署默认流程。
+
+## 8. Addendum (append-only)
+### 8.1 Execution Plan Delta
+- [x] p9-2 输出 p8-5 失败运行态根因报告（端点、映射、fallback 分支）
+
+### 8.2 Execution Log Delta
+- 2026-03-13 11:51 +0800 p9-2 started: 复核 p8-5 的采集端点、指标映射和 fallback 分支，定位运行态失败根因。
+- 2026-03-13 11:51 +0800 p9-2 completed: 形成根因报告并给出 P0/P1 修复优先级与 S0009 后续执行输入。
+
+### 8.3 Validation Evidence Delta
+- TC-P9-006 | stack: other | command: rg -n "collect_prometheus_metrics|map_prometheus_metrics|nview:9090|cardano-node:12798|host:12798|host:12788" src-tauri/src/commands/monitor.rs | result: pass | note: 已定位运行态失败核心链路（端点候选与映射逻辑）
+- TC-P9-006 | stack: other | command: nl -ba ansible/roles/cardano-node/tasks/main.yml | sed -n '350,390p' | result: pass | note: 已确认部署默认仅映射 3001，12798/12788 未对外映射
+- TC-P9-006 | stack: other | command: nl -ba docs/specs/completed/20260312T1446-S0008-phase5-mac-app-delivery.md | sed -n '214,226p' | result: pass | note: 已确认 p8-5 验收主要为静态存在性检查
+- TC-P9-006 | stack: other | command: test -f docs/review/20260313-p8-5-prometheus-runtime-root-cause.md && echo ok | result: pass | note: 根因报告文档已生成并可追溯
+
+### 8.4 Change Request Delta
+- 2026-03-13 11:51 +0800 执行推进：按 S0009 计划完成 p9-2，下一步进入 p9-3（白名单 API 契约与字段映射冻结）。
