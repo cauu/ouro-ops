@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import TaskLogStream from "../components/TaskLogStream";
 import { formatTaskError } from "../lib/errors";
 import {
   kesStatusAll,
@@ -268,6 +269,7 @@ export default function Dashboard() {
   const [gatewayActionError, setGatewayActionError] = useState<string | null>(null);
   const [gatewayActionMessage, setGatewayActionMessage] = useState<string | null>(null);
   const [gatewayTask, setGatewayTask] = useState<{ taskId: string; kind: "bootstrap" | "rollback" } | null>(null);
+  const [gatewayLogTaskId, setGatewayLogTaskId] = useState<string | null>(null);
   const {
     snapshots,
     status: monitorStatus,
@@ -410,6 +412,7 @@ export default function Dashboard() {
     ? `${gatewayStatus.configured_relays}/${gatewayStatus.relay_total}`
     : "--";
   const gatewayLastTask = gatewayStatus?.last_bootstrap ?? gatewayStatus?.last_rollback ?? null;
+  const gatewayTaskRunning = gatewayTask != null;
   const handleCopyDetail = async (taskId: string, detailText: string) => {
     const copied = await copyPlainText(detailText);
     if (!copied) {
@@ -433,6 +436,9 @@ export default function Dashboard() {
               ? await observabilityBootstrapStatus(gatewayTask.taskId)
               : await observabilityRollbackStatus(gatewayTask.taskId);
           if (!isTaskTerminal(task.status)) {
+            setGatewayActionMessage(
+              `${gatewayTask.kind === "bootstrap" ? "Enable API" : "Rollback"} running · task ${gatewayTask.taskId} · ${task.status}`,
+            );
             return;
           }
           window.clearInterval(timer);
@@ -465,8 +471,9 @@ export default function Dashboard() {
       setGatewayActionError(null);
       setGatewayActionMessage(null);
       const taskId = await observabilityBootstrapStart();
+      setGatewayLogTaskId(taskId);
       setGatewayTask({ taskId, kind: "bootstrap" });
-      setGatewayActionMessage(`Telemetry API bootstrap started · task ${taskId}`);
+      setGatewayActionMessage(`Enable API started · task ${taskId}`);
       await refreshGatewayStatus();
     } catch (error) {
       setGatewayActionError(String(error));
@@ -478,8 +485,9 @@ export default function Dashboard() {
       setGatewayActionError(null);
       setGatewayActionMessage(null);
       const taskId = await observabilityRollbackStart();
+      setGatewayLogTaskId(taskId);
       setGatewayTask({ taskId, kind: "rollback" });
-      setGatewayActionMessage(`Telemetry API rollback started · task ${taskId}`);
+      setGatewayActionMessage(`Rollback started · task ${taskId}`);
       await refreshGatewayStatus();
     } catch (error) {
       setGatewayActionError(String(error));
@@ -522,35 +530,46 @@ export default function Dashboard() {
               </span>
             </span>
             <span className="text-[11px] text-slate-500">GW {gatewayConfiguredSummary}</span>
+            {gatewayTaskRunning && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-500" />
+                执行中
+              </span>
+            )}
             <button
               type="button"
               onClick={() => {
                 void handleGatewayBootstrap();
               }}
-              disabled={gatewayTask != null}
+              disabled={gatewayTaskRunning}
               className="inline-flex h-6 items-center rounded border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               title="执行 observability bootstrap"
             >
-              Enable API
+              {gatewayTaskRunning && gatewayTask?.kind === "bootstrap" ? "Enabling..." : "Enable API"}
             </button>
             <button
               type="button"
               onClick={() => {
                 void handleGatewayRollback();
               }}
-              disabled={gatewayTask != null}
+              disabled={gatewayTaskRunning}
               className="inline-flex h-6 items-center rounded border border-rose-300 bg-rose-50 px-2 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
               title="执行 observability rollback"
             >
-              Rollback
+              {gatewayTaskRunning && gatewayTask?.kind === "rollback" ? "Rolling..." : "Rollback"}
             </button>
           </div>
         </header>
         {(gatewayActionMessage || gatewayActionError) && (
           <div className="px-4 pb-3">
-            <p className={`text-xs ${gatewayActionError ? "text-rose-700" : "text-slate-600"}`}>
+            <p className={`text-xs font-medium ${gatewayActionError ? "text-rose-700" : "text-slate-700"}`}>
               {gatewayActionError ?? gatewayActionMessage}
             </p>
+          </div>
+        )}
+        {gatewayLogTaskId && (
+          <div className="px-4 pb-3">
+            <TaskLogStream taskId={gatewayLogTaskId} />
           </div>
         )}
 

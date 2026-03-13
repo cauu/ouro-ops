@@ -334,3 +334,18 @@ Spec-ID: S0009
 
 ### 19.4 Change Request Delta
 - 2026-03-13 21:20 +0800 修复完成：GUI 触发 bootstrap 不再依赖外部手工传入密码变量。
+
+## 20. Addendum (append-only)
+### 20.1 Execution Plan Delta
+- [x] p9-12-fix2 增加 GUI 执行中反馈与任务输出展示
+
+### 20.2 Execution Log Delta
+- 2026-03-13 21:26 +0800 p9-12-fix2 started: 响应用户反馈“Enable API 点击后无明显反馈”，补充执行态可见性。
+- 2026-03-13 21:26 +0800 p9-12-fix2 completed: Dashboard 已增加执行中状态徽章、按钮 loading 文案、任务状态提示与 TaskLogStream 输出面板。
+
+### 20.3 Validation Evidence Delta
+- TC-P9-006 | stack: ui | command: rg -n "执行中|Enabling\\.\\.\\.|Rolling\\.\\.\\.|TaskLogStream taskId=\\{gatewayLogTaskId\\}|Enable API started|Rollback started" src/pages/Dashboard.tsx | result: pass | note: 执行中反馈与输出展示链路已落地
+- TC-P9-006 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过，反馈区改动可编译
+
+### 20.4 Change Request Delta
+- 2026-03-13 21:26 +0800 用户交互已增强：点击 Enable API/Rollback 后可立即看到执行中状态与实时任务输出。
