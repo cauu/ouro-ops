@@ -21,6 +21,54 @@
     group: root
     mode: "0750"
 
+- name: Detect cardano-node container IP for local Prometheus scrape
+  shell: "docker inspect --format '{{\"{{\"}}range .NetworkSettings.Networks{{\"}}\"}}{{\"{{\"}}.IPAddress{{\"}}\"}}{{\"{{\"}}end{{\"}}\"}}' cardano-node"
+  register: ops_metrics_cardano_container_ip
+  changed_when: false
+  failed_when: false
+
+- name: Fail when cardano-node container IP cannot be resolved
+  fail:
+    msg: "cardano-node container IP is unavailable; ensure cardano-node is running before enabling observability gateway"
+  when: (ops_metrics_cardano_container_ip.stdout | default('') | trim | length) == 0
+
+- name: Build local Prometheus scrape target
+  set_fact:
+    ops_metrics_local_scrape_target: "{{ (ops_metrics_cardano_container_ip.stdout | trim) ~ ':12798' }}"
+
+- name: Render local Prometheus config for telemetry gateway
+  template:
+    src: prometheus.yml.j2
+    dest: "{{ ops_metrics_prometheus_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Ensure local Prometheus container is running for whitelist API upstream
+  community.docker.docker_container:
+    name: "{{ ops_metrics_prometheus_container_name }}"
+    image: "{{ ops_metrics_prometheus_image }}"
+    state: started
+    recreate: true
+    restart_policy: unless-stopped
+    command: "--config.file=/etc/prometheus/prometheus.yml --web.listen-address=0.0.0.0:9090 --storage.tsdb.path=/prometheus"
+    ports:
+      - "{{ ops_metrics_prometheus_host_bind }}"
+    volumes:
+      - "{{ ops_metrics_prometheus_config_path }}:/etc/prometheus/prometheus.yml:ro"
+
+- name: Wait for local Prometheus query API ready
+  shell: |
+    set -euo pipefail
+    wget -qO- http://127.0.0.1:9090/-/ready >/dev/null 2>&1 || curl -fsS http://127.0.0.1:9090/-/ready >/dev/null 2>&1
+  args:
+    executable: /bin/bash
+  register: ops_metrics_prometheus_ready
+  retries: 20
+  delay: 2
+  until: ops_metrics_prometheus_ready.rc == 0
+  changed_when: false
+
 - name: Check TLS certificate file
   stat:
     path: "{{ ops_metrics_tls_cert_path }}"

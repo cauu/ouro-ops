@@ -15,6 +15,17 @@
         path: "{{ ops_metrics_htpasswd_path | default('/etc/ouro-ops/.htpasswd') }}"
         state: absent
 
+    - name: Remove local Prometheus container for observability gateway
+      community.docker.docker_container:
+        name: "{{ ops_metrics_prometheus_container_name | default('ouro-ops-prometheus') }}"
+        state: absent
+      failed_when: false
+
+    - name: Remove local Prometheus config for observability gateway
+      ansible.builtin.file:
+        path: "{{ ops_metrics_prometheus_config_path | default('/etc/ouro-ops/prometheus.yml') }}"
+        state: absent
+
     - name: Validate nginx configuration after rollback
       ansible.builtin.command: nginx -t
       changed_when: false

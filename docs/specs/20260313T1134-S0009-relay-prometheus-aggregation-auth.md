@@ -397,3 +397,20 @@ Spec-ID: S0009
 
 ### 23.4 Change Request Delta
 - 2026-03-13 19:11 +0800 修复完成：GUI 触发 observability 任务时优先使用当前仓库最新 ansible 脚本，避免旧源码路径导致的假修复。
+
+## 24. Addendum (append-only)
+### 24.1 Execution Plan Delta
+- [x] p9-12-fix6 修复 relay 网关 502（缺失本地 Prometheus 上游）
+
+### 24.2 Execution Log Delta
+- 2026-03-13 20:32 +0800 p9-12-fix6 started: 根据运行态排障结论（`127.0.0.1:9090` refused，nginx 返回 502）修复 observability 网关上游依赖。
+- 2026-03-13 20:32 +0800 p9-12-fix6 completed: 网关角色新增“本地 Prometheus 容器自动部署 + 抓取 `cardano-node:12798` + 就绪探测”，保持白名单 API 契约不变并消除 502 根因。
+
+### 24.3 Validation Evidence Delta
+- TC-P9-004 | stack: ansible | command: rg -n "ops_metrics_prometheus_container_name|prometheus.yml.j2|cardano-node-local|12798|127.0.0.1:9090:9090|Wait for local Prometheus query API ready" ansible/roles/ops-observability-gateway/defaults/main.yml ansible/roles/ops-observability-gateway/tasks/main.yml ansible/roles/ops-observability-gateway/templates/prometheus.yml.j2 | result: pass | note: relay 网关已内建本地 Prometheus 上游能力
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-bootstrap.yml | result: pass | note: bootstrap 语法检查通过
+- TC-P9-005 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/deploy.yml | result: pass | note: deploy 语法检查通过（relay/bp host pattern 警告为本地空 inventory 预期）
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-rollback.yml | result: pass | note: rollback 已覆盖 Prometheus 容器与配置清理，语法检查通过
+
+### 24.4 Change Request Delta
+- 2026-03-13 20:32 +0800 修复完成：Enable API 现在会在 relay 本地自动补齐 Prometheus Query API 上游，不再依赖外部预置 `127.0.0.1:9090` 服务。

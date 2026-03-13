@@ -1,0 +1,11 @@
+global:
+  scrape_interval: {{ ops_metrics_prometheus_scrape_interval }}
+  scrape_timeout: {{ ops_metrics_prometheus_scrape_timeout }}
+
+scrape_configs:
+  - job_name: "cardano-node-local"
+    static_configs:
+      - targets:
+          - "{{ ops_metrics_local_scrape_target }}"
+        labels:
+          role: relay
