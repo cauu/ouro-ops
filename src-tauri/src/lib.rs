@@ -635,6 +635,15 @@ mod frontend_tests {
     }
 
     #[test]
+    fn tc_dep_018_deploy_playbook_includes_observability_gateway_defaults() {
+        let playbook = include_str!("../../ansible/playbooks/deploy.yml");
+        assert!(playbook.contains("Configure relay observability gateway"));
+        assert!(playbook.contains("enable_ops_observability_gateway | default(true) | bool"));
+        assert!(playbook.contains("generated_metrics_basic_auth_password"));
+        assert!(playbook.contains("name: ops-observability-gateway"));
+    }
+
+    #[test]
     fn tc_audit_001_key_operations_write_audit_log() {
         let pool = include_str!("commands/pool.rs");
         let deploy = include_str!("commands/deploy.rs");

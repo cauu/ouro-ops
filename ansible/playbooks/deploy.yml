@@ -35,3 +35,36 @@
       ansible.builtin.include_role:
         name: cardano-node
       when: not (safe_validation_mode | default(false) | bool)
+
+- name: Configure relay observability gateway
+  hosts: relay
+  become: true
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Generate shared metrics basic auth password when missing
+      ansible.builtin.set_fact:
+        generated_metrics_basic_auth_password: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=40') }}"
+      delegate_to: localhost
+      run_once: true
+      no_log: true
+      when:
+        - not (safe_validation_mode | default(false) | bool)
+        - enable_ops_observability_gateway | default(true) | bool
+        - (ops_metrics_basic_auth_password | default('') | trim | length) == 0
+
+    - name: Propagate generated metrics password to relay hosts
+      ansible.builtin.set_fact:
+        ops_metrics_basic_auth_password: "{{ hostvars['localhost'].generated_metrics_basic_auth_password }}"
+      no_log: true
+      when:
+        - not (safe_validation_mode | default(false) | bool)
+        - enable_ops_observability_gateway | default(true) | bool
+        - (ops_metrics_basic_auth_password | default('') | trim | length) == 0
+
+    - name: Run ops-observability-gateway role
+      ansible.builtin.include_role:
+        name: ops-observability-gateway
+      when:
+        - not (safe_validation_mode | default(false) | bool)
+        - enable_ops_observability_gateway | default(true) | bool

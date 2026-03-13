@@ -59,7 +59,7 @@ Spec-ID: S0009
 - [x] p9-5 实现/修复 monitor 数据源：relay API 优先，local monitor fallback
 - [x] p9-6 实现多 relay 主备切换策略（超时、退避、最新时间戳选优）
 - [x] p9-7 新增现网增量接入 playbook（bootstrap，不重跑 full deploy）
-- [ ] p9-8 将观测与认证步骤并入新部署流程（deploy 默认内建）
+- [x] p9-8 将观测与认证步骤并入新部署流程（deploy 默认内建）
 - [ ] p9-9 Dashboard 运行态联调与可观测性补强（source/note/collected_at）
 - [ ] p9-10 完成端到端验收与回滚预案校验，准备结项评审
 
@@ -180,3 +180,18 @@ Spec-ID: S0009
 
 ### 13.4 Change Request Delta
 - 2026-03-13 20:22 +0800 执行推进：完成 p9-7，下一步进入 p9-8（将观测与认证步骤并入新部署流程）。
+
+## 14. Addendum (append-only)
+### 14.1 Execution Plan Delta
+- [x] p9-8 将观测与认证步骤并入新部署流程（deploy 默认内建）
+
+### 14.2 Execution Log Delta
+- 2026-03-13 20:29 +0800 p9-8 started: 将 relay 观测网关配置步骤并入 `deploy.yml`，并默认启用。
+- 2026-03-13 20:29 +0800 p9-8 completed: 已在 deploy 流程新增 relay 网关阶段（含共享密码生成/下发 + role 执行），并补充静态回归测试。
+
+### 14.3 Validation Evidence Delta
+- TC-P9-005 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/deploy.yml | result: pass | note: deploy playbook 语法通过（本地语法检查会提示 relay/bp host pattern 未匹配，属预期）
+- TC-P9-005 | stack: rust | command: cargo test -q tc_dep_018_deploy_playbook_includes_observability_gateway_defaults | result: pass | note: 已验证 deploy 默认包含观测网关阶段与默认开关逻辑
+
+### 14.4 Change Request Delta
+- 2026-03-13 20:29 +0800 执行推进：完成 p9-8，下一步进入 p9-9（Dashboard 运行态联调与 source/note/collected_at 补强）。
