@@ -54,7 +54,7 @@ Spec-ID: S0009
 ## 3. Execution Plan
 - [x] p9-1 启动 S0009 active spec，冻结目标与验收标准
 - [x] p9-2 输出 p8-5 失败运行态根因报告（端点、映射、fallback 分支）
-- [ ] p9-3 设计 relay 白名单 API 契约与字段映射表（含空值/时间戳兜底）
+- [x] p9-3 设计 relay 白名单 API 契约与字段映射表（含空值/时间戳兜底）
 - [ ] p9-4 实现 relay 网关 Basic Auth + HTTPS + 白名单 API 路由模板
 - [ ] p9-5 实现/修复 monitor 数据源：relay API 优先，local monitor fallback
 - [ ] p9-6 实现多 relay 主备切换策略（超时、退避、最新时间戳选优）
@@ -99,3 +99,20 @@ Spec-ID: S0009
 
 ### 8.4 Change Request Delta
 - 2026-03-13 11:51 +0800 执行推进：按 S0009 计划完成 p9-2，下一步进入 p9-3（白名单 API 契约与字段映射冻结）。
+
+## 9. Addendum (append-only)
+### 9.1 Execution Plan Delta
+- [x] p9-3 设计 relay 白名单 API 契约与字段映射表（含空值/时间戳兜底）
+
+### 9.2 Execution Log Delta
+- 2026-03-13 11:53 +0800 p9-3 started: 冻结 relay 白名单 API 契约，明确无任意 PromQL 的端点模型与字段映射策略。
+- 2026-03-13 11:53 +0800 p9-3 completed: 输出 V1 轻量契约（10 个固定端点 + 统一响应结构 + label/空值/时间戳兜底 + 多 relay 选优规则）。
+
+### 9.3 Validation Evidence Delta
+- TC-P9-003 | stack: other | command: rg -n "不接受查询参数|若存在参数返回|禁止 query 参数透传" docs/review/20260313-p9-3-relay-whitelist-api-contract.md | result: pass | note: 契约已明确禁用任意 PromQL 入参
+- TC-P9-006 | stack: other | command: rg -n "telemetry/epoch|telemetry/sync-percent|telemetry/tip-diff-blocks|telemetry/peer-count|telemetry/cpu-sys-percent|telemetry/mem-live-bytes|telemetry/mem-rss-bytes|telemetry/mem-heap-bytes|telemetry/gc-minor-total|telemetry/gc-major-total" docs/review/20260313-p9-3-relay-whitelist-api-contract.md | result: pass | note: 10 项核心字段端点与映射已冻结
+- TC-P9-008 | stack: other | command: rg -n "多 relay 选优|最新的 relay 数据|source_relay" docs/review/20260313-p9-3-relay-whitelist-api-contract.md | result: pass | note: 多 relay 切换与时间戳选优策略已固化
+- TC-P9-003 | stack: other | command: test -f docs/review/20260313-p9-3-relay-whitelist-api-contract.md && echo ok | result: pass | note: 契约文档已落盘，可作为 p9-4/p9-5 直接输入
+
+### 9.4 Change Request Delta
+- 2026-03-13 11:53 +0800 执行推进：完成 p9-3 契约冻结，下一步进入 p9-4（Nginx Basic Auth + 白名单 API 模板实现）。
