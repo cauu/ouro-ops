@@ -70,6 +70,17 @@ function formatRelativeCollectedAt(value: string | null): string | null {
   return `${Math.floor(diffMs / 86_400_000)}d ago`;
 }
 
+function formatAbsoluteCollectedAt(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return null;
+  }
+  return new Date(parsed).toLocaleString();
+}
+
 function monitorSyncPercent(snapshot: MonitorSnapshot): number | null {
   return snapshot.sync_percent ?? snapshot.sync_progress;
 }
@@ -598,9 +609,30 @@ export default function Dashboard() {
                         <dd className="font-medium text-slate-900">{formatCounter(selectedNode.gc_major_total)}</dd>
                       </div>
                     </dl>
-                    <p className="mt-2 text-xs text-slate-500">
-                      block: {selectedNode.block_height?.toLocaleString() ?? "--"} · slot: --
-                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span>block: {selectedNode.block_height?.toLocaleString() ?? "--"} · slot: --</span>
+                      {selectedNode.prometheus_source && (
+                        <TooltipBadge
+                          label={`source · ${selectedNode.prometheus_source}`}
+                          tone="muted"
+                          tip="当前节点指标来源。relay-api 表示经 relay 白名单接口获取；local 表示本机采集兜底。"
+                        />
+                      )}
+                      {selectedNode.collected_at && (
+                        <TooltipBadge
+                          label={`sample · ${formatRelativeCollectedAt(selectedNode.collected_at) ?? "--"}`}
+                          tone="muted"
+                          tip={formatAbsoluteCollectedAt(selectedNode.collected_at) ?? selectedNode.collected_at}
+                        />
+                      )}
+                      {selectedNode.prometheus_note && (
+                        <TooltipBadge
+                          label="telemetry note"
+                          tone="warn"
+                          tip={selectedNode.prometheus_note}
+                        />
+                      )}
+                    </div>
                   </article>
 
                   <article className="rounded-lg border border-slate-300 bg-white p-3">

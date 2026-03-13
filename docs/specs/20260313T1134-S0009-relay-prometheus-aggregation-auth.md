@@ -60,7 +60,7 @@ Spec-ID: S0009
 - [x] p9-6 实现多 relay 主备切换策略（超时、退避、最新时间戳选优）
 - [x] p9-7 新增现网增量接入 playbook（bootstrap，不重跑 full deploy）
 - [x] p9-8 将观测与认证步骤并入新部署流程（deploy 默认内建）
-- [ ] p9-9 Dashboard 运行态联调与可观测性补强（source/note/collected_at）
+- [x] p9-9 Dashboard 运行态联调与可观测性补强（source/note/collected_at）
 - [ ] p9-10 完成端到端验收与回滚预案校验，准备结项评审
 
 ## 4. Test And Acceptance Criteria
@@ -195,3 +195,20 @@ Spec-ID: S0009
 
 ### 14.4 Change Request Delta
 - 2026-03-13 20:29 +0800 执行推进：完成 p9-8，下一步进入 p9-9（Dashboard 运行态联调与 source/note/collected_at 补强）。
+
+## 15. Addendum (append-only)
+### 15.1 Execution Plan Delta
+- [x] p9-9 Dashboard 运行态联调与可观测性补强（source/note/collected_at）
+
+### 15.2 Execution Log Delta
+- 2026-03-13 20:36 +0800 p9-9 started: 对齐 relay 样本时间戳与 Dashboard 展示语义，补强 source/note/collected_at 运行态可见性。
+- 2026-03-13 20:36 +0800 p9-9 completed: 后端快照 `collected_at` 已优先使用 relay 样本时间；Dashboard 资源卡片已补充 source/sample/note 轻量 tooltip 展示。
+
+### 15.3 Validation Evidence Delta
+- TC-P9-006 | stack: rust | command: rg -n "collected_at_epoch|resolve_snapshot_collected_at|prometheus.collected_at_epoch" src-tauri/src/commands/monitor.rs | result: pass | note: monitor 快照已接入 relay 样本时间回填，按数据新鲜度驱动展示
+- TC-P9-006 | stack: ui | command: rg -n "prometheus_source|prometheus_note|sample ·|formatRelativeCollectedAt\\(selectedNode.collected_at\\)" src/pages/Dashboard.tsx | result: pass | note: Dashboard 已展示 source/note/collected_at 的轻量信息层
+- TC-P9-006 | stack: rust | command: cargo test -q tc_mon_ | result: pass | note: monitor 相关 21 项单测通过
+- TC-P9-006 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过，Dashboard 改动可编译
+
+### 15.4 Change Request Delta
+- 2026-03-13 20:36 +0800 执行推进：完成 p9-9，下一步进入 p9-10（端到端验收与回滚预案校验）。

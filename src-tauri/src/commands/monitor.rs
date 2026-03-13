@@ -82,6 +82,7 @@ struct PrometheusMetrics {
     mem_heap_bytes: Option<f64>,
     gc_minor_total: Option<i64>,
     gc_major_total: Option<i64>,
+    collected_at_epoch: Option<i64>,
     source: Option<String>,
     note: Option<String>,
 }
@@ -346,6 +347,7 @@ fn map_prometheus_metrics(source: &str, metrics: &HashMap<String, f64>) -> Prome
                 "rts_gc_major_num_gcs",
             ],
         ),
+        collected_at_epoch: None,
         source: Some(source.to_string()),
         note: None,
     }
@@ -686,12 +688,7 @@ fn collect_relay_metrics_from_single_relay(
                 errors.len()
             ))
         };
-        if let Some(timestamp) = latest_timestamp {
-            mapped.source = Some(format!(
-                "relay-api:{}@{}#{}",
-                relay.name, relay.ip, timestamp
-            ));
-        }
+        mapped.collected_at_epoch = latest_timestamp;
     } else if errors.is_empty() {
         mapped.note = Some(format!(
             "relay api reachable on {} but no matching series for {}",
@@ -758,7 +755,7 @@ fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> 
         }
     }
 
-    let mut best: Option<(PrometheusMetrics, i64, String)> = None;
+    let mut best: Option<(PrometheusMetrics, i64)> = None;
     let mut degraded_notes: Vec<String> = Vec::new();
 
     for relay in attempts {
@@ -766,14 +763,9 @@ fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> 
         if attempt.metrics.has_any_value() {
             relay_clear_backoff(&relay);
             let latest_timestamp = attempt.latest_timestamp.unwrap_or_default();
-            let source = attempt
-                .metrics
-                .source
-                .clone()
-                .unwrap_or_else(|| format!("relay-api:{}@{}", relay.name, relay.ip));
             match &best {
-                Some((_, best_timestamp, _)) if latest_timestamp < *best_timestamp => {}
-                _ => best = Some((attempt.metrics, latest_timestamp, source)),
+                Some((_, best_timestamp)) if latest_timestamp < *best_timestamp => {}
+                _ => best = Some((attempt.metrics, latest_timestamp)),
             }
         } else {
             if attempt.endpoint_errors > 0 {
@@ -785,8 +777,7 @@ fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> 
         }
     }
 
-    if let Some((mut metrics, _, source)) = best {
-        metrics.source = Some(source);
+    if let Some((mut metrics, _)) = best {
         if !degraded_notes.is_empty() {
             let failed_count = degraded_notes.len();
             metrics.note = Some(format!(
@@ -957,6 +948,17 @@ fn sqlite_datetime(conn: &Connection, epoch_seconds: i64) -> Result<String, AppE
         |row| row.get(0),
     )
     .map_err(AppError::from)
+}
+
+fn resolve_snapshot_collected_at(
+    conn: &Connection,
+    fallback: &str,
+    prometheus: &PrometheusMetrics,
+) -> String {
+    prometheus
+        .collected_at_epoch
+        .and_then(|epoch| sqlite_datetime(conn, epoch).ok())
+        .unwrap_or_else(|| fallback.to_string())
 }
 
 fn get_previous_health_sample(
@@ -1243,6 +1245,8 @@ fn collect_machine_snapshot(
                 )
             {
                 let prometheus = collect_prometheus_metrics(conn, machine);
+                let snapshot_collected_at =
+                    resolve_snapshot_collected_at(conn, collected_at.as_str(), &prometheus);
                 insert_health_sample(
                     conn,
                     machine.id,
@@ -1268,7 +1272,7 @@ fn collect_machine_snapshot(
                         .map(|ctx| ctx.restore_snapshot_requested)
                         .unwrap_or(false),
                     stalled: false,
-                    collected_at,
+                    collected_at: snapshot_collected_at,
                     note: sync_note,
                     epoch: prometheus.epoch,
                     sync_percent: prometheus.sync_percent.or(recovered_sync_progress),
@@ -1324,6 +1328,8 @@ fn collect_machine_snapshot(
         Ok(parsed) => parsed,
         Err(err) => {
             let prometheus = collect_prometheus_metrics(conn, machine);
+            let snapshot_collected_at =
+                resolve_snapshot_collected_at(conn, collected_at.as_str(), &prometheus);
             let note = err.to_string();
             return Ok(MonitorSnapshot {
                 machine_id: machine.id,
@@ -1341,7 +1347,7 @@ fn collect_machine_snapshot(
                     .map(|ctx| ctx.restore_snapshot_requested)
                     .unwrap_or(false),
                 stalled: false,
-                collected_at,
+                collected_at: snapshot_collected_at,
                 note: Some(note),
                 epoch: prometheus.epoch,
                 sync_percent: prometheus.sync_percent,
@@ -1387,6 +1393,7 @@ fn collect_machine_snapshot(
         stalled,
     );
     let prometheus = collect_prometheus_metrics(conn, machine);
+    let snapshot_collected_at = resolve_snapshot_collected_at(conn, collected_at.as_str(), &prometheus);
     insert_health_sample(
         conn,
         machine.id,
@@ -1413,7 +1420,7 @@ fn collect_machine_snapshot(
             .map(|ctx| ctx.restore_snapshot_requested)
             .unwrap_or(false),
         stalled,
-        collected_at,
+        collected_at: snapshot_collected_at,
         note: sync_note,
         epoch: prometheus.epoch,
         sync_percent: prometheus.sync_percent.or(sync_progress),
