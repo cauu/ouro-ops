@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::process::Command;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+    Arc, Mutex, OnceLock,
 };
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -94,6 +94,7 @@ struct RelayTelemetryConfig {
     port: u16,
     timeout_seconds: u64,
     insecure_tls: bool,
+    backoff_seconds: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +104,13 @@ struct RelayMetricSample {
     instance: Option<String>,
     timestamp: Option<i64>,
     value: f64,
+}
+
+#[derive(Debug, Clone)]
+struct RelayMetricsAttempt {
+    metrics: PrometheusMetrics,
+    latest_timestamp: Option<i64>,
+    endpoint_errors: usize,
 }
 
 const RELAY_TELEMETRY_ENDPOINTS: [(&str, &str); 10] = [
@@ -350,6 +358,34 @@ fn parse_env_bool(value: &str) -> bool {
     )
 }
 
+fn relay_failure_backoff_registry() -> &'static Mutex<HashMap<String, i64>> {
+    static REGISTRY: OnceLock<Mutex<HashMap<String, i64>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn relay_backoff_key(relay: &MachineRow) -> String {
+    format!("{}:{}:{}", relay.network, relay.name, relay.ip)
+}
+
+fn relay_backoff_retry_at(relay: &MachineRow) -> Option<i64> {
+    relay_failure_backoff_registry()
+        .lock()
+        .ok()
+        .and_then(|registry| registry.get(relay_backoff_key(relay).as_str()).copied())
+}
+
+fn relay_mark_backoff(relay: &MachineRow, now_epoch: i64, backoff_seconds: i64) {
+    if let Ok(mut registry) = relay_failure_backoff_registry().lock() {
+        registry.insert(relay_backoff_key(relay), now_epoch + backoff_seconds.max(1));
+    }
+}
+
+fn relay_clear_backoff(relay: &MachineRow) {
+    if let Ok(mut registry) = relay_failure_backoff_registry().lock() {
+        registry.remove(relay_backoff_key(relay).as_str());
+    }
+}
+
 fn relay_telemetry_config_from_env() -> Option<RelayTelemetryConfig> {
     let username = std::env::var("OURO_OPS_RELAY_TELEMETRY_USERNAME")
         .ok()
@@ -378,6 +414,11 @@ fn relay_telemetry_config_from_env() -> Option<RelayTelemetryConfig> {
         .ok()
         .map(|value| parse_env_bool(value.as_str()))
         .unwrap_or(false);
+    let backoff_seconds = std::env::var("OURO_OPS_RELAY_TELEMETRY_BACKOFF_SECONDS")
+        .ok()
+        .and_then(|value| value.trim().parse::<i64>().ok())
+        .map(|seconds| seconds.clamp(5, 300))
+        .unwrap_or(30);
 
     Some(RelayTelemetryConfig {
         username,
@@ -386,6 +427,7 @@ fn relay_telemetry_config_from_env() -> Option<RelayTelemetryConfig> {
         port,
         timeout_seconds,
         insecure_tls,
+        backoff_seconds,
     })
 }
 
@@ -602,28 +644,11 @@ fn apply_relay_metric_value(
     }
 }
 
-fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> PrometheusMetrics {
-    let Some(config) = relay_telemetry_config_from_env() else {
-        return PrometheusMetrics::default();
-    };
-    let relays = match repo_machine_list(conn, Some("relay"), Some(machine.network.as_str())) {
-        Ok(machines) => machines,
-        Err(err) => {
-            return PrometheusMetrics {
-                source: None,
-                note: Some(format!("relay api disabled: failed to load relays: {err}")),
-                ..PrometheusMetrics::default()
-            };
-        }
-    };
-    let Some(relay) = relays.first() else {
-        return PrometheusMetrics {
-            source: None,
-            note: Some("relay api disabled: no relay found in current network".into()),
-            ..PrometheusMetrics::default()
-        };
-    };
-
+fn collect_relay_metrics_from_single_relay(
+    config: &RelayTelemetryConfig,
+    relay: &MachineRow,
+    machine: &MachineRow,
+) -> RelayMetricsAttempt {
     let mut mapped = PrometheusMetrics {
         source: Some(format!("relay-api:{}@{}", relay.name, relay.ip)),
         note: None,
@@ -633,7 +658,7 @@ fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> 
     let mut errors: Vec<String> = Vec::new();
 
     for (metric_key, endpoint) in RELAY_TELEMETRY_ENDPOINTS {
-        match fetch_relay_metric_samples(&config, relay, endpoint) {
+        match fetch_relay_metric_samples(config, relay, endpoint) {
             Ok(samples) => {
                 if let Some(sample) = select_relay_metric_sample(machine, &samples) {
                     apply_relay_metric_value(
@@ -656,7 +681,8 @@ fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> 
             None
         } else {
             Some(format!(
-                "relay api partial data: {} endpoint(s) failed",
+                "relay api partial data on {}: {} endpoint(s) failed",
+                relay.name,
                 errors.len()
             ))
         };
@@ -666,25 +692,120 @@ fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> 
                 relay.name, relay.ip, timestamp
             ));
         }
-        return mapped;
-    }
-
-    mapped.note = if errors.is_empty() {
-        Some(format!(
+    } else if errors.is_empty() {
+        mapped.note = Some(format!(
             "relay api reachable on {} but no matching series for {}",
             relay.name, machine.name
-        ))
+        ));
     } else {
-        Some(format!(
+        mapped.note = Some(format!(
             "relay api unavailable on {}: {}",
             relay.name,
             errors
                 .first()
                 .cloned()
                 .unwrap_or_else(|| "unknown error".into())
-        ))
+        ));
+    }
+
+    RelayMetricsAttempt {
+        metrics: mapped,
+        latest_timestamp,
+        endpoint_errors: errors.len(),
+    }
+}
+
+fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> PrometheusMetrics {
+    let Some(config) = relay_telemetry_config_from_env() else {
+        return PrometheusMetrics::default();
     };
-    mapped
+    let mut relays = match repo_machine_list(conn, Some("relay"), Some(machine.network.as_str())) {
+        Ok(machines) => machines,
+        Err(err) => {
+            return PrometheusMetrics {
+                source: None,
+                note: Some(format!("relay api disabled: failed to load relays: {err}")),
+                ..PrometheusMetrics::default()
+            };
+        }
+    };
+    if relays.is_empty() {
+        return PrometheusMetrics {
+            source: None,
+            note: Some("relay api disabled: no relay found in current network".into()),
+            ..PrometheusMetrics::default()
+        };
+    }
+    relays.sort_by_key(|relay| relay.sort_order);
+
+    let now_epoch = current_epoch_seconds().unwrap_or_default();
+    let mut active_relays: Vec<MachineRow> = Vec::new();
+    let mut deferred_relays: Vec<(MachineRow, i64)> = Vec::new();
+    for relay in relays {
+        let retry_at = relay_backoff_retry_at(&relay).unwrap_or_default();
+        if retry_at > now_epoch {
+            deferred_relays.push((relay, retry_at));
+        } else {
+            active_relays.push(relay);
+        }
+    }
+    deferred_relays.sort_by_key(|(_, retry_at)| *retry_at);
+
+    let mut attempts = active_relays;
+    if attempts.is_empty() {
+        if let Some((relay, _)) = deferred_relays.first() {
+            attempts.push(relay.clone());
+        }
+    }
+
+    let mut best: Option<(PrometheusMetrics, i64, String)> = None;
+    let mut degraded_notes: Vec<String> = Vec::new();
+
+    for relay in attempts {
+        let attempt = collect_relay_metrics_from_single_relay(&config, &relay, machine);
+        if attempt.metrics.has_any_value() {
+            relay_clear_backoff(&relay);
+            let latest_timestamp = attempt.latest_timestamp.unwrap_or_default();
+            let source = attempt
+                .metrics
+                .source
+                .clone()
+                .unwrap_or_else(|| format!("relay-api:{}@{}", relay.name, relay.ip));
+            match &best {
+                Some((_, best_timestamp, _)) if latest_timestamp < *best_timestamp => {}
+                _ => best = Some((attempt.metrics, latest_timestamp, source)),
+            }
+        } else {
+            if attempt.endpoint_errors > 0 {
+                relay_mark_backoff(&relay, now_epoch, config.backoff_seconds);
+            }
+            if let Some(note) = attempt.metrics.note {
+                degraded_notes.push(note);
+            }
+        }
+    }
+
+    if let Some((mut metrics, _, source)) = best {
+        metrics.source = Some(source);
+        if !degraded_notes.is_empty() {
+            let failed_count = degraded_notes.len();
+            metrics.note = Some(format!(
+                "relay failover active: {} relay endpoint(s) degraded",
+                failed_count
+            ));
+        }
+        return metrics;
+    }
+
+    PrometheusMetrics {
+        source: None,
+        note: if degraded_notes.is_empty() {
+            Some("relay api unavailable after failover attempts".into())
+        } else {
+            Some(degraded_notes.join(" | "))
+        },
+        ..PrometheusMetrics::default()
+    }
 }
 
 fn collect_local_prometheus_metrics(machine: &MachineRow) -> PrometheusMetrics {
@@ -1715,5 +1836,34 @@ mod tests {
         assert!(parse_env_bool("1"));
         assert!(!parse_env_bool("false"));
         assert!(!parse_env_bool("0"));
+    }
+
+    #[test]
+    fn tc_mon_020_parse_relay_metric_samples_supports_series_payload() {
+        let payload = json!({
+            "metric": "sync_percent",
+            "series": [{
+                "node": "relay-1",
+                "role": "relay",
+                "instance": "10.0.0.10:12798",
+                "timestamp": 1773374410,
+                "value": "100.00"
+            }]
+        });
+        let samples = parse_relay_metric_samples(&payload).expect("samples");
+        assert_eq!(samples.len(), 1);
+        assert_eq!(samples[0].node.as_deref(), Some("relay-1"));
+        assert_eq!(samples[0].timestamp, Some(1_773_374_410));
+        assert_eq!(samples[0].value, 100.0);
+    }
+
+    #[test]
+    fn tc_mon_021_relay_backoff_registry_round_trip() {
+        let relay = sample_machine("relay-1", "relay", "10.0.0.10");
+        relay_clear_backoff(&relay);
+        relay_mark_backoff(&relay, 1_000, 30);
+        assert_eq!(relay_backoff_retry_at(&relay), Some(1_030));
+        relay_clear_backoff(&relay);
+        assert_eq!(relay_backoff_retry_at(&relay), None);
     }
 }

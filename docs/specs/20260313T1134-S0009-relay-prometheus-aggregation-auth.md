@@ -57,7 +57,7 @@ Spec-ID: S0009
 - [x] p9-3 设计 relay 白名单 API 契约与字段映射表（含空值/时间戳兜底）
 - [x] p9-4 实现 relay 网关 Basic Auth + HTTPS + 白名单 API 路由模板
 - [x] p9-5 实现/修复 monitor 数据源：relay API 优先，local monitor fallback
-- [ ] p9-6 实现多 relay 主备切换策略（超时、退避、最新时间戳选优）
+- [x] p9-6 实现多 relay 主备切换策略（超时、退避、最新时间戳选优）
 - [ ] p9-7 新增现网增量接入 playbook（bootstrap，不重跑 full deploy）
 - [ ] p9-8 将观测与认证步骤并入新部署流程（deploy 默认内建）
 - [ ] p9-9 Dashboard 运行态联调与可观测性补强（source/note/collected_at）
@@ -149,3 +149,19 @@ Spec-ID: S0009
 
 ### 11.4 Change Request Delta
 - 2026-03-13 20:08 +0800 执行推进：完成 p9-5，下一步进入 p9-6（多 relay 主备切换、超时退避与最新时间戳选优）。
+
+## 12. Addendum (append-only)
+### 12.1 Execution Plan Delta
+- [x] p9-6 实现多 relay 主备切换策略（超时、退避、最新时间戳选优）
+
+### 12.2 Execution Log Delta
+- 2026-03-13 20:16 +0800 p9-6 started: 在 relay 采集链路增加多 relay 自动切换与失败退避控制。
+- 2026-03-13 20:16 +0800 p9-6 completed: 已实现多 relay 探测、失败 backoff、以及按最新时间戳选优的数据返回策略。
+
+### 12.3 Validation Evidence Delta
+- TC-P9-008 | stack: rust | command: rg -n "relay_failure_backoff_registry|relay_mark_backoff|relay_clear_backoff|collect_relay_metrics_from_single_relay|deferred_relays|latest_timestamp" src-tauri/src/commands/monitor.rs | result: pass | note: 多 relay 切换、失败退避与最新时间戳选优逻辑已落地
+- TC-P9-007 | stack: rust | command: rg -n "if attempts.is_empty\\(\\) \\{|relay api unavailable after failover attempts|relay failover active" src-tauri/src/commands/monitor.rs | result: pass | note: failover 失败兜底与降级提示路径已覆盖
+- TC-P9-008 | stack: rust | command: cargo test -q tc_mon_ | result: pass | note: 21 项 monitor 单测通过，含 backoff/relay 解析相关测试
+
+### 12.4 Change Request Delta
+- 2026-03-13 20:16 +0800 执行推进：完成 p9-6，下一步进入 p9-7（已部署环境增量接入 playbook）。
