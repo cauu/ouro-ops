@@ -4,6 +4,7 @@ pub mod deploy;
 pub mod kes;
 pub mod machine;
 pub mod monitor;
+pub mod observability;
 pub mod pool;
 pub mod runtime;
 pub mod task;

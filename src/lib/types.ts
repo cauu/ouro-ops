@@ -258,6 +258,36 @@ export interface RecentTaskSummary {
   finished_at: string | null;
 }
 
+export interface ObservabilityTaskPayload {
+  machine_ids?: number[];
+}
+
+export interface ObservabilityLastTask {
+  task_id: string;
+  status: string;
+  finished_at: string | null;
+}
+
+export interface ObservabilityRelayProbe {
+  machine_id: number;
+  machine_name: string;
+  ip: string;
+  configured: boolean;
+  gateway_conf_present: boolean;
+  htpasswd_present: boolean;
+  nginx_running: boolean;
+  note: string | null;
+}
+
+export interface ObservabilityGatewayStatus {
+  relay_total: number;
+  configured_relays: number;
+  playbook_executed: boolean;
+  last_bootstrap: ObservabilityLastTask | null;
+  last_rollback: ObservabilityLastTask | null;
+  relays: ObservabilityRelayProbe[];
+}
+
 export interface TaskLogEvent {
   task_id: string;
   stream: "stdout" | "stderr" | string;

@@ -8,6 +8,8 @@ import type {
   MachineAddPayload,
   MachineFilter,
   MonitorSnapshot,
+  ObservabilityGatewayStatus,
+  ObservabilityTaskPayload,
   KesSignRequest,
   KesStatus,
   Pool,
@@ -176,6 +178,26 @@ export async function runtimeRestartStatus(taskId: string): Promise<DeployTaskSt
 
 export async function taskRecentList(limit?: number): Promise<RecentTaskSummary[]> {
   return invoke("task_recent_list", { limit: limit ?? null });
+}
+
+export async function observabilityGatewayStatus(): Promise<ObservabilityGatewayStatus> {
+  return invoke("observability_gateway_status");
+}
+
+export async function observabilityBootstrapStart(payload?: ObservabilityTaskPayload): Promise<string> {
+  return invoke("observability_bootstrap_start", { payload: payload ?? null });
+}
+
+export async function observabilityBootstrapStatus(taskId: string): Promise<DeployTaskStatus> {
+  return invoke("observability_bootstrap_status", { taskId });
+}
+
+export async function observabilityRollbackStart(payload?: ObservabilityTaskPayload): Promise<string> {
+  return invoke("observability_rollback_start", { payload: payload ?? null });
+}
+
+export async function observabilityRollbackStatus(taskId: string): Promise<DeployTaskStatus> {
+  return invoke("observability_rollback_status", { taskId });
 }
 
 export async function upgradeStart(payload: UpgradePayload): Promise<string> {

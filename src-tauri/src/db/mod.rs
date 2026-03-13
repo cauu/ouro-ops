@@ -12,6 +12,7 @@ const MIGRATIONS: &[&str] = &[
     schema::MIGRATION_002,
     schema::MIGRATION_003,
     schema::MIGRATION_004,
+    schema::MIGRATION_005,
 ];
 
 /// 执行迁移：user_version 递增，仅执行未执行的迁移
@@ -235,12 +236,12 @@ mod tests {
     }
 
     #[test]
-    fn tc_db_004_task_migration_allows_runtime_task_types() {
+    fn tc_db_004_task_migration_allows_runtime_and_observability_task_types() {
         let conn = Connection::open_in_memory().expect("open memory db");
         run_migrations(&conn).expect("run migrations");
 
         let version = get_user_version(&conn).expect("user version");
-        assert!(version >= 3);
+        assert!(version >= 5);
 
         conn.execute(
             "INSERT INTO task (id, task_type, status) VALUES ('runtime-config-task', 'runtime_config', 'pending')",
@@ -252,6 +253,16 @@ mod tests {
             [],
         )
         .expect("insert runtime_restart task");
+        conn.execute(
+            "INSERT INTO task (id, task_type, status) VALUES ('obs-bootstrap-task', 'observability_bootstrap', 'pending')",
+            [],
+        )
+        .expect("insert observability_bootstrap task");
+        conn.execute(
+            "INSERT INTO task (id, task_type, status) VALUES ('obs-rollback-task', 'observability_rollback', 'pending')",
+            [],
+        )
+        .expect("insert observability_rollback task");
     }
 
     #[test]

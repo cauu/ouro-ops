@@ -62,6 +62,7 @@ Spec-ID: S0009
 - [x] p9-8 将观测与认证步骤并入新部署流程（deploy 默认内建）
 - [x] p9-9 Dashboard 运行态联调与可观测性补强（source/note/collected_at）
 - [x] p9-10 完成端到端验收与回滚预案校验，准备结项评审
+- [x] p9-12 新增服务端执行检测与 GUI 触发入口（bootstrap / rollback）
 
 ## 4. Test And Acceptance Criteria
 - TC-P9-001 `docs/specs/` 根目录仅保留 `S0009` 为 active；`S0008` 进入 completed 且结项原因为 `replaced`。
@@ -300,3 +301,21 @@ Spec-ID: S0009
 
 ### 17.5 Change Request Delta
 - 2026-03-13 20:56 +0800 按用户要求补充人工验收清单，等待用户逐项验收结果反馈。
+
+## 18. Addendum (append-only)
+### 18.1 Execution Plan Delta
+- [x] p9-12 新增服务端执行检测与 GUI 触发入口（bootstrap / rollback）
+
+### 18.2 Execution Log Delta
+- 2026-03-13 21:14 +0800 p9-12 started: 响应用户新增需求，实现“服务端是否执行”检测能力与 GUI 触发点（执行与回滚）。
+- 2026-03-13 21:14 +0800 p9-12 completed: 已新增 observability 命令模块、任务类型迁移、IPC 接口、Dashboard 触发按钮与任务轮询状态展示。
+
+### 18.3 Validation Evidence Delta
+- TC-P9-004 | stack: rust | command: cargo test -q tc_db_004_task_migration_allows_runtime_and_observability_task_types | result: pass | note: task 类型迁移已包含 `observability_bootstrap`/`observability_rollback`
+- TC-P9-005 | stack: rust | command: cargo test -q tc_obs_ | result: pass | note: observability 命令与 inventory 构建相关单测通过
+- TC-P9-005 | stack: rust | command: cargo test -q tc_obs_002_observability_commands_registered_and_dashboard_has_triggers | result: pass | note: Tauri 命令注册与 Dashboard 触发入口已接通
+- TC-P9-006 | stack: ui | command: pnpm -s build | result: pass | note: 前端新增触发按钮与状态展示改动可编译
+- TC-P9-005 | stack: other | command: rg -n "observability_gateway_status|observability_bootstrap_start|observability_rollback_start" src-tauri/src/commands/observability.rs src-tauri/src/lib.rs src/lib/ipc.ts src/pages/Dashboard.tsx | result: pass | note: 后端检测与 GUI 触发链路完整可追溯
+
+### 18.4 Change Request Delta
+- 2026-03-13 21:14 +0800 新增需求已交付：GUI 可触发 bootstrap/rollback，并可读取服务端执行状态与 relay 配置探测结果。

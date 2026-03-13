@@ -1,7 +1,15 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { formatTaskError } from "../lib/errors";
-import { kesStatusAll, taskRecentList } from "../lib/ipc";
+import {
+  kesStatusAll,
+  observabilityBootstrapStart,
+  observabilityBootstrapStatus,
+  observabilityGatewayStatus,
+  observabilityRollbackStart,
+  observabilityRollbackStatus,
+  taskRecentList,
+} from "../lib/ipc";
 import {
   resolveTelemetryBehavior,
   startMonitorStore,
@@ -11,6 +19,7 @@ import {
 import type {
   KesStatus,
   MonitorSnapshot,
+  ObservabilityGatewayStatus,
   RecentTaskSummary,
 } from "../lib/types";
 
@@ -197,6 +206,10 @@ function statusToneClass(status: string): string {
   }
 }
 
+function isTaskTerminal(status: string): boolean {
+  return status === "success" || status === "failed" || status === "cancelled";
+}
+
 async function copyPlainText(value: string): Promise<boolean> {
   try {
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
@@ -251,6 +264,10 @@ export default function Dashboard() {
   const [recentTasks, setRecentTasks] = useState<RecentTaskSummary[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
+  const [gatewayStatus, setGatewayStatus] = useState<ObservabilityGatewayStatus | null>(null);
+  const [gatewayActionError, setGatewayActionError] = useState<string | null>(null);
+  const [gatewayActionMessage, setGatewayActionMessage] = useState<string | null>(null);
+  const [gatewayTask, setGatewayTask] = useState<{ taskId: string; kind: "bootstrap" | "rollback" } | null>(null);
   const {
     snapshots,
     status: monitorStatus,
@@ -260,19 +277,46 @@ export default function Dashboard() {
     lastError,
   } = useMonitorStore();
 
+  const refreshGatewayStatus = async () => {
+    try {
+      const status = await observabilityGatewayStatus();
+      setGatewayStatus(status);
+    } catch (error) {
+      setGatewayActionError(String(error));
+    }
+  };
+
   useEffect(() => {
+    let active = true;
     void (async () => {
       try {
         await startMonitorStore(30);
-        const [nextKes, nextTasks] = await Promise.all([kesStatusAll(), taskRecentList(8)]);
+        const [nextKes, nextTasks, nextGateway] = await Promise.all([
+          kesStatusAll(),
+          taskRecentList(8),
+          observabilityGatewayStatus(),
+        ]);
+        if (!active) {
+          return;
+        }
         setKesStatuses(nextKes);
         setRecentTasks(nextTasks);
+        setGatewayStatus(nextGateway);
       } catch {
+        if (!active) {
+          return;
+        }
         setKesStatuses([]);
         setRecentTasks([]);
+        setGatewayStatus(null);
       }
     })();
+    const refreshTimer = window.setInterval(() => {
+      void refreshGatewayStatus();
+    }, 15_000);
     return () => {
+      active = false;
+      window.clearInterval(refreshTimer);
       void stopMonitorStore();
     };
   }, []);
@@ -362,6 +406,10 @@ export default function Dashboard() {
   );
   const monitorPhaseText = monitorPhaseLabel(telemetryBehavior, monitorStatus);
   const monitorCollectedAge = formatRelativeCollectedAt(lastCollectedAt);
+  const gatewayConfiguredSummary = gatewayStatus
+    ? `${gatewayStatus.configured_relays}/${gatewayStatus.relay_total}`
+    : "--";
+  const gatewayLastTask = gatewayStatus?.last_bootstrap ?? gatewayStatus?.last_rollback ?? null;
   const handleCopyDetail = async (taskId: string, detailText: string) => {
     const copied = await copyPlainText(detailText);
     if (!copied) {
@@ -371,6 +419,71 @@ export default function Dashboard() {
     window.setTimeout(() => {
       setCopiedTaskId((current) => (current === taskId ? null : current));
     }, 1200);
+  };
+
+  useEffect(() => {
+    if (!gatewayTask) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const task =
+            gatewayTask.kind === "bootstrap"
+              ? await observabilityBootstrapStatus(gatewayTask.taskId)
+              : await observabilityRollbackStatus(gatewayTask.taskId);
+          if (!isTaskTerminal(task.status)) {
+            return;
+          }
+          window.clearInterval(timer);
+          setGatewayTask(null);
+          if (task.status === "success") {
+            setGatewayActionError(null);
+            setGatewayActionMessage(
+              gatewayTask.kind === "bootstrap"
+                ? "Telemetry API bootstrap completed."
+                : "Telemetry API rollback completed.",
+            );
+          } else {
+            setGatewayActionError(formatTaskError(task.error_msg) || `${gatewayTask.kind} task failed`);
+          }
+          await refreshGatewayStatus();
+        } catch (error) {
+          window.clearInterval(timer);
+          setGatewayTask(null);
+          setGatewayActionError(String(error));
+        }
+      })();
+    }, 3_000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [gatewayTask]);
+
+  const handleGatewayBootstrap = async () => {
+    try {
+      setGatewayActionError(null);
+      setGatewayActionMessage(null);
+      const taskId = await observabilityBootstrapStart();
+      setGatewayTask({ taskId, kind: "bootstrap" });
+      setGatewayActionMessage(`Telemetry API bootstrap started · task ${taskId}`);
+      await refreshGatewayStatus();
+    } catch (error) {
+      setGatewayActionError(String(error));
+    }
+  };
+
+  const handleGatewayRollback = async () => {
+    try {
+      setGatewayActionError(null);
+      setGatewayActionMessage(null);
+      const taskId = await observabilityRollbackStart();
+      setGatewayTask({ taskId, kind: "rollback" });
+      setGatewayActionMessage(`Telemetry API rollback started · task ${taskId}`);
+      await refreshGatewayStatus();
+    } catch (error) {
+      setGatewayActionError(String(error));
+    }
   };
 
   return (
@@ -403,11 +516,43 @@ export default function Dashboard() {
                 {monitorPhaseText}
                 {monitorCollectedAge ? ` · ${monitorCollectedAge}` : ""}。
                 {lastError ? ` 最近错误: ${lastError}。` : ""}
+                {` Gateway: ${gatewayConfiguredSummary} relay configured。`}
+                {gatewayLastTask ? ` 最近任务: ${gatewayLastTask.task_id} (${gatewayLastTask.status})。` : ""}
                 若刷新超时则继续展示缓存指标，并在下一轮轮询自动重试。
               </span>
             </span>
+            <span className="text-[11px] text-slate-500">GW {gatewayConfiguredSummary}</span>
+            <button
+              type="button"
+              onClick={() => {
+                void handleGatewayBootstrap();
+              }}
+              disabled={gatewayTask != null}
+              className="inline-flex h-6 items-center rounded border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              title="执行 observability bootstrap"
+            >
+              Enable API
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void handleGatewayRollback();
+              }}
+              disabled={gatewayTask != null}
+              className="inline-flex h-6 items-center rounded border border-rose-300 bg-rose-50 px-2 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+              title="执行 observability rollback"
+            >
+              Rollback
+            </button>
           </div>
         </header>
+        {(gatewayActionMessage || gatewayActionError) && (
+          <div className="px-4 pb-3">
+            <p className={`text-xs ${gatewayActionError ? "text-rose-700" : "text-slate-600"}`}>
+              {gatewayActionError ?? gatewayActionMessage}
+            </p>
+          </div>
+        )}
 
         <div className="grid gap-3 p-4 lg:grid-cols-3">
           {cardNodes.length === 0 ? (

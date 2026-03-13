@@ -78,6 +78,11 @@ pub fn run() {
             commands::monitor::monitor_snapshot,
             commands::monitor::monitor_start_polling,
             commands::monitor::monitor_stop_polling,
+            commands::observability::observability_gateway_status,
+            commands::observability::observability_bootstrap_start,
+            commands::observability::observability_bootstrap_status,
+            commands::observability::observability_rollback_start,
+            commands::observability::observability_rollback_status,
             commands::kes::kes_status_all,
             commands::kes::kes_generate,
             commands::kes::kes_import_cert,
@@ -225,7 +230,9 @@ mod frontend_tests {
     fn tc_fe_026_settings_is_read_only_for_chain_fields() {
         let settings = include_str!("../../src/pages/Settings.tsx");
         assert!(settings.contains("ticker`, `margin` and `fixed cost` are not edited here."));
-        assert!(settings.contains("Chain-facing pool parameters are read from the bound on-chain registration."));
+        assert!(settings.contains(
+            "Chain-facing pool parameters are read from the bound on-chain registration."
+        ));
         assert!(!settings.contains("poolUpdate("));
         assert!(!settings.contains("type=\"submit\""));
     }
@@ -498,7 +505,8 @@ mod frontend_tests {
         let errors = include_str!("../../src/lib/errors.ts");
         assert!(errors.contains("export function toUserError"));
         assert!(errors.contains("export function formatTaskError"));
-        assert!(errors.contains("permission denied while trying to connect to the docker daemon socket"));
+        assert!(errors
+            .contains("permission denied while trying to connect to the docker daemon socket"));
         assert!(errors.contains("network.socket.connect"));
     }
 
@@ -624,6 +632,20 @@ mod frontend_tests {
         let lib = include_str!("lib.rs");
         assert!(commands.contains("pub mod task;"));
         assert!(lib.contains("commands::task::task_recent_list"));
+    }
+
+    #[test]
+    fn tc_obs_002_observability_commands_registered_and_dashboard_has_triggers() {
+        let commands = include_str!("commands/mod.rs");
+        let lib = include_str!("lib.rs");
+        let dashboard = include_str!("../../src/pages/Dashboard.tsx");
+        assert!(commands.contains("pub mod observability;"));
+        assert!(lib.contains("commands::observability::observability_gateway_status"));
+        assert!(lib.contains("commands::observability::observability_bootstrap_start"));
+        assert!(lib.contains("commands::observability::observability_rollback_start"));
+        assert!(dashboard.contains("Enable API"));
+        assert!(dashboard.contains("Rollback"));
+        assert!(dashboard.contains("observabilityGatewayStatus("));
     }
 
     #[test]
