@@ -349,3 +349,19 @@ Spec-ID: S0009
 
 ### 20.4 Change Request Delta
 - 2026-03-13 21:26 +0800 用户交互已增强：点击 Enable API/Rollback 后可立即看到执行中状态与实时任务输出。
+
+## 21. Addendum (append-only)
+### 21.1 Execution Plan Delta
+- [x] p9-12-fix3 修复 bootstrap/deploy 在真实 inventory 下的 hostvars 取值错误
+
+### 21.2 Execution Log Delta
+- 2026-03-13 17:32 +0800 p9-12-fix3 started: 用户反馈 Enable API 执行失败，报错 `hostvars['localhost']` 无 `generated_metrics_basic_auth_password`。
+- 2026-03-13 17:32 +0800 p9-12-fix3 completed: 已统一改为从 `ansible_play_hosts_all[0]` 读取 run_once 生成值，移除对 `localhost` hostvars 依赖，修复 bootstrap 与 deploy 同类风险。
+
+### 21.3 Validation Evidence Delta
+- TC-P9-004 | stack: ansible | command: rg -n "generated_metrics_basic_auth_password|ansible_play_hosts_all\[0\]|hostvars\['localhost'\]" ansible/playbooks/observability-bootstrap.yml ansible/playbooks/deploy.yml | result: pass | note: 两个 playbook 均已改为首个 play host 传播密码，不再依赖 localhost hostvars
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-bootstrap.yml | result: pass | note: bootstrap 语法检查通过
+- TC-P9-005 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/deploy.yml | result: pass | note: deploy 语法检查通过（relay/bp host pattern 警告为本地空 inventory 预期）
+
+### 21.4 Change Request Delta
+- 2026-03-13 17:32 +0800 修复完成：Enable API 触发链路移除对 `localhost` hostvars 的隐式前提，适配 sidecar 生成 inventory 场景。

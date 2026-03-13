@@ -8,14 +8,13 @@
     - name: Generate shared metrics basic auth password when missing
       ansible.builtin.set_fact:
         generated_metrics_basic_auth_password: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=40') }}"
-      delegate_to: localhost
       run_once: true
       no_log: true
       when: (ops_metrics_basic_auth_password | default('') | trim | length) == 0
 
     - name: Propagate generated metrics password to relay hosts
       ansible.builtin.set_fact:
-        ops_metrics_basic_auth_password: "{{ hostvars['localhost'].generated_metrics_basic_auth_password }}"
+        ops_metrics_basic_auth_password: "{{ hostvars[ansible_play_hosts_all[0]].generated_metrics_basic_auth_password }}"
       no_log: true
       when: (ops_metrics_basic_auth_password | default('') | trim | length) == 0
 
