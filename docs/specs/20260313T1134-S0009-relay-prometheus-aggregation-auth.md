@@ -435,3 +435,18 @@ Spec-ID: S0009
 
 ### 25.4 Change Request Delta
 - 2026-03-13 21:42 +0800 需求落地：旧 telemetry 细粒度端点已下线，当前实现仅保留单一 `raw` 端点。
+
+## 26. Addendum (append-only)
+### 26.1 Execution Plan Delta
+- [x] p9-12-fix8 新增 raw 全量指标 key→作用字典文档（用于前端选型）
+
+### 26.2 Execution Log Delta
+- 2026-03-13 21:58 +0800 p9-12-fix8 started: 根据用户提供的 raw 样本，整理全量指标字典文档以支持后续前端指标展示规划。
+- 2026-03-13 21:58 +0800 p9-12-fix8 completed: 已新增“raw 指标字典”文档，覆盖 135 个 key 的作用说明与首批前端展示优先级建议。
+
+### 26.3 Validation Evidence Delta
+- TC-P9-006 | stack: other | command: test -f docs/review/20260313-p9-12-fix8-raw-metrics-catalog.md && echo ok | result: pass | note: raw 指标字典文档已落盘
+- TC-P9-006 | stack: other | command: grep -oE '`(cardano_node_metrics_[A-Za-z0-9_]+|rts_gc_[A-Za-z0-9_]+|ekg_server_timestamp_ms)' docs/review/20260313-p9-12-fix8-raw-metrics-catalog.md | tr -d '`' | sort -u | wc -l | result: pass | note: 文档覆盖 key 数量为 135，与样本一致
+
+### 26.4 Change Request Delta
+- 2026-03-13 21:58 +0800 新增交付：通过文档化方式冻结 raw 指标字典，后续前端可直接按文档选取展示指标。
