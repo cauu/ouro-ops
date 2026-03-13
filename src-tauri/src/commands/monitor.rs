@@ -86,6 +86,38 @@ struct PrometheusMetrics {
     note: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct RelayTelemetryConfig {
+    username: String,
+    password: String,
+    scheme: String,
+    port: u16,
+    timeout_seconds: u64,
+    insecure_tls: bool,
+}
+
+#[derive(Debug, Clone)]
+struct RelayMetricSample {
+    node: Option<String>,
+    role: Option<String>,
+    instance: Option<String>,
+    timestamp: Option<i64>,
+    value: f64,
+}
+
+const RELAY_TELEMETRY_ENDPOINTS: [(&str, &str); 10] = [
+    ("epoch", "epoch"),
+    ("sync_percent", "sync-percent"),
+    ("tip_diff_blocks", "tip-diff-blocks"),
+    ("peer_count", "peer-count"),
+    ("cpu_sys_percent", "cpu-sys-percent"),
+    ("mem_live_bytes", "mem-live-bytes"),
+    ("mem_rss_bytes", "mem-rss-bytes"),
+    ("mem_heap_bytes", "mem-heap-bytes"),
+    ("gc_minor_total", "gc-minor-total"),
+    ("gc_major_total", "gc-major-total"),
+];
+
 impl PrometheusMetrics {
     fn has_any_value(&self) -> bool {
         self.epoch.is_some()
@@ -311,7 +343,351 @@ fn map_prometheus_metrics(source: &str, metrics: &HashMap<String, f64>) -> Prome
     }
 }
 
-fn collect_prometheus_metrics(machine: &MachineRow) -> PrometheusMetrics {
+fn parse_env_bool(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+fn relay_telemetry_config_from_env() -> Option<RelayTelemetryConfig> {
+    let username = std::env::var("OURO_OPS_RELAY_TELEMETRY_USERNAME")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())?;
+    let password = std::env::var("OURO_OPS_RELAY_TELEMETRY_PASSWORD")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())?;
+    let scheme = std::env::var("OURO_OPS_RELAY_TELEMETRY_SCHEME")
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| value == "http" || value == "https")
+        .unwrap_or_else(|| "https".into());
+    let port = std::env::var("OURO_OPS_RELAY_TELEMETRY_PORT")
+        .ok()
+        .and_then(|value| value.trim().parse::<u16>().ok())
+        .filter(|port| *port > 0)
+        .unwrap_or(443);
+    let timeout_seconds = std::env::var("OURO_OPS_RELAY_TELEMETRY_TIMEOUT_SECONDS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(|seconds| seconds.clamp(1, 15))
+        .unwrap_or(3);
+    let insecure_tls = std::env::var("OURO_OPS_RELAY_TELEMETRY_INSECURE")
+        .ok()
+        .map(|value| parse_env_bool(value.as_str()))
+        .unwrap_or(false);
+
+    Some(RelayTelemetryConfig {
+        username,
+        password,
+        scheme,
+        port,
+        timeout_seconds,
+        insecure_tls,
+    })
+}
+
+fn parse_metric_sample_timestamp(value: Option<&Value>) -> Option<i64> {
+    match value {
+        Some(Value::Number(raw)) => raw.as_f64().map(|v| v.floor() as i64),
+        Some(Value::String(raw)) => raw.trim().parse::<f64>().ok().map(|v| v.floor() as i64),
+        _ => None,
+    }
+}
+
+fn parse_metric_sample_value(value: Option<&Value>) -> Option<f64> {
+    match value {
+        Some(Value::Number(raw)) => raw.as_f64(),
+        Some(Value::String(raw)) => raw.trim().parse::<f64>().ok(),
+        _ => None,
+    }
+    .filter(|v| v.is_finite())
+}
+
+fn parse_relay_metric_samples(payload: &Value) -> Result<Vec<RelayMetricSample>, AppError> {
+    if let Some(series) = payload.get("series").and_then(Value::as_array) {
+        let samples = series
+            .iter()
+            .filter_map(|entry| {
+                let value = parse_metric_sample_value(entry.get("value"))?;
+                Some(RelayMetricSample {
+                    node: entry
+                        .get("node")
+                        .and_then(Value::as_str)
+                        .map(|raw| raw.to_string()),
+                    role: entry
+                        .get("role")
+                        .and_then(Value::as_str)
+                        .map(|raw| raw.to_string()),
+                    instance: entry
+                        .get("instance")
+                        .and_then(Value::as_str)
+                        .map(|raw| raw.to_string()),
+                    timestamp: parse_metric_sample_timestamp(entry.get("timestamp")),
+                    value,
+                })
+            })
+            .collect::<Vec<_>>();
+        return Ok(samples);
+    }
+
+    let status = payload
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if status != "success" {
+        return Err(AppError::Internal(format!(
+            "relay api returned non-success status: {status}"
+        )));
+    }
+
+    let result = payload
+        .get("data")
+        .and_then(|data| data.get("result"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| AppError::Internal("relay api response missing data.result".into()))?;
+    let samples = result
+        .iter()
+        .filter_map(|entry| {
+            let metric = entry.get("metric").and_then(Value::as_object)?;
+            let value_vector = entry.get("value").and_then(Value::as_array)?;
+            let timestamp = parse_metric_sample_timestamp(value_vector.first());
+            let value = parse_metric_sample_value(value_vector.get(1))?;
+            Some(RelayMetricSample {
+                node: metric
+                    .get("node")
+                    .and_then(Value::as_str)
+                    .map(|raw| raw.to_string()),
+                role: metric
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .map(|raw| raw.to_string()),
+                instance: metric
+                    .get("instance")
+                    .and_then(Value::as_str)
+                    .map(|raw| raw.to_string()),
+                timestamp,
+                value,
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(samples)
+}
+
+fn relay_metrics_url(config: &RelayTelemetryConfig, relay: &MachineRow, endpoint: &str) -> String {
+    format!(
+        "{}://{}:{}/api/ops/v1/telemetry/{}",
+        config.scheme, relay.ip, config.port, endpoint
+    )
+}
+
+fn fetch_relay_metric_samples(
+    config: &RelayTelemetryConfig,
+    relay: &MachineRow,
+    endpoint: &str,
+) -> Result<Vec<RelayMetricSample>, AppError> {
+    let url = relay_metrics_url(config, relay, endpoint);
+    let mut command = Command::new("curl");
+    command
+        .arg("-fsS")
+        .arg("--max-time")
+        .arg(config.timeout_seconds.to_string())
+        .arg("-u")
+        .arg(format!("{}:{}", config.username, config.password));
+    if config.insecure_tls {
+        command.arg("-k");
+    }
+    let output = command.arg(url.as_str()).output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(AppError::Internal(format!(
+            "relay api request failed ({endpoint}) on {}: {}",
+            relay.name,
+            if stderr.is_empty() {
+                format!("curl exit {}", output.status)
+            } else {
+                stderr
+            }
+        )));
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if raw.is_empty() {
+        return Err(AppError::Internal(format!(
+            "relay api request returned empty response ({endpoint}) on {}",
+            relay.name
+        )));
+    }
+    let payload: Value = serde_json::from_str(raw.as_str())
+        .map_err(|err| AppError::Internal(format!("relay api invalid json: {err}")))?;
+    parse_relay_metric_samples(&payload)
+}
+
+fn select_relay_metric_sample<'a>(
+    machine: &MachineRow,
+    samples: &'a [RelayMetricSample],
+) -> Option<&'a RelayMetricSample> {
+    let mut selected: Option<&RelayMetricSample> = None;
+    let mut selected_score = 0_u8;
+    let mut selected_timestamp = i64::MIN;
+
+    for sample in samples {
+        let role_matches = sample
+            .role
+            .as_deref()
+            .map(|role| role.eq_ignore_ascii_case(machine.role.as_str()))
+            .unwrap_or(true);
+        if !role_matches {
+            continue;
+        }
+        let node_matches = sample
+            .node
+            .as_deref()
+            .map(|node| node.eq_ignore_ascii_case(machine.name.as_str()))
+            .unwrap_or(false);
+        let instance_matches = sample
+            .instance
+            .as_deref()
+            .map(|instance| instance.contains(machine.ip.as_str()))
+            .unwrap_or(false);
+
+        let score = if node_matches {
+            3
+        } else if instance_matches {
+            2
+        } else {
+            0
+        };
+        if score == 0 {
+            continue;
+        }
+        let timestamp = sample.timestamp.unwrap_or_default();
+        if score > selected_score || (score == selected_score && timestamp >= selected_timestamp) {
+            selected = Some(sample);
+            selected_score = score;
+            selected_timestamp = timestamp;
+        }
+    }
+    selected
+}
+
+fn apply_relay_metric_value(
+    mapped: &mut PrometheusMetrics,
+    metric_key: &str,
+    sample_value: f64,
+    sample_timestamp: Option<i64>,
+    latest_timestamp: &mut Option<i64>,
+) {
+    match metric_key {
+        "epoch" => mapped.epoch = Some(sample_value.round() as i64),
+        "sync_percent" => mapped.sync_percent = normalize_percent(Some(sample_value)),
+        "tip_diff_blocks" => mapped.tip_diff_blocks = Some(sample_value.round() as i64),
+        "peer_count" => mapped.peer_count = Some(sample_value.round() as i64),
+        "cpu_sys_percent" => mapped.cpu_sys_percent = normalize_percent(Some(sample_value)),
+        "mem_live_bytes" => mapped.mem_live_bytes = Some(sample_value),
+        "mem_rss_bytes" => mapped.mem_rss_bytes = Some(sample_value),
+        "mem_heap_bytes" => mapped.mem_heap_bytes = Some(sample_value),
+        "gc_minor_total" => mapped.gc_minor_total = Some(sample_value.round() as i64),
+        "gc_major_total" => mapped.gc_major_total = Some(sample_value.round() as i64),
+        _ => {}
+    }
+    if let Some(timestamp) = sample_timestamp {
+        *latest_timestamp = Some(
+            latest_timestamp
+                .map(|current| current.max(timestamp))
+                .unwrap_or(timestamp),
+        );
+    }
+}
+
+fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> PrometheusMetrics {
+    let Some(config) = relay_telemetry_config_from_env() else {
+        return PrometheusMetrics::default();
+    };
+    let relays = match repo_machine_list(conn, Some("relay"), Some(machine.network.as_str())) {
+        Ok(machines) => machines,
+        Err(err) => {
+            return PrometheusMetrics {
+                source: None,
+                note: Some(format!("relay api disabled: failed to load relays: {err}")),
+                ..PrometheusMetrics::default()
+            };
+        }
+    };
+    let Some(relay) = relays.first() else {
+        return PrometheusMetrics {
+            source: None,
+            note: Some("relay api disabled: no relay found in current network".into()),
+            ..PrometheusMetrics::default()
+        };
+    };
+
+    let mut mapped = PrometheusMetrics {
+        source: Some(format!("relay-api:{}@{}", relay.name, relay.ip)),
+        note: None,
+        ..PrometheusMetrics::default()
+    };
+    let mut latest_timestamp: Option<i64> = None;
+    let mut errors: Vec<String> = Vec::new();
+
+    for (metric_key, endpoint) in RELAY_TELEMETRY_ENDPOINTS {
+        match fetch_relay_metric_samples(&config, relay, endpoint) {
+            Ok(samples) => {
+                if let Some(sample) = select_relay_metric_sample(machine, &samples) {
+                    apply_relay_metric_value(
+                        &mut mapped,
+                        metric_key,
+                        sample.value,
+                        sample.timestamp,
+                        &mut latest_timestamp,
+                    );
+                }
+            }
+            Err(err) => {
+                errors.push(err.to_string());
+            }
+        }
+    }
+
+    if mapped.has_any_value() {
+        mapped.note = if errors.is_empty() {
+            None
+        } else {
+            Some(format!(
+                "relay api partial data: {} endpoint(s) failed",
+                errors.len()
+            ))
+        };
+        if let Some(timestamp) = latest_timestamp {
+            mapped.source = Some(format!(
+                "relay-api:{}@{}#{}",
+                relay.name, relay.ip, timestamp
+            ));
+        }
+        return mapped;
+    }
+
+    mapped.note = if errors.is_empty() {
+        Some(format!(
+            "relay api reachable on {} but no matching series for {}",
+            relay.name, machine.name
+        ))
+    } else {
+        Some(format!(
+            "relay api unavailable on {}: {}",
+            relay.name,
+            errors
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "unknown error".into())
+        ))
+    };
+    mapped
+}
+
+fn collect_local_prometheus_metrics(machine: &MachineRow) -> PrometheusMetrics {
     let candidates: [(&str, &str); 4] = [
         (
             "nview:9090",
@@ -362,9 +738,33 @@ fn collect_prometheus_metrics(machine: &MachineRow) -> PrometheusMetrics {
     }
 }
 
+fn collect_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> PrometheusMetrics {
+    let relay_metrics = collect_relay_prometheus_metrics(conn, machine);
+    if relay_metrics.has_any_value() {
+        return relay_metrics;
+    }
+    let local_metrics = collect_local_prometheus_metrics(machine);
+    if local_metrics.has_any_value() {
+        return local_metrics;
+    }
+
+    let merged_note = match (relay_metrics.note, local_metrics.note) {
+        (Some(relay), Some(local)) => Some(format!("relay: {relay}; local: {local}")),
+        (Some(relay), None) => Some(relay),
+        (None, Some(local)) => Some(local),
+        (None, None) => None,
+    };
+
+    PrometheusMetrics {
+        source: None,
+        note: merged_note,
+        ..PrometheusMetrics::default()
+    }
+}
+
 fn parse_tip(raw: &str) -> Result<(Option<i64>, Option<f64>), AppError> {
-    let tip: Value =
-        serde_json::from_str(raw).map_err(|err| AppError::Internal(format!("invalid tip json: {err}")))?;
+    let tip: Value = serde_json::from_str(raw)
+        .map_err(|err| AppError::Internal(format!("invalid tip json: {err}")))?;
     let block_height = tip.get("block").and_then(Value::as_i64);
     let sync_progress = parse_sync_progress(tip.get("syncProgress"));
     Ok((block_height, sync_progress))
@@ -390,9 +790,7 @@ fn last_restore_related_log_line(raw: &str) -> Option<String> {
         .rev()
         .find(|line| {
             let lower = line.to_ascii_lowercase();
-            lower.contains("mithril")
-                || lower.contains("snapshot")
-                || lower.contains("restore")
+            lower.contains("mithril") || lower.contains("snapshot") || lower.contains("restore")
         })
         .map(|line| line.trim().to_string())
 }
@@ -516,7 +914,8 @@ fn determine_stalled(
     let Some(current_height) = current_block_height else {
         return false;
     };
-    current_height == previous_height && (current_epoch_seconds - previous.collected_at_epoch) >= 300
+    current_height == previous_height
+        && (current_epoch_seconds - previous.collected_at_epoch) >= 300
 }
 
 fn determine_status(sync_progress: Option<f64>, stalled: bool, note: Option<&str>) -> String {
@@ -541,7 +940,10 @@ fn determine_health_level(
 ) -> String {
     if stalled
         || status == "unreachable"
-        || matches!(sync_stage, "restore_failed" | "restore_timeout" | "unreachable")
+        || matches!(
+            sync_stage,
+            "restore_failed" | "restore_timeout" | "unreachable"
+        )
     {
         return "critical".into();
     }
@@ -620,7 +1022,10 @@ fn determine_sync_stage(
                 return (
                     "snapshot_restoring".into(),
                     last_restore_related_log_line(runtime.recent_logs.as_str()).or_else(|| {
-                        Some("Mithril restore requested; database is still being initialized.".into())
+                        Some(
+                            "Mithril restore requested; database is still being initialized."
+                                .into(),
+                        )
                     }),
                 );
             }
@@ -647,7 +1052,9 @@ fn recover_restore_stage_from_tip_error(
             "syncing".into(),
             parse_restore_progress_from_logs(runtime.recent_logs.as_str()),
             last_restore_related_log_line(runtime.recent_logs.as_str()).or_else(|| {
-                Some("Mithril restore is still replaying the database; tip is not ready yet.".into())
+                Some(
+                    "Mithril restore is still replaying the database; tip is not ready yet.".into(),
+                )
             }),
         ));
     }
@@ -707,12 +1114,14 @@ fn collect_machine_snapshot(
     let tip_raw = match ssh_exec(machine, remote_cmd.as_str()) {
         Ok(output) => output,
         Err(err) => {
-            if let Some((sync_stage, status, recovered_sync_progress, sync_note)) = recover_restore_stage_from_tip_error(
-                previous.as_ref(),
-                runtime_context.as_ref(),
-                collected_at_epoch,
-            ) {
-                let prometheus = collect_prometheus_metrics(machine);
+            if let Some((sync_stage, status, recovered_sync_progress, sync_note)) =
+                recover_restore_stage_from_tip_error(
+                    previous.as_ref(),
+                    runtime_context.as_ref(),
+                    collected_at_epoch,
+                )
+            {
+                let prometheus = collect_prometheus_metrics(conn, machine);
                 insert_health_sample(
                     conn,
                     machine.id,
@@ -793,7 +1202,7 @@ fn collect_machine_snapshot(
     let (block_height, sync_progress) = match parse_tip(tip_raw.as_str()) {
         Ok(parsed) => parsed,
         Err(err) => {
-            let prometheus = collect_prometheus_metrics(machine);
+            let prometheus = collect_prometheus_metrics(conn, machine);
             let note = err.to_string();
             return Ok(MonitorSnapshot {
                 machine_id: machine.id,
@@ -850,9 +1259,13 @@ fn collect_machine_snapshot(
         "fallback_syncing" => "syncing".into(),
         _ => determine_status(sync_progress, stalled, None),
     };
-    let health_level =
-        determine_health_level(status.as_str(), sync_stage.as_str(), blocks_per_minute, stalled);
-    let prometheus = collect_prometheus_metrics(machine);
+    let health_level = determine_health_level(
+        status.as_str(),
+        sync_stage.as_str(),
+        blocks_per_minute,
+        stalled,
+    );
+    let prometheus = collect_prometheus_metrics(conn, machine);
     insert_health_sample(
         conn,
         machine.id,
@@ -1058,17 +1471,26 @@ mod tests {
             sync_stage: None,
             collected_at_epoch: 1_000,
         };
-        assert!(determine_stalled(Some(&previous), Some(1_000), Some(12.5), 1_301));
-        assert!(!determine_stalled(Some(&previous), Some(1_001), Some(12.5), 1_301));
+        assert!(determine_stalled(
+            Some(&previous),
+            Some(1_000),
+            Some(12.5),
+            1_301
+        ));
+        assert!(!determine_stalled(
+            Some(&previous),
+            Some(1_001),
+            Some(12.5),
+            1_301
+        ));
     }
 
     #[test]
     fn tc_mon_004_wrap_remote_command_uses_sudo_for_docker() {
         let wrapped = wrap_remote_command("docker exec cardano-node cardano-cli query tip");
         assert!(wrapped.contains("sudo -n docker exec cardano-node cardano-cli query tip"));
-        assert!(
-            wrapped.contains("2>/dev/null || sudo -n docker exec cardano-node cardano-cli query tip")
-        );
+        assert!(wrapped
+            .contains("2>/dev/null || sudo -n docker exec cardano-node cardano-cli query tip"));
         assert!(wrapped.starts_with("sh -lc "));
     }
 
@@ -1079,8 +1501,7 @@ mod tests {
             protocol_magic_id_present: false,
             recent_logs: "Mithril: restoring snapshot chunk 1/42".into(),
         };
-        let (stage, note) =
-            determine_sync_stage(Some(0), Some(0.0), None, Some(&runtime), None, 0);
+        let (stage, note) = determine_sync_stage(Some(0), Some(0.0), None, Some(&runtime), None, 0);
         assert_eq!(stage, "snapshot_restoring");
         assert!(note.expect("note").contains("Mithril"));
     }
@@ -1092,8 +1513,7 @@ mod tests {
             protocol_magic_id_present: false,
             recent_logs: "mithril restore failed: checksum mismatch".into(),
         };
-        let (stage, note) =
-            determine_sync_stage(Some(0), Some(0.0), None, Some(&runtime), None, 0);
+        let (stage, note) = determine_sync_stage(Some(0), Some(0.0), None, Some(&runtime), None, 0);
         assert_eq!(stage, "restore_failed");
         assert!(note.expect("note").contains("failed"));
     }
@@ -1137,14 +1557,8 @@ mod tests {
             protocol_magic_id_present: false,
             recent_logs: "mithril restore failed: checksum mismatch".into(),
         };
-        let (stage, note) = determine_sync_stage(
-            Some(12),
-            Some(0.1),
-            None,
-            Some(&runtime),
-            None,
-            0,
-        );
+        let (stage, note) =
+            determine_sync_stage(Some(12), Some(0.1), None, Some(&runtime), None, 0);
         assert_eq!(stage, "fallback_syncing");
         assert!(note.expect("note").contains("failed"));
     }
@@ -1195,7 +1609,10 @@ mod tests {
 
     #[test]
     fn tc_mon_014_health_level_is_healthy_for_fast_sync_or_synced() {
-        assert_eq!(determine_health_level("synced", "synced", None, false), "healthy");
+        assert_eq!(
+            determine_health_level("synced", "synced", None, false),
+            "healthy"
+        );
         assert_eq!(
             determine_health_level("syncing", "syncing", Some(45.0), false),
             "healthy"
@@ -1224,5 +1641,79 @@ mod tests {
             determine_health_level("stalled", "syncing", Some(0.0), true),
             "critical"
         );
+    }
+
+    fn sample_machine(name: &str, role: &str, ip: &str) -> MachineRow {
+        MachineRow {
+            id: 1,
+            pool_id: 1,
+            name: name.into(),
+            ip: ip.into(),
+            ssh_port: 22,
+            ssh_user: "root".into(),
+            role: role.into(),
+            network: "mainnet".into(),
+            ssh_key_fingerprint: None,
+            os_version: None,
+            cardano_version: None,
+            image_registry: "ghcr.io/blinklabs-io/cardano-node".into(),
+            image_digest: None,
+            sort_order: 1,
+            created_at: "2026-03-13 00:00:00".into(),
+            updated_at: "2026-03-13 00:00:00".into(),
+        }
+    }
+
+    #[test]
+    fn tc_mon_017_parse_relay_metric_samples_supports_prometheus_vector_payload() {
+        let payload = json!({
+            "status": "success",
+            "data": {
+                "resultType": "vector",
+                "result": [{
+                    "metric": {"node": "bp-1", "role": "bp", "instance": "10.0.0.12:12798"},
+                    "value": [1773374400, "98.41"]
+                }]
+            }
+        });
+        let samples = parse_relay_metric_samples(&payload).expect("samples");
+        assert_eq!(samples.len(), 1);
+        assert_eq!(samples[0].node.as_deref(), Some("bp-1"));
+        assert_eq!(samples[0].role.as_deref(), Some("bp"));
+        assert_eq!(samples[0].timestamp, Some(1_773_374_400));
+        assert_eq!(samples[0].value, 98.41);
+    }
+
+    #[test]
+    fn tc_mon_018_select_relay_metric_sample_prefers_node_role_match() {
+        let machine = sample_machine("bp-1", "bp", "10.0.0.12");
+        let samples = vec![
+            RelayMetricSample {
+                node: Some("relay-1".into()),
+                role: Some("relay".into()),
+                instance: Some("10.0.0.10:12798".into()),
+                timestamp: Some(100),
+                value: 10.0,
+            },
+            RelayMetricSample {
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(120),
+                value: 98.41,
+            },
+        ];
+        let selected = select_relay_metric_sample(&machine, &samples).expect("selected");
+        assert_eq!(selected.value, 98.41);
+        assert_eq!(selected.timestamp, Some(120));
+    }
+
+    #[test]
+    fn tc_mon_019_parse_env_bool_supports_truthy_values() {
+        assert!(parse_env_bool("true"));
+        assert!(parse_env_bool(" YES "));
+        assert!(parse_env_bool("1"));
+        assert!(!parse_env_bool("false"));
+        assert!(!parse_env_bool("0"));
     }
 }

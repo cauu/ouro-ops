@@ -56,7 +56,7 @@ Spec-ID: S0009
 - [x] p9-2 输出 p8-5 失败运行态根因报告（端点、映射、fallback 分支）
 - [x] p9-3 设计 relay 白名单 API 契约与字段映射表（含空值/时间戳兜底）
 - [x] p9-4 实现 relay 网关 Basic Auth + HTTPS + 白名单 API 路由模板
-- [ ] p9-5 实现/修复 monitor 数据源：relay API 优先，local monitor fallback
+- [x] p9-5 实现/修复 monitor 数据源：relay API 优先，local monitor fallback
 - [ ] p9-6 实现多 relay 主备切换策略（超时、退避、最新时间戳选优）
 - [ ] p9-7 新增现网增量接入 playbook（bootstrap，不重跑 full deploy）
 - [ ] p9-8 将观测与认证步骤并入新部署流程（deploy 默认内建）
@@ -133,3 +133,19 @@ Spec-ID: S0009
 
 ### 10.4 Change Request Delta
 - 2026-03-13 11:59 +0800 执行推进：完成 p9-4，下一步进入 p9-5（monitor 数据源切换为 relay API 优先 + local fallback）。
+
+## 11. Addendum (append-only)
+### 11.1 Execution Plan Delta
+- [x] p9-5 实现/修复 monitor 数据源：relay API 优先，local monitor fallback
+
+### 11.2 Execution Log Delta
+- 2026-03-13 20:08 +0800 p9-5 started: 在 monitor 采集链路新增 relay 白名单 API 客户端，保留本地 SSH 采集作为 fallback。
+- 2026-03-13 20:08 +0800 p9-5 completed: 已完成 relay API 优先 + local fallback 的数据源切换，并补充 Prometheus 向量解析与匹配单测。
+
+### 11.3 Validation Evidence Delta
+- TC-P9-006 | stack: rust | command: rg -n "relay_telemetry_config_from_env|collect_relay_prometheus_metrics|collect_local_prometheus_metrics|collect_prometheus_metrics\\(conn, machine\\)" src-tauri/src/commands/monitor.rs | result: pass | note: monitor 已切换为 relay API 优先并保留 local fallback
+- TC-P9-006 | stack: rust | command: rg -n "OURO_OPS_RELAY_TELEMETRY_USERNAME|OURO_OPS_RELAY_TELEMETRY_PASSWORD|RELAY_TELEMETRY_ENDPOINTS|parse_relay_metric_samples" src-tauri/src/commands/monitor.rs | result: pass | note: relay API 认证配置与白名单端点映射已接入
+- TC-P9-007 | stack: rust | command: cargo test -q tc_mon_ | result: pass | note: 19 项 monitor 单测通过，包含 relay 解析/匹配与 fallback 相关逻辑
+
+### 11.4 Change Request Delta
+- 2026-03-13 20:08 +0800 执行推进：完成 p9-5，下一步进入 p9-6（多 relay 主备切换、超时退避与最新时间戳选优）。
