@@ -1,12 +1,12 @@
 # Phase 5 Mac App Delivery (Prototype To Product UI)
 
 Spec-ID: S0008
-状态: active
+状态: completed
 创建时间: 2026-03-12 14:46 +0800
 开始时间: 2026-03-12 14:46 +0800
-完成时间:
+完成时间: 2026-03-13 11:34 +0800
 前一个 Spec-ID: S0007
-结项原因:
+结项原因: replaced
 
 ## 1. Requirement Details
 - Background
@@ -593,3 +593,7 @@ Spec-ID: S0008
 
 ### 34.4 Change Request Delta
 - 2026-03-12 23:59 +0800 需求修订：Sidebar 图标偏小且风格不一致，需统一并放大。
+
+## 35. Addendum (append-only)
+### 35.1 Change Request Delta
+- 2026-03-13 11:34 +0800 需求修订：结束 S0008，并将“Prometheus 聚合查询能力（多 relay）+ 认证接入 + 现网增量接入/新部署内建”作为新阶段 scope，迁移到 S0009 继续执行。
