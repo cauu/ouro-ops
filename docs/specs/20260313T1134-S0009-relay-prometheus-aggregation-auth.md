@@ -365,3 +365,19 @@ Spec-ID: S0009
 
 ### 21.4 Change Request Delta
 - 2026-03-13 17:32 +0800 修复完成：Enable API 触发链路移除对 `localhost` hostvars 的隐式前提，适配 sidecar 生成 inventory 场景。
+
+## 22. Addendum (append-only)
+### 22.1 Execution Plan Delta
+- [x] p9-12-fix4 修复 Enable API 对预置 TLS 文件的硬依赖（缺失时自动生成）
+
+### 22.2 Execution Log Delta
+- 2026-03-13 18:00 +0800 p9-12-fix4 started: 用户反馈 bootstrap 在 relay 上因缺失 `/etc/ssl/certs/ouro-ops.crt` 失败。
+- 2026-03-13 18:00 +0800 p9-12-fix4 completed: 在 `ops-observability-gateway` 角色新增“TLS 材料缺失时自动生成自签名证书”逻辑，保留开关可禁用。
+
+### 22.3 Validation Evidence Delta
+- TC-P9-004 | stack: ansible | command: rg -n "ops_metrics_tls_auto_generate_self_signed|Generate self-signed certificate|openssl|Re-check TLS" ansible/roles/ops-observability-gateway/defaults/main.yml ansible/roles/ops-observability-gateway/tasks/main.yml | result: pass | note: 已落地自签名 TLS 自动生成与二次校验链路
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-bootstrap.yml | result: pass | note: bootstrap 语法检查通过
+- TC-P9-005 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/deploy.yml | result: pass | note: deploy 语法检查通过（relay/bp host pattern 警告为本地空 inventory 预期）
+
+### 22.4 Change Request Delta
+- 2026-03-13 18:00 +0800 修复完成：Enable API 在未预置 TLS 证书场景可自动生成并继续执行，无需人工先下发证书文件。

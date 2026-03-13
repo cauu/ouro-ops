@@ -12,3 +12,6 @@ ops_metrics_htpasswd_path: "/etc/ouro-ops/.htpasswd"
 ops_metrics_tls_cert_path: "/etc/ssl/certs/ouro-ops.crt"
 ops_metrics_tls_key_path: "/etc/ssl/private/ouro-ops.key"
 ops_metrics_require_tls_materials: true
+ops_metrics_tls_auto_generate_self_signed: true
+ops_metrics_tls_self_signed_valid_days: 365
+ops_metrics_tls_self_signed_key_bits: 2048

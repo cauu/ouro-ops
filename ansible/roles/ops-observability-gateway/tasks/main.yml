@@ -4,6 +4,7 @@
     name:
       - nginx
       - apache2-utils
+      - openssl
     state: present
     update_cache: true
 
@@ -27,6 +28,67 @@
   when: ops_metrics_require_tls_materials | bool
 
 - name: Check TLS private key file
+  stat:
+    path: "{{ ops_metrics_tls_key_path }}"
+  register: ops_metrics_tls_key_stat
+  when: ops_metrics_require_tls_materials | bool
+
+- name: Auto-generate self-signed TLS materials when missing
+  block:
+    - name: Ensure TLS certificate directory exists
+      file:
+        path: "{{ ops_metrics_tls_cert_path | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Ensure TLS private key directory exists
+      file:
+        path: "{{ ops_metrics_tls_key_path | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Generate self-signed certificate for metrics gateway
+      command:
+        argv:
+          - openssl
+          - req
+          - -x509
+          - -newkey
+          - "rsa:{{ ops_metrics_tls_self_signed_key_bits }}"
+          - -sha256
+          - -days
+          - "{{ ops_metrics_tls_self_signed_valid_days }}"
+          - -nodes
+          - -subj
+          - "/CN={{ ansible_host | default(inventory_hostname) }}"
+          - -keyout
+          - "{{ ops_metrics_tls_key_path }}"
+          - -out
+          - "{{ ops_metrics_tls_cert_path }}"
+      no_log: true
+
+    - name: Restrict TLS private key permissions
+      file:
+        path: "{{ ops_metrics_tls_key_path }}"
+        owner: root
+        group: root
+        mode: "0600"
+  when:
+    - ops_metrics_require_tls_materials | bool
+    - ops_metrics_tls_auto_generate_self_signed | bool
+    - not (ops_metrics_tls_cert_stat.stat.exists | default(false)) or not (ops_metrics_tls_key_stat.stat.exists | default(false))
+
+- name: Re-check TLS certificate file
+  stat:
+    path: "{{ ops_metrics_tls_cert_path }}"
+  register: ops_metrics_tls_cert_stat
+  when: ops_metrics_require_tls_materials | bool
+
+- name: Re-check TLS private key file
   stat:
     path: "{{ ops_metrics_tls_key_path }}"
   register: ops_metrics_tls_key_stat
