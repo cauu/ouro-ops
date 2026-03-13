@@ -58,7 +58,7 @@ Spec-ID: S0009
 - [x] p9-4 实现 relay 网关 Basic Auth + HTTPS + 白名单 API 路由模板
 - [x] p9-5 实现/修复 monitor 数据源：relay API 优先，local monitor fallback
 - [x] p9-6 实现多 relay 主备切换策略（超时、退避、最新时间戳选优）
-- [ ] p9-7 新增现网增量接入 playbook（bootstrap，不重跑 full deploy）
+- [x] p9-7 新增现网增量接入 playbook（bootstrap，不重跑 full deploy）
 - [ ] p9-8 将观测与认证步骤并入新部署流程（deploy 默认内建）
 - [ ] p9-9 Dashboard 运行态联调与可观测性补强（source/note/collected_at）
 - [ ] p9-10 完成端到端验收与回滚预案校验，准备结项评审
@@ -165,3 +165,18 @@ Spec-ID: S0009
 
 ### 12.4 Change Request Delta
 - 2026-03-13 20:16 +0800 执行推进：完成 p9-6，下一步进入 p9-7（已部署环境增量接入 playbook）。
+
+## 13. Addendum (append-only)
+### 13.1 Execution Plan Delta
+- [x] p9-7 新增现网增量接入 playbook（bootstrap，不重跑 full deploy）
+
+### 13.2 Execution Log Delta
+- 2026-03-13 20:22 +0800 p9-7 started: 为已部署环境新增观测能力增量接入 playbook，避免重跑 full deploy。
+- 2026-03-13 20:22 +0800 p9-7 completed: 已新增 `observability-bootstrap.yml` 并补充静态测试，覆盖 relay 目标与网关角色引用。
+
+### 13.3 Validation Evidence Delta
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-bootstrap.yml | result: pass | note: 增量 bootstrap playbook 语法通过，可独立执行
+- TC-P9-004 | stack: rust | command: cargo test -q tc_dep_013_observability_bootstrap_playbook_targets_relay_and_gateway_role | result: pass | note: 已验证 playbook 目标主机组与网关角色绑定
+
+### 13.4 Change Request Delta
+- 2026-03-13 20:22 +0800 执行推进：完成 p9-7，下一步进入 p9-8（将观测与认证步骤并入新部署流程）。

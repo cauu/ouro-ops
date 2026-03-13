@@ -1,0 +1,16 @@
+---
+- name: Bootstrap relay observability gateway for existing deployments
+  hosts: "{{ target_hosts | default('relay') }}"
+  become: true
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Validate required Basic Auth password
+      ansible.builtin.assert:
+        that:
+          - (ops_metrics_basic_auth_password | default('') | trim | length) > 0
+        fail_msg: "ops_metrics_basic_auth_password is required for observability bootstrap."
+
+    - name: Run relay observability gateway role
+      ansible.builtin.include_role:
+        name: ops-observability-gateway

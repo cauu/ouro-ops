@@ -627,6 +627,14 @@ mod frontend_tests {
     }
 
     #[test]
+    fn tc_dep_013_observability_bootstrap_playbook_targets_relay_and_gateway_role() {
+        let playbook = include_str!("../../ansible/playbooks/observability-bootstrap.yml");
+        assert!(playbook.contains("hosts: \"{{ target_hosts | default('relay') }}\""));
+        assert!(playbook.contains("ops_metrics_basic_auth_password"));
+        assert!(playbook.contains("name: ops-observability-gateway"));
+    }
+
+    #[test]
     fn tc_audit_001_key_operations_write_audit_log() {
         let pool = include_str!("commands/pool.rs");
         let deploy = include_str!("commands/deploy.rs");
