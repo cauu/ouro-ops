@@ -465,3 +465,18 @@ Spec-ID: S0009
 
 ### 27.4 Change Request Delta
 - 2026-03-13 22:06 +0800 新增交付：前端后续可直接读取 JSON 配置决定“展示哪些指标、如何分组与格式化”。
+
+## 28. Addendum (append-only)
+### 28.1 Execution Plan Delta
+- [x] p9-12-fix10 修复 raw 端点未认证访问未返回 401 的问题
+
+### 28.2 Execution Log Delta
+- 2026-03-13 22:14 +0800 p9-12-fix10 started: 用户反馈 raw 接口可访问但未触发 401，排查网关鉴权链路。
+- 2026-03-13 22:14 +0800 p9-12-fix10 completed: 移除 `auth_request + /_ops_auth return 204` 子请求路径，改为在 `raw` location 直接使用 `auth_basic`，恢复未认证 401 语义。
+
+### 28.3 Validation Evidence Delta
+- TC-P9-002 | stack: other | command: rg -n "auth_request|auth_basic|auth_basic_user_file|location = /api/ops/v1/telemetry/raw" ansible/roles/ops-observability-gateway/templates/ouro-ops-metrics.conf.j2 -S | result: pass | note: raw 端点已改为原生 Basic Auth，旧 auth_request 路径已移除
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-bootstrap.yml | result: pass | note: 鉴权模板调整后 bootstrap 语法检查通过
+
+### 28.4 Change Request Delta
+- 2026-03-13 22:14 +0800 修复完成：raw 接口未认证请求应返回 401；认证通过后返回 200。

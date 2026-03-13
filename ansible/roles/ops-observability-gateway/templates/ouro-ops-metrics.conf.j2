@@ -12,16 +12,10 @@ server {
   add_header X-Content-Type-Options nosniff always;
   add_header X-Frame-Options DENY always;
 
-  location = /_ops_auth {
-    internal;
-    auth_basic "{{ ops_metrics_basic_auth_realm }}";
-    auth_basic_user_file {{ ops_metrics_htpasswd_path }};
-    return 204;
-  }
-
   location = /api/ops/v1/telemetry/raw {
     if ($args != "") { return 400; }
-    auth_request /_ops_auth;
+    auth_basic "{{ ops_metrics_basic_auth_realm }}";
+    auth_basic_user_file {{ ops_metrics_htpasswd_path }};
     limit_req zone=ouro_ops_api_rl burst=20 nodelay;
     proxy_pass {{ ops_metrics_prometheus_upstream }}/api/v1/query?query=%7B__name__%3D~%22.%2B%22%7D;
   }
