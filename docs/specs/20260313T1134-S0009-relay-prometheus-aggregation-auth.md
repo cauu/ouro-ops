@@ -319,3 +319,18 @@ Spec-ID: S0009
 
 ### 18.4 Change Request Delta
 - 2026-03-13 21:14 +0800 新增需求已交付：GUI 可触发 bootstrap/rollback，并可读取服务端执行状态与 relay 配置探测结果。
+
+## 19. Addendum (append-only)
+### 19.1 Execution Plan Delta
+- [x] p9-12-fix1 修复 GUI 触发 bootstrap 时的缺省密码失败路径
+
+### 19.2 Execution Log Delta
+- 2026-03-13 21:20 +0800 p9-12-fix1 started: 复核 GUI 触发链路时发现 bootstrap playbook 对密码参数有硬依赖，导致无参触发可能失败。
+- 2026-03-13 21:20 +0800 p9-12-fix1 completed: 已改为 bootstrap 缺省自动生成并下发共享密码，GUI 无需额外输入可直接触发。
+
+### 19.3 Validation Evidence Delta
+- TC-P9-004 | stack: ansible | command: rg -n "Generate shared metrics basic auth password when missing|Propagate generated metrics password to relay hosts|ops_metrics_basic_auth_password" ansible/playbooks/observability-bootstrap.yml | result: pass | note: bootstrap 已支持无参触发并自动补齐密码
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-bootstrap.yml | result: pass | note: 修复后 playbook 语法通过
+
+### 19.4 Change Request Delta
+- 2026-03-13 21:20 +0800 修复完成：GUI 触发 bootstrap 不再依赖外部手工传入密码变量。
