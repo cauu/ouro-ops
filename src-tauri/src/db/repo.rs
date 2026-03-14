@@ -356,6 +356,28 @@ pub fn audit_log_insert(
     Ok(())
 }
 
+/// Read one app config value by key.
+pub fn app_config_get(conn: &Connection, key: &str) -> Result<Option<String>, AppError> {
+    let mut stmt = conn.prepare("SELECT value FROM app_config WHERE key = ?1 LIMIT 1")?;
+    let mut rows = stmt.query(rusqlite::params![key])?;
+    if let Some(row) = rows.next()? {
+        Ok(Some(row.get(0)?))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Upsert one app config value by key.
+pub fn app_config_set(conn: &Connection, key: &str, value: &str) -> Result<(), AppError> {
+    conn.execute(
+        "INSERT INTO app_config (key, value, created_at, updated_at)
+         VALUES (?1, ?2, datetime('now'), datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')",
+        rusqlite::params![key, value],
+    )?;
+    Ok(())
+}
+
 /// Business-level cascade delete for Machine (no DB FK).
 pub fn machine_delete_cascade(conn: &Connection, machine_id: i64) -> Result<(), AppError> {
     conn.execute(

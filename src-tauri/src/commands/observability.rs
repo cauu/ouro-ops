@@ -8,14 +8,22 @@ use tauri::{Emitter, Manager, State};
 
 use crate::commands::deploy::{DeployTaskStatus, TaskMachineStatus};
 use crate::db::{
-    audit_log_insert, machine_get, machine_list as repo_machine_list, pool_get_single, DbState,
-    MachineRow,
+    app_config_get, app_config_set, audit_log_insert, machine_get,
+    machine_list as repo_machine_list, pool_get_single, DbState, MachineRow,
 };
 use crate::error::AppError;
 use crate::sidecar::{run_playbook, SidecarState};
 
 const TASK_TYPE_BOOTSTRAP: &str = "observability_bootstrap";
 const TASK_TYPE_ROLLBACK: &str = "observability_rollback";
+const RELAY_TELEMETRY_CFG_USERNAME: &str = "relay.telemetry.username";
+const RELAY_TELEMETRY_CFG_PASSWORD: &str = "relay.telemetry.password";
+const RELAY_TELEMETRY_CFG_SCHEME: &str = "relay.telemetry.scheme";
+const RELAY_TELEMETRY_CFG_PORT: &str = "relay.telemetry.port";
+const RELAY_TELEMETRY_CFG_INSECURE: &str = "relay.telemetry.insecure";
+const RELAY_TELEMETRY_CFG_TIMEOUT_SECONDS: &str = "relay.telemetry.timeout_seconds";
+const RELAY_TELEMETRY_CFG_BACKOFF_SECONDS: &str = "relay.telemetry.backoff_seconds";
+const RELAY_TELEMETRY_DEFAULT_USERNAME: &str = "ouro_app";
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ObservabilityTaskPayload {
@@ -146,6 +154,51 @@ fn observability_bootstrap_playbook_path() -> Result<String, AppError> {
 
 fn observability_rollback_playbook_path() -> Result<String, AppError> {
     observability_playbook_path("observability-rollback.yml")
+}
+
+fn generate_relay_api_key() -> String {
+    format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    )
+}
+
+fn upsert_default_if_missing(
+    conn: &Connection,
+    key: &str,
+    default_value: &str,
+) -> Result<(), AppError> {
+    let current = app_config_get(conn, key)?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if current.is_none() {
+        app_config_set(conn, key, default_value)?;
+    }
+    Ok(())
+}
+
+fn ensure_relay_telemetry_credentials(conn: &Connection) -> Result<(String, String), AppError> {
+    let username = app_config_get(conn, RELAY_TELEMETRY_CFG_USERNAME)?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| RELAY_TELEMETRY_DEFAULT_USERNAME.to_string());
+    app_config_set(conn, RELAY_TELEMETRY_CFG_USERNAME, username.as_str())?;
+
+    let password = app_config_get(conn, RELAY_TELEMETRY_CFG_PASSWORD)?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(generate_relay_api_key);
+    app_config_set(conn, RELAY_TELEMETRY_CFG_PASSWORD, password.as_str())?;
+
+    // Defaults align with current relay gateway deployment behavior.
+    upsert_default_if_missing(conn, RELAY_TELEMETRY_CFG_SCHEME, "https")?;
+    upsert_default_if_missing(conn, RELAY_TELEMETRY_CFG_PORT, "443")?;
+    upsert_default_if_missing(conn, RELAY_TELEMETRY_CFG_INSECURE, "true")?;
+    upsert_default_if_missing(conn, RELAY_TELEMETRY_CFG_TIMEOUT_SECONDS, "3")?;
+    upsert_default_if_missing(conn, RELAY_TELEMETRY_CFG_BACKOFF_SECONDS, "30")?;
+
+    Ok((username, password))
 }
 
 fn resolve_target_relays(
@@ -464,7 +517,22 @@ fn run_observability_worker(
         }
     };
     let inventory = build_relay_inventory(&relays);
-    let extra_vars = json!({});
+    let extra_vars = if task_type == TASK_TYPE_BOOTSTRAP {
+        let (username, password) = {
+            let db_state = app_handle.state::<DbState>();
+            let conn = db_state
+                .0
+                .lock()
+                .map_err(|_| AppError::Internal("lock".into()))?;
+            ensure_relay_telemetry_credentials(&conn)?
+        };
+        json!({
+            "ops_metrics_basic_auth_username": username,
+            "ops_metrics_basic_auth_password": password
+        })
+    } else {
+        json!({})
+    };
     let sidecar_state = {
         let managed = app_handle.state::<Mutex<Option<Arc<SidecarState>>>>();
         let guard = managed
@@ -639,6 +707,8 @@ pub async fn observability_gateway_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::run_migrations;
+    use rusqlite::Connection;
 
     #[test]
     fn tc_obs_001_build_relay_inventory_contains_relay_group() {
@@ -663,5 +733,25 @@ mod tests {
         let inventory = build_relay_inventory(&[relay]);
         assert_eq!(inventory["relay"]["hosts"][0], "relay-1");
         assert!(inventory["_meta"]["hostvars"]["relay-1"]["ansible_host"].is_string());
+    }
+
+    #[test]
+    fn tc_obs_003_ensure_relay_telemetry_credentials_persists_defaults() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+
+        let (username, password) =
+            ensure_relay_telemetry_credentials(&conn).expect("ensure credentials");
+        assert_eq!(username, "ouro_app");
+        assert!(!password.trim().is_empty());
+
+        let saved_password = app_config_get(&conn, RELAY_TELEMETRY_CFG_PASSWORD)
+            .expect("get password")
+            .expect("password exists");
+        let saved_insecure = app_config_get(&conn, RELAY_TELEMETRY_CFG_INSECURE)
+            .expect("get insecure")
+            .expect("insecure exists");
+        assert_eq!(saved_password, password);
+        assert_eq!(saved_insecure, "true");
     }
 }

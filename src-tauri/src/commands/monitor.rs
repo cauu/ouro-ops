@@ -10,7 +10,9 @@ use rusqlite::{params, Connection};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::db::{audit_log_insert, machine_list as repo_machine_list, DbState, MachineRow};
+use crate::db::{
+    app_config_get, audit_log_insert, machine_list as repo_machine_list, DbState, MachineRow,
+};
 use crate::error::AppError;
 
 pub struct MonitorPollingState(pub Mutex<Option<MonitorPollingHandle>>);
@@ -117,6 +119,13 @@ struct RelayMetricsAttempt {
 }
 
 const RELAY_TELEMETRY_RAW_ENDPOINT: &str = "raw";
+const RELAY_TELEMETRY_CFG_USERNAME: &str = "relay.telemetry.username";
+const RELAY_TELEMETRY_CFG_PASSWORD: &str = "relay.telemetry.password";
+const RELAY_TELEMETRY_CFG_SCHEME: &str = "relay.telemetry.scheme";
+const RELAY_TELEMETRY_CFG_PORT: &str = "relay.telemetry.port";
+const RELAY_TELEMETRY_CFG_INSECURE: &str = "relay.telemetry.insecure";
+const RELAY_TELEMETRY_CFG_TIMEOUT_SECONDS: &str = "relay.telemetry.timeout_seconds";
+const RELAY_TELEMETRY_CFG_BACKOFF_SECONDS: &str = "relay.telemetry.backoff_seconds";
 const RELAY_TELEMETRY_FIELD_METRICS: [(&str, &[&str]); 10] = [
     ("epoch", &["cardano_node_metrics_epoch_int"]),
     ("sync_percent", &["cardano_node_metrics_syncProgress"]),
@@ -135,7 +144,10 @@ const RELAY_TELEMETRY_FIELD_METRICS: [(&str, &[&str]); 10] = [
             "cardano_node_metrics_peerSelection_EstablishedPeers",
         ],
     ),
-    ("cpu_sys_percent", &["cardano_node_resources_cpuSys_percent"]),
+    (
+        "cpu_sys_percent",
+        &["cardano_node_resources_cpuSys_percent"],
+    ),
     (
         "mem_live_bytes",
         &[
@@ -160,11 +172,17 @@ const RELAY_TELEMETRY_FIELD_METRICS: [(&str, &[&str]); 10] = [
     ),
     (
         "gc_minor_total",
-        &["rts_gc_minor_num_gcs", "cardano_node_metrics_RTS_gcMinorNum_int"],
+        &[
+            "rts_gc_minor_num_gcs",
+            "cardano_node_metrics_RTS_gcMinorNum_int",
+        ],
     ),
     (
         "gc_major_total",
-        &["rts_gc_major_num_gcs", "cardano_node_metrics_RTS_gcMajorNum_int"],
+        &[
+            "rts_gc_major_num_gcs",
+            "cardano_node_metrics_RTS_gcMajorNum_int",
+        ],
     ),
 ];
 
@@ -474,6 +492,62 @@ fn relay_telemetry_config_from_env() -> Option<RelayTelemetryConfig> {
     })
 }
 
+fn relay_telemetry_config_from_app_config(conn: &Connection) -> Option<RelayTelemetryConfig> {
+    let username = app_config_get(conn, RELAY_TELEMETRY_CFG_USERNAME)
+        .ok()
+        .flatten()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())?;
+    let password = app_config_get(conn, RELAY_TELEMETRY_CFG_PASSWORD)
+        .ok()
+        .flatten()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())?;
+    let scheme = app_config_get(conn, RELAY_TELEMETRY_CFG_SCHEME)
+        .ok()
+        .flatten()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| value == "http" || value == "https")
+        .unwrap_or_else(|| "https".into());
+    let port = app_config_get(conn, RELAY_TELEMETRY_CFG_PORT)
+        .ok()
+        .flatten()
+        .and_then(|value| value.trim().parse::<u16>().ok())
+        .filter(|port| *port > 0)
+        .unwrap_or(443);
+    let timeout_seconds = app_config_get(conn, RELAY_TELEMETRY_CFG_TIMEOUT_SECONDS)
+        .ok()
+        .flatten()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(|seconds| seconds.clamp(1, 15))
+        .unwrap_or(3);
+    let insecure_tls = app_config_get(conn, RELAY_TELEMETRY_CFG_INSECURE)
+        .ok()
+        .flatten()
+        .map(|value| parse_env_bool(value.as_str()))
+        .unwrap_or(true);
+    let backoff_seconds = app_config_get(conn, RELAY_TELEMETRY_CFG_BACKOFF_SECONDS)
+        .ok()
+        .flatten()
+        .and_then(|value| value.trim().parse::<i64>().ok())
+        .map(|seconds| seconds.clamp(5, 300))
+        .unwrap_or(30);
+
+    Some(RelayTelemetryConfig {
+        username,
+        password,
+        scheme,
+        port,
+        timeout_seconds,
+        insecure_tls,
+        backoff_seconds,
+    })
+}
+
+fn relay_telemetry_config(conn: &Connection) -> Option<RelayTelemetryConfig> {
+    relay_telemetry_config_from_env().or_else(|| relay_telemetry_config_from_app_config(conn))
+}
+
 fn parse_metric_sample_timestamp(value: Option<&Value>) -> Option<i64> {
     match value {
         Some(Value::Number(raw)) => raw.as_f64().map(|v| v.floor() as i64),
@@ -645,7 +719,11 @@ fn select_relay_metric_sample<'a>(
             let metric_matches = sample
                 .metric_name
                 .as_deref()
-                .map(|metric_name| metric_names.iter().any(|candidate| metric_name == *candidate))
+                .map(|metric_name| {
+                    metric_names
+                        .iter()
+                        .any(|candidate| metric_name == *candidate)
+                })
                 .unwrap_or(false);
             if !metric_matches {
                 continue;
@@ -705,7 +783,11 @@ fn select_relay_metric_sample<'a>(
             let metric_matches = sample
                 .metric_name
                 .as_deref()
-                .map(|metric_name| metric_names.iter().any(|candidate| metric_name == *candidate))
+                .map(|metric_name| {
+                    metric_names
+                        .iter()
+                        .any(|candidate| metric_name == *candidate)
+                })
                 .unwrap_or(false);
             let role_matches = sample
                 .role
@@ -818,7 +900,7 @@ fn collect_relay_metrics_from_single_relay(
 }
 
 fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> PrometheusMetrics {
-    let Some(config) = relay_telemetry_config_from_env() else {
+    let Some(config) = relay_telemetry_config(conn) else {
         return PrometheusMetrics::default();
     };
     let mut relays = match repo_machine_list(conn, Some("relay"), Some(machine.network.as_str())) {
@@ -1498,7 +1580,8 @@ fn collect_machine_snapshot(
         stalled,
     );
     let prometheus = collect_prometheus_metrics(conn, machine);
-    let snapshot_collected_at = resolve_snapshot_collected_at(conn, collected_at.as_str(), &prometheus);
+    let snapshot_collected_at =
+        resolve_snapshot_collected_at(conn, collected_at.as_str(), &prometheus);
     insert_health_sample(
         conn,
         machine.id,
@@ -1675,6 +1758,8 @@ pub async fn monitor_stop_polling(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::{app_config_set, run_migrations};
+    use rusqlite::Connection;
     use serde_json::json;
 
     #[test]
@@ -1949,12 +2034,9 @@ mod tests {
                 value: 98.41,
             },
         ];
-        let selected = select_relay_metric_sample(
-            &machine,
-            &samples,
-            &["cardano_node_metrics_syncProgress"],
-        )
-        .expect("selected");
+        let selected =
+            select_relay_metric_sample(&machine, &samples, &["cardano_node_metrics_syncProgress"])
+                .expect("selected");
         assert_eq!(selected.value, 98.41);
         assert_eq!(selected.timestamp, Some(120));
     }
@@ -1966,6 +2048,25 @@ mod tests {
         assert!(parse_env_bool("1"));
         assert!(!parse_env_bool("false"));
         assert!(!parse_env_bool("0"));
+    }
+
+    #[test]
+    fn tc_mon_022_relay_telemetry_config_falls_back_to_app_config() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+        app_config_set(&conn, RELAY_TELEMETRY_CFG_USERNAME, "ouro_app").expect("set username");
+        app_config_set(&conn, RELAY_TELEMETRY_CFG_PASSWORD, "secret").expect("set password");
+        app_config_set(&conn, RELAY_TELEMETRY_CFG_INSECURE, "true").expect("set insecure");
+
+        std::env::remove_var("OURO_OPS_RELAY_TELEMETRY_USERNAME");
+        std::env::remove_var("OURO_OPS_RELAY_TELEMETRY_PASSWORD");
+        std::env::remove_var("OURO_OPS_RELAY_TELEMETRY_INSECURE");
+
+        let config = relay_telemetry_config(&conn).expect("config");
+        assert_eq!(config.username, "ouro_app");
+        assert_eq!(config.password, "secret");
+        assert!(config.insecure_tls);
+        assert_eq!(config.port, 443);
     }
 
     #[test]

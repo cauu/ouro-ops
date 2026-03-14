@@ -8,14 +8,22 @@ use serde_json::{json, Value};
 use tauri::{Emitter, Manager, State};
 
 use crate::db::{
-    audit_log_insert, machine_get, machine_list as repo_machine_list, pool_get_single, DbState,
-    MachineRow,
+    app_config_get, app_config_set, audit_log_insert, machine_get,
+    machine_list as repo_machine_list, pool_get_single, DbState, MachineRow,
 };
 use crate::error::AppError;
 use crate::sidecar::{run_playbook, spawn_sidecar, SidecarState};
 
 const DEFAULT_IMAGE_REGISTRY: &str = "ghcr.io/blinklabs-io/cardano-node";
 const DEFAULT_IMAGE_TAG: &str = "10.5.4-1";
+const RELAY_TELEMETRY_CFG_USERNAME: &str = "relay.telemetry.username";
+const RELAY_TELEMETRY_CFG_PASSWORD: &str = "relay.telemetry.password";
+const RELAY_TELEMETRY_CFG_SCHEME: &str = "relay.telemetry.scheme";
+const RELAY_TELEMETRY_CFG_PORT: &str = "relay.telemetry.port";
+const RELAY_TELEMETRY_CFG_INSECURE: &str = "relay.telemetry.insecure";
+const RELAY_TELEMETRY_CFG_TIMEOUT_SECONDS: &str = "relay.telemetry.timeout_seconds";
+const RELAY_TELEMETRY_CFG_BACKOFF_SECONDS: &str = "relay.telemetry.backoff_seconds";
+const RELAY_TELEMETRY_DEFAULT_USERNAME: &str = "ouro_app";
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct DeployPayload {
@@ -73,6 +81,49 @@ struct TaskRow {
 
 type SshExecFn = dyn Fn(&MachineRow, &str) -> Result<String, AppError>;
 
+fn generate_relay_api_key() -> String {
+    format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    )
+}
+
+fn upsert_default_if_missing(
+    conn: &Connection,
+    key: &str,
+    default_value: &str,
+) -> Result<(), AppError> {
+    let current = app_config_get(conn, key)?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if current.is_none() {
+        app_config_set(conn, key, default_value)?;
+    }
+    Ok(())
+}
+
+fn ensure_relay_telemetry_credentials(conn: &Connection) -> Result<(String, String), AppError> {
+    let username = app_config_get(conn, RELAY_TELEMETRY_CFG_USERNAME)?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| RELAY_TELEMETRY_DEFAULT_USERNAME.to_string());
+    app_config_set(conn, RELAY_TELEMETRY_CFG_USERNAME, username.as_str())?;
+
+    let password = app_config_get(conn, RELAY_TELEMETRY_CFG_PASSWORD)?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(generate_relay_api_key);
+    app_config_set(conn, RELAY_TELEMETRY_CFG_PASSWORD, password.as_str())?;
+
+    upsert_default_if_missing(conn, RELAY_TELEMETRY_CFG_SCHEME, "https")?;
+    upsert_default_if_missing(conn, RELAY_TELEMETRY_CFG_PORT, "443")?;
+    upsert_default_if_missing(conn, RELAY_TELEMETRY_CFG_INSECURE, "true")?;
+    upsert_default_if_missing(conn, RELAY_TELEMETRY_CFG_TIMEOUT_SECONDS, "3")?;
+    upsert_default_if_missing(conn, RELAY_TELEMETRY_CFG_BACKOFF_SECONDS, "30")?;
+    Ok((username, password))
+}
+
 fn network_supports_mithril_restore(network: &str) -> bool {
     matches!(network, "mainnet" | "preprod")
 }
@@ -120,9 +171,8 @@ fn normalize_deploy_payload(payload: &DeployPayload) -> DeployPayload {
             .unwrap_or_else(|| default_restore_snapshot_for_network(next.network.as_str())),
     );
     next.restore_snapshot_relay = Some(next.restore_snapshot_relay.unwrap_or_else(|| {
-        explicit_global_restore.unwrap_or_else(|| {
-            default_restore_snapshot_relay_for_network(next.network.as_str())
-        })
+        explicit_global_restore
+            .unwrap_or_else(|| default_restore_snapshot_relay_for_network(next.network.as_str()))
     }));
     next.restore_snapshot_bp = Some(next.restore_snapshot_bp.unwrap_or_else(|| {
         explicit_global_restore
@@ -595,7 +645,25 @@ fn run_deploy_worker(
     };
 
     let playbook = deploy_playbook_path()?;
-    let extra_vars = build_extra_vars(payload);
+    let (telemetry_username, telemetry_password) = {
+        let db_state = app_handle.state::<DbState>();
+        let conn = db_state
+            .0
+            .lock()
+            .map_err(|_| AppError::Internal("lock".into()))?;
+        ensure_relay_telemetry_credentials(&conn)?
+    };
+    let mut extra_vars = build_extra_vars(payload);
+    if let Some(object) = extra_vars.as_object_mut() {
+        object.insert(
+            "ops_metrics_basic_auth_username".into(),
+            Value::String(telemetry_username),
+        );
+        object.insert(
+            "ops_metrics_basic_auth_password".into(),
+            Value::String(telemetry_password),
+        );
+    }
     let sidecar_state = {
         let managed = app_handle.state::<Mutex<Option<Arc<SidecarState>>>>();
         let guard = managed
@@ -770,7 +838,7 @@ pub async fn deploy_cancel(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{machine_insert, pool_insert, run_migrations};
+    use crate::db::{app_config_get, machine_insert, pool_insert, run_migrations};
 
     fn new_db() -> Connection {
         let conn = Connection::open_in_memory().expect("open memory db");
@@ -1206,5 +1274,19 @@ mod tests {
         assert_eq!(normalized.restore_snapshot, Some(true));
         assert_eq!(normalized.restore_snapshot_relay, Some(true));
         assert_eq!(normalized.restore_snapshot_bp, Some(true));
+    }
+
+    #[test]
+    fn tc_dep_022_ensure_relay_telemetry_credentials_persists_password() {
+        let conn = new_db();
+        let (username, password) =
+            ensure_relay_telemetry_credentials(&conn).expect("ensure credentials");
+        assert_eq!(username, "ouro_app");
+        assert!(!password.trim().is_empty());
+
+        let saved = app_config_get(&conn, RELAY_TELEMETRY_CFG_PASSWORD)
+            .expect("get password")
+            .expect("password exists");
+        assert_eq!(saved, password);
     }
 }

@@ -480,3 +480,20 @@ Spec-ID: S0009
 
 ### 28.4 Change Request Delta
 - 2026-03-13 22:14 +0800 修复完成：raw 接口未认证请求应返回 401；认证通过后返回 200。
+
+## 29. Addendum (append-only)
+### 29.1 Execution Plan Delta
+- [x] p9-12-fix11 打通 API key 自动化链路（App 生成/持久化/下发/读取）
+
+### 29.2 Execution Log Delta
+- 2026-03-14 10:06 +0800 p9-12-fix11 started: 按用户确认目标实现“用户无感 API key”，消除手工 `ops_metrics_basic_auth_password` 与手工环境变量依赖。
+- 2026-03-14 10:06 +0800 p9-12-fix11 completed: 新增 `app_config` 持久化表；deploy/bootstrap 自动生成并保存 key 后下发至 Ansible；monitor 改为 `env 优先 + app_config 兜底` 自动读取认证参数并默认启用自签 TLS 兼容。
+
+### 29.3 Validation Evidence Delta
+- TC-P9-002 | stack: rust | command: cargo test -q tc_obs_ | result: pass | note: observability 链路新增 `ensure_relay_telemetry_credentials` 单测通过，bootstrap 已自动下发 app 侧凭据
+- TC-P9-005 | stack: rust | command: cargo test -q tc_dep_022_ensure_relay_telemetry_credentials_persists_password | result: pass | note: deploy 链路可自动生成并持久化 API key
+- TC-P9-006 | stack: rust | command: cargo test -q tc_mon_ | result: pass | note: monitor 新增 app_config 兜底配置读取，22 项监控单测通过
+- TC-P9-001 | stack: rust | command: cargo test -q tc_db_ | result: pass | note: 新增 `006_app_config.sql` 与 app_config upsert 能力，数据库迁移与读写单测通过
+
+### 29.4 Change Request Delta
+- 2026-03-14 10:06 +0800 需求落地：部署与观测链路已支持 API key 全自动闭环，用户无需感知 key 生成与下发细节。

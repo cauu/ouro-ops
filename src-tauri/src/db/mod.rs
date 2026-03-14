@@ -13,6 +13,7 @@ const MIGRATIONS: &[&str] = &[
     schema::MIGRATION_003,
     schema::MIGRATION_004,
     schema::MIGRATION_005,
+    schema::MIGRATION_006,
 ];
 
 /// 执行迁移：user_version 递增，仅执行未执行的迁移
@@ -61,6 +62,7 @@ mod tests {
             "task_machine",
             "machine_health",
             "audit_log",
+            "app_config",
         ];
         for table in tables {
             assert!(table_exists(&conn, table).expect("table exists"));
@@ -241,7 +243,7 @@ mod tests {
         run_migrations(&conn).expect("run migrations");
 
         let version = get_user_version(&conn).expect("user version");
-        assert!(version >= 5);
+        assert!(version >= 6);
 
         conn.execute(
             "INSERT INTO task (id, task_type, status) VALUES ('runtime-config-task', 'runtime_config', 'pending')",
@@ -266,12 +268,31 @@ mod tests {
     }
 
     #[test]
+    fn tc_db_006_app_config_upsert_works() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+
+        app_config_set(&conn, "relay.telemetry.username", "ouro_app").expect("set username");
+        app_config_set(&conn, "relay.telemetry.password", "secret-1").expect("set password");
+        app_config_set(&conn, "relay.telemetry.password", "secret-2").expect("update password");
+
+        let username = app_config_get(&conn, "relay.telemetry.username")
+            .expect("get username")
+            .expect("username exists");
+        let password = app_config_get(&conn, "relay.telemetry.password")
+            .expect("get password")
+            .expect("password exists");
+        assert_eq!(username, "ouro_app");
+        assert_eq!(password, "secret-2");
+    }
+
+    #[test]
     fn tc_db_005_pool_migration_adds_onchain_binding_columns() {
         let conn = Connection::open_in_memory().expect("open memory db");
         run_migrations(&conn).expect("run migrations");
 
         let version = get_user_version(&conn).expect("user version");
-        assert!(version >= 4);
+        assert!(version >= 6);
 
         let mut stmt = conn
             .prepare("PRAGMA table_info(pool)")
