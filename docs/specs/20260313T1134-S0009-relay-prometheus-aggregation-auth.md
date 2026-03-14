@@ -497,3 +497,19 @@ Spec-ID: S0009
 
 ### 29.4 Change Request Delta
 - 2026-03-14 10:06 +0800 需求落地：部署与观测链路已支持 API key 全自动闭环，用户无需感知 key 生成与下发细节。
+
+## 30. Addendum (append-only)
+### 30.1 Execution Plan Delta
+- [x] p9-12-fix12 Enable API 点击即进入本地 submitting 态并锁定重复点击
+
+### 30.2 Execution Log Delta
+- 2026-03-14 10:18 +0800 p9-12-fix12 started: 按反馈优化 Enable API/Rollback 按钮交互，要求不等待 IPC 返回即可进入提交中态。
+- 2026-03-14 10:18 +0800 p9-12-fix12 completed: Dashboard 新增 `gatewaySubmittingKind` 本地提交态，点击瞬间显示“提交中…”，按钮立即 loading 并禁用重复点击；提交完成后自动切回任务轮询态。
+
+### 30.3 Validation Evidence Delta
+- TC-P9-006 | stack: ui | command: rg -n "gatewaySubmittingKind|setGatewaySubmittingKind\\(\"bootstrap\"\\)|setGatewaySubmittingKind\\(\"rollback\"\\)|提交中…|disabled=\\{gatewayActionBusy\\}" src/pages/Dashboard.tsx | result: pass | note: 已实现点击即提交中、loading 文案与重复点击锁定
+- TC-P9-006 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过，交互改动可编译
+- TC-P9-005 | stack: rust | command: cargo test -q tc_obs_002_observability_commands_registered_and_dashboard_has_triggers | result: pass | note: Dashboard 触发入口静态回归通过
+
+### 30.4 Change Request Delta
+- 2026-03-14 10:18 +0800 交互优化完成：Enable API/回滚按钮现在有即时提交反馈，避免“点击无感”和重复触发。

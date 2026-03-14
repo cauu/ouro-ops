@@ -269,6 +269,7 @@ export default function Dashboard() {
   const [gatewayActionError, setGatewayActionError] = useState<string | null>(null);
   const [gatewayActionMessage, setGatewayActionMessage] = useState<string | null>(null);
   const [gatewayTask, setGatewayTask] = useState<{ taskId: string; kind: "bootstrap" | "rollback" } | null>(null);
+  const [gatewaySubmittingKind, setGatewaySubmittingKind] = useState<"bootstrap" | "rollback" | null>(null);
   const [gatewayLogTaskId, setGatewayLogTaskId] = useState<string | null>(null);
   const {
     snapshots,
@@ -413,6 +414,7 @@ export default function Dashboard() {
     : "--";
   const gatewayLastTask = gatewayStatus?.last_bootstrap ?? gatewayStatus?.last_rollback ?? null;
   const gatewayTaskRunning = gatewayTask != null;
+  const gatewayActionBusy = gatewayTaskRunning || gatewaySubmittingKind != null;
   const handleCopyDetail = async (taskId: string, detailText: string) => {
     const copied = await copyPlainText(detailText);
     if (!copied) {
@@ -467,9 +469,13 @@ export default function Dashboard() {
   }, [gatewayTask]);
 
   const handleGatewayBootstrap = async () => {
+    if (gatewayActionBusy) {
+      return;
+    }
+    setGatewaySubmittingKind("bootstrap");
     try {
       setGatewayActionError(null);
-      setGatewayActionMessage(null);
+      setGatewayActionMessage("提交中…");
       const taskId = await observabilityBootstrapStart();
       setGatewayLogTaskId(taskId);
       setGatewayTask({ taskId, kind: "bootstrap" });
@@ -477,13 +483,19 @@ export default function Dashboard() {
       await refreshGatewayStatus();
     } catch (error) {
       setGatewayActionError(String(error));
+    } finally {
+      setGatewaySubmittingKind((current) => (current === "bootstrap" ? null : current));
     }
   };
 
   const handleGatewayRollback = async () => {
+    if (gatewayActionBusy) {
+      return;
+    }
+    setGatewaySubmittingKind("rollback");
     try {
       setGatewayActionError(null);
-      setGatewayActionMessage(null);
+      setGatewayActionMessage("提交中…");
       const taskId = await observabilityRollbackStart();
       setGatewayLogTaskId(taskId);
       setGatewayTask({ taskId, kind: "rollback" });
@@ -491,6 +503,8 @@ export default function Dashboard() {
       await refreshGatewayStatus();
     } catch (error) {
       setGatewayActionError(String(error));
+    } finally {
+      setGatewaySubmittingKind((current) => (current === "rollback" ? null : current));
     }
   };
 
@@ -530,7 +544,7 @@ export default function Dashboard() {
               </span>
             </span>
             <span className="text-[11px] text-slate-500">GW {gatewayConfiguredSummary}</span>
-            {gatewayTaskRunning && (
+            {gatewayActionBusy && (
               <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-500" />
                 执行中
@@ -541,22 +555,30 @@ export default function Dashboard() {
               onClick={() => {
                 void handleGatewayBootstrap();
               }}
-              disabled={gatewayTaskRunning}
+              disabled={gatewayActionBusy}
               className="inline-flex h-6 items-center rounded border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               title="执行 observability bootstrap"
             >
-              {gatewayTaskRunning && gatewayTask?.kind === "bootstrap" ? "Enabling..." : "Enable API"}
+              {gatewaySubmittingKind === "bootstrap"
+                ? "提交中…"
+                : gatewayTaskRunning && gatewayTask?.kind === "bootstrap"
+                  ? "Enabling..."
+                  : "Enable API"}
             </button>
             <button
               type="button"
               onClick={() => {
                 void handleGatewayRollback();
               }}
-              disabled={gatewayTaskRunning}
+              disabled={gatewayActionBusy}
               className="inline-flex h-6 items-center rounded border border-rose-300 bg-rose-50 px-2 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
               title="执行 observability rollback"
             >
-              {gatewayTaskRunning && gatewayTask?.kind === "rollback" ? "Rolling..." : "Rollback"}
+              {gatewaySubmittingKind === "rollback"
+                ? "提交中…"
+                : gatewayTaskRunning && gatewayTask?.kind === "rollback"
+                  ? "Rolling..."
+                  : "Rollback"}
             </button>
           </div>
         </header>
