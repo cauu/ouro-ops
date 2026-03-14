@@ -6,7 +6,7 @@ use std::sync::{
 };
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -39,8 +39,11 @@ pub struct MonitorSnapshot {
     pub collected_at: String,
     pub note: Option<String>,
     pub epoch: Option<i64>,
+    pub slot_num: Option<i64>,
+    pub slot_in_epoch: Option<i64>,
     pub sync_percent: Option<f64>,
     pub tip_diff_blocks: Option<i64>,
+    pub late_blocks: Option<i64>,
     pub peer_count: Option<i64>,
     pub cpu_sys_percent: Option<f64>,
     pub mem_live_bytes: Option<f64>,
@@ -48,6 +51,10 @@ pub struct MonitorSnapshot {
     pub mem_heap_bytes: Option<f64>,
     pub gc_minor_total: Option<i64>,
     pub gc_major_total: Option<i64>,
+    pub txs_in_mempool: Option<i64>,
+    pub mempool_bytes: Option<f64>,
+    pub forks: Option<i64>,
+    pub forging_enabled: Option<i64>,
     pub prometheus_source: Option<String>,
     pub prometheus_note: Option<String>,
 }
@@ -74,9 +81,13 @@ struct RuntimeMonitorContext {
 
 #[derive(Debug, Clone, Default)]
 struct PrometheusMetrics {
+    block_height: Option<i64>,
     epoch: Option<i64>,
+    slot_num: Option<i64>,
+    slot_in_epoch: Option<i64>,
     sync_percent: Option<f64>,
     tip_diff_blocks: Option<i64>,
+    late_blocks: Option<i64>,
     peer_count: Option<i64>,
     cpu_sys_percent: Option<f64>,
     mem_live_bytes: Option<f64>,
@@ -84,6 +95,10 @@ struct PrometheusMetrics {
     mem_heap_bytes: Option<f64>,
     gc_minor_total: Option<i64>,
     gc_major_total: Option<i64>,
+    txs_in_mempool: Option<i64>,
+    mempool_bytes: Option<f64>,
+    forks: Option<i64>,
+    forging_enabled: Option<i64>,
     collected_at_epoch: Option<i64>,
     source: Option<String>,
     note: Option<String>,
@@ -126,16 +141,24 @@ const RELAY_TELEMETRY_CFG_PORT: &str = "relay.telemetry.port";
 const RELAY_TELEMETRY_CFG_INSECURE: &str = "relay.telemetry.insecure";
 const RELAY_TELEMETRY_CFG_TIMEOUT_SECONDS: &str = "relay.telemetry.timeout_seconds";
 const RELAY_TELEMETRY_CFG_BACKOFF_SECONDS: &str = "relay.telemetry.backoff_seconds";
-const RELAY_TELEMETRY_FIELD_METRICS: [(&str, &[&str]); 10] = [
+const TELEMETRY_STALE_THRESHOLD_SECONDS: i64 = 120;
+const RELAY_TELEMETRY_FIELD_METRICS: [(&str, &[&str]); 18] = [
+    (
+        "block_height",
+        &[
+            "cardano_node_metrics_blockNum_int",
+            "cardano_node_metrics_blockNum",
+        ],
+    ),
     ("epoch", &["cardano_node_metrics_epoch_int"]),
+    ("slot_num", &["cardano_node_metrics_slotNum_int"]),
+    ("slot_in_epoch", &["cardano_node_metrics_slotInEpoch_int"]),
     ("sync_percent", &["cardano_node_metrics_syncProgress"]),
     (
         "tip_diff_blocks",
-        &[
-            "cardano_node_metrics_chainDensityTipDiff_int",
-            "cardano_node_metrics_blockfetchclient_lateblocks",
-        ],
+        &["cardano_node_metrics_chainDensityTipDiff_int"],
     ),
+    ("late_blocks", &["cardano_node_metrics_blockfetchclient_lateblocks"]),
     (
         "peer_count",
         &[
@@ -184,13 +207,21 @@ const RELAY_TELEMETRY_FIELD_METRICS: [(&str, &[&str]); 10] = [
             "cardano_node_metrics_RTS_gcMajorNum_int",
         ],
     ),
+    ("txs_in_mempool", &["cardano_node_metrics_txsInMempool_int"]),
+    ("mempool_bytes", &["cardano_node_metrics_mempoolBytes_int"]),
+    ("forks", &["cardano_node_metrics_forks_int"]),
+    ("forging_enabled", &["cardano_node_metrics_forging_enabled"]),
 ];
 
 impl PrometheusMetrics {
     fn has_any_value(&self) -> bool {
-        self.epoch.is_some()
+        self.block_height.is_some()
+            || self.epoch.is_some()
+            || self.slot_num.is_some()
+            || self.slot_in_epoch.is_some()
             || self.sync_percent.is_some()
             || self.tip_diff_blocks.is_some()
+            || self.late_blocks.is_some()
             || self.peer_count.is_some()
             || self.cpu_sys_percent.is_some()
             || self.mem_live_bytes.is_some()
@@ -198,6 +229,10 @@ impl PrometheusMetrics {
             || self.mem_heap_bytes.is_some()
             || self.gc_minor_total.is_some()
             || self.gc_major_total.is_some()
+            || self.txs_in_mempool.is_some()
+            || self.mempool_bytes.is_some()
+            || self.forks.is_some()
+            || self.forging_enabled.is_some()
     }
 }
 
@@ -322,12 +357,34 @@ fn normalize_percent(value: Option<f64>) -> Option<f64> {
 
 fn map_prometheus_metrics(source: &str, metrics: &HashMap<String, f64>) -> PrometheusMetrics {
     PrometheusMetrics {
+        block_height: pick_prometheus_i64(
+            metrics,
+            &[
+                "nview_block_height",
+                "cardano_node_metrics_blockNum_int",
+                "cardano_node_metrics_blockNum",
+            ],
+        ),
         epoch: pick_prometheus_i64(
             metrics,
             &[
                 "nview_epoch",
                 "cardano_node_metrics_epoch_int",
                 "cardano_node_metrics_epoch",
+            ],
+        ),
+        slot_num: pick_prometheus_i64(
+            metrics,
+            &[
+                "cardano_node_metrics_slotNum_int",
+                "cardano_node_metrics_slotNum",
+            ],
+        ),
+        slot_in_epoch: pick_prometheus_i64(
+            metrics,
+            &[
+                "cardano_node_metrics_slotInEpoch_int",
+                "cardano_node_metrics_slotInEpoch",
             ],
         ),
         sync_percent: normalize_percent(pick_prometheus_value(
@@ -347,6 +404,7 @@ fn map_prometheus_metrics(source: &str, metrics: &HashMap<String, f64>) -> Prome
                 "cardano_node_metrics_chainDensityTipDiff_int",
             ],
         ),
+        late_blocks: pick_prometheus_i64(metrics, &["cardano_node_metrics_blockfetchclient_lateblocks"]),
         peer_count: pick_prometheus_i64(
             metrics,
             &[
@@ -406,6 +464,10 @@ fn map_prometheus_metrics(source: &str, metrics: &HashMap<String, f64>) -> Prome
                 "rts_gc_major_num_gcs",
             ],
         ),
+        txs_in_mempool: pick_prometheus_i64(metrics, &["cardano_node_metrics_txsInMempool_int"]),
+        mempool_bytes: pick_prometheus_value(metrics, &["cardano_node_metrics_mempoolBytes_int"]),
+        forks: pick_prometheus_i64(metrics, &["cardano_node_metrics_forks_int"]),
+        forging_enabled: pick_prometheus_i64(metrics, &["cardano_node_metrics_forging_enabled"]),
         collected_at_epoch: None,
         source: Some(source.to_string()),
         note: None,
@@ -803,6 +865,48 @@ fn select_relay_metric_sample<'a>(
     None
 }
 
+fn select_unlabeled_local_relay_sample<'a>(
+    machine: &MachineRow,
+    relay: &MachineRow,
+    samples: &'a [RelayMetricSample],
+    metric_names: &[&str],
+) -> Option<&'a RelayMetricSample> {
+    if machine.role != "relay" || machine.ip != relay.ip {
+        return None;
+    }
+    let mut candidate: Option<&RelayMetricSample> = None;
+    let mut latest_timestamp = i64::MIN;
+    for sample in samples {
+        let metric_matches = sample
+            .metric_name
+            .as_deref()
+            .map(|metric_name| {
+                metric_names
+                    .iter()
+                    .any(|candidate_name| metric_name == *candidate_name)
+            })
+            .unwrap_or(false);
+        let role_matches = sample
+            .role
+            .as_deref()
+            .map(|role| role.eq_ignore_ascii_case("relay"))
+            .unwrap_or(false);
+        if !metric_matches || !role_matches {
+            continue;
+        }
+        let has_identity_labels = sample.node.is_some() || sample.host_ip.is_some();
+        if has_identity_labels {
+            continue;
+        }
+        let timestamp = sample.timestamp.unwrap_or_default();
+        if timestamp >= latest_timestamp {
+            candidate = Some(sample);
+            latest_timestamp = timestamp;
+        }
+    }
+    candidate
+}
+
 fn apply_relay_metric_value(
     mapped: &mut PrometheusMetrics,
     metric_key: &str,
@@ -811,9 +915,13 @@ fn apply_relay_metric_value(
     latest_timestamp: &mut Option<i64>,
 ) {
     match metric_key {
+        "block_height" => mapped.block_height = Some(sample_value.round() as i64),
         "epoch" => mapped.epoch = Some(sample_value.round() as i64),
+        "slot_num" => mapped.slot_num = Some(sample_value.round() as i64),
+        "slot_in_epoch" => mapped.slot_in_epoch = Some(sample_value.round() as i64),
         "sync_percent" => mapped.sync_percent = normalize_percent(Some(sample_value)),
         "tip_diff_blocks" => mapped.tip_diff_blocks = Some(sample_value.round() as i64),
+        "late_blocks" => mapped.late_blocks = Some(sample_value.round() as i64),
         "peer_count" => mapped.peer_count = Some(sample_value.round() as i64),
         "cpu_sys_percent" => mapped.cpu_sys_percent = normalize_percent(Some(sample_value)),
         "mem_live_bytes" => mapped.mem_live_bytes = Some(sample_value),
@@ -821,6 +929,10 @@ fn apply_relay_metric_value(
         "mem_heap_bytes" => mapped.mem_heap_bytes = Some(sample_value),
         "gc_minor_total" => mapped.gc_minor_total = Some(sample_value.round() as i64),
         "gc_major_total" => mapped.gc_major_total = Some(sample_value.round() as i64),
+        "txs_in_mempool" => mapped.txs_in_mempool = Some(sample_value.round() as i64),
+        "mempool_bytes" => mapped.mempool_bytes = Some(sample_value),
+        "forks" => mapped.forks = Some(sample_value.round() as i64),
+        "forging_enabled" => mapped.forging_enabled = Some(sample_value.round() as i64),
         _ => {}
     }
     if let Some(timestamp) = sample_timestamp {
@@ -849,7 +961,11 @@ fn collect_relay_metrics_from_single_relay(
     match fetch_relay_metric_samples(config, relay, RELAY_TELEMETRY_RAW_ENDPOINT) {
         Ok(samples) => {
             for (metric_key, metric_names) in RELAY_TELEMETRY_FIELD_METRICS {
-                if let Some(sample) = select_relay_metric_sample(machine, &samples, metric_names) {
+                let selected =
+                    select_relay_metric_sample(machine, &samples, metric_names).or_else(|| {
+                        select_unlabeled_local_relay_sample(machine, relay, &samples, metric_names)
+                    });
+                if let Some(sample) = selected {
                     apply_relay_metric_value(
                         &mut mapped,
                         metric_key,
@@ -1042,23 +1158,7 @@ fn collect_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> Promet
     if relay_metrics.has_any_value() {
         return relay_metrics;
     }
-    let local_metrics = collect_local_prometheus_metrics(machine);
-    if local_metrics.has_any_value() {
-        return local_metrics;
-    }
-
-    let merged_note = match (relay_metrics.note, local_metrics.note) {
-        (Some(relay), Some(local)) => Some(format!("relay: {relay}; local: {local}")),
-        (Some(relay), None) => Some(relay),
-        (None, Some(local)) => Some(local),
-        (None, None) => None,
-    };
-
-    PrometheusMetrics {
-        source: None,
-        note: merged_note,
-        ..PrometheusMetrics::default()
-    }
+    relay_metrics
 }
 
 fn parse_tip(raw: &str) -> Result<(Option<i64>, Option<f64>), AppError> {
@@ -1408,6 +1508,156 @@ fn collect_runtime_monitor_context(machine: &MachineRow) -> Option<RuntimeMonito
     })
 }
 
+#[derive(Debug)]
+struct SnapshotBatch {
+    snapshots: Vec<MonitorSnapshot>,
+    degraded_message: Option<String>,
+}
+
+fn telemetry_snapshot_state(metrics: &PrometheusMetrics, now_epoch: i64) -> (&'static str, &'static str, &'static str) {
+    if !metrics.has_any_value() {
+        return (
+            "telemetry_unavailable",
+            "telemetry_unavailable",
+            "critical",
+        );
+    }
+    let stale = metrics
+        .collected_at_epoch
+        .map(|collected| (now_epoch - collected) > TELEMETRY_STALE_THRESHOLD_SECONDS)
+        .unwrap_or(true);
+    if stale {
+        return ("telemetry_stale", "telemetry_stale", "warning");
+    }
+    ("telemetry_live", "telemetry_live", "healthy")
+}
+
+fn append_note(base: Option<String>, message: String) -> Option<String> {
+    match base {
+        Some(existing) if existing.trim().is_empty() => Some(message),
+        Some(existing) => Some(format!("{existing}; {message}")),
+        None => Some(message),
+    }
+}
+
+fn snapshot_cache_registry() -> &'static Mutex<Vec<MonitorSnapshot>> {
+    static REGISTRY: OnceLock<Mutex<Vec<MonitorSnapshot>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn cache_latest_live_snapshots(snapshots: &[MonitorSnapshot]) {
+    if !snapshots
+        .iter()
+        .any(|snapshot| snapshot.sync_stage == "telemetry_live")
+    {
+        return;
+    }
+    if let Ok(mut cache) = snapshot_cache_registry().lock() {
+        *cache = snapshots.to_vec();
+    }
+}
+
+fn stale_from_cached_snapshot(mut snapshot: MonitorSnapshot, reason: &str) -> MonitorSnapshot {
+    snapshot.status = "telemetry_stale".into();
+    snapshot.sync_stage = "telemetry_stale".into();
+    snapshot.health_level = "warning".into();
+    snapshot.note = append_note(snapshot.note, reason.to_string());
+    snapshot.prometheus_note = append_note(snapshot.prometheus_note, reason.to_string());
+    snapshot
+}
+
+fn load_latest_health_snapshot(
+    conn: &Connection,
+    machine: &MachineRow,
+    reason: &str,
+) -> Result<Option<MonitorSnapshot>, AppError> {
+    let latest = conn
+        .query_row(
+            "SELECT block_height, sync_progress, sync_note, collected_at
+             FROM machine_health
+             WHERE machine_id = ?1
+             ORDER BY collected_at DESC, id DESC
+             LIMIT 1",
+            params![machine.id],
+            |row| {
+                Ok((
+                    row.get::<_, Option<i64>>(0)?,
+                    row.get::<_, Option<f64>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((block_height, sync_progress, sync_note, collected_at)) = latest else {
+        return Ok(None);
+    };
+    let note = append_note(sync_note, reason.to_string());
+    Ok(Some(MonitorSnapshot {
+        machine_id: machine.id,
+        machine_name: machine.name.clone(),
+        role: machine.role.clone(),
+        network: machine.network.clone(),
+        block_height,
+        sync_progress,
+        blocks_per_minute: None,
+        health_level: "warning".into(),
+        status: "telemetry_stale".into(),
+        sync_stage: "telemetry_stale".into(),
+        restore_snapshot_requested: false,
+        stalled: false,
+        collected_at: collected_at.unwrap_or_else(|| "1970-01-01 00:00:00".into()),
+        note: note.clone(),
+        epoch: None,
+        slot_num: None,
+        slot_in_epoch: None,
+        sync_percent: sync_progress,
+        tip_diff_blocks: None,
+        late_blocks: None,
+        peer_count: None,
+        cpu_sys_percent: None,
+        mem_live_bytes: None,
+        mem_rss_bytes: None,
+        mem_heap_bytes: None,
+        gc_minor_total: None,
+        gc_major_total: None,
+        txs_in_mempool: None,
+        mempool_bytes: None,
+        forks: None,
+        forging_enabled: None,
+        prometheus_source: Some("cache:machine_health".into()),
+        prometheus_note: note,
+    }))
+}
+
+fn load_cached_snapshots(
+    conn: &Connection,
+    machines: &[MachineRow],
+    reason: &str,
+) -> Result<Vec<MonitorSnapshot>, AppError> {
+    let machine_ids: std::collections::HashSet<i64> =
+        machines.iter().map(|machine| machine.id).collect();
+    if let Ok(cache) = snapshot_cache_registry().lock() {
+        let cached: Vec<MonitorSnapshot> = cache
+            .iter()
+            .filter(|snapshot| machine_ids.contains(&snapshot.machine_id))
+            .cloned()
+            .map(|snapshot| stale_from_cached_snapshot(snapshot, reason))
+            .collect();
+        if !cached.is_empty() {
+            return Ok(cached);
+        }
+    }
+
+    let mut snapshots = Vec::with_capacity(machines.len());
+    for machine in machines {
+        if let Some(snapshot) = load_latest_health_snapshot(conn, machine, reason)? {
+            snapshots.push(snapshot);
+        }
+    }
+    Ok(snapshots)
+}
+
 fn collect_machine_snapshot(
     conn: &Connection,
     machine: &MachineRow,
@@ -1415,171 +1665,30 @@ fn collect_machine_snapshot(
     let collected_at_epoch = current_epoch_seconds()?;
     let collected_at = sqlite_datetime(conn, collected_at_epoch)?;
     let previous = get_previous_health_sample(conn, machine.id)?;
-    let runtime_context = collect_runtime_monitor_context(machine);
-    let remote_cmd = format!(
-        "docker exec cardano-node cardano-cli query tip --socket-path /ipc/node.socket --{}",
-        machine.network
-    );
-
-    let tip_raw = match ssh_exec(machine, remote_cmd.as_str()) {
-        Ok(output) => output,
-        Err(err) => {
-            if let Some((sync_stage, status, recovered_sync_progress, sync_note)) =
-                recover_restore_stage_from_tip_error(
-                    previous.as_ref(),
-                    runtime_context.as_ref(),
-                    collected_at_epoch,
-                )
-            {
-                let prometheus = collect_prometheus_metrics(conn, machine);
-                let snapshot_collected_at =
-                    resolve_snapshot_collected_at(conn, collected_at.as_str(), &prometheus);
-                insert_health_sample(
-                    conn,
-                    machine.id,
-                    None,
-                    recovered_sync_progress,
-                    sync_stage.as_str(),
-                    sync_note.as_deref(),
-                    collected_at_epoch,
-                )?;
-                return Ok(MonitorSnapshot {
-                    machine_id: machine.id,
-                    machine_name: machine.name.clone(),
-                    role: machine.role.clone(),
-                    network: machine.network.clone(),
-                    block_height: None,
-                    sync_progress: recovered_sync_progress,
-                    blocks_per_minute: None,
-                    health_level: "warning".into(),
-                    status,
-                    sync_stage,
-                    restore_snapshot_requested: runtime_context
-                        .as_ref()
-                        .map(|ctx| ctx.restore_snapshot_requested)
-                        .unwrap_or(false),
-                    stalled: false,
-                    collected_at: snapshot_collected_at,
-                    note: sync_note,
-                    epoch: prometheus.epoch,
-                    sync_percent: prometheus.sync_percent.or(recovered_sync_progress),
-                    tip_diff_blocks: prometheus.tip_diff_blocks,
-                    peer_count: prometheus.peer_count,
-                    cpu_sys_percent: prometheus.cpu_sys_percent,
-                    mem_live_bytes: prometheus.mem_live_bytes,
-                    mem_rss_bytes: prometheus.mem_rss_bytes,
-                    mem_heap_bytes: prometheus.mem_heap_bytes,
-                    gc_minor_total: prometheus.gc_minor_total,
-                    gc_major_total: prometheus.gc_major_total,
-                    prometheus_source: prometheus.source,
-                    prometheus_note: prometheus.note,
-                });
-            }
-
-            let note = err.to_string();
-            return Ok(MonitorSnapshot {
-                machine_id: machine.id,
-                machine_name: machine.name.clone(),
-                role: machine.role.clone(),
-                network: machine.network.clone(),
-                block_height: None,
-                sync_progress: None,
-                blocks_per_minute: None,
-                health_level: "critical".into(),
-                status: determine_status(None, false, Some(note.as_str())),
-                sync_stage: "unreachable".into(),
-                restore_snapshot_requested: runtime_context
-                    .as_ref()
-                    .map(|ctx| ctx.restore_snapshot_requested)
-                    .unwrap_or(false),
-                stalled: false,
-                collected_at,
-                note: Some(note),
-                epoch: None,
-                sync_percent: None,
-                tip_diff_blocks: None,
-                peer_count: None,
-                cpu_sys_percent: None,
-                mem_live_bytes: None,
-                mem_rss_bytes: None,
-                mem_heap_bytes: None,
-                gc_minor_total: None,
-                gc_major_total: None,
-                prometheus_source: None,
-                prometheus_note: None,
-            });
-        }
-    };
-
-    let (block_height, sync_progress) = match parse_tip(tip_raw.as_str()) {
-        Ok(parsed) => parsed,
-        Err(err) => {
-            let prometheus = collect_prometheus_metrics(conn, machine);
-            let snapshot_collected_at =
-                resolve_snapshot_collected_at(conn, collected_at.as_str(), &prometheus);
-            let note = err.to_string();
-            return Ok(MonitorSnapshot {
-                machine_id: machine.id,
-                machine_name: machine.name.clone(),
-                role: machine.role.clone(),
-                network: machine.network.clone(),
-                block_height: None,
-                sync_progress: None,
-                blocks_per_minute: None,
-                health_level: "critical".into(),
-                status: determine_status(None, false, Some(note.as_str())),
-                sync_stage: "unreachable".into(),
-                restore_snapshot_requested: runtime_context
-                    .as_ref()
-                    .map(|ctx| ctx.restore_snapshot_requested)
-                    .unwrap_or(false),
-                stalled: false,
-                collected_at: snapshot_collected_at,
-                note: Some(note),
-                epoch: prometheus.epoch,
-                sync_percent: prometheus.sync_percent,
-                tip_diff_blocks: prometheus.tip_diff_blocks,
-                peer_count: prometheus.peer_count,
-                cpu_sys_percent: prometheus.cpu_sys_percent,
-                mem_live_bytes: prometheus.mem_live_bytes,
-                mem_rss_bytes: prometheus.mem_rss_bytes,
-                mem_heap_bytes: prometheus.mem_heap_bytes,
-                gc_minor_total: prometheus.gc_minor_total,
-                gc_major_total: prometheus.gc_major_total,
-                prometheus_source: prometheus.source,
-                prometheus_note: prometheus.note,
-            });
-        }
-    };
-
+    let prometheus = collect_prometheus_metrics(conn, machine);
+    let block_height = prometheus.block_height;
+    let sync_progress = prometheus.sync_percent;
     let blocks_per_minute =
         compute_blocks_per_minute(previous.as_ref(), block_height, collected_at_epoch);
-    let stalled = determine_stalled(
-        previous.as_ref(),
-        block_height,
-        sync_progress,
-        collected_at_epoch,
-    );
-    let (sync_stage, sync_note) = determine_sync_stage(
-        block_height,
-        sync_progress,
-        previous.as_ref(),
-        runtime_context.as_ref(),
-        None,
-        collected_at_epoch,
-    );
-    let status = match sync_stage.as_str() {
-        "restore_failed" | "restore_timeout" => "stalled".into(),
-        "fallback_syncing" => "syncing".into(),
-        _ => determine_status(sync_progress, stalled, None),
+    let (status, sync_stage, health_level) =
+        telemetry_snapshot_state(&prometheus, collected_at_epoch);
+    let telemetry_age = prometheus
+        .collected_at_epoch
+        .map(|ts| collected_at_epoch.saturating_sub(ts));
+    let note = match sync_stage {
+        "telemetry_stale" => append_note(
+            prometheus.note.clone(),
+            format!(
+                "telemetry sample is stale ({}s old)",
+                telemetry_age.unwrap_or_default()
+            ),
+        ),
+        "telemetry_unavailable" => append_note(
+            prometheus.note.clone(),
+            "relay api unavailable after failover attempts".into(),
+        ),
+        _ => prometheus.note.clone(),
     };
-    let health_level = determine_health_level(
-        status.as_str(),
-        sync_stage.as_str(),
-        blocks_per_minute,
-        stalled,
-    );
-    let prometheus = collect_prometheus_metrics(conn, machine);
     let snapshot_collected_at =
         resolve_snapshot_collected_at(conn, collected_at.as_str(), &prometheus);
     insert_health_sample(
@@ -1587,8 +1696,8 @@ fn collect_machine_snapshot(
         machine.id,
         block_height,
         sync_progress,
-        sync_stage.as_str(),
-        sync_note.as_deref(),
+        sync_stage,
+        note.as_deref(),
         collected_at_epoch,
     )?;
 
@@ -1600,19 +1709,19 @@ fn collect_machine_snapshot(
         block_height,
         sync_progress,
         blocks_per_minute,
-        health_level,
-        status,
-        sync_stage,
-        restore_snapshot_requested: runtime_context
-            .as_ref()
-            .map(|ctx| ctx.restore_snapshot_requested)
-            .unwrap_or(false),
-        stalled,
+        health_level: health_level.into(),
+        status: status.into(),
+        sync_stage: sync_stage.into(),
+        restore_snapshot_requested: false,
+        stalled: false,
         collected_at: snapshot_collected_at,
-        note: sync_note,
+        note: note.clone(),
         epoch: prometheus.epoch,
+        slot_num: prometheus.slot_num,
+        slot_in_epoch: prometheus.slot_in_epoch,
         sync_percent: prometheus.sync_percent.or(sync_progress),
         tip_diff_blocks: prometheus.tip_diff_blocks,
+        late_blocks: prometheus.late_blocks,
         peer_count: prometheus.peer_count,
         cpu_sys_percent: prometheus.cpu_sys_percent,
         mem_live_bytes: prometheus.mem_live_bytes,
@@ -1620,8 +1729,12 @@ fn collect_machine_snapshot(
         mem_heap_bytes: prometheus.mem_heap_bytes,
         gc_minor_total: prometheus.gc_minor_total,
         gc_major_total: prometheus.gc_major_total,
+        txs_in_mempool: prometheus.txs_in_mempool,
+        mempool_bytes: prometheus.mempool_bytes,
+        forks: prometheus.forks,
+        forging_enabled: prometheus.forging_enabled,
         prometheus_source: prometheus.source,
-        prometheus_note: prometheus.note,
+        prometheus_note: note,
     })
 }
 
@@ -1630,13 +1743,15 @@ pub async fn monitor_snapshot(
     machine_ids: Option<Vec<i64>>,
     db: State<'_, DbState>,
 ) -> Result<Vec<MonitorSnapshot>, AppError> {
-    collect_snapshots_from_db_state(&db, machine_ids).await
+    Ok(collect_snapshots_from_db_state(&db, machine_ids)
+        .await?
+        .snapshots)
 }
 
 async fn collect_snapshots_from_db_state(
     db: &DbState,
     machine_ids: Option<Vec<i64>>,
-) -> Result<Vec<MonitorSnapshot>, AppError> {
+) -> Result<SnapshotBatch, AppError> {
     let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
     let selected = repo_machine_list(&conn, None, None)?
         .into_iter()
@@ -1648,11 +1763,40 @@ async fn collect_snapshots_from_db_state(
         })
         .collect::<Vec<_>>();
 
-    let mut snapshots = Vec::with_capacity(selected.len());
-    for machine in selected {
-        snapshots.push(collect_machine_snapshot(&conn, &machine)?);
+    if selected.is_empty() {
+        return Ok(SnapshotBatch {
+            snapshots: Vec::new(),
+            degraded_message: None,
+        });
     }
-    Ok(snapshots)
+
+    let mut snapshots = Vec::with_capacity(selected.len());
+    for machine in &selected {
+        snapshots.push(collect_machine_snapshot(&conn, machine)?);
+    }
+    let all_unavailable = snapshots
+        .iter()
+        .all(|snapshot| snapshot.sync_stage == "telemetry_unavailable");
+    if all_unavailable {
+        let degraded_message = "relay telemetry api unavailable after failover attempts";
+        let cached = load_cached_snapshots(&conn, &selected, degraded_message)?;
+        if !cached.is_empty() {
+            return Ok(SnapshotBatch {
+                snapshots: cached,
+                degraded_message: Some(degraded_message.to_string()),
+            });
+        }
+        return Ok(SnapshotBatch {
+            snapshots,
+            degraded_message: Some(degraded_message.to_string()),
+        });
+    }
+
+    cache_latest_live_snapshots(&snapshots);
+    Ok(SnapshotBatch {
+        snapshots,
+        degraded_message: None,
+    })
 }
 
 fn audit_telemetry_degraded_retry(db: &DbState, machine_ids: &Option<Vec<i64>>, message: &str) {
@@ -1688,7 +1832,11 @@ pub async fn monitor_start_polling(
     }
 
     let initial = collect_snapshots_from_db_state(&db, machine_ids.clone()).await?;
-    let _ = app_handle.emit("monitor:snapshot", &initial);
+    let _ = app_handle.emit("monitor:snapshot", &initial.snapshots);
+    if let Some(message) = initial.degraded_message {
+        audit_telemetry_degraded_retry(&db, &machine_ids, message.as_str());
+        let _ = app_handle.emit("monitor:error", serde_json::json!({ "message": message }));
+    }
 
     let stop = Arc::new(AtomicBool::new(false));
     let stop_for_task = Arc::clone(&stop);
@@ -1710,8 +1858,15 @@ pub async fn monitor_start_polling(
                 break;
             };
             match collect_snapshots_from_db_state(&db_state, machine_ids.clone()).await {
-                Ok(snapshots) => {
-                    let _ = app_handle_for_task.emit("monitor:snapshot", &snapshots);
+                Ok(batch) => {
+                    let _ = app_handle_for_task.emit("monitor:snapshot", &batch.snapshots);
+                    if let Some(message) = batch.degraded_message {
+                        audit_telemetry_degraded_retry(&db_state, &machine_ids, message.as_str());
+                        let _ = app_handle_for_task.emit(
+                            "monitor:error",
+                            serde_json::json!({ "message": message }),
+                        );
+                    }
                 }
                 Err(err) => {
                     let err_message = err.to_string();
@@ -2097,5 +2252,240 @@ mod tests {
         assert_eq!(relay_backoff_retry_at(&relay), Some(1_030));
         relay_clear_backoff(&relay);
         assert_eq!(relay_backoff_retry_at(&relay), None);
+    }
+
+    #[test]
+    fn tc_mon_023_select_unlabeled_local_relay_sample_supports_legacy_payload() {
+        let machine = sample_machine("relay-1", "relay", "10.0.0.10");
+        let relay = sample_machine("relay-1", "relay", "10.0.0.10");
+        let samples = vec![RelayMetricSample {
+            metric_name: Some("cardano_node_metrics_epoch_int".into()),
+            node: None,
+            role: Some("relay".into()),
+            host_ip: None,
+            instance: Some("172.17.0.2:12798".into()),
+            timestamp: Some(1_773_410_000),
+            value: 618.0,
+        }];
+
+        let selected =
+            select_relay_metric_sample(&machine, &samples, &["cardano_node_metrics_epoch_int"])
+                .or_else(|| {
+                    select_unlabeled_local_relay_sample(
+                        &machine,
+                        &relay,
+                        &samples,
+                        &["cardano_node_metrics_epoch_int"],
+                    )
+                })
+                .expect("selected sample");
+        assert_eq!(selected.value, 618.0);
+    }
+
+    #[test]
+    fn tc_mon_024_telemetry_snapshot_state_live_stale_unavailable() {
+        let live = PrometheusMetrics {
+            epoch: Some(618),
+            collected_at_epoch: Some(1_000),
+            ..PrometheusMetrics::default()
+        };
+        let (status, stage, health) = telemetry_snapshot_state(&live, 1_030);
+        assert_eq!(status, "telemetry_live");
+        assert_eq!(stage, "telemetry_live");
+        assert_eq!(health, "healthy");
+
+        let stale = PrometheusMetrics {
+            epoch: Some(618),
+            collected_at_epoch: Some(1_000),
+            ..PrometheusMetrics::default()
+        };
+        let (status, stage, health) =
+            telemetry_snapshot_state(&stale, 1_000 + TELEMETRY_STALE_THRESHOLD_SECONDS + 1);
+        assert_eq!(status, "telemetry_stale");
+        assert_eq!(stage, "telemetry_stale");
+        assert_eq!(health, "warning");
+
+        let unavailable = PrometheusMetrics::default();
+        let (status, stage, health) = telemetry_snapshot_state(&unavailable, 1_000);
+        assert_eq!(status, "telemetry_unavailable");
+        assert_eq!(stage, "telemetry_unavailable");
+        assert_eq!(health, "critical");
+    }
+
+    #[test]
+    fn tc_mon_025_relay_metric_mapping_supports_block_height_without_sync_percent() {
+        let machine = sample_machine("bp-1", "bp", "10.0.0.12");
+        let samples = vec![
+            RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_blockNum_int".into()),
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(1_000),
+                value: 13_153_866.0,
+            },
+            RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_epoch_int".into()),
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(1_000),
+                value: 618.0,
+            },
+        ];
+        let mut mapped = PrometheusMetrics::default();
+        let mut latest_ts: Option<i64> = None;
+        for (metric_key, metric_names) in RELAY_TELEMETRY_FIELD_METRICS {
+            if let Some(sample) = select_relay_metric_sample(&machine, &samples, metric_names) {
+                apply_relay_metric_value(
+                    &mut mapped,
+                    metric_key,
+                    sample.value,
+                    sample.timestamp,
+                    &mut latest_ts,
+                );
+            }
+        }
+        assert_eq!(mapped.block_height, Some(13_153_866));
+        assert_eq!(mapped.epoch, Some(618));
+        assert_eq!(mapped.sync_percent, None);
+    }
+
+    #[test]
+    fn tc_mon_026_stale_from_cached_snapshot_marks_warning_and_appends_note() {
+        let snapshot = MonitorSnapshot {
+            machine_id: 1,
+            machine_name: "bp-1".into(),
+            role: "bp".into(),
+            network: "mainnet".into(),
+            block_height: Some(100),
+            sync_progress: Some(99.0),
+            blocks_per_minute: Some(1.0),
+            health_level: "healthy".into(),
+            status: "telemetry_live".into(),
+            sync_stage: "telemetry_live".into(),
+            restore_snapshot_requested: false,
+            stalled: false,
+            collected_at: "2026-03-14 00:00:00".into(),
+            note: None,
+            epoch: Some(1),
+            slot_num: Some(100),
+            slot_in_epoch: Some(25),
+            sync_percent: Some(99.0),
+            tip_diff_blocks: Some(0),
+            late_blocks: Some(0),
+            peer_count: Some(10),
+            cpu_sys_percent: Some(1.0),
+            mem_live_bytes: Some(1.0),
+            mem_rss_bytes: Some(1.0),
+            mem_heap_bytes: Some(1.0),
+            gc_minor_total: Some(1),
+            gc_major_total: Some(1),
+            txs_in_mempool: Some(3),
+            mempool_bytes: Some(1024.0),
+            forks: Some(0),
+            forging_enabled: Some(1),
+            prometheus_source: Some("relay-api:relay-1@10.0.0.10".into()),
+            prometheus_note: None,
+        };
+        let next = stale_from_cached_snapshot(snapshot, "relay api unavailable");
+        assert_eq!(next.status, "telemetry_stale");
+        assert_eq!(next.sync_stage, "telemetry_stale");
+        assert_eq!(next.health_level, "warning");
+        assert!(next.note.unwrap_or_default().contains("relay api unavailable"));
+    }
+
+    #[test]
+    fn tc_mon_027_relay_metric_mapping_supports_catalog_chain_and_tx_fields() {
+        let machine = sample_machine("bp-1", "bp", "10.0.0.12");
+        let samples = vec![
+            RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_slotNum_int".into()),
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(1_000),
+                value: 181_843_743.0,
+            },
+            RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_slotInEpoch_int".into()),
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(1_000),
+                value: 230_943.0,
+            },
+            RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_blockfetchclient_lateblocks".into()),
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(1_000),
+                value: 87.0,
+            },
+            RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_txsInMempool_int".into()),
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(1_000),
+                value: 12.0,
+            },
+            RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_mempoolBytes_int".into()),
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(1_000),
+                value: 12_615.0,
+            },
+            RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_forks_int".into()),
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(1_000),
+                value: 261.0,
+            },
+            RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_forging_enabled".into()),
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(1_000),
+                value: 1.0,
+            },
+        ];
+
+        let mut mapped = PrometheusMetrics::default();
+        let mut latest_ts: Option<i64> = None;
+        for (metric_key, metric_names) in RELAY_TELEMETRY_FIELD_METRICS {
+            if let Some(sample) = select_relay_metric_sample(&machine, &samples, metric_names) {
+                apply_relay_metric_value(
+                    &mut mapped,
+                    metric_key,
+                    sample.value,
+                    sample.timestamp,
+                    &mut latest_ts,
+                );
+            }
+        }
+
+        assert_eq!(mapped.slot_num, Some(181_843_743));
+        assert_eq!(mapped.slot_in_epoch, Some(230_943));
+        assert_eq!(mapped.late_blocks, Some(87));
+        assert_eq!(mapped.txs_in_mempool, Some(12));
+        assert_eq!(mapped.mempool_bytes, Some(12_615.0));
+        assert_eq!(mapped.forks, Some(261));
+        assert_eq!(mapped.forging_enabled, Some(1));
     }
 }

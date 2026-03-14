@@ -85,6 +85,20 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
                 </svg>
                 {!collapsed && <span>KES Rotate</span>}
               </NavLink>
+              <NavLink to="/telemetry" className={({ isActive }) => navClass(isActive, collapsed)} title="Telemetry API">
+                <svg
+                  viewBox="0 0 20 20"
+                  className="h-[17px] w-[17px] shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  aria-hidden="true"
+                >
+                  <circle cx="10" cy="10" r="6.5" />
+                  <path d="M10 3.5v3.2M10 13.3v3.2M3.5 10h3.2M13.3 10h3.2" strokeLinecap="round" />
+                </svg>
+                {!collapsed && <span>Telemetry API</span>}
+              </NavLink>
               <NavLink to="/upgrade" className={({ isActive }) => navClass(isActive, collapsed)} title="Upgrade">
                 <svg
                   viewBox="0 0 20 20"
@@ -106,10 +120,10 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
 
         <div className={`mt-6 rounded-md border border-slate-200 bg-white/80 px-3 py-2 text-xs text-slate-600 ${collapsed ? "hidden" : ""}`}>
           日常操作入口统一：
-          <br />Dashboard / KES Rotate / Upgrade
+          <br />Dashboard / KES Rotate / Telemetry API / Upgrade
         </div>
         {collapsed && (
-          <div className="mt-6 text-[11px] text-slate-500" title="日常操作入口统一：Dashboard / KES Rotate / Upgrade">
+          <div className="mt-6 text-[11px] text-slate-500" title="日常操作入口统一：Dashboard / KES Rotate / Telemetry API / Upgrade">
             OPS
           </div>
         )}

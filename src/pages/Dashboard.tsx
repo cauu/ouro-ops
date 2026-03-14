@@ -1,28 +1,22 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import TaskLogStream from "../components/TaskLogStream";
 import { formatTaskError } from "../lib/errors";
+import { kesStatusAll, taskRecentList } from "../lib/ipc";
 import {
-  kesStatusAll,
-  observabilityBootstrapStart,
-  observabilityBootstrapStatus,
-  observabilityGatewayStatus,
-  observabilityRollbackStart,
-  observabilityRollbackStatus,
-  taskRecentList,
-} from "../lib/ipc";
-import {
+  refreshMonitorStore,
   resolveTelemetryBehavior,
+  setMonitorStorePollingInterval,
   startMonitorStore,
   stopMonitorStore,
   useMonitorStore,
 } from "../lib/monitorStore";
-import type {
-  KesStatus,
-  MonitorSnapshot,
-  ObservabilityGatewayStatus,
-  RecentTaskSummary,
-} from "../lib/types";
+import type { KesStatus, MonitorSnapshot, RecentTaskSummary } from "../lib/types";
+
+const EPOCH_SLOTS_BY_NETWORK: Record<string, number> = {
+  mainnet: 432000,
+  preprod: 432000,
+  preview: 432000,
+};
 
 function formatProgress(value: number | null): string {
   if (value == null) {
@@ -59,12 +53,23 @@ function formatTargetLabel(machineCount: number): string {
   return `集群 (${machineCount})`;
 }
 
-function formatRelativeCollectedAt(value: string | null): string | null {
+function parseCollectedAt(value: string | null): number | null {
   if (!value) {
     return null;
   }
-  const parsed = Date.parse(value);
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+    ? `${value.replace(" ", "T")}Z`
+    : value;
+  const parsed = Date.parse(normalized);
   if (Number.isNaN(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function formatRelativeCollectedAt(value: string | null): string | null {
+  const parsed = parseCollectedAt(value);
+  if (parsed == null) {
     return null;
   }
   const diffMs = Date.now() - parsed;
@@ -81,56 +86,33 @@ function formatRelativeCollectedAt(value: string | null): string | null {
 }
 
 function formatAbsoluteCollectedAt(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-  const parsed = Date.parse(value);
-  if (Number.isNaN(parsed)) {
+  const parsed = parseCollectedAt(value);
+  if (parsed == null) {
     return null;
   }
   return new Date(parsed).toLocaleString();
 }
 
-function monitorSyncPercent(snapshot: MonitorSnapshot): number | null {
-  return snapshot.sync_percent ?? snapshot.sync_progress;
+function epochSlotsForNetwork(network: string): number {
+  return EPOCH_SLOTS_BY_NETWORK[network] ?? 432000;
 }
 
-function estimateWithinOneSecond(snapshot: MonitorSnapshot): number | null {
-  const peerCount = snapshot.peer_count;
-  const sync = monitorSyncPercent(snapshot);
-  if (peerCount == null || sync == null) {
+function monitorSyncPercent(snapshot: MonitorSnapshot): number | null {
+  if (snapshot.sync_percent != null) {
+    return snapshot.sync_percent;
+  }
+  if (snapshot.sync_progress != null) {
+    return snapshot.sync_progress;
+  }
+  if (snapshot.slot_in_epoch == null) {
     return null;
   }
-  let value = Math.min(99.9, Math.max(75, sync - 1.2));
-  if (snapshot.status === "syncing") {
-    value -= 1.8;
+  const slotsPerEpoch = epochSlotsForNetwork(snapshot.network);
+  if (slotsPerEpoch <= 0) {
+    return null;
   }
-  if (snapshot.status === "stalled" || snapshot.status === "unreachable") {
-    value -= 4;
-  }
-  return Math.max(0, Number(value.toFixed(2)));
-}
-
-function estimateLatencyBuckets(withinOneSecond: number | null): Array<{ label: string; value: number | null }> {
-  if (withinOneSecond == null) {
-    return [
-      { label: "0-50ms", value: null },
-      { label: "50-100ms", value: null },
-      { label: "100-500ms", value: null },
-      { label: ">1s", value: null },
-    ];
-  }
-  const within = Math.max(0, Math.min(100, withinOneSecond));
-  const tail = Math.max(0, Number((100 - within).toFixed(2)));
-  const p0 = Number((within * 0.6).toFixed(2));
-  const p1 = Number((within * 0.25).toFixed(2));
-  const p2 = Number((within - p0 - p1).toFixed(2));
-  return [
-    { label: "0-50ms", value: p0 },
-    { label: "50-100ms", value: p1 },
-    { label: "100-500ms", value: p2 },
-    { label: ">1s", value: tail },
-  ];
+  const raw = (snapshot.slot_in_epoch / slotsPerEpoch) * 100;
+  return Number(Math.max(0, Math.min(100, raw)).toFixed(2));
 }
 
 function telemetryDotClass(behavior: string): string {
@@ -177,17 +159,46 @@ function severityChipClass(severity: "critical" | "warn" | "ok" | "muted" = "mut
   }
 }
 
+function lateBlocksTone(value: number | null): "critical" | "warn" | "muted" {
+  if (value == null) {
+    return "muted";
+  }
+  if (value >= 200) {
+    return "critical";
+  }
+  if (value >= 20) {
+    return "warn";
+  }
+  return "muted";
+}
+
 function statusDotClass(status: string): string {
   switch (status) {
+    case "telemetry_live":
     case "synced":
       return "bg-emerald-500";
+    case "telemetry_stale":
     case "syncing":
       return "bg-amber-500";
+    case "telemetry_unavailable":
     case "stalled":
     case "unreachable":
       return "bg-rose-500";
     default:
       return "bg-slate-400";
+  }
+}
+
+function telemetryStatusLabel(status: string): string {
+  switch (status) {
+    case "telemetry_live":
+      return "live";
+    case "telemetry_stale":
+      return "stale";
+    case "telemetry_unavailable":
+      return "unavailable";
+    default:
+      return status || "unknown";
   }
 }
 
@@ -205,10 +216,6 @@ function statusToneClass(status: string): string {
     default:
       return severityChipClass("muted");
   }
-}
-
-function isTaskTerminal(status: string): boolean {
-  return status === "success" || status === "failed" || status === "cancelled";
 }
 
 async function copyPlainText(value: string): Promise<boolean> {
@@ -252,7 +259,39 @@ function TooltipBadge({ label, tip, tone = "muted" }: TooltipBadgeProps) {
       <span className={severityChipClass(tone)}>{label}</span>
       <span
         role="tooltip"
-        className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-20 w-72 max-w-[min(28rem,90vw)] rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs leading-5 text-white opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-visible:opacity-100"
+        className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-20 hidden w-72 max-w-[min(28rem,90vw)] rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs leading-5 text-white shadow-xl group-hover:block group-focus-visible:block"
+      >
+        {tip}
+      </span>
+    </span>
+  );
+}
+
+function InlineInfoTip({ tip }: { tip: string }) {
+  return (
+    <span className="group relative inline-flex" tabIndex={0}>
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] font-semibold text-slate-600">
+        i
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-20 hidden w-64 max-w-[min(24rem,90vw)] rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs leading-5 text-white shadow-xl group-hover:block group-focus-visible:block"
+      >
+        {tip}
+      </span>
+    </span>
+  );
+}
+
+function MetaIconTip({ tip, icon }: { tip: string; icon: ReactNode }) {
+  return (
+    <span className="group relative inline-flex" tabIndex={0}>
+      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500">
+        {icon}
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-[calc(100%+8px)] z-20 hidden w-64 max-w-[min(22rem,90vw)] -translate-x-1/2 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs leading-5 text-white shadow-xl group-hover:block group-focus-visible:block"
       >
         {tip}
       </span>
@@ -261,16 +300,13 @@ function TooltipBadge({ label, tip, tone = "muted" }: TooltipBadgeProps) {
 }
 
 export default function Dashboard() {
+  const foregroundIntervalSeconds = 15;
+  const backgroundIntervalSeconds = 60;
   const [kesStatuses, setKesStatuses] = useState<KesStatus[]>([]);
   const [recentTasks, setRecentTasks] = useState<RecentTaskSummary[]>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
-  const [gatewayStatus, setGatewayStatus] = useState<ObservabilityGatewayStatus | null>(null);
-  const [gatewayActionError, setGatewayActionError] = useState<string | null>(null);
-  const [gatewayActionMessage, setGatewayActionMessage] = useState<string | null>(null);
-  const [gatewayTask, setGatewayTask] = useState<{ taskId: string; kind: "bootstrap" | "rollback" } | null>(null);
-  const [gatewaySubmittingKind, setGatewaySubmittingKind] = useState<"bootstrap" | "rollback" | null>(null);
-  const [gatewayLogTaskId, setGatewayLogTaskId] = useState<string | null>(null);
+  const [auxRefreshError, setAuxRefreshError] = useState<string | null>(null);
+  const refreshInFlightRef = useRef(false);
   const {
     snapshots,
     status: monitorStatus,
@@ -280,46 +316,118 @@ export default function Dashboard() {
     lastError,
   } = useMonitorStore();
 
-  const refreshGatewayStatus = async () => {
-    try {
-      const status = await observabilityGatewayStatus();
-      setGatewayStatus(status);
-    } catch (error) {
-      setGatewayActionError(String(error));
-    }
-  };
-
   useEffect(() => {
     let active = true;
+    let refreshTimer: number | null = null;
+
+    const clearRefreshTimer = () => {
+      if (refreshTimer != null) {
+        window.clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+    };
+
+    const currentIntervalSeconds = () =>
+      typeof document === "undefined" || document.visibilityState !== "hidden"
+        ? foregroundIntervalSeconds
+        : backgroundIntervalSeconds;
+
+    const refreshDashboardData = async () => {
+      if (!active || refreshInFlightRef.current) {
+        return;
+      }
+      refreshInFlightRef.current = true;
+      try {
+        const [kesResult, taskResult] = await Promise.allSettled([kesStatusAll(), taskRecentList(8)]);
+        if (!active) {
+          return;
+        }
+
+        const failures: string[] = [];
+
+        if (kesResult.status === "fulfilled") {
+          setKesStatuses(kesResult.value);
+        } else {
+          failures.push("KES");
+        }
+
+        if (taskResult.status === "fulfilled") {
+          setRecentTasks(taskResult.value);
+        } else {
+          failures.push("日志");
+        }
+
+        setAuxRefreshError(
+          failures.length > 0 ? `部分数据刷新失败（${failures.join(" / ")}），将自动重试。` : null,
+        );
+      } finally {
+        refreshInFlightRef.current = false;
+      }
+    };
+
+    const scheduleDashboardRefresh = (intervalSeconds: number) => {
+      clearRefreshTimer();
+      refreshTimer = window.setInterval(() => {
+        void refreshDashboardData();
+      }, intervalSeconds * 1000);
+    };
+
+    const applyPollingMode = async (intervalSeconds: number) => {
+      await setMonitorStorePollingInterval(intervalSeconds);
+      scheduleDashboardRefresh(intervalSeconds);
+    };
+
+    const onVisibilityChange = () => {
+      const visible = typeof document === "undefined" || document.visibilityState !== "hidden";
+      if (visible) {
+        void (async () => {
+          await applyPollingMode(foregroundIntervalSeconds);
+          await Promise.all([refreshDashboardData(), refreshMonitorStore()]);
+        })();
+        return;
+      }
+      void applyPollingMode(backgroundIntervalSeconds);
+    };
+
+    const onWindowFocus = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
+      void (async () => {
+        await applyPollingMode(foregroundIntervalSeconds);
+        await Promise.all([refreshDashboardData(), refreshMonitorStore()]);
+      })();
+    };
+
     void (async () => {
       try {
-        await startMonitorStore(30);
-        const [nextKes, nextTasks, nextGateway] = await Promise.all([
-          kesStatusAll(),
-          taskRecentList(8),
-          observabilityGatewayStatus(),
-        ]);
-        if (!active) {
-          return;
+        const initialInterval = currentIntervalSeconds();
+        await startMonitorStore(initialInterval);
+        scheduleDashboardRefresh(initialInterval);
+        await refreshDashboardData();
+      } catch (error) {
+        if (active) {
+          setAuxRefreshError(`Dashboard 初始化失败：${String(error)}`);
         }
-        setKesStatuses(nextKes);
-        setRecentTasks(nextTasks);
-        setGatewayStatus(nextGateway);
-      } catch {
-        if (!active) {
-          return;
-        }
-        setKesStatuses([]);
-        setRecentTasks([]);
-        setGatewayStatus(null);
       }
     })();
-    const refreshTimer = window.setInterval(() => {
-      void refreshGatewayStatus();
-    }, 15_000);
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", onWindowFocus);
+    }
+
     return () => {
       active = false;
-      window.clearInterval(refreshTimer);
+      clearRefreshTimer();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", onWindowFocus);
+      }
       void stopMonitorStore();
     };
   }, []);
@@ -330,21 +438,6 @@ export default function Dashboard() {
     const rest = snapshots.filter((row) => row.role !== "bp" && row.role !== "relay");
     return [...bp, ...relay, ...rest];
   }, [snapshots]);
-
-  useEffect(() => {
-    if (nodes.length === 0) {
-      setSelectedNodeId(null);
-      return;
-    }
-    if (selectedNodeId == null || !nodes.some((row) => row.machine_id === selectedNodeId)) {
-      setSelectedNodeId(nodes[0].machine_id);
-    }
-  }, [nodes, selectedNodeId]);
-
-  const selectedNode = useMemo(
-    () => nodes.find((row) => row.machine_id === selectedNodeId) ?? null,
-    [nodes, selectedNodeId],
-  );
 
   const bpNode = useMemo(() => nodes.find((row) => row.role === "bp") ?? null, [nodes]);
 
@@ -364,20 +457,8 @@ export default function Dashboard() {
     return picked;
   }, [bpNode, relays, nodes]);
 
-  const headBlock = useMemo(() => {
-    const heights = snapshots
-      .map((row) => row.block_height)
-      .filter((value): value is number => value != null);
-    if (heights.length === 0) {
-      return null;
-    }
-    return Math.max(...heights);
-  }, [snapshots]);
-
   const clusterEpoch = useMemo(() => {
-    const epochs = snapshots
-      .map((row) => row.epoch)
-      .filter((value): value is number => value != null);
+    const epochs = snapshots.map((row) => row.epoch).filter((value): value is number => value != null);
     if (epochs.length === 0) {
       return null;
     }
@@ -407,14 +488,23 @@ export default function Dashboard() {
       }),
     [telemetryPhase, usingCachedData, snapshots],
   );
+
   const monitorPhaseText = monitorPhaseLabel(telemetryBehavior, monitorStatus);
   const monitorCollectedAge = formatRelativeCollectedAt(lastCollectedAt);
-  const gatewayConfiguredSummary = gatewayStatus
-    ? `${gatewayStatus.configured_relays}/${gatewayStatus.relay_total}`
-    : "--";
-  const gatewayLastTask = gatewayStatus?.last_bootstrap ?? gatewayStatus?.last_rollback ?? null;
-  const gatewayTaskRunning = gatewayTask != null;
-  const gatewayActionBusy = gatewayTaskRunning || gatewaySubmittingKind != null;
+
+  const gatewayRuntimeSummary = useMemo(() => {
+    const total = snapshots.length;
+    if (total === 0) {
+      return "--";
+    }
+    const relayApiReady = snapshots.filter((snapshot) => {
+      const source = snapshot.prometheus_source ?? "";
+      return source.startsWith("relay-api:");
+    }).length;
+    return `${relayApiReady}/${total}`;
+  }, [snapshots]);
+  const useHorizontalCardRail = cardNodes.length >= 3;
+
   const handleCopyDetail = async (taskId: string, detailText: string) => {
     const copied = await copyPlainText(detailText);
     if (!copied) {
@@ -426,95 +516,13 @@ export default function Dashboard() {
     }, 1200);
   };
 
-  useEffect(() => {
-    if (!gatewayTask) {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      void (async () => {
-        try {
-          const task =
-            gatewayTask.kind === "bootstrap"
-              ? await observabilityBootstrapStatus(gatewayTask.taskId)
-              : await observabilityRollbackStatus(gatewayTask.taskId);
-          if (!isTaskTerminal(task.status)) {
-            setGatewayActionMessage(
-              `${gatewayTask.kind === "bootstrap" ? "Enable API" : "Rollback"} running · task ${gatewayTask.taskId} · ${task.status}`,
-            );
-            return;
-          }
-          window.clearInterval(timer);
-          setGatewayTask(null);
-          if (task.status === "success") {
-            setGatewayActionError(null);
-            setGatewayActionMessage(
-              gatewayTask.kind === "bootstrap"
-                ? "Telemetry API bootstrap completed."
-                : "Telemetry API rollback completed.",
-            );
-          } else {
-            setGatewayActionError(formatTaskError(task.error_msg) || `${gatewayTask.kind} task failed`);
-          }
-          await refreshGatewayStatus();
-        } catch (error) {
-          window.clearInterval(timer);
-          setGatewayTask(null);
-          setGatewayActionError(String(error));
-        }
-      })();
-    }, 3_000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [gatewayTask]);
-
-  const handleGatewayBootstrap = async () => {
-    if (gatewayActionBusy) {
-      return;
-    }
-    setGatewaySubmittingKind("bootstrap");
-    try {
-      setGatewayActionError(null);
-      setGatewayActionMessage("提交中…");
-      const taskId = await observabilityBootstrapStart();
-      setGatewayLogTaskId(taskId);
-      setGatewayTask({ taskId, kind: "bootstrap" });
-      setGatewayActionMessage(`Enable API started · task ${taskId}`);
-      await refreshGatewayStatus();
-    } catch (error) {
-      setGatewayActionError(String(error));
-    } finally {
-      setGatewaySubmittingKind((current) => (current === "bootstrap" ? null : current));
-    }
-  };
-
-  const handleGatewayRollback = async () => {
-    if (gatewayActionBusy) {
-      return;
-    }
-    setGatewaySubmittingKind("rollback");
-    try {
-      setGatewayActionError(null);
-      setGatewayActionMessage("提交中…");
-      const taskId = await observabilityRollbackStart();
-      setGatewayLogTaskId(taskId);
-      setGatewayTask({ taskId, kind: "rollback" });
-      setGatewayActionMessage(`Rollback started · task ${taskId}`);
-      await refreshGatewayStatus();
-    } catch (error) {
-      setGatewayActionError(String(error));
-    } finally {
-      setGatewaySubmittingKind((current) => (current === "rollback" ? null : current));
-    }
-  };
-
   return (
-    <section className="space-y-5">
-      <section className="rounded-xl border border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
+    <section className="space-y-5 overflow-x-hidden">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <div>
             <h2 className="text-sm font-semibold">集群概览（BP + Relays）</h2>
-            <p className="text-xs text-slate-600">关键风险收敛到 BP 卡片，细节通过轻量标签与 tooltip 承载。</p>
+            <p className="text-xs text-slate-600">首屏展示链路风险与资源压力，节点卡即监控主入口。</p>
           </div>
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700">
             <span
@@ -533,80 +541,230 @@ export default function Dashboard() {
               </span>
               <span
                 role="tooltip"
-                className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-20 w-72 max-w-[min(28rem,90vw)] rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs leading-5 text-white opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-visible:opacity-100"
+                className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-20 hidden w-72 max-w-[min(28rem,90vw)] rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs leading-5 text-white shadow-xl group-hover:block group-focus-visible:block"
               >
                 {monitorPhaseText}
                 {monitorCollectedAge ? ` · ${monitorCollectedAge}` : ""}。
                 {lastError ? ` 最近错误: ${lastError}。` : ""}
-                {` Gateway: ${gatewayConfiguredSummary} relay configured。`}
-                {gatewayLastTask ? ` 最近任务: ${gatewayLastTask.task_id} (${gatewayLastTask.status})。` : ""}
+                {` Gateway runtime: ${gatewayRuntimeSummary} nodes via relay-api。`}
                 若刷新超时则继续展示缓存指标，并在下一轮轮询自动重试。
               </span>
             </span>
-            <span className="text-[11px] text-slate-500">GW {gatewayConfiguredSummary}</span>
-            {gatewayActionBusy && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-500" />
-                执行中
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                void handleGatewayBootstrap();
-              }}
-              disabled={gatewayActionBusy}
-              className="inline-flex h-6 items-center rounded border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-              title="执行 observability bootstrap"
+            <span className="text-[11px] text-slate-500">GW {gatewayRuntimeSummary}</span>
+            <Link
+              to="/telemetry"
+              className="inline-flex h-6 items-center rounded border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+              title="进入 Telemetry API 管理页"
             >
-              {gatewaySubmittingKind === "bootstrap"
-                ? "提交中…"
-                : gatewayTaskRunning && gatewayTask?.kind === "bootstrap"
-                  ? "Enabling..."
-                  : "Enable API"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void handleGatewayRollback();
-              }}
-              disabled={gatewayActionBusy}
-              className="inline-flex h-6 items-center rounded border border-rose-300 bg-rose-50 px-2 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-              title="执行 observability rollback"
-            >
-              {gatewaySubmittingKind === "rollback"
-                ? "提交中…"
-                : gatewayTaskRunning && gatewayTask?.kind === "rollback"
-                  ? "Rolling..."
-                  : "Rollback"}
-            </button>
+              管理 API
+            </Link>
           </div>
         </header>
-        {(gatewayActionMessage || gatewayActionError) && (
+
+        {auxRefreshError && (
           <div className="px-4 pb-3">
-            <p className={`text-xs font-medium ${gatewayActionError ? "text-rose-700" : "text-slate-700"}`}>
-              {gatewayActionError ?? gatewayActionMessage}
-            </p>
-          </div>
-        )}
-        {gatewayLogTaskId && (
-          <div className="px-4 pb-3">
-            <TaskLogStream taskId={gatewayLogTaskId} />
+            <p className="text-xs font-medium text-amber-700">{auxRefreshError}</p>
           </div>
         )}
 
-        <div className="grid gap-3 p-4 lg:grid-cols-3">
-          {cardNodes.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500 lg:col-span-3">
+        {cardNodes.length === 0 ? (
+          <div className="p-4">
+            <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
               No node snapshot yet. Telemetry will populate cards after monitor polling starts.
             </div>
-          ) : (
-            cardNodes.map((snapshot) => {
+          </div>
+        ) : useHorizontalCardRail ? (
+          <div className="px-4 py-3 pb-4">
+            <div className="overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex snap-x snap-mandatory gap-3">
+                {cardNodes.map((snapshot) => {
+                  const syncPercent = monitorSyncPercent(snapshot);
+                  const lateBlocks = snapshot.late_blocks;
+                  const lateTone = lateBlocksTone(lateBlocks);
+                  const isCritical =
+                    snapshot.health_level === "critical" || snapshot.status === "telemetry_unavailable";
+                  const isSlowest = slowestNode?.machine_id === snapshot.machine_id;
+                  const isBp = snapshot.role === "bp";
+                  const bpEpochDrift =
+                    isBp && snapshot.epoch != null && clusterEpoch != null
+                      ? snapshot.epoch - clusterEpoch
+                      : null;
+                  const progressWidth = Math.max(0, Math.min(100, syncPercent ?? 0));
+                  const kesRemainDays = isBp ? bpKes?.remaining_days ?? null : null;
+                  const kesRemainWindows =
+                    isBp && bpKes?.kes_period_current != null && bpKes?.kes_period_max != null
+                      ? Math.max(bpKes.kes_period_max - bpKes.kes_period_current, 0)
+                      : null;
+                  const kesLabel =
+                    kesRemainDays != null ? `KES remain ${kesRemainDays}d` : "KES remain --";
+                  const kesTipParts: string[] = [];
+                  if (kesRemainWindows != null) {
+                    kesTipParts.push(`窗口剩余 ${kesRemainWindows}`);
+                  }
+                  if (bpKes?.expiry_date) {
+                    kesTipParts.push(`到期 ${bpKes.expiry_date}`);
+                  }
+                  if (kesTipParts.length === 0) {
+                    kesTipParts.push("KES 剩余天数，建议提前完成 Rotate。");
+                  }
+                  const kesStatusClass =
+                    bpKes?.severity === "critical"
+                      ? "text-rose-700"
+                      : bpKes?.severity === "warning"
+                        ? "text-amber-700"
+                        : "text-slate-600";
+
+                  return (
+                    <article
+                      key={snapshot.machine_id}
+                      className="relative w-[min(82vw,560px)] min-w-[360px] max-w-[560px] flex-none snap-start rounded-lg border border-slate-300 bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.06)] sm:min-w-[400px]"
+                    >
+                      <div className="absolute right-3 top-3 inline-flex flex-col items-end gap-1.5">
+                        <TooltipBadge
+                          label={`late ${formatCounter(lateBlocks)}`}
+                          tone={lateTone}
+                          tip="同步风险指标。值越高表示区块延迟累计越多。"
+                        />
+                      </div>
+
+                      <header className="pr-28">
+                        <div className="flex items-center gap-1.5">
+                          <strong className="text-sm font-semibold">{snapshot.machine_name}</strong>
+                          {isCritical && <span className={severityChipClass("critical")}>critical</span>}
+                          {isSlowest && (
+                            <TooltipBadge
+                              label="slowest"
+                              tone="critical"
+                              tip="Current slowest node by sync progress in this cluster snapshot."
+                            />
+                          )}
+                          {!isCritical && !isSlowest && (
+                            <span className={severityChipClass(snapshot.health_level === "healthy" ? "ok" : "warn")}>
+                              {snapshot.health_level}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600">
+                          <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${statusDotClass(snapshot.status)}`} />
+                          <span>{snapshot.status === "telemetry_unavailable" ? "offline" : "online"} · {telemetryStatusLabel(snapshot.status)}</span>
+                          <span>slot {formatCounter(snapshot.slot_num)}</span>
+                          {isBp && (
+                            <span className={kesStatusClass} title={kesTipParts.join(" · ")}>
+                              {kesLabel}
+                            </span>
+                          )}
+                        </p>
+                      </header>
+
+                      <div className="mt-3 grid gap-2 min-[480px]:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
+                        <section className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                          <div className="flex items-end justify-between gap-2">
+                            <div>
+                              <p className="text-[11px] text-slate-500">Block</p>
+                              <strong className="text-[22px] font-semibold leading-none text-slate-900">
+                                {formatCounter(snapshot.block_height)}
+                              </strong>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[11px] text-slate-500">Epoch</p>
+                              <div className="inline-flex items-center gap-1.5">
+                                <strong className="text-base font-semibold leading-none text-slate-900">
+                                  {snapshot.epoch ?? "--"}
+                                </strong>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
+                            <span>Sync</span>
+                            <div className="inline-flex items-center gap-1.5">
+                              <strong className="text-sm text-slate-900">{formatProgress(syncPercent)}</strong>
+                              {isBp && (
+                                <TooltipBadge
+                                  label={bpEpochDrift == null ? "Δ--" : `Δ${bpEpochDrift >= 0 ? "+" : ""}${bpEpochDrift}e`}
+                                  tone={bpEpochDrift != null && bpEpochDrift < 0 ? "warn" : "muted"}
+                                  tip="BP 与集群最新 epoch 的差值。负值表示仍落后。"
+                                />
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-1.5 h-1.5 rounded-full bg-slate-200">
+                            <span
+                              className="block h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-700"
+                              style={{ width: `${progressWidth}%` }}
+                            />
+                          </div>
+                        </section>
+
+                        <section className="rounded-lg border border-sky-100 bg-sky-50/70 px-2.5 py-2">
+                          <p className="text-[11px] font-semibold text-slate-600">Runtime</p>
+                          <div className="mt-2 flex flex-col gap-2">
+                            <div className="inline-flex items-center justify-between rounded-full border border-sky-100 bg-white px-2.5 py-1 text-[11px] text-slate-600 whitespace-nowrap">
+                              <span>CPU (sys)</span>
+                              <strong className="text-xs font-semibold text-slate-900">
+                                {formatProgress(snapshot.cpu_sys_percent)}
+                              </strong>
+                            </div>
+                            <div className="inline-flex items-center justify-between gap-1 rounded-full border border-sky-100 bg-white px-2.5 py-1 text-[11px] text-slate-600 whitespace-nowrap">
+                              <span>Mem RSS</span>
+                              <strong className="text-xs font-semibold text-slate-900">
+                                {formatMemoryGigabytes(snapshot.mem_rss_bytes)}
+                              </strong>
+                              <InlineInfoTip tip={`Mem (Live): ${formatMemoryGigabytes(snapshot.mem_live_bytes)}`} />
+                            </div>
+                          </div>
+                        </section>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-end gap-1.5 text-xs text-slate-500">
+                        {snapshot.prometheus_source && (
+                          <MetaIconTip
+                            tip={`source: ${snapshot.prometheus_source}`}
+                            icon={
+                              <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                                <path d="M8.2 11.8 11.8 8.2m-5 6.4-2 2a2.6 2.6 0 0 1-3.6-3.6l2-2m8.8-2.8 2-2a2.6 2.6 0 1 1 3.6 3.6l-2 2m-6.4-5 2-2a2.6 2.6 0 0 1 3.6 3.6l-2 2m-5 6.4-2 2a2.6 2.6 0 0 1-3.6-3.6l2-2" strokeLinecap="round" />
+                              </svg>
+                            }
+                          />
+                        )}
+                        {snapshot.collected_at && (
+                          <MetaIconTip
+                            tip={`sample: ${formatRelativeCollectedAt(snapshot.collected_at) ?? "--"} · ${formatAbsoluteCollectedAt(snapshot.collected_at) ?? snapshot.collected_at}`}
+                            icon={
+                              <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                                <circle cx="10" cy="10" r="6.8" />
+                                <path d="M10 6.8v3.6l2.6 1.6" strokeLinecap="round" />
+                              </svg>
+                            }
+                          />
+                        )}
+                        {snapshot.prometheus_note && (
+                          <MetaIconTip
+                            tip={`note: ${snapshot.prometheus_note}`}
+                            icon={
+                              <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 text-amber-600" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                                <path d="M10 3.2 17 16.4H3L10 3.2Z" />
+                                <path d="M10 7.6v4.3m0 2.1h.01" strokeLinecap="round" />
+                              </svg>
+                            }
+                          />
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-3 p-4 md:grid-cols-2">
+            {cardNodes.map((snapshot) => {
               const syncPercent = monitorSyncPercent(snapshot);
-              const blockDiff =
-                snapshot.tip_diff_blocks ??
-                (snapshot.block_height != null && headBlock != null ? snapshot.block_height - headBlock : null);
-              const isCritical = snapshot.health_level === "critical" || snapshot.status === "unreachable";
+              const lateBlocks = snapshot.late_blocks;
+              const lateTone = lateBlocksTone(lateBlocks);
+              const isCritical =
+                snapshot.health_level === "critical" || snapshot.status === "telemetry_unavailable";
               const isSlowest = slowestNode?.machine_id === snapshot.machine_id;
               const isBp = snapshot.role === "bp";
               const bpEpochDrift =
@@ -614,24 +772,50 @@ export default function Dashboard() {
                   ? snapshot.epoch - clusterEpoch
                   : null;
               const progressWidth = Math.max(0, Math.min(100, syncPercent ?? 0));
+              const kesRemainDays = isBp ? bpKes?.remaining_days ?? null : null;
               const kesRemainWindows =
                 isBp && bpKes?.kes_period_current != null && bpKes?.kes_period_max != null
                   ? Math.max(bpKes.kes_period_max - bpKes.kes_period_current, 0)
                   : null;
               const kesLabel =
-                kesRemainWindows != null ? `KES remain ${kesRemainWindows}` : "KES remain --";
+                kesRemainDays != null ? `KES remain ${kesRemainDays}d` : "KES remain --";
+              const kesTipParts: string[] = [];
+              if (kesRemainWindows != null) {
+                kesTipParts.push(`窗口剩余 ${kesRemainWindows}`);
+              }
+              if (bpKes?.expiry_date) {
+                kesTipParts.push(`到期 ${bpKes.expiry_date}`);
+              }
+              if (kesTipParts.length === 0) {
+                kesTipParts.push("KES 剩余天数，建议提前完成 Rotate。");
+              }
+              const kesStatusClass =
+                bpKes?.severity === "critical"
+                  ? "text-rose-700"
+                  : bpKes?.severity === "warning"
+                    ? "text-amber-700"
+                    : "text-slate-600";
+
               return (
                 <article
                   key={snapshot.machine_id}
-                  className="rounded-lg border border-slate-300 bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.06)]"
+                  className="relative w-full rounded-lg border border-slate-300 bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.06)]"
                 >
-                  <header className="flex items-start justify-between gap-2">
-                    <strong className="text-sm font-semibold">{snapshot.machine_name}</strong>
-                    <div className="inline-flex items-center gap-1.5">
+                  <div className="absolute right-3 top-3 inline-flex flex-col items-end gap-1.5">
+                    <TooltipBadge
+                      label={`late ${formatCounter(lateBlocks)}`}
+                      tone={lateTone}
+                      tip="同步风险指标。值越高表示区块延迟累计越多。"
+                    />
+                  </div>
+
+                  <header className="pr-28">
+                    <div className="flex items-center gap-1.5">
+                      <strong className="text-sm font-semibold">{snapshot.machine_name}</strong>
                       {isCritical && <span className={severityChipClass("critical")}>critical</span>}
                       {isSlowest && (
                         <TooltipBadge
-                          label={`slowest · ${snapshot.machine_name}`}
+                          label="slowest"
                           tone="critical"
                           tip="Current slowest node by sync progress in this cluster snapshot."
                         />
@@ -642,230 +826,118 @@ export default function Dashboard() {
                         </span>
                       )}
                     </div>
-                  </header>
-                  <p className="mt-1 text-xs text-slate-600">
-                    <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${statusDotClass(snapshot.status)}`} />
-                    {snapshot.status === "unreachable" ? "offline" : "online"} · uptime --
-                  </p>
-
-                  <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
-                    <span>Epoch</span>
-                    <div className="inline-flex items-center gap-1.5">
-                      <strong className="text-sm text-slate-900">{snapshot.epoch ?? "--"}</strong>
-                      {isBp && clusterEpoch != null && (
-                        <TooltipBadge
-                          label={`cluster ${clusterEpoch}`}
-                          tip="Highest epoch observed in current cluster telemetry."
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-1.5 flex items-center justify-between text-xs text-slate-600">
-                    <span>Sync</span>
-                    <div className="inline-flex items-center gap-1.5">
-                      <strong className="text-sm text-slate-900">{formatProgress(syncPercent)}</strong>
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600">
+                      <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${statusDotClass(snapshot.status)}`} />
+                      <span>{snapshot.status === "telemetry_unavailable" ? "offline" : "online"} · {telemetryStatusLabel(snapshot.status)}</span>
+                      <span>slot {formatCounter(snapshot.slot_num)}</span>
                       {isBp && (
-                        <TooltipBadge
-                          label={
-                            bpEpochDrift == null
-                              ? "Δ--"
-                              : `Δ${bpEpochDrift >= 0 ? "+" : ""}${bpEpochDrift}e`
-                          }
-                          tone={bpEpochDrift != null && bpEpochDrift < 0 ? "warn" : "muted"}
-                          tip="BP 与集群最新 epoch 的差值。负值表示仍落后。"
-                        />
+                        <span className={kesStatusClass} title={kesTipParts.join(" · ")}>
+                          {kesLabel}
+                        </span>
                       )}
+                    </p>
+                  </header>
+
+                  <div className="mt-3 grid gap-2 min-[480px]:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
+                    <section className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <div className="flex items-end justify-between gap-2">
+                        <div>
+                          <p className="text-[11px] text-slate-500">Block</p>
+                          <strong className="text-[22px] font-semibold leading-none text-slate-900">
+                            {formatCounter(snapshot.block_height)}
+                          </strong>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[11px] text-slate-500">Epoch</p>
+                        <div className="inline-flex items-center gap-1.5">
+                          <strong className="text-base font-semibold leading-none text-slate-900">
+                            {snapshot.epoch ?? "--"}
+                          </strong>
+                        </div>
+                      </div>
                     </div>
+
+                      <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
+                        <span>Sync</span>
+                        <div className="inline-flex items-center gap-1.5">
+                          <strong className="text-sm text-slate-900">{formatProgress(syncPercent)}</strong>
+                          {isBp && (
+                            <TooltipBadge
+                              label={bpEpochDrift == null ? "Δ--" : `Δ${bpEpochDrift >= 0 ? "+" : ""}${bpEpochDrift}e`}
+                              tone={bpEpochDrift != null && bpEpochDrift < 0 ? "warn" : "muted"}
+                              tip="BP 与集群最新 epoch 的差值。负值表示仍落后。"
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-1.5 h-1.5 rounded-full bg-slate-200">
+                        <span
+                          className="block h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-700"
+                          style={{ width: `${progressWidth}%` }}
+                        />
+                      </div>
+                    </section>
+
+                    <section className="rounded-lg border border-sky-100 bg-sky-50/70 px-2.5 py-2">
+                      <p className="text-[11px] font-semibold text-slate-600">Runtime</p>
+                      <div className="mt-2 flex flex-col gap-2">
+                        <div className="inline-flex items-center justify-between rounded-full border border-sky-100 bg-white px-2.5 py-1 text-[11px] text-slate-600 whitespace-nowrap">
+                          <span>CPU (sys)</span>
+                          <strong className="text-xs font-semibold text-slate-900">
+                            {formatProgress(snapshot.cpu_sys_percent)}
+                          </strong>
+                        </div>
+                        <div className="inline-flex items-center justify-between gap-1 rounded-full border border-sky-100 bg-white px-2.5 py-1 text-[11px] text-slate-600 whitespace-nowrap">
+                          <span>Mem RSS</span>
+                          <strong className="text-xs font-semibold text-slate-900">
+                            {formatMemoryGigabytes(snapshot.mem_rss_bytes)}
+                          </strong>
+                          <InlineInfoTip tip={`Mem (Live): ${formatMemoryGigabytes(snapshot.mem_live_bytes)}`} />
+                        </div>
+                      </div>
+                    </section>
                   </div>
 
-                  <div className="mt-2 h-1.5 rounded-full bg-slate-200">
-                    <span
-                      className="block h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-700"
-                      style={{ width: `${progressWidth}%` }}
-                    />
-                  </div>
-
-                  <p className="mt-2 text-xs text-slate-500">
-                    tip diff: {blockDiff == null ? "--" : `${blockDiff >= 0 ? "+" : ""}${blockDiff} blocks`}
-                  </p>
-
-                  {isBp && (
-                    <div className="mt-2 flex items-center justify-between gap-2">
-                      <TooltipBadge
-                        label={
-                          <span className="inline-flex items-center gap-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
-                            <span>{kesLabel}</span>
-                          </span>
+                  <div className="mt-2 flex items-center justify-end gap-1.5 text-xs text-slate-500">
+                    {snapshot.prometheus_source && (
+                      <MetaIconTip
+                        tip={`source: ${snapshot.prometheus_source}`}
+                        icon={
+                          <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                            <path d="M8.2 11.8 11.8 8.2m-5 6.4-2 2a2.6 2.6 0 0 1-3.6-3.6l2-2m8.8-2.8 2-2a2.6 2.6 0 1 1 3.6 3.6l-2 2m-6.4-5 2-2a2.6 2.6 0 0 1 3.6 3.6l-2 2m-5 6.4-2 2a2.6 2.6 0 0 1-3.6-3.6l2-2" strokeLinecap="round" />
+                          </svg>
                         }
-                        tone={bpKes?.severity === "critical" ? "critical" : bpKes?.severity === "warning" ? "warn" : "muted"}
-                        tip="KES 剩余窗口，建议提前完成 Rotate。"
                       />
-                      <Link
-                        to="/kes"
-                        className="inline-flex min-h-8 items-center rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700"
-                      >
-                        立即 Rotate
-                      </Link>
-                    </div>
-                  )}
+                    )}
+                    {snapshot.collected_at && (
+                      <MetaIconTip
+                        tip={`sample: ${formatRelativeCollectedAt(snapshot.collected_at) ?? "--"} · ${formatAbsoluteCollectedAt(snapshot.collected_at) ?? snapshot.collected_at}`}
+                        icon={
+                          <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                            <circle cx="10" cy="10" r="6.8" />
+                            <path d="M10 6.8v3.6l2.6 1.6" strokeLinecap="round" />
+                          </svg>
+                        }
+                      />
+                    )}
+                    {snapshot.prometheus_note && (
+                      <MetaIconTip
+                        tip={`note: ${snapshot.prometheus_note}`}
+                        icon={
+                          <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 text-amber-600" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                            <path d="M10 3.2 17 16.4H3L10 3.2Z" />
+                            <path d="M10 7.6v4.3m0 2.1h.01" strokeLinecap="round" />
+                          </svg>
+                        }
+                      />
+                    )}
+                  </div>
                 </article>
               );
-            })
-          )}
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-          <div>
-            <h2 className="text-sm font-semibold">节点详情</h2>
-            <p className="text-xs text-slate-600">Tab 切换 BP / Relay，查看资源、连接与传播延迟。</p>
+            })}
           </div>
-        </header>
-
-        <div className="space-y-3 p-4">
-          {nodes.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
-              Waiting for node telemetry...
-            </div>
-          ) : (
-            <>
-              <div className="tab-controller">
-                {nodes.map((row) => (
-                  <input
-                    key={`node-tab-radio-${row.machine_id}`}
-                    id={`node-tab-${row.machine_id}`}
-                    type="radio"
-                    name="node-tab"
-                    className="sr-only"
-                    checked={selectedNodeId === row.machine_id}
-                    onChange={() => setSelectedNodeId(row.machine_id)}
-                  />
-                ))}
-                <fieldset className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 bg-slate-100 p-1">
-                  <legend className="sr-only">选择节点</legend>
-                {nodes.map((row) => {
-                  const active = selectedNodeId === row.machine_id;
-                  return (
-                    <label
-                      key={row.machine_id}
-                      htmlFor={`node-tab-${row.machine_id}`}
-                      className={`inline-flex min-h-8 min-w-28 items-center justify-center rounded-md border px-3 text-xs font-semibold leading-none ${
-                        active
-                          ? "border-blue-300 bg-white text-blue-700"
-                          : "border-transparent bg-transparent text-slate-600 hover:text-slate-900"
-                      }`}
-                    >
-                      {row.machine_name}
-                    </label>
-                  );
-                })}
-                </fieldset>
-              </div>
-
-              {selectedNode && (
-                <div className="grid gap-3 lg:grid-cols-2">
-                  <article className="rounded-lg border border-slate-300 bg-white p-3">
-                    <h3 className="text-sm font-semibold">Resources</h3>
-                    <dl className="mt-2 space-y-1.5 text-sm">
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">CPU (sys)</dt>
-                        <dd className="font-medium text-slate-900">{formatProgress(selectedNode.cpu_sys_percent)}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Mem (Live)</dt>
-                        <dd className="font-medium text-slate-900">{formatMemoryGigabytes(selectedNode.mem_live_bytes)}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Mem (RSS)</dt>
-                        <dd className="font-medium text-slate-900">{formatMemoryGigabytes(selectedNode.mem_rss_bytes)}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Mem (Heap)</dt>
-                        <dd className="font-medium text-slate-900">{formatMemoryGigabytes(selectedNode.mem_heap_bytes)}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">GC Minor</dt>
-                        <dd className="font-medium text-slate-900">{formatCounter(selectedNode.gc_minor_total)}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">GC Major</dt>
-                        <dd className="font-medium text-slate-900">{formatCounter(selectedNode.gc_major_total)}</dd>
-                      </div>
-                    </dl>
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                      <span>block: {selectedNode.block_height?.toLocaleString() ?? "--"} · slot: --</span>
-                      {selectedNode.prometheus_source && (
-                        <TooltipBadge
-                          label={`source · ${selectedNode.prometheus_source}`}
-                          tone="muted"
-                          tip="当前节点指标来源。relay-api 表示经 relay 白名单接口获取；local 表示本机采集兜底。"
-                        />
-                      )}
-                      {selectedNode.collected_at && (
-                        <TooltipBadge
-                          label={`sample · ${formatRelativeCollectedAt(selectedNode.collected_at) ?? "--"}`}
-                          tone="muted"
-                          tip={formatAbsoluteCollectedAt(selectedNode.collected_at) ?? selectedNode.collected_at}
-                        />
-                      )}
-                      {selectedNode.prometheus_note && (
-                        <TooltipBadge
-                          label="telemetry note"
-                          tone="warn"
-                          tip={selectedNode.prometheus_note}
-                        />
-                      )}
-                    </div>
-                  </article>
-
-                  <article className="rounded-lg border border-slate-300 bg-white p-3">
-                    <h3 className="text-sm font-semibold">Connections & Peers</h3>
-                    <dl className="mt-2 space-y-1.5 text-sm">
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Peers</dt>
-                        <dd className="font-medium text-slate-900">
-                          {selectedNode.peer_count == null ? "--" : `${formatCounter(selectedNode.peer_count)} / 32`}
-                        </dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-600">Within 1s</dt>
-                        <dd className="font-medium text-slate-900">
-                          {estimateWithinOneSecond(selectedNode) == null
-                            ? "--"
-                            : `${estimateWithinOneSecond(selectedNode)?.toFixed(2)}%`}
-                        </dd>
-                      </div>
-                    </dl>
-                    <div className="mt-3 space-y-2">
-                      {estimateLatencyBuckets(estimateWithinOneSecond(selectedNode)).map((bucket) => (
-                        <div key={`${selectedNode.machine_id}-${bucket.label}`} className="grid grid-cols-[72px_1fr_52px] items-center gap-2 text-xs">
-                          <span className="text-slate-600">{bucket.label}</span>
-                          <span className="h-2 rounded-full bg-slate-200">
-                            <span
-                              className={`block h-2 rounded-full ${bucket.label === ">1s" ? "bg-rose-400" : "bg-blue-500"}`}
-                              style={{ width: `${bucket.value ?? 0}%` }}
-                            />
-                          </span>
-                          <span className="text-right font-medium text-slate-700">
-                            {bucket.value == null ? "--" : `${bucket.value.toFixed(2)}%`}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    {selectedNode.note && (
-                      <p className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs text-rose-700">
-                        {selectedNode.note}
-                      </p>
-                    )}
-                  </article>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        )}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
@@ -901,7 +973,11 @@ export default function Dashboard() {
               ) : (
                 recentTasks.slice(0, 6).map((task) => {
                   const taskError = formatTaskError(task.error_msg);
-                  const detailText = taskError ? taskError : (task.phase ? formatTaskLabel(task.phase) : `${task.machine_count} machine(s)`);
+                  const detailText = taskError
+                    ? taskError
+                    : task.phase
+                      ? formatTaskLabel(task.phase)
+                      : `${task.machine_count} machine(s)`;
                   return (
                     <tr key={task.task_id} className="border-t border-slate-200">
                       <td className="px-3 py-2 text-slate-600">{task.created_at}</td>
@@ -911,7 +987,7 @@ export default function Dashboard() {
                         <span className={statusToneClass(task.status)}>{formatTaskLabel(task.status)}</span>
                       </td>
                       <td className="w-0 max-w-[360px] px-3 py-2 text-slate-600">
-                        <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="flex min-w-0 items-center gap-1.5">
                           <span
                             title={detailText}
                             className={`block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap select-text ${
@@ -930,13 +1006,30 @@ export default function Dashboard() {
                             aria-label={copiedTaskId === task.task_id ? "已复制" : "复制详情"}
                           >
                             {copiedTaskId === task.task_id ? (
-                              <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                              <svg
+                                viewBox="0 0 20 20"
+                                className="h-3.5 w-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                aria-hidden="true"
+                              >
                                 <path d="M4 10.5l3.2 3.2L16 5.9" strokeLinecap="round" strokeLinejoin="round" />
                               </svg>
                             ) : (
-                              <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                              <svg
+                                viewBox="0 0 20 20"
+                                className="h-3.5 w-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.6"
+                                aria-hidden="true"
+                              >
                                 <rect x="7" y="7" width="9" height="9" rx="1.6" />
-                                <path d="M5.2 12.8H4a1.6 1.6 0 0 1-1.6-1.6V4a1.6 1.6 0 0 1 1.6-1.6h7.2A1.6 1.6 0 0 1 12.8 4v1.2" strokeLinecap="round" />
+                                <path
+                                  d="M5.2 12.8H4a1.6 1.6 0 0 1-1.6-1.6V4a1.6 1.6 0 0 1 1.6-1.6h7.2A1.6 1.6 0 0 1 12.8 4v1.2"
+                                  strokeLinecap="round"
+                                />
                               </svg>
                             )}
                           </button>

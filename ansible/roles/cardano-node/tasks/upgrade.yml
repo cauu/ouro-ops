@@ -109,6 +109,7 @@
     env: "{{ cardano_upgrade_env }}"
     ports:
       - "3001:3001"
+      - "12798:12798"
     volumes:
       - /opt/cardano/config:/opt/cardano/config
       - /opt/cardano/db:/data/db

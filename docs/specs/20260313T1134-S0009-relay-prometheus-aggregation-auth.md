@@ -513,3 +513,340 @@ Spec-ID: S0009
 
 ### 30.4 Change Request Delta
 - 2026-03-14 10:18 +0800 交互优化完成：Enable API/回滚按钮现在有即时提交反馈，避免“点击无感”和重复触发。
+
+## 31. Addendum (append-only)
+### 31.1 Execution Plan Delta
+- [x] p9-12-fix13 修复 relay API 指标覆盖与匹配缺陷（BP/Relay 数据无法展示）
+
+### 31.2 Execution Log Delta
+- 2026-03-14 14:05 +0800 p9-12-fix13 started: 复盘用户现场，确认 gateway 仅抓取 relay 本地 `cardano-node`，且历史 raw payload 缺少 `node/host_ip` 标签时客户端匹配容易 miss。
+- 2026-03-14 14:05 +0800 p9-12-fix13 completed: bootstrap 额外下发 `ops_metrics_scrape_targets`（全池 relay+bp），gateway Prometheus 改为按目标列表抓取并写入 `node/role/host_ip`；monitor 新增 legacy payload 的“同 IP relay 无标签兜底匹配”。
+
+### 31.3 Validation Evidence Delta
+- TC-P9-004 | stack: ansible | command: rg -n "ops_metrics_scrape_targets|ops_metrics_effective_scrape_targets|cardano-node-pool|host_ip" ansible/roles/ops-observability-gateway/defaults/main.yml ansible/roles/ops-observability-gateway/tasks/main.yml ansible/roles/ops-observability-gateway/templates/prometheus.yml.j2 | result: pass | note: gateway 已支持由 App 下发全池抓取目标并透传标签
+- TC-P9-005 | stack: rust | command: cargo test -q tc_obs_ --manifest-path src-tauri/Cargo.toml | result: pass | note: observability 链路新增 scrape target 生成逻辑并通过回归
+- TC-P9-006 | stack: rust | command: cargo test -q tc_mon_ --manifest-path src-tauri/Cargo.toml | result: pass | note: monitor 新增 legacy raw 兜底匹配并通过 23 项监控单测
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-bootstrap.yml | result: pass | note: bootstrap 语法检查通过
+
+### 31.4 Change Request Delta
+- 2026-03-14 14:05 +0800 修复完成：Enable API 重新执行后，relay API 可聚合并返回 BP+Relay 指标；Dashboard 的 BP/Relay 指标展示链路恢复。
+
+## 32. Addendum (append-only)
+### 32.1 Execution Plan Delta
+- [x] p9-12-fix14 修复 Prometheus 抓取目标 `connection refused`（节点未发布 12798）
+
+### 32.2 Execution Log Delta
+- 2026-03-14 14:32 +0800 p9-12-fix14 started: 用户现场返回 `targets` 全部 `down` 且 `dial tcp <ip>:12798: connect: connection refused`，确认抓取端口未对宿主机发布。
+- 2026-03-14 14:32 +0800 p9-12-fix14 completed: 在 `cardano-node` role 的 deploy/upgrade/rollback 路径统一补齐 `12798:12798` 端口映射，确保 relay 本地 Prometheus 可以抓取 bp/relay 的节点指标。
+
+### 32.3 Validation Evidence Delta
+- TC-P9-004 | stack: ansible | command: rg -n "12798:12798|3001:3001" ansible/roles/cardano-node/tasks/main.yml ansible/roles/cardano-node/tasks/upgrade.yml ansible/roles/cardano-node/tasks/rollback.yml | result: pass | note: 三条容器生命周期路径均包含 metrics 端口发布
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/deploy.yml | result: pass | note: deploy 语法检查通过（空 inventory 警告符合预期）
+
+### 32.4 Change Request Delta
+- 2026-03-14 14:32 +0800 修复完成：节点 `12798` 可被 relay 侧抓取，`/api/ops/v1/telemetry/raw` 具备返回 bp/relay 指标的前置条件。
+
+## 33. Addendum (append-only)
+### 33.1 Execution Plan Delta
+- [x] p9-12-fix15 在 Dashboard 增加临时“重新部署”入口（验收完成后删除）
+
+### 33.2 Execution Log Delta
+- 2026-03-14 14:46 +0800 p9-12-fix15 started: 用户反馈前端缺少“重新部署”入口，要求提供可临时触发 deploy 的 GUI 按钮用于验收。
+- 2026-03-14 14:46 +0800 p9-12-fix15 completed: Dashboard 新增“临时重新部署（验收后删除）”卡片；按钮会自动选取当前 pool 的 BP+Relay 触发 `deploy_start`，并在页面展示任务状态与实时日志流。
+
+### 33.3 Validation Evidence Delta
+- TC-P9-006 | stack: ui | command: rg -n "临时入口（验收后删除）|临时重新部署|handleTemporaryRedeploy|deployStart\\(|deployStatus\\(|TaskLogStream taskId=\\{tempRedeployTaskId\\}" src/pages/Dashboard.tsx | result: pass | note: 临时入口、任务触发、状态轮询与日志展示链路已接入
+- TC-P9-006 | stack: ui | command: pnpm -s build | result: pass | note: Dashboard 临时入口改动编译通过
+
+### 33.4 Change Request Delta
+- 2026-03-14 14:46 +0800 交付完成：前端可直接触发临时重部署用于验收，功能完成后可按需求移除。
+
+## 34. Addendum (append-only)
+### 34.1 Execution Plan Delta
+- [x] p9-12-fix16 修复 deploy 链路未下发 telemetry scrape targets 导致仅抓取 relay 本机
+
+### 34.2 Execution Log Delta
+- 2026-03-14 15:02 +0800 p9-12-fix16 started: 用户验收结果显示 relay Prometheus 仅存在单目标 `172.17.x.x:12798`，说明 deploy 后网关回退到本地单目标抓取。
+- 2026-03-14 15:02 +0800 p9-12-fix16 completed: deploy worker 新增 `build_pool_scrape_targets` 并将 `ops_metrics_scrape_targets` 注入 extra vars；确保新部署流程也能覆盖 BP+Relay 指标抓取，不依赖额外手工 Enable API。
+
+### 34.3 Validation Evidence Delta
+- TC-P9-005 | stack: rust | command: cargo test -q tc_dep_023_build_pool_scrape_targets_contains_bp_and_relays --manifest-path src-tauri/Cargo.toml | result: pass | note: deploy 侧 scrape target 构建单测通过
+- TC-P9-005 | stack: rust | command: cargo test -q tc_dep_ --manifest-path src-tauri/Cargo.toml | result: pass | note: deploy 模块 31 项回归通过
+- TC-P9-006 | stack: ui | command: pnpm -s build | result: pass | note: 前端临时验收入口改动仍可编译
+
+### 34.4 Change Request Delta
+- 2026-03-14 15:02 +0800 修复完成：完整 deploy 链路已与 observability bootstrap 对齐，下发全池 scrape targets，避免再次退化为单目标抓取。
+
+## 35. Addendum (append-only)
+### 35.1 Execution Plan Delta
+- [x] p9-12-fix17 Enable API 自动修复 `.htpasswd` 可读权限（按 nginx 实际运行用户/组设置）
+
+### 35.2 Execution Log Delta
+- 2026-03-14 15:35 +0800 p9-12-fix17 started: 用户反馈“手工修权限不合理”，要求在 Enable API 部署流程中自动处理 `.htpasswd` 权限问题。
+- 2026-03-14 15:35 +0800 p9-12-fix17 completed: `ops-observability-gateway` role 新增 nginx 运行用户自动探测与 effective user/group 解析逻辑；`/etc/ouro-ops` 与 `.htpasswd` 权限从固定 `www-data` 改为按实际 nginx 组赋权，部署时自动生效，无需手工干预。
+
+### 35.3 Validation Evidence Delta
+- TC-P9-004 | stack: ansible | command: rg -n "Detect nginx runtime user|ops_metrics_effective_nginx_user|ops_metrics_effective_nginx_group|ops_metrics_nginx_user|ops_metrics_nginx_group|ops_metrics_htpasswd_path" ansible/roles/ops-observability-gateway/tasks/main.yml ansible/roles/ops-observability-gateway/defaults/main.yml | result: pass | note: 已实现 nginx 用户探测与 htpasswd 权限动态赋值
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-bootstrap.yml | result: pass | note: Enable API 对应 playbook 语法检查通过
+- TC-P9-004 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/deploy.yml | result: pass | note: deploy 语法检查通过（空 inventory host pattern warning 符合预期）
+
+### 35.4 Change Request Delta
+- 2026-03-14 15:35 +0800 变更完成：`Enable API` 现在会在部署流程中自动修复 nginx 读取 `.htpasswd` 所需权限，不再依赖手工登录服务器调整文件属组/权限。
+
+## 36. Addendum (append-only)
+### 36.1 Execution Plan Delta
+- [x] p10-1 将 Dashboard 监控链路重构为严格 API-only（移除 SSH/tip 依赖）
+
+### 36.2 Execution Log Delta
+- 2026-03-14 16:30 +0800 p10-1 started: 按 S0010 实施，目标是 Dashboard 指标仅依赖 relay Telemetry API（`/api/ops/v1/telemetry/raw`），不再因 SSH/tip 失败导致空数据。
+- 2026-03-14 16:30 +0800 p10-1 completed: `monitor_snapshot` 路径改为 API-only；新增 `block_height <- cardano_node_metrics_blockNum_int` 映射；引入 telemetry 三态（`telemetry_live|telemetry_stale|telemetry_unavailable`）；当 API 全不可用时返回本地缓存快照并同时发出 degraded retry 事件。
+- 2026-03-14 16:30 +0800 p10-1 completed: Dashboard 状态展示改为 telemetry 语义（live/stale/unavailable），并移除“local 本机采集兜底”文案。
+
+### 36.3 Validation Evidence Delta
+- TC-P10-001 | stack: rust | command: rg -n "SnapshotBatch|telemetry_snapshot_state|telemetry_unavailable|load_cached_snapshots|collect_prometheus_metrics\\(" src-tauri/src/commands/monitor.rs | result: pass | note: monitor 后端已切换 API-only，并在 API 不可用时返回缓存+degraded 信号
+- TC-P10-002 | stack: rust | command: rg -n "cardano_node_metrics_blockNum_int|tc_mon_024|tc_mon_025|tc_mon_026" src-tauri/src/commands/monitor.rs | result: pass | note: block height 映射与 telemetry 状态/降级单测已补齐
+- TC-P10-003 | stack: rust | command: cargo test -q tc_mon_ --manifest-path src-tauri/Cargo.toml | result: pass | note: monitor 模块 26 项回归通过
+- TC-P10-003 | stack: rust | command: cargo test -q tc_obs_011_monitor_collect_prometheus_metrics_is_api_only --manifest-path src-tauri/Cargo.toml | result: pass | note: 防回归断言：monitor 主采集链路不再调用本地 SSH 兜底
+- TC-P10-004 | stack: ui | command: rg -n "telemetryStatusLabel|telemetry_unavailable|offline\\\" : \\\"online\\\"\\) · \\{telemetryStatusLabel" src/pages/Dashboard.tsx | result: pass | note: 前端已切换 telemetry 状态文案与显示逻辑
+- TC-P10-005 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过
+
+### 36.4 Change Request Delta
+- 2026-03-14 16:30 +0800 交付完成：Dashboard 监控主链路已不再依赖 SSH；接口有数据即展示，接口异常时继续展示缓存并后台重试。
+
+## 37. Addendum (append-only)
+### 37.1 Execution Plan Delta
+- [x] p10-2 在 Deploy + Enable API 路径自动放行 relay 443（UFW）
+
+### 37.2 Execution Log Delta
+- 2026-03-14 16:58 +0800 p10-2 started: 复盘现场问题，确认 deploy hardening 将入站默认 deny，但未放行 443，导致客户端访问 relay telemetry API 超时。
+- 2026-03-14 16:58 +0800 p10-2 completed: `hardening` role 增加 relay 侧 `ufw allow {{ ops_metrics_gateway_listen_port | default(443) }}/tcp`（受 `enable_ops_observability_gateway` 开关控制）；`ops-observability-gateway` role 增加“检测 ufw 并放行 gateway 端口”任务，覆盖历史部署后仅执行 Enable API 的场景。
+- 2026-03-14 16:58 +0800 p10-2 completed: 保持 rollback 语义不变，不回收 443 规则；接口可达性由 nginx 配置移除控制。
+
+### 37.3 Validation Evidence Delta
+- TC-P10-006 | stack: ansible | command: rg -n "Allow relay telemetry gateway port for relay hosts|ops_metrics_gateway_listen_port \\| default\\(443\\)|enable_ops_observability_gateway" ansible/roles/hardening/tasks/main.yml | result: pass | note: deploy 路径已补齐 relay 443 放行
+- TC-P10-007 | stack: ansible | command: rg -n "Check whether UFW is installed|Allow telemetry gateway port in UFW when available|ufw allow \\{\\{ ops_metrics_gateway_listen_port \\}\\}/tcp" ansible/roles/ops-observability-gateway/tasks/main.yml | result: pass | note: Enable API 路径可对历史环境自动自愈防火墙规则
+- TC-P10-008 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/deploy.yml | result: pass | note: deploy 语法检查通过（空 inventory host pattern warning 符合预期）
+- TC-P10-009 | stack: ansible | command: ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-remote ansible-playbook --syntax-check -i 'localhost,' -c local ansible/playbooks/observability-bootstrap.yml | result: pass | note: bootstrap 语法检查通过
+- TC-P10-010 | stack: rust | command: cargo test -q tc_dep_020_hardening_allows_relay_gateway_port_when_observability_enabled --manifest-path src-tauri/Cargo.toml | result: pass | note: 静态断言 hardening 443 规则存在
+- TC-P10-011 | stack: rust | command: cargo test -q tc_dep_021_observability_role_allows_gateway_port_via_ufw_if_available --manifest-path src-tauri/Cargo.toml | result: pass | note: 静态断言 observability role 的 ufw 自愈逻辑存在
+
+### 37.4 Change Request Delta
+- 2026-03-14 16:58 +0800 修复完成：`Deploy` 与 `Enable API` 两条路径都会自动放行 relay 443，避免再次出现“服务正常但被 UFW 拦截导致 Dashboard 超时”的问题。
+
+## 38. Addendum (append-only)
+### 38.1 Execution Plan Delta
+- [x] p10-2-fix01 修复 Enable API 下 UFW 443 放行任务静默跳过
+
+### 38.2 Execution Log Delta
+- 2026-03-14 15:27 +0800 p10-2-fix01 started: 用户反馈“重跑 Enable API 后仍无 443 allow”；复盘发现 `ops-observability-gateway` 中 UFW 检测依赖固定路径，存在环境差异导致跳过执行风险。
+- 2026-03-14 15:27 +0800 p10-2-fix01 completed: 将 UFW 放行任务改为 `shell` 内部检测 `command -v ufw` 后执行 `ufw allow {{ ops_metrics_gateway_listen_port }}/tcp`，并设置 `failed_when: false`，确保历史环境执行更稳健、缺失 ufw 时不阻断流程。
+
+### 38.3 Validation Evidence Delta
+- TC-P10-012 | stack: ansible | command: rg -n "Allow telemetry gateway port in UFW when available|command -v ufw|ufw allow \\{\\{ ops_metrics_gateway_listen_port \\}\\}/tcp|failed_when: false" ansible/roles/ops-observability-gateway/tasks/main.yml | result: pass | note: Enable API 路径已改为运行时检测 + 放行
+- TC-P10-013 | stack: rust | command: cargo test -q tc_dep_021_observability_role_allows_gateway_port_via_ufw_if_available --manifest-path src-tauri/Cargo.toml | result: pass | note: 静态断言已更新为新实现
+
+### 38.4 Change Request Delta
+- 2026-03-14 15:27 +0800 修复完成：`Enable API` 的 443 放行逻辑不再依赖固定二进制路径，能在更多历史机器环境中稳定生效。
+
+## 39. Addendum (append-only)
+### 39.1 Execution Plan Delta
+- [x] p10-3 Dashboard 精简 + Observability 独立页面 + Catalog 驱动指标重构（S0012）
+
+### 39.2 Execution Log Delta
+- 2026-03-14 16:04 +0800 p10-3 started: 按 S0012 执行 UI 架构调整，目标是将 `Enable API / Rollback / 日志` 从 Dashboard 迁移到独立页面，并移除临时重部署入口。
+- 2026-03-14 16:04 +0800 p10-3 completed: 新增 `Telemetry API` 页面与侧边栏入口（`/telemetry`）；Dashboard 仅保留 GW 状态摘要与管理页跳转，删除临时入口与 observability 操作按钮/日志区。
+- 2026-03-14 16:04 +0800 p10-3 completed: `MonitorSnapshot` 与 relay raw 映射新增 catalog 核心字段（`slot_num/late_blocks/txs_in_mempool/mempool_bytes/forks/forging_enabled`），并将 Dashboard 展示分层为集群概览 + Resources + Connections + Chain & Tx。
+
+### 39.3 Validation Evidence Delta
+- TC-P10-014 | stack: ui | command: rg -n "TelemetryApi|/telemetry|Telemetry API|管理 API" src/App.tsx src/components/Layout.tsx src/components/Sidebar.tsx src/pages/Dashboard.tsx src/pages/TelemetryApi.tsx | result: pass | note: 独立 Telemetry API 页面、路由、导航与 Dashboard 轻量入口已生效
+- TC-P10-015 | stack: rust | command: rg -n "slot_num|late_blocks|txs_in_mempool|mempool_bytes|forks|forging_enabled|RELAY_TELEMETRY_FIELD_METRICS" src-tauri/src/commands/monitor.rs src/lib/types.ts src/pages/Dashboard.tsx | result: pass | note: 后端映射、前端类型与展示层已对齐 catalog 核心字段
+- TC-P10-016 | stack: rust | command: cargo test -q tc_mon_ --manifest-path src-tauri/Cargo.toml | result: pass | note: monitor 模块 27 项回归通过（新增字段映射单测通过）
+- TC-P10-017 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过，页面拆分与 Dashboard 重排无编译回归
+- TC-P10-018 | stack: rust | command: cargo test -q tc_obs_002_observability_commands_registered_and_telemetry_page_has_triggers --manifest-path src-tauri/Cargo.toml | result: pass | note: 静态断言已更新为“Telemetry API 页面承载观测操作”
+
+### 39.4 Change Request Delta
+- 2026-03-14 16:04 +0800 交付完成：Dashboard 已回归“监控展示主职责”；Enable API 管理能力迁移至独立页面；指标展示按 telemetry catalog 核心字段扩展并完成前后端联动。
+
+## 40. Addendum (append-only)
+### 40.1 Execution Plan Delta
+- [x] p10-4 Dashboard 全量轮询更新（前台 15s / 后台 60s）
+
+### 40.2 Execution Log Delta
+- 2026-03-14 18:01 +0800 p10-4 started: 按 S0013 实施 Dashboard 轮询改造，目标覆盖 monitor 快照、KES 状态、近期任务日志、GW 状态，并在窗口可见性变化时动态调频。
+- 2026-03-14 18:01 +0800 p10-4 completed: `monitorStore` 新增 `setMonitorStorePollingInterval(intervalSeconds)`，复用 `monitor_start_polling` 的可重入重启能力，无需新增后端 API。
+- 2026-03-14 18:01 +0800 p10-4 completed: Dashboard 新增统一 `refreshDashboardData()`（`Promise.allSettled` + in-flight 防重入），并接入 `visibilitychange/focus`：前台 15s、后台 60s，回前台立即触发一次 `refreshDashboardData + refreshMonitorStore`。
+- 2026-03-14 18:01 +0800 p10-4 completed: 刷新失败不再清空旧数据；新增轻量错误提示 `auxRefreshError`，保留自动重试语义。
+
+### 40.3 Validation Evidence Delta
+- TC-P10-019 | stack: ui | command: rg -n "refreshDashboardData|Promise.allSettled|visibilitychange|setMonitorStorePollingInterval|refreshMonitorStore|foregroundIntervalSeconds|backgroundIntervalSeconds" src/pages/Dashboard.tsx src/lib/monitorStore.ts | result: pass | note: Dashboard 全量轮询编排、可见性调频和 monitor 动态间隔已接入
+- TC-P10-020 | stack: rust | command: cargo test -q tc_obs_012_dashboard_polling_orchestration_supports_visibility_interval_switch --manifest-path src-tauri/Cargo.toml | result: pass | note: 静态断言覆盖 Dashboard 轮询关键机制
+- TC-P10-021 | stack: rust | command: cargo test -q tc_mon_ --manifest-path src-tauri/Cargo.toml | result: pass | note: monitor 模块回归通过，telemetry 语义未退化
+- TC-P10-022 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过，轮询改造无编译回归
+
+### 40.4 Change Request Delta
+- 2026-03-14 18:01 +0800 交付完成：Dashboard 已改为全量持续轮询；前台 15 秒、后台 60 秒、回前台即时补拉生效，且保持缓存/降级展示语义不变。
+
+## 41. Addendum (append-only)
+### 41.1 Execution Plan Delta
+- [x] p10-5 Dashboard 再精简：仅保留集群卡片视图（移除节点详情/Resources 面板）
+
+### 41.2 Execution Log Delta
+- 2026-03-14 19:28 +0800 p10-5 started: 按 S0014（再精简版）执行 Dashboard 信息架构收敛，目标为“首屏即全量关键状态”。
+- 2026-03-14 19:28 +0800 p10-5 completed: Dashboard 移除独立「节点详情」区块（含 Resources/Connections/Chain&Tx），保留「Telemetry 状态条 + 集群概览卡 + 近期日志」。
+- 2026-03-14 19:28 +0800 p10-5 completed: 节点卡新增资源直出（`CPU(sys)`、`Mem(RSS)`，`Mem(Live)` 以 tooltip 呈现）；`tip diff` 与 RTT/占比分布已移除。
+- 2026-03-14 19:28 +0800 p10-5 completed: 口径修复落地：`KES remain` 改为 `remaining_days` 主显示；`Sync` 新增 `slotInEpoch/epochSlots` 回退计算；`GW` 改为 runtime 可用度（`relay-api` 来源节点数/快照总数）；`collected_at` 按 UTC 解析修复 8h 偏差。
+- 2026-03-14 19:28 +0800 p10-5 completed: monitor 模型新增 `slot_in_epoch` 字段，并完成 raw 指标映射 `cardano_node_metrics_slotInEpoch_int -> slot_in_epoch`（Rust + TS 对齐）。
+
+### 41.3 Validation Evidence Delta
+- TC-P10-023 | stack: rust | command: rg -n "slot_in_epoch|cardano_node_metrics_slotInEpoch_int" src-tauri/src/commands/monitor.rs src/lib/types.ts src/pages/Dashboard.tsx | result: pass | note: 后端映射、前端类型与 Sync 回退展示字段已接入
+- TC-P10-024 | stack: ui | command: ! rg -n "节点详情|Connections & Peers|tip diff" src/pages/Dashboard.tsx | result: pass | note: Dashboard 已移除节点详情区、Connections 模块与 tip diff 展示
+- TC-P10-025 | stack: ui | command: rg -n "CPU \(sys\)|Mem \(RSS\)|Mem \(Live\)|GW \{gatewayRuntimeSummary\}|Gateway runtime" src/pages/Dashboard.tsx | result: pass | note: 卡片资源直出与 GW runtime 口径已生效
+- TC-P10-026 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过
+- TC-P10-027 | stack: rust | command: cargo test -q tc_mon_ --manifest-path src-tauri/Cargo.toml | result: pass | note: monitor 27 项回归通过（含新增字段映射）
+
+### 41.4 Change Request Delta
+- 2026-03-14 19:28 +0800 交付完成：Dashboard 已切换为“卡片主视图”并完成关键口径修复，首屏只保留决策所需核心监控信息。
+
+## 42. Addendum (append-only)
+### 42.1 Execution Plan Delta
+- [x] p10-5-fix01 集群卡片视觉分区优化（Chain 与 Runtime 分离）
+
+### 42.2 Execution Log Delta
+- 2026-03-14 19:54 +0800 p10-5-fix01 started: 按反馈优化卡片信息层次，解决 Block/Epoch 与 CPU/Mem 维度混杂问题。
+- 2026-03-14 19:54 +0800 p10-5-fix01 completed: 节点卡改为双分区布局：`Chain` 区聚焦 Block/Epoch/Sync（含进度条），`Runtime` 区聚焦 CPU(sys)/Mem(RSS) 并用浅色容器区分维度。
+- 2026-03-14 19:54 +0800 p10-5-fix01 completed: 风险信息改为顶部悬挂标签（`late` + `KES`），`Mem(Live)` 下沉为 tooltip，BP 继续保留 `forging` 状态与 `立即 Rotate` 行为。
+
+### 42.3 Validation Evidence Delta
+- TC-P10-028 | stack: ui | command: rg -n "lateBlocksTone|Runtime|Block|Epoch|Sync|CPU \(sys\)|Mem \(RSS\)|Mem \(Live\)|forging" src/pages/Dashboard.tsx | result: pass | note: 卡片双分区与风险/资源信息分层已落地
+- TC-P10-029 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过，布局重排无编译回归
+
+### 42.4 Change Request Delta
+- 2026-03-14 19:54 +0800 交付完成：集群概览卡已按“链状态 vs 资源状态”双维度分区展示，重点信息层次更清晰。
+
+## 43. Addendum (append-only)
+### 43.1 Execution Plan Delta
+- [x] p10-5-fix02 集群卡片升级为 2x2 复合布局（Chain 主区 / Runtime 辅区 / 风险挂件 / icon 元数据）
+
+### 43.2 Execution Log Delta
+- 2026-03-14 20:04 +0800 p10-5-fix02 started: 按确认方案重构卡片空间利用与层级，重点提升横向利用率并降低纵向堆叠。
+- 2026-03-14 20:04 +0800 p10-5-fix02 completed: 卡片主体改为 2x2：左侧 Chain 主区（Block/Epoch/Sync），右侧 Runtime 辅区（CPU/Mem RSS pills）。
+- 2026-03-14 20:04 +0800 p10-5-fix02 completed: 风险信息（Late/KES）迁移为右上角挂件；底部元数据改为 source/sample/note 纯 icon + tooltip。
+
+### 43.3 Validation Evidence Delta
+- TC-P10-030 | stack: ui | command: rg -n "MetaIconTip|absolute right-3 top-3|grid-cols-\[minmax\(0,1\.85fr\)_minmax\(0,1fr\)\]|Runtime|late .*KES|slot:" src/pages/Dashboard.tsx | result: pass | note: 2x2 复合布局、风险挂件与 icon 元数据已落地
+- TC-P10-031 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过
+
+### 43.4 Change Request Delta
+- 2026-03-14 20:04 +0800 交付完成：集群概览卡片已切换到 2x2 复合布局，视觉层次和空间效率显著提升。
+
+## 44. Addendum (append-only)
+### 44.1 Execution Plan Delta
+- [x] p10-5-fix03 集群卡片改为“>=3 张横向滚动卡轨”并加入最小宽度约束
+
+### 44.2 Execution Log Delta
+- 2026-03-14 20:09 +0800 p10-5-fix03 started: 按反馈修复卡片宽度利用不足问题，目标是避免 3 列硬切导致卡片过窄。
+- 2026-03-14 20:09 +0800 p10-5-fix03 completed: 当卡片数量 `>=3` 时，切换为横向滚动卡轨（snap + overflow-x）；当 `<3` 时保持常规网格。
+- 2026-03-14 20:09 +0800 p10-5-fix03 completed: 为单卡设置最小宽度与断点约束（`min-w` + 宽度上限），并对 Runtime pills 增加 `whitespace-nowrap`，降低遮挡与折行概率。
+
+### 44.3 Validation Evidence Delta
+- TC-P10-032 | stack: ui | command: rg -n "useHorizontalCardRail|snap-x|overflow-x-auto|min-w-\[360px\]|sm:min-w-\[400px\]|max-w-\[560px\]|whitespace-nowrap" src/pages/Dashboard.tsx | result: pass | note: 横向滚动卡轨、最小宽度与防折行约束已生效
+- TC-P10-033 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过
+
+### 44.4 Change Request Delta
+- 2026-03-14 20:09 +0800 交付完成：集群卡片在多节点场景下改为横向滚动，宽度利用和可读性优于固定三列。
+
+## 45. Addendum (append-only)
+### 45.1 Execution Plan Delta
+- [x] p10-5-fix04 集群卡片细节对齐（移除 Rotate/cluster 标签，状态字段收敛）
+
+### 45.2 Execution Log Delta
+- 2026-03-14 20:45 +0800 p10-5-fix04 started: 按用户反馈收敛卡片信息噪音与对齐问题。
+- 2026-03-14 20:45 +0800 p10-5-fix04 completed: BP 卡移除 `立即 Rotate` 按钮；Epoch 旁移除 `cluster epoch` 标签；`forging` 字段移除。
+- 2026-03-14 20:45 +0800 p10-5-fix04 completed: `slot` 与 `KES remain` 上移到左侧节点状态字段；状态行字体统一为同一字号体系。
+- 2026-03-14 20:45 +0800 p10-5-fix04 completed: 底部元数据 icon 区改为右下角对齐，提升卡片基线一致性。
+
+### 45.3 Validation Evidence Delta
+- TC-P10-034 | stack: ui | command: rg -n "KES remain|slot \{|justify-end gap-1.5|forging|立即 Rotate|cluster \{clusterEpoch\}" src/pages/Dashboard.tsx | result: pass | note: 目标字段位置与移除项已按要求调整
+- TC-P10-035 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过
+
+### 45.4 Change Request Delta
+- 2026-03-14 20:45 +0800 交付完成：卡片信息层级按反馈完成精简，状态字段与底部元数据对齐得到修复。
+
+## 46. Addendum (append-only)
+### 46.1 Execution Plan Delta
+- [x] p10-5-fix05 修复 Dashboard 主区域横向滚动条外溢
+
+### 46.2 Execution Log Delta
+- 2026-03-14 20:47 +0800 p10-5-fix05 started: 用户反馈右侧 Dashboard 区域出现横向滚动条，影响整体观感。
+- 2026-03-14 20:47 +0800 p10-5-fix05 completed: 为 Dashboard 外层与集群概览容器增加 `overflow-x-hidden`，阻断主区域横向溢出。
+- 2026-03-14 20:47 +0800 p10-5-fix05 completed: 多卡卡轨仍保留内部横向滚动能力，同时隐藏滚动条视觉（scrollbar hidden）。
+
+### 46.3 Validation Evidence Delta
+- TC-P10-036 | stack: ui | command: rg -n "overflow-x-hidden|scrollbar-width:none|\[&::-webkit-scrollbar\]:hidden" src/pages/Dashboard.tsx | result: pass | note: 主区域横向溢出已限制，卡轨滚动条视觉已隐藏
+- TC-P10-037 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过
+
+### 46.4 Change Request Delta
+- 2026-03-14 20:47 +0800 交付完成：Dashboard 主区域不再出现横向滚动条，横向滚动仅保留在多卡卡轨内部。
+
+## 47. Addendum (append-only)
+### 47.1 Execution Plan Delta
+- [x] p10-5-fix06 修复集群概览区域纵向滚动条
+
+### 47.2 Execution Log Delta
+- 2026-03-14 20:48 +0800 p10-5-fix06 started: 用户反馈集群概览区域出现纵向滚动条。
+- 2026-03-14 20:48 +0800 p10-5-fix06 completed: 卡轨容器增加 `overflow-y-hidden`，防止卡片阴影/容器内边距导致 Y 轴滚动条被触发。
+
+### 47.3 Validation Evidence Delta
+- TC-P10-038 | stack: ui | command: rg -n "overflow-x-auto overflow-y-hidden" src/pages/Dashboard.tsx | result: pass | note: 卡轨容器已限制 Y 轴溢出
+- TC-P10-039 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过
+
+### 47.4 Change Request Delta
+- 2026-03-14 20:48 +0800 交付完成：集群概览区域纵向滚动条已消除。
+
+## 48. Addendum (append-only)
+### 48.1 Execution Plan Delta
+- [x] p10-5-fix07 彻底修复集群概览纵向滚动条（分离卡轨/网格容器）
+
+### 48.2 Execution Log Delta
+- 2026-03-14 20:50 +0800 p10-5-fix07 started: 用户反馈 p10-5-fix06 后问题仍在，说明仅增加 `overflow-y-hidden` 不足以覆盖容器模式切换造成的溢出副作用。
+- 2026-03-14 20:50 +0800 p10-5-fix07 completed: 将集群概览卡容器拆分为两套分支：`>=3` 卡片使用独立横向卡轨容器，`<3` 使用独立网格容器，避免同一容器复用时出现 Y 轴滚动状态残留。
+- 2026-03-14 20:50 +0800 p10-5-fix07 completed: 横向卡轨分支仅保留 `overflow-x-auto` 语义，网格分支不参与滚动容器逻辑，减少纵向滚动条触发条件。
+
+### 48.3 Validation Evidence Delta
+- TC-P10-040 | stack: ui | command: rg -n "useHorizontalCardRail \? \(|overflow-x-auto overflow-y-hidden|grid gap-3 p-4 md:grid-cols-2" src/pages/Dashboard.tsx | result: pass | note: 卡轨/网格容器已拆分为独立分支
+- TC-P10-041 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过
+
+### 48.4 Change Request Delta
+- 2026-03-14 20:50 +0800 交付完成：集群概览区域纵向滚动条问题按容器分离方式修复。
+
+## 49. Addendum (append-only)
+### 49.1 Execution Plan Delta
+- [x] p10-5-fix08 修复集群概览“仍有纵向滚动条”（tooltip 溢出导致滚动计算）
+
+### 49.2 Execution Log Delta
+- 2026-03-14 21:19 +0800 p10-5-fix08 started: 用户反馈在 p10-5-fix07 后纵向滚动条仍存在，需继续定位非容器级溢出来源。
+- 2026-03-14 21:19 +0800 p10-5-fix08 completed: 将集群概览相关 tooltip 从“`opacity:0` 隐藏”改为“`display:none`（`hidden`）+ hover/focus 显示”，避免未显示 tooltip 仍参与 scrollable overflow 计算。
+- 2026-03-14 21:19 +0800 p10-5-fix08 completed: 同步覆盖 `TooltipBadge` / `InlineInfoTip` / `MetaIconTip` / Telemetry 说明 tooltip，统一消除隐藏态绝对定位元素造成的 Y 轴外溢。
+
+### 49.3 Validation Evidence Delta
+- TC-P10-042 | stack: ui | command: rg -n "role=\"tooltip\"|hidden .*group-hover:block|group-focus-visible:block" src/pages/Dashboard.tsx | result: pass | note: 所有 tooltip 已切换为 display none 默认态
+- TC-P10-043 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过
+
+### 49.4 Change Request Delta
+- 2026-03-14 21:19 +0800 交付完成：修复集群概览区隐藏 tooltip 触发的纵向溢出，纵向滚动条触发条件进一步收敛。
+
+## 50. Addendum (append-only)
+### 50.1 Execution Plan Delta
+- [x] p10-5-fix09 Monitor 前端状态去抖：Telemetry 刷新改为静默请求，不在请求前重置 phase/status
+
+### 50.2 Execution Log Delta
+- 2026-03-14 21:46 +0800 p10-5-fix09 started: 用户反馈每次调用 telemetry 接口前端状态被重置，影响连续观测体验。
+- 2026-03-14 21:46 +0800 p10-5-fix09 completed: 移除 `refreshMonitorStore()` 请求前的 `setState({ status: "Refreshing...", telemetryPhase: "syncing_live" })`，改为仅在请求成功/失败后更新状态。
+- 2026-03-14 21:46 +0800 p10-5-fix09 completed: 保持 API-only 轮询链路不变，避免轮询 tick 触发 UI 状态回退/闪烁。
+
+### 50.3 Validation Evidence Delta
+- TC-P10-044 | stack: ui | command: rg -n "export async function refreshMonitorStore|Refreshing live telemetry in background|telemetryPhase: \"syncing_live\"" src/lib/monitorStore.ts | result: pass | note: refresh 入口已不在请求前重置 phase/status
+- TC-P10-045 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过
+
+### 50.4 Change Request Delta
+- 2026-03-14 21:46 +0800 交付完成：Telemetry 轮询刷新改为静默模式，前端状态不再在每次请求前被重置。

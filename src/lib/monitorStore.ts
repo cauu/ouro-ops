@@ -175,6 +175,28 @@ export async function startMonitorStore(intervalSeconds = 30): Promise<void> {
   }
 }
 
+export async function setMonitorStorePollingInterval(intervalSeconds: number): Promise<void> {
+  await ensureEventListeners();
+  if (!started) {
+    return;
+  }
+  try {
+    await monitorStartPolling(undefined, intervalSeconds);
+    setState({ polling: true });
+  } catch (error) {
+    setState({
+      status:
+        state.snapshots.length > 0
+          ? "Live telemetry unavailable; showing cached data and retrying."
+          : "Live telemetry unavailable; retrying.",
+      polling: false,
+      telemetryPhase: "degraded",
+      usingCachedData: state.snapshots.length > 0,
+      lastError: String(error),
+    });
+  }
+}
+
 export async function refreshMonitorStore(): Promise<void> {
   setState({
     status: "Refreshing live telemetry in background...",

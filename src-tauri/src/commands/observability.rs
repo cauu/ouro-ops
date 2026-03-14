@@ -253,6 +253,33 @@ fn resolve_target_relays(
     Ok(selected)
 }
 
+fn build_pool_scrape_targets(conn: &Connection) -> Result<Vec<Value>, AppError> {
+    let pool =
+        pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
+    let mut machines: Vec<MachineRow> = repo_machine_list(conn, None, Some(pool.network.as_str()))?
+        .into_iter()
+        .filter(|machine| machine.pool_id == pool.id)
+        .filter(|machine| machine.role == "relay" || machine.role == "bp")
+        .collect();
+    if machines.is_empty() {
+        return Err(AppError::Internal(
+            "observability operation requires at least one relay/bp in current pool".into(),
+        ));
+    }
+    machines.sort_by_key(|machine| machine.sort_order);
+    Ok(machines
+        .into_iter()
+        .map(|machine| {
+            json!({
+                "target": format!("{}:12798", machine.ip),
+                "node": machine.name,
+                "role": machine.role,
+                "host_ip": machine.ip
+            })
+        })
+        .collect())
+}
+
 fn build_relay_inventory(relays: &[MachineRow]) -> Value {
     let mut hostvars = serde_json::Map::new();
     let mut relay_hosts = Vec::new();
@@ -518,17 +545,20 @@ fn run_observability_worker(
     };
     let inventory = build_relay_inventory(&relays);
     let extra_vars = if task_type == TASK_TYPE_BOOTSTRAP {
-        let (username, password) = {
+        let (username, password, scrape_targets) = {
             let db_state = app_handle.state::<DbState>();
             let conn = db_state
                 .0
                 .lock()
                 .map_err(|_| AppError::Internal("lock".into()))?;
-            ensure_relay_telemetry_credentials(&conn)?
+            let (username, password) = ensure_relay_telemetry_credentials(&conn)?;
+            let scrape_targets = build_pool_scrape_targets(&conn)?;
+            (username, password, scrape_targets)
         };
         json!({
             "ops_metrics_basic_auth_username": username,
-            "ops_metrics_basic_auth_password": password
+            "ops_metrics_basic_auth_password": password,
+            "ops_metrics_scrape_targets": scrape_targets
         })
     } else {
         json!({})
@@ -707,7 +737,7 @@ pub async fn observability_gateway_status(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::run_migrations;
+    use crate::db::{machine_insert, pool_insert, run_migrations};
     use rusqlite::Connection;
 
     #[test]
@@ -753,5 +783,42 @@ mod tests {
             .expect("insecure exists");
         assert_eq!(saved_password, password);
         assert_eq!(saved_insecure, "true");
+    }
+
+    #[test]
+    fn tc_obs_004_build_pool_scrape_targets_contains_bp_and_relays() {
+        let conn = Connection::open_in_memory().expect("open memory db");
+        run_migrations(&conn).expect("run migrations");
+        let pool_id = pool_insert(&conn, "TICK", "mainnet", None, None).expect("insert pool");
+        machine_insert(
+            &conn,
+            pool_id,
+            "relay-1",
+            "10.0.0.10",
+            22,
+            "ubuntu",
+            "relay",
+            None,
+        )
+        .expect("insert relay");
+        machine_insert(
+            &conn,
+            pool_id,
+            "bp-1",
+            "10.0.0.20",
+            22,
+            "ubuntu",
+            "bp",
+            None,
+        )
+        .expect("insert bp");
+
+        let targets = build_pool_scrape_targets(&conn).expect("targets");
+        assert_eq!(targets.len(), 2);
+        assert_eq!(targets[0]["target"], "10.0.0.10:12798");
+        assert_eq!(targets[0]["node"], "relay-1");
+        assert_eq!(targets[1]["target"], "10.0.0.20:12798");
+        assert_eq!(targets[1]["node"], "bp-1");
+        assert_eq!(targets[1]["role"], "bp");
     }
 }

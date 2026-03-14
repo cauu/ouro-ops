@@ -8,6 +8,7 @@ import DeployWizard from "./pages/DeployWizard";
 import KesManager from "./pages/KesManager";
 import Settings from "./pages/Settings";
 import SetupWizard from "./pages/SetupWizard";
+import TelemetryApi from "./pages/TelemetryApi";
 import UpgradeWizard from "./pages/UpgradeWizard";
 
 function LoadingScreen() {
@@ -66,6 +67,7 @@ function App() {
           }
         />
         <Route path="/kes" element={pool ? <KesManager poolTicker={pool.ticker} /> : null} />
+        <Route path="/telemetry" element={pool ? <TelemetryApi /> : null} />
         <Route path="/deploy" element={pool ? <DeployWizard pool={pool} /> : null} />
         <Route path="/upgrade" element={pool ? <UpgradeWizard poolTicker={pool.ticker} /> : null} />
         <Route

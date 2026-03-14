@@ -320,8 +320,11 @@ export interface MonitorSnapshot {
   collected_at: string;
   note: string | null;
   epoch: number | null;
+  slot_num: number | null;
+  slot_in_epoch: number | null;
   sync_percent: number | null;
   tip_diff_blocks: number | null;
+  late_blocks: number | null;
   peer_count: number | null;
   cpu_sys_percent: number | null;
   mem_live_bytes: number | null;
@@ -329,6 +332,10 @@ export interface MonitorSnapshot {
   mem_heap_bytes: number | null;
   gc_minor_total: number | null;
   gc_major_total: number | null;
+  txs_in_mempool: number | null;
+  mempool_bytes: number | null;
+  forks: number | null;
+  forging_enabled: number | null;
   prometheus_source: string | null;
   prometheus_note: string | null;
 }

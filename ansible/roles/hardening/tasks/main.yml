@@ -30,6 +30,13 @@
   changed_when: false
   when: role == "relay"
 
+- name: Allow relay telemetry gateway port for relay hosts
+  command: "ufw allow {{ ops_metrics_gateway_listen_port | default(443) }}/tcp"
+  changed_when: false
+  when:
+    - role == "relay"
+    - enable_ops_observability_gateway | default(true) | bool
+
 - name: Allow relay p2p ingress for BP from trusted relay ips
   command: "ufw allow from {{ item }} to any port 3001 proto tcp"
   loop: "{{ trusted_relay_ips | default([]) }}"
@@ -39,4 +46,3 @@
 - name: Enable UFW
   command: ufw --force enable
   changed_when: false
-

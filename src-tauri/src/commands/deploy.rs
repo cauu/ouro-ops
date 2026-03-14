@@ -385,6 +385,44 @@ fn build_inventory(conn: &Connection, machine_ids: &[i64]) -> Result<Value, AppE
     }))
 }
 
+fn build_pool_scrape_targets(
+    conn: &Connection,
+    machine_ids: &[i64],
+) -> Result<Vec<Value>, AppError> {
+    let selected = fetch_selected_machines(conn, machine_ids)?;
+    let pool_id = selected[0].pool_id;
+    if selected.iter().any(|m| m.pool_id != pool_id) {
+        return Err(AppError::Internal(
+            "all selected machines must belong to one pool".into(),
+        ));
+    }
+    let pool =
+        pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
+    let mut all_pool_machines: Vec<MachineRow> =
+        repo_machine_list(conn, None, Some(pool.network.as_str()))?
+            .into_iter()
+            .filter(|m| m.pool_id == pool_id)
+            .filter(|m| m.role == "relay" || m.role == "bp")
+            .collect();
+    if all_pool_machines.is_empty() {
+        return Err(AppError::Internal(
+            "deploy requires at least one relay/bp target for telemetry scrape".into(),
+        ));
+    }
+    all_pool_machines.sort_by_key(|m| m.sort_order);
+    Ok(all_pool_machines
+        .into_iter()
+        .map(|m| {
+            json!({
+                "target": format!("{}:12798", m.ip),
+                "node": m.name,
+                "role": m.role,
+                "host_ip": m.ip
+            })
+        })
+        .collect())
+}
+
 fn get_task_row(conn: &Connection, task_id: &str) -> Result<Option<TaskRow>, AppError> {
     let mut stmt = conn.prepare(
         "SELECT id, task_type, status, payload, error_msg, started_at, finished_at, created_at
@@ -645,13 +683,15 @@ fn run_deploy_worker(
     };
 
     let playbook = deploy_playbook_path()?;
-    let (telemetry_username, telemetry_password) = {
+    let (telemetry_username, telemetry_password, telemetry_scrape_targets) = {
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
             .lock()
             .map_err(|_| AppError::Internal("lock".into()))?;
-        ensure_relay_telemetry_credentials(&conn)?
+        let (username, password) = ensure_relay_telemetry_credentials(&conn)?;
+        let scrape_targets = build_pool_scrape_targets(&conn, &payload.machine_ids)?;
+        (username, password, scrape_targets)
     };
     let mut extra_vars = build_extra_vars(payload);
     if let Some(object) = extra_vars.as_object_mut() {
@@ -662,6 +702,10 @@ fn run_deploy_worker(
         object.insert(
             "ops_metrics_basic_auth_password".into(),
             Value::String(telemetry_password),
+        );
+        object.insert(
+            "ops_metrics_scrape_targets".into(),
+            Value::Array(telemetry_scrape_targets),
         );
     }
     let sidecar_state = {
@@ -942,6 +986,21 @@ mod tests {
                 .len()
                 >= 2
         );
+    }
+
+    #[test]
+    fn tc_dep_023_build_pool_scrape_targets_contains_bp_and_relays() {
+        let conn = new_db();
+        let (relay_1, relay_2, bp_1) = seed_pool_with_nodes(&conn);
+        let targets =
+            build_pool_scrape_targets(&conn, &[relay_1, relay_2, bp_1]).expect("scrape targets");
+        assert_eq!(targets.len(), 3);
+        assert_eq!(targets[0]["node"], "relay-1");
+        assert_eq!(targets[0]["role"], "relay");
+        assert_eq!(targets[1]["node"], "relay-2");
+        assert_eq!(targets[2]["node"], "bp-1");
+        assert_eq!(targets[2]["role"], "bp");
+        assert_eq!(targets[2]["target"], "10.0.0.5:12798");
     }
 
     #[test]

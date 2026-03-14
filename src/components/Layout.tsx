@@ -41,6 +41,14 @@ function toolbarContextFromPath(pathname: string): ToolbarContext {
       statusTone: "warn",
     };
   }
+  if (pathname === "/telemetry") {
+    return {
+      section: "Operations",
+      title: "Telemetry API",
+      status: "Managed",
+      statusTone: "info",
+    };
+  }
   if (pathname === "/deploy") {
     return {
       section: "Workspace",

@@ -8,33 +8,91 @@
     state: present
     update_cache: true
 
+- name: Allow telemetry gateway port in UFW when available
+  shell: |
+    if command -v ufw >/dev/null 2>&1; then
+      ufw allow {{ ops_metrics_gateway_listen_port }}/tcp
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
+  failed_when: false
+
 - name: Fail when Basic Auth password is missing
   fail:
     msg: "ops_metrics_basic_auth_password is required"
   when: (ops_metrics_basic_auth_password | default('') | trim | length) == 0
+
+- name: Detect nginx runtime user from nginx.conf
+  shell: |
+    set -euo pipefail
+    awk '/^\s*user\s+/{gsub(/;/, "", $2); print $2; exit}' /etc/nginx/nginx.conf
+  args:
+    executable: /bin/bash
+  register: ops_metrics_nginx_user_detect
+  changed_when: false
+  failed_when: false
+
+- name: Resolve effective nginx user for auth file permissions
+  set_fact:
+    ops_metrics_effective_nginx_user: >-
+      {{
+        (
+          ops_metrics_nginx_user
+          if (ops_metrics_nginx_user | default('') | trim | length) > 0
+          else (ops_metrics_nginx_user_detect.stdout | default('') | trim)
+        )
+        | default('www-data', true)
+      }}
+
+- name: Resolve effective nginx group for auth file permissions
+  set_fact:
+    ops_metrics_effective_nginx_group: >-
+      {{
+        (
+          ops_metrics_nginx_group
+          if (ops_metrics_nginx_group | default('') | trim | length) > 0
+          else ops_metrics_effective_nginx_user
+        )
+        | default('www-data', true)
+      }}
 
 - name: Ensure ouro-ops auth directory exists
   file:
     path: /etc/ouro-ops
     state: directory
     owner: root
-    group: root
+    group: "{{ ops_metrics_effective_nginx_group }}"
     mode: "0750"
 
-- name: Detect cardano-node container IP for local Prometheus scrape
+- name: Build effective scrape targets from supplied topology
+  set_fact:
+    ops_metrics_effective_scrape_targets: "{{ ops_metrics_scrape_targets | default([]) }}"
+
+- name: Detect cardano-node container IP for fallback local scrape target
   shell: "docker inspect --format '{{\"{{\"}}range .NetworkSettings.Networks{{\"}}\"}}{{\"{{\"}}.IPAddress{{\"}}\"}}{{\"{{\"}}end{{\"}}\"}}' cardano-node"
   register: ops_metrics_cardano_container_ip
   changed_when: false
   failed_when: false
+  when: (ops_metrics_effective_scrape_targets | length) == 0
 
-- name: Fail when cardano-node container IP cannot be resolved
+- name: Fail when no scrape target can be resolved
   fail:
-    msg: "cardano-node container IP is unavailable; ensure cardano-node is running before enabling observability gateway"
-  when: (ops_metrics_cardano_container_ip.stdout | default('') | trim | length) == 0
+    msg: "No telemetry scrape target is available; provide ops_metrics_scrape_targets or ensure local cardano-node is running"
+  when:
+    - (ops_metrics_effective_scrape_targets | length) == 0
+    - (ops_metrics_cardano_container_ip.stdout | default('') | trim | length) == 0
 
-- name: Build local Prometheus scrape target
+- name: Build fallback scrape target from local cardano-node container
   set_fact:
-    ops_metrics_local_scrape_target: "{{ (ops_metrics_cardano_container_ip.stdout | trim) ~ ':12798' }}"
+    ops_metrics_effective_scrape_targets:
+      - target: "{{ (ops_metrics_cardano_container_ip.stdout | trim) ~ ':12798' }}"
+        node: "{{ inventory_hostname }}"
+        role: relay
+        host_ip: "{{ ansible_host | default(inventory_hostname) }}"
+  when:
+    - (ops_metrics_effective_scrape_targets | length) == 0
+    - (ops_metrics_cardano_container_ip.stdout | default('') | trim | length) > 0
 
 - name: Render local Prometheus config for telemetry gateway
   template:
@@ -166,7 +224,7 @@
   file:
     path: "{{ ops_metrics_htpasswd_path }}"
     owner: root
-    group: www-data
+    group: "{{ ops_metrics_effective_nginx_group }}"
     mode: "0640"
 
 - name: Render metrics gateway nginx config

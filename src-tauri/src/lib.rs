@@ -137,6 +137,13 @@ mod frontend_tests {
     }
 
     #[test]
+    fn tc_obs_011_monitor_collect_prometheus_metrics_is_api_only() {
+        let monitor = include_str!("commands/monitor.rs");
+        assert!(monitor.contains("fn collect_prometheus_metrics"));
+        assert!(!monitor.contains("let local_metrics = collect_local_prometheus_metrics"));
+    }
+
+    #[test]
     fn tc_fe_004_deploy_wizard_step_submit() {
         let app = include_str!("../../src/App.tsx");
         let deploy = include_str!("../../src/pages/DeployWizard.tsx");
@@ -635,17 +642,29 @@ mod frontend_tests {
     }
 
     #[test]
-    fn tc_obs_002_observability_commands_registered_and_dashboard_has_triggers() {
+    fn tc_obs_002_observability_commands_registered_and_telemetry_page_has_triggers() {
         let commands = include_str!("commands/mod.rs");
         let lib = include_str!("lib.rs");
         let dashboard = include_str!("../../src/pages/Dashboard.tsx");
+        let telemetry = include_str!("../../src/pages/TelemetryApi.tsx");
         assert!(commands.contains("pub mod observability;"));
         assert!(lib.contains("commands::observability::observability_gateway_status"));
         assert!(lib.contains("commands::observability::observability_bootstrap_start"));
         assert!(lib.contains("commands::observability::observability_rollback_start"));
-        assert!(dashboard.contains("Enable API"));
-        assert!(dashboard.contains("Rollback"));
+        assert!(telemetry.contains("Enable API"));
+        assert!(telemetry.contains("Rollback"));
+        assert!(dashboard.contains("管理 API"));
         assert!(dashboard.contains("observabilityGatewayStatus("));
+    }
+
+    #[test]
+    fn tc_obs_012_dashboard_polling_orchestration_supports_visibility_interval_switch() {
+        let dashboard = include_str!("../../src/pages/Dashboard.tsx");
+        assert!(dashboard.contains("refreshDashboardData"));
+        assert!(dashboard.contains("Promise.allSettled"));
+        assert!(dashboard.contains("setMonitorStorePollingInterval"));
+        assert!(dashboard.contains("visibilitychange"));
+        assert!(dashboard.contains("refreshMonitorStore"));
     }
 
     #[test]
@@ -663,6 +682,23 @@ mod frontend_tests {
         assert!(playbook.contains("enable_ops_observability_gateway | default(true) | bool"));
         assert!(playbook.contains("generated_metrics_basic_auth_password"));
         assert!(playbook.contains("name: ops-observability-gateway"));
+    }
+
+    #[test]
+    fn tc_dep_020_hardening_allows_relay_gateway_port_when_observability_enabled() {
+        let hardening = include_str!("../../ansible/roles/hardening/tasks/main.yml");
+        assert!(hardening.contains("Allow relay telemetry gateway port for relay hosts"));
+        assert!(hardening.contains("ufw allow {{ ops_metrics_gateway_listen_port | default(443) }}/tcp"));
+        assert!(hardening.contains("enable_ops_observability_gateway | default(true) | bool"));
+    }
+
+    #[test]
+    fn tc_dep_021_observability_role_allows_gateway_port_via_ufw_if_available() {
+        let role = include_str!("../../ansible/roles/ops-observability-gateway/tasks/main.yml");
+        assert!(role.contains("Allow telemetry gateway port in UFW when available"));
+        assert!(role.contains("if command -v ufw >/dev/null 2>&1; then"));
+        assert!(role.contains("ufw allow {{ ops_metrics_gateway_listen_port }}/tcp"));
+        assert!(role.contains("failed_when: false"));
     }
 
     #[test]
