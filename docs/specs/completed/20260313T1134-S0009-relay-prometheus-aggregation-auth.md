@@ -1,12 +1,12 @@
 # Phase 6 Relay Aggregated Prometheus API & Auth Delivery
 
 Spec-ID: S0009
-状态: active
+状态: completed
 创建时间: 2026-03-13 11:34 +0800
 开始时间: 2026-03-13 11:34 +0800
-完成时间:
+完成时间: 2026-03-15 23:23 +0800
 前一个 Spec-ID: S0008
-结项原因:
+结项原因: replaced
 
 ## 1. Requirement Details
 - Background

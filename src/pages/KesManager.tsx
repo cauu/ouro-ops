@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import TaskLogStream from "../components/TaskLogStream";
 import { formatTaskError, toUserError } from "../lib/errors";
+import { useMonitorStore } from "../lib/monitorStore";
 import {
   kesGenerate,
   kesImportCert,
@@ -48,6 +49,7 @@ interface KesManagerProps {
 }
 
 export default function KesManager({ poolTicker }: KesManagerProps) {
+  const { snapshots } = useMonitorStore();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statuses, setStatuses] = useState<KesStatus[]>([]);
@@ -59,6 +61,11 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
   const [pushConfirmValue, setPushConfirmValue] = useState("");
   const [selectedMachineId, setSelectedMachineId] = useState<number | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
+
+  const selectedSnapshot = useMemo(
+    () => (selectedMachineId != null ? snapshots.find((s) => s.machine_id === selectedMachineId) ?? null : null),
+    [snapshots, selectedMachineId],
+  );
 
   const loadKes = async () => {
     setLoading(true);
@@ -145,6 +152,19 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
     () => sortedStatuses.find((row) => row.machine_id === selectedMachineId) ?? null,
     [selectedMachineId, sortedStatuses],
   );
+
+  const displaySeverity = useMemo(() => {
+    const approxDays =
+      selectedSnapshot?.kes_remaining_periods != null
+        ? selectedSnapshot.kes_remaining_periods * 1.5
+        : null;
+    if (approxDays != null) {
+      if (approxDays > 10) return "healthy";
+      if (approxDays >= 3) return "warning";
+      return "critical";
+    }
+    return selectedStatus?.severity ?? "warning";
+  }, [selectedSnapshot?.kes_remaining_periods, selectedStatus?.severity]);
 
   const selectedRequest = useMemo(
     () => (selectedMachineId == null ? undefined : requests[selectedMachineId]),
@@ -323,20 +343,30 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
               <div className="grid gap-3 text-sm md:grid-cols-4">
                 <div className="rounded-md bg-slate-100/80 px-3 py-2">
                   <p className="text-xs text-slate-500">Current Period</p>
-                  <p className="font-semibold text-slate-900">{selectedStatus.kes_period_current ?? "--"}</p>
+                  <p className="font-semibold text-slate-900">
+                    {selectedSnapshot?.kes_current_period ?? selectedStatus.kes_period_current ?? "--"}
+                  </p>
                 </div>
                 <div className="rounded-md bg-slate-100/80 px-3 py-2">
                   <p className="text-xs text-slate-500">Max Period</p>
-                  <p className="font-semibold text-slate-900">{selectedStatus.kes_period_max ?? "--"}</p>
+                  <p className="font-semibold text-slate-900">
+                    {selectedSnapshot?.kes_expiry_period ?? selectedStatus.kes_period_max ?? "--"}
+                  </p>
                 </div>
                 <div className="rounded-md bg-slate-100/80 px-3 py-2">
                   <p className="text-xs text-slate-500">Remaining Days</p>
-                  <p className="font-semibold text-slate-900">{selectedStatus.remaining_days ?? "--"}</p>
+                  <p className="font-semibold text-slate-900">
+                    {selectedSnapshot?.kes_remaining_periods != null
+                      ? `约 ${Number((selectedSnapshot.kes_remaining_periods * 1.5).toFixed(1))}`
+                      : selectedStatus.remaining_days != null
+                        ? String(selectedStatus.remaining_days)
+                        : "--"}
+                  </p>
                 </div>
                 <div className="rounded-md bg-slate-100/80 px-3 py-2">
                   <p className="text-xs text-slate-500">Severity</p>
-                  <p className={`font-semibold uppercase ${severityTone(selectedStatus.severity)}`}>
-                    {selectedStatus.severity}
+                  <p className={`font-semibold uppercase ${severityTone(displaySeverity)}`}>
+                    {displaySeverity}
                   </p>
                 </div>
               </div>
@@ -502,11 +532,17 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                     </div>
                     <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
                       <span className="block text-slate-500">KES remain</span>
-                      <strong className="text-slate-900">{selectedStatus.remaining_days ?? "--"}d</strong>
+                      <strong className="text-slate-900">
+                        {selectedSnapshot?.kes_remaining_periods != null
+                          ? `约 ${Number((selectedSnapshot.kes_remaining_periods * 1.5).toFixed(1))}d`
+                          : selectedStatus.remaining_days != null
+                            ? `${selectedStatus.remaining_days}d`
+                            : "--"}
+                      </strong>
                     </div>
                     <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
                       <span className="block text-slate-500">BP health</span>
-                      <strong className="text-slate-900">{selectedStatus.severity === "critical" ? "risk" : "online"}</strong>
+                      <strong className="text-slate-900">{displaySeverity === "critical" ? "risk" : "online"}</strong>
                     </div>
                   </div>
                   {selectedTask && <TaskLogStream taskId={selectedTask.task_id} />}

@@ -62,6 +62,21 @@ fn kes_staging_dir(app_handle: &AppHandle, machine_id: i64) -> Result<PathBuf, A
     Ok(app_dir.join("kes").join(machine_id.to_string()))
 }
 
+fn resolve_cardano_cli_path() -> String {
+    const ENV_KEY: &str = "OURO_OPS_CARDANO_CLI_PATH";
+    let path = match std::env::var(ENV_KEY) {
+        Ok(p) => p.trim().to_string(),
+        Err(_) => return "cardano-cli".to_string(),
+    };
+    if path.is_empty() {
+        return "cardano-cli".to_string();
+    }
+    if Path::new(&path).is_file() {
+        return path;
+    }
+    "cardano-cli".to_string()
+}
+
 fn severity_for_remaining_days(remaining_days: Option<i64>) -> String {
     match remaining_days {
         Some(days) if days > 10 => "healthy".into(),
@@ -156,7 +171,15 @@ fn current_op_cert_counter(conn: &Connection, machine_id: i64) -> Result<i64, Ap
 }
 
 fn run_command_checked(program: &str, args: &[&str]) -> Result<(), AppError> {
-    let output = Command::new(program).args(args).output()?;
+    let output = Command::new(program).args(args).output().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            AppError::Internal(
+                "cardano-cli 未找到，请安装或在环境变量 OURO_OPS_CARDANO_CLI_PATH 中配置可执行路径。".into(),
+            )
+        } else {
+            AppError::Io(e)
+        }
+    })?;
     if output.status.success() {
         return Ok(());
     }
@@ -167,6 +190,7 @@ fn run_command_checked(program: &str, args: &[&str]) -> Result<(), AppError> {
 fn kes_generate_with_runner<F>(
     staging_dir: &Path,
     counter_value: i64,
+    cardano_cli_path: &str,
     run: F,
 ) -> Result<KesSignRequest, AppError>
 where
@@ -193,7 +217,7 @@ where
         .to_str()
         .ok_or_else(|| AppError::Internal("invalid kes.skey path".into()))?;
     run(
-        "cardano-cli",
+        cardano_cli_path,
         &[
             "node",
             "key-gen-KES",
@@ -478,8 +502,13 @@ pub async fn kes_generate(
     ensure_bp_machine(&conn, machine_id)?;
     let counter_value = current_op_cert_counter(&conn, machine_id)?;
     let staging_dir = kes_staging_dir(&app_handle, machine_id)?;
-    let mut sign_request =
-        kes_generate_with_runner(staging_dir.as_path(), counter_value, run_command_checked)?;
+    let cardano_cli = resolve_cardano_cli_path();
+    let mut sign_request = kes_generate_with_runner(
+        staging_dir.as_path(),
+        counter_value,
+        &cardano_cli,
+        run_command_checked,
+    )?;
     sign_request.machine_id = machine_id;
     audit_log_insert(
         &conn,
@@ -662,7 +691,7 @@ mod tests {
     #[test]
     fn tc_kes_002_generate_returns_sign_request_with_staging_paths() {
         let base = std::env::temp_dir().join(format!("ouro-kes-generate-{}", uuid::Uuid::new_v4()));
-        let request = kes_generate_with_runner(base.as_path(), 7, |_, args| {
+        let request = kes_generate_with_runner(base.as_path(), 7, "cardano-cli", |_, args| {
             let vkey = PathBuf::from(args[3]);
             let skey = PathBuf::from(args[5]);
             fs::create_dir_all(vkey.parent().expect("parent"))?;
