@@ -343,6 +343,9 @@ export interface MonitorSnapshot {
   late_blocks: number | null;
   peer_count: number | null;
   cpu_sys_percent: number | null;
+  kes_remaining_periods: number | null;
+  kes_current_period: number | null;
+  kes_expiry_period: number | null;
   mem_live_bytes: number | null;
   mem_rss_bytes: number | null;
   mem_heap_bytes: number | null;

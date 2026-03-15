@@ -115,6 +115,58 @@ function monitorSyncPercent(snapshot: MonitorSnapshot): number | null {
   return Number(Math.max(0, Math.min(100, raw)).toFixed(2));
 }
 
+function resolveBpKesDisplay(
+  snapshot: MonitorSnapshot,
+  bpKes: KesStatus | null | undefined,
+): { label: string; tip: string; severityClass: string } {
+  const telemetryRemainWindows = snapshot.kes_remaining_periods;
+  const fallbackRemainWindows =
+    bpKes?.kes_period_current != null && bpKes?.kes_period_max != null
+      ? Math.max(bpKes.kes_period_max - bpKes.kes_period_current, 0)
+      : null;
+  const remainWindows = telemetryRemainWindows ?? fallbackRemainWindows;
+  const approxDays =
+    remainWindows != null
+      ? Number((remainWindows * 1.5).toFixed(1))
+      : bpKes?.remaining_days ?? null;
+  const currentPeriod = snapshot.kes_current_period ?? bpKes?.kes_period_current ?? null;
+  const expiryPeriod = snapshot.kes_expiry_period ?? bpKes?.kes_period_max ?? null;
+
+  const tipParts: string[] = [];
+  if (remainWindows != null) {
+    tipParts.push(`窗口剩余 ${remainWindows}`);
+  }
+  if (approxDays != null) {
+    tipParts.push(`约 ${approxDays} 天`);
+  }
+  if (currentPeriod != null && expiryPeriod != null) {
+    tipParts.push(`period ${currentPeriod}/${expiryPeriod}`);
+  } else if (currentPeriod != null) {
+    tipParts.push(`current period ${currentPeriod}`);
+  } else if (expiryPeriod != null) {
+    tipParts.push(`expiry period ${expiryPeriod}`);
+  }
+  if (bpKes?.expiry_date) {
+    tipParts.push(`到期 ${bpKes.expiry_date}`);
+  }
+  if (tipParts.length === 0) {
+    tipParts.push("KES 剩余窗口数，建议提前完成 Rotate。");
+  }
+
+  const severityClass =
+    bpKes?.severity === "critical"
+      ? "text-rose-700"
+      : bpKes?.severity === "warning"
+        ? "text-amber-700"
+        : "text-slate-600";
+
+  return {
+    label: remainWindows != null ? `KES remain ${remainWindows}` : "KES remain --",
+    tip: tipParts.join(" · "),
+    severityClass,
+  };
+}
+
 function telemetryDotClass(behavior: string): string {
   switch (behavior) {
     case "syncing_live":
@@ -614,29 +666,7 @@ export default function Dashboard() {
                       ? snapshot.epoch - clusterEpoch
                       : null;
                   const progressWidth = Math.max(0, Math.min(100, syncPercent ?? 0));
-                  const kesRemainDays = isBp ? bpKes?.remaining_days ?? null : null;
-                  const kesRemainWindows =
-                    isBp && bpKes?.kes_period_current != null && bpKes?.kes_period_max != null
-                      ? Math.max(bpKes.kes_period_max - bpKes.kes_period_current, 0)
-                      : null;
-                  const kesLabel =
-                    kesRemainDays != null ? `KES remain ${kesRemainDays}d` : "KES remain --";
-                  const kesTipParts: string[] = [];
-                  if (kesRemainWindows != null) {
-                    kesTipParts.push(`窗口剩余 ${kesRemainWindows}`);
-                  }
-                  if (bpKes?.expiry_date) {
-                    kesTipParts.push(`到期 ${bpKes.expiry_date}`);
-                  }
-                  if (kesTipParts.length === 0) {
-                    kesTipParts.push("KES 剩余天数，建议提前完成 Rotate。");
-                  }
-                  const kesStatusClass =
-                    bpKes?.severity === "critical"
-                      ? "text-rose-700"
-                      : bpKes?.severity === "warning"
-                        ? "text-amber-700"
-                        : "text-slate-600";
+                  const bpKesDisplay = resolveBpKesDisplay(snapshot, bpKes);
 
                   return (
                     <article
@@ -673,8 +703,8 @@ export default function Dashboard() {
                           <span>{snapshot.status === "telemetry_unavailable" ? "offline" : "online"} · {telemetryStatusLabel(snapshot.status)}</span>
                           <span>slot {formatCounter(snapshot.slot_num)}</span>
                           {isBp && (
-                            <span className={kesStatusClass} title={kesTipParts.join(" · ")}>
-                              {kesLabel}
+                            <span className={bpKesDisplay.severityClass} title={bpKesDisplay.tip}>
+                              {bpKesDisplay.label}
                             </span>
                           )}
                         </p>
@@ -796,29 +826,7 @@ export default function Dashboard() {
                   ? snapshot.epoch - clusterEpoch
                   : null;
               const progressWidth = Math.max(0, Math.min(100, syncPercent ?? 0));
-              const kesRemainDays = isBp ? bpKes?.remaining_days ?? null : null;
-              const kesRemainWindows =
-                isBp && bpKes?.kes_period_current != null && bpKes?.kes_period_max != null
-                  ? Math.max(bpKes.kes_period_max - bpKes.kes_period_current, 0)
-                  : null;
-              const kesLabel =
-                kesRemainDays != null ? `KES remain ${kesRemainDays}d` : "KES remain --";
-              const kesTipParts: string[] = [];
-              if (kesRemainWindows != null) {
-                kesTipParts.push(`窗口剩余 ${kesRemainWindows}`);
-              }
-              if (bpKes?.expiry_date) {
-                kesTipParts.push(`到期 ${bpKes.expiry_date}`);
-              }
-              if (kesTipParts.length === 0) {
-                kesTipParts.push("KES 剩余天数，建议提前完成 Rotate。");
-              }
-              const kesStatusClass =
-                bpKes?.severity === "critical"
-                  ? "text-rose-700"
-                  : bpKes?.severity === "warning"
-                    ? "text-amber-700"
-                    : "text-slate-600";
+              const bpKesDisplay = resolveBpKesDisplay(snapshot, bpKes);
 
               return (
                 <article
@@ -855,8 +863,8 @@ export default function Dashboard() {
                       <span>{snapshot.status === "telemetry_unavailable" ? "offline" : "online"} · {telemetryStatusLabel(snapshot.status)}</span>
                       <span>slot {formatCounter(snapshot.slot_num)}</span>
                       {isBp && (
-                        <span className={kesStatusClass} title={kesTipParts.join(" · ")}>
-                          {kesLabel}
+                        <span className={bpKesDisplay.severityClass} title={bpKesDisplay.tip}>
+                          {bpKesDisplay.label}
                         </span>
                       )}
                     </p>

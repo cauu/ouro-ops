@@ -46,6 +46,9 @@ pub struct MonitorSnapshot {
     pub late_blocks: Option<i64>,
     pub peer_count: Option<i64>,
     pub cpu_sys_percent: Option<f64>,
+    pub kes_remaining_periods: Option<i64>,
+    pub kes_current_period: Option<i64>,
+    pub kes_expiry_period: Option<i64>,
     pub mem_live_bytes: Option<f64>,
     pub mem_rss_bytes: Option<f64>,
     pub mem_heap_bytes: Option<f64>,
@@ -90,6 +93,10 @@ struct PrometheusMetrics {
     late_blocks: Option<i64>,
     peer_count: Option<i64>,
     cpu_sys_percent: Option<f64>,
+    cpu_total_ms: Option<f64>,
+    kes_remaining_periods: Option<i64>,
+    kes_current_period: Option<i64>,
+    kes_expiry_period: Option<i64>,
     mem_live_bytes: Option<f64>,
     mem_rss_bytes: Option<f64>,
     mem_heap_bytes: Option<f64>,
@@ -133,6 +140,12 @@ struct RelayMetricsAttempt {
     endpoint_errors: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct CpuCounterSample {
+    total_ms: f64,
+    sampled_at_epoch: i64,
+}
+
 const RELAY_TELEMETRY_RAW_ENDPOINT: &str = "raw";
 const RELAY_TELEMETRY_CFG_USERNAME: &str = "relay.telemetry.username";
 const RELAY_TELEMETRY_CFG_PASSWORD: &str = "relay.telemetry.password";
@@ -142,7 +155,7 @@ const RELAY_TELEMETRY_CFG_INSECURE: &str = "relay.telemetry.insecure";
 const RELAY_TELEMETRY_CFG_TIMEOUT_SECONDS: &str = "relay.telemetry.timeout_seconds";
 const RELAY_TELEMETRY_CFG_BACKOFF_SECONDS: &str = "relay.telemetry.backoff_seconds";
 const TELEMETRY_STALE_THRESHOLD_SECONDS: i64 = 120;
-const RELAY_TELEMETRY_FIELD_METRICS: [(&str, &[&str]); 18] = [
+const RELAY_TELEMETRY_FIELD_METRICS: [(&str, &[&str]); 22] = [
     (
         "block_height",
         &[
@@ -173,6 +186,19 @@ const RELAY_TELEMETRY_FIELD_METRICS: [(&str, &[&str]); 18] = [
     (
         "cpu_sys_percent",
         &["cardano_node_resources_cpuSys_percent"],
+    ),
+    ("cpu_total_ms", &["rts_gc_cpu_ms"]),
+    (
+        "kes_remaining_periods",
+        &["cardano_node_metrics_remainingKESPeriods_int"],
+    ),
+    (
+        "kes_current_period",
+        &["cardano_node_metrics_currentKESPeriod_int"],
+    ),
+    (
+        "kes_expiry_period",
+        &["cardano_node_metrics_operationalCertificateExpiryKESPeriod_int"],
     ),
     (
         "mem_live_bytes",
@@ -227,6 +253,9 @@ impl PrometheusMetrics {
             || self.late_blocks.is_some()
             || self.peer_count.is_some()
             || self.cpu_sys_percent.is_some()
+            || self.kes_remaining_periods.is_some()
+            || self.kes_current_period.is_some()
+            || self.kes_expiry_period.is_some()
             || self.mem_live_bytes.is_some()
             || self.mem_rss_bytes.is_some()
             || self.mem_heap_bytes.is_some()
@@ -427,6 +456,19 @@ fn map_prometheus_metrics(source: &str, metrics: &HashMap<String, f64>) -> Prome
                 "cardano_node_resources_cpuSys_int",
             ],
         )),
+        cpu_total_ms: pick_prometheus_value(metrics, &["rts_gc_cpu_ms"]),
+        kes_remaining_periods: pick_prometheus_i64(
+            metrics,
+            &["cardano_node_metrics_remainingKESPeriods_int"],
+        ),
+        kes_current_period: pick_prometheus_i64(
+            metrics,
+            &["cardano_node_metrics_currentKESPeriod_int"],
+        ),
+        kes_expiry_period: pick_prometheus_i64(
+            metrics,
+            &["cardano_node_metrics_operationalCertificateExpiryKESPeriod_int"],
+        ),
         mem_live_bytes: pick_prometheus_value(
             metrics,
             &[
@@ -490,6 +532,27 @@ fn parse_env_bool(value: &str) -> bool {
 fn relay_failure_backoff_registry() -> &'static Mutex<HashMap<String, i64>> {
     static REGISTRY: OnceLock<Mutex<HashMap<String, i64>>> = OnceLock::new();
     REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cpu_counter_registry() -> &'static Mutex<HashMap<i64, CpuCounterSample>> {
+    static REGISTRY: OnceLock<Mutex<HashMap<i64, CpuCounterSample>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn derive_cpu_percent_from_total_ms(
+    previous: CpuCounterSample,
+    current: CpuCounterSample,
+) -> Option<f64> {
+    let elapsed_seconds = current.sampled_at_epoch - previous.sampled_at_epoch;
+    if elapsed_seconds <= 0 {
+        return None;
+    }
+    let delta_cpu_ms = current.total_ms - previous.total_ms;
+    if delta_cpu_ms < 0.0 {
+        return None;
+    }
+    let raw = (delta_cpu_ms / ((elapsed_seconds as f64) * 1000.0)) * 100.0;
+    Some(raw.clamp(0.0, 100.0))
 }
 
 fn relay_backoff_key(relay: &MachineRow) -> String {
@@ -930,6 +993,10 @@ fn apply_relay_metric_value(
         "late_blocks" => mapped.late_blocks = Some(sample_value.round() as i64),
         "peer_count" => mapped.peer_count = Some(sample_value.round() as i64),
         "cpu_sys_percent" => mapped.cpu_sys_percent = normalize_percent(Some(sample_value)),
+        "cpu_total_ms" => mapped.cpu_total_ms = Some(sample_value),
+        "kes_remaining_periods" => mapped.kes_remaining_periods = Some(sample_value.round() as i64),
+        "kes_current_period" => mapped.kes_current_period = Some(sample_value.round() as i64),
+        "kes_expiry_period" => mapped.kes_expiry_period = Some(sample_value.round() as i64),
         "mem_live_bytes" => mapped.mem_live_bytes = Some(sample_value),
         "mem_rss_bytes" => mapped.mem_rss_bytes = Some(sample_value),
         "mem_heap_bytes" => mapped.mem_heap_bytes = Some(sample_value),
@@ -1165,6 +1232,34 @@ fn collect_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> Promet
         return relay_metrics;
     }
     relay_metrics
+}
+
+fn resolve_machine_cpu_percent(
+    machine_id: i64,
+    metrics: &mut PrometheusMetrics,
+    collected_at_epoch: i64,
+) {
+    let Some(total_ms) = metrics.cpu_total_ms else {
+        return;
+    };
+    let current_sample = CpuCounterSample {
+        total_ms,
+        sampled_at_epoch: metrics.collected_at_epoch.unwrap_or(collected_at_epoch),
+    };
+
+    if metrics.cpu_sys_percent.is_none() {
+        let previous_sample = cpu_counter_registry()
+            .lock()
+            .ok()
+            .and_then(|registry| registry.get(&machine_id).copied());
+        if let Some(previous_sample) = previous_sample {
+            metrics.cpu_sys_percent = derive_cpu_percent_from_total_ms(previous_sample, current_sample);
+        }
+    }
+
+    if let Ok(mut registry) = cpu_counter_registry().lock() {
+        registry.insert(machine_id, current_sample);
+    }
 }
 
 fn parse_tip(raw: &str) -> Result<(Option<i64>, Option<f64>), AppError> {
@@ -1621,6 +1716,9 @@ fn load_latest_health_snapshot(
         late_blocks: None,
         peer_count: None,
         cpu_sys_percent: None,
+        kes_remaining_periods: None,
+        kes_current_period: None,
+        kes_expiry_period: None,
         mem_live_bytes: None,
         mem_rss_bytes: None,
         mem_heap_bytes: None,
@@ -1670,7 +1768,8 @@ fn collect_machine_snapshot(
     let collected_at_epoch = current_epoch_seconds()?;
     let collected_at = sqlite_datetime(conn, collected_at_epoch)?;
     let previous = get_previous_health_sample(conn, machine.id)?;
-    let prometheus = collect_prometheus_metrics(conn, machine);
+    let mut prometheus = collect_prometheus_metrics(conn, machine);
+    resolve_machine_cpu_percent(machine.id, &mut prometheus, collected_at_epoch);
     let block_height = prometheus.block_height;
     let sync_progress = prometheus.sync_percent;
     let blocks_per_minute =
@@ -1729,6 +1828,9 @@ fn collect_machine_snapshot(
         late_blocks: prometheus.late_blocks,
         peer_count: prometheus.peer_count,
         cpu_sys_percent: prometheus.cpu_sys_percent,
+        kes_remaining_periods: prometheus.kes_remaining_periods,
+        kes_current_period: prometheus.kes_current_period,
+        kes_expiry_period: prometheus.kes_expiry_period,
         mem_live_bytes: prometheus.mem_live_bytes,
         mem_rss_bytes: prometheus.mem_rss_bytes,
         mem_heap_bytes: prometheus.mem_heap_bytes,
@@ -1918,7 +2020,7 @@ mod tests {
     use super::*;
     use crate::db::{app_config_set, run_migrations};
     use rusqlite::Connection;
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     #[test]
     fn tc_mon_001_parse_tip_supports_string_progress() {
@@ -2381,6 +2483,9 @@ mod tests {
             late_blocks: Some(0),
             peer_count: Some(10),
             cpu_sys_percent: Some(1.0),
+            kes_remaining_periods: Some(42),
+            kes_current_period: Some(100),
+            kes_expiry_period: Some(142),
             mem_live_bytes: Some(1.0),
             mem_rss_bytes: Some(1.0),
             mem_heap_bytes: Some(1.0),
@@ -2493,5 +2598,130 @@ mod tests {
         assert_eq!(mapped.mempool_bytes, Some(12_615.0));
         assert_eq!(mapped.forks, Some(261));
         assert_eq!(mapped.forging_enabled, Some(1));
+    }
+
+    #[test]
+    fn tc_mon_028_derive_cpu_percent_from_rts_counter_delta() {
+        let previous = CpuCounterSample {
+            total_ms: 10_000.0,
+            sampled_at_epoch: 1_000,
+        };
+        let current = CpuCounterSample {
+            total_ms: 12_500.0,
+            sampled_at_epoch: 1_010,
+        };
+        let percent = derive_cpu_percent_from_total_ms(previous, current).expect("derived percent");
+        assert!((percent - 25.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn tc_mon_029_cpu_derivation_keeps_direct_percent_priority() {
+        if let Ok(mut registry) = cpu_counter_registry().lock() {
+            registry.clear();
+        }
+
+        let machine_id = 9_001_i64;
+        let mut metrics = PrometheusMetrics {
+            cpu_sys_percent: Some(73.2),
+            cpu_total_ms: Some(50_000.0),
+            collected_at_epoch: Some(2_000),
+            ..PrometheusMetrics::default()
+        };
+        resolve_machine_cpu_percent(machine_id, &mut metrics, 2_000);
+        assert_eq!(metrics.cpu_sys_percent, Some(73.2));
+    }
+
+    #[test]
+    fn tc_mon_030_relay_metric_mapping_supports_kes_fields() {
+        let machine = sample_machine("bp-1", "bp", "10.0.0.12");
+        let samples = vec![
+            RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_remainingKESPeriods_int".into()),
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(1_000),
+                value: 42.0,
+            },
+            RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_currentKESPeriod_int".into()),
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(1_000),
+                value: 100.0,
+            },
+            RelayMetricSample {
+                metric_name: Some("cardano_node_metrics_operationalCertificateExpiryKESPeriod_int".into()),
+                node: Some("bp-1".into()),
+                role: Some("bp".into()),
+                host_ip: Some("10.0.0.12".into()),
+                instance: Some("10.0.0.12:12798".into()),
+                timestamp: Some(1_000),
+                value: 142.0,
+            },
+        ];
+
+        let mut mapped = PrometheusMetrics::default();
+        let mut latest_ts: Option<i64> = None;
+        for (metric_key, metric_names) in RELAY_TELEMETRY_FIELD_METRICS {
+            if let Some(sample) = select_relay_metric_sample(&machine, &samples, metric_names) {
+                apply_relay_metric_value(
+                    &mut mapped,
+                    metric_key,
+                    sample.value,
+                    sample.timestamp,
+                    &mut latest_ts,
+                );
+            }
+        }
+
+        assert_eq!(mapped.kes_remaining_periods, Some(42));
+        assert_eq!(mapped.kes_current_period, Some(100));
+        assert_eq!(mapped.kes_expiry_period, Some(142));
+    }
+
+    #[test]
+    fn tc_mon_031_catalog_keys_cover_dashboard_metric_dependencies() {
+        let catalog: Value = serde_json::from_str(include_str!(
+            "../../../src/config/telemetry-metrics-catalog.json"
+        ))
+        .expect("parse catalog");
+        let keys = catalog
+            .get("metrics")
+            .and_then(Value::as_array)
+            .expect("metrics")
+            .iter()
+            .filter_map(|entry| entry.get("key").and_then(Value::as_str))
+            .collect::<std::collections::HashSet<_>>();
+
+        let required_alias_groups: [&[&str]; 14] = [
+            &["cardano_node_metrics_epoch_int"],
+            &["cardano_node_metrics_blockNum_int"],
+            &["cardano_node_metrics_slotNum_int"],
+            &["cardano_node_metrics_slotInEpoch_int"],
+            &["cardano_node_metrics_syncProgress", "cardano_node_metrics_slotInEpoch_int"],
+            &["cardano_node_metrics_blockfetchclient_lateblocks"],
+            &["cardano_node_resources_cpuSys_percent", "rts_gc_cpu_ms"],
+            &["cardano_node_metrics_Mem_resident_int"],
+            &["cardano_node_metrics_RTS_gcLiveBytes_int"],
+            &["cardano_node_metrics_RTS_gcHeapBytes_int"],
+            &["cardano_node_metrics_RTS_gcMinorNum_int"],
+            &["cardano_node_metrics_RTS_gcMajorNum_int"],
+            &["cardano_node_metrics_remainingKESPeriods_int"],
+            &[
+                "cardano_node_metrics_currentKESPeriod_int",
+                "cardano_node_metrics_operationalCertificateExpiryKESPeriod_int",
+            ],
+        ];
+
+        for aliases in required_alias_groups {
+            assert!(
+                aliases.iter().any(|candidate| keys.contains(candidate)),
+                "catalog missing required aliases: {aliases:?}"
+            );
+        }
     }
 }

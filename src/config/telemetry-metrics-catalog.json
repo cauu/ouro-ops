@@ -48,6 +48,11 @@
       "id": "metadata",
       "label": "Metadata",
       "order": 9
+    },
+    {
+      "id": "bp_kes_forge",
+      "label": "BP: KES & Block Production",
+      "order": 10
     }
   ],
   "metrics": [
@@ -1415,6 +1420,119 @@
       "formatter": "duration_ms",
       "priority": 3,
       "defaultVisible": false
+    },
+    {
+      "key": "cardano_node_metrics_operationalCertificateStartKESPeriod_int",
+      "label": "cardano_node_metrics_operationalCertificateStartKESPeriod_int",
+      "description": "BP 操作证书 KES 起始 period。",
+      "groupId": "bp_kes_forge",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 1,
+      "bpVisible": true
+    },
+    {
+      "key": "cardano_node_metrics_operationalCertificateExpiryKESPeriod_int",
+      "label": "cardano_node_metrics_operationalCertificateExpiryKESPeriod_int",
+      "description": "BP 操作证书 KES 到期 period。",
+      "groupId": "bp_kes_forge",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 2,
+      "bpVisible": true
+    },
+    {
+      "key": "cardano_node_metrics_remainingKESPeriods_int",
+      "label": "cardano_node_metrics_remainingKESPeriods_int",
+      "description": "BP 剩余 KES period 数量，用于推算 KES remain 天数。",
+      "groupId": "bp_kes_forge",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 1,
+      "defaultVisible": true,
+      "defaultOrder": 3,
+      "bpVisible": true
+    },
+    {
+      "key": "cardano_node_metrics_currentKESPeriod_int",
+      "label": "cardano_node_metrics_currentKESPeriod_int",
+      "description": "BP 当前 KES period。",
+      "groupId": "bp_kes_forge",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 2,
+      "defaultVisible": false,
+      "bpVisible": true
+    },
+    {
+      "key": "cardano_node_metrics_Forge_node_not_leader_int",
+      "label": "cardano_node_metrics_Forge_node_not_leader_int",
+      "description": "BP 非 leader 时 forge 检查次数累计。",
+      "groupId": "bp_kes_forge",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 2,
+      "defaultVisible": false,
+      "bpVisible": true
+    },
+    {
+      "key": "cardano_node_metrics_Forge_forge_state_update_error_int",
+      "label": "cardano_node_metrics_Forge_forge_state_update_error_int",
+      "description": "BP forge 状态更新错误累计。",
+      "groupId": "bp_kes_forge",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 2,
+      "defaultVisible": false,
+      "bpVisible": true
+    },
+    {
+      "key": "cardano_node_metrics_Forge_forge_about_to_lead_int",
+      "label": "cardano_node_metrics_Forge_forge_about_to_lead_int",
+      "description": "BP 即将成为 leader 的 slot 累计。",
+      "groupId": "bp_kes_forge",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 2,
+      "defaultVisible": false,
+      "bpVisible": true
+    },
+    {
+      "key": "cardano_node_metrics_slotsMissedNum_int",
+      "label": "cardano_node_metrics_slotsMissedNum_int",
+      "description": "BP 错过的 slot 数量。",
+      "groupId": "bp_kes_forge",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 2,
+      "defaultVisible": false,
+      "bpVisible": true
+    },
+    {
+      "key": "cardano_node_metrics_delegMapSize_int",
+      "label": "cardano_node_metrics_delegMapSize_int",
+      "description": "委托映射大小（BP 相关）。",
+      "groupId": "bp_kes_forge",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false,
+      "bpVisible": true
+    },
+    {
+      "key": "cardano_node_metrics_utxoSize_int",
+      "label": "cardano_node_metrics_utxoSize_int",
+      "description": "UTXO 集大小。",
+      "groupId": "bp_kes_forge",
+      "unit": "count",
+      "formatter": "integer_or_float",
+      "priority": 3,
+      "defaultVisible": false,
+      "bpVisible": true
     }
   ],
   "presets": {

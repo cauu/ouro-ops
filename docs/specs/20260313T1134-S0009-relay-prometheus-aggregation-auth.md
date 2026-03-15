@@ -883,3 +883,21 @@ Spec-ID: S0009
 
 ### 52.4 Change Request Delta
 - 2026-03-15 交付完成：UI 审计项与按钮比例优化已纳入工作区，按 immutable spec 提交。
+
+## 53. Addendum (append-only)
+### 53.1 Execution Plan Delta
+- [x] p10-5-fix12 修复 Dashboard 中 `KES remain` 与 `CPU(sys)` 长期为 `--`（API-only）
+
+### 53.2 Execution Log Delta
+- 2026-03-15 p10-5-fix12 started: 按 S0015 对 monitor 聚合与 Dashboard 展示链路做口径修复，目标是让 KES 与 CPU 在 raw 指标可用时稳定出值。
+- 2026-03-15 p10-5-fix12 completed: monitor 映射新增 `kes_remaining_periods/kes_current_period/kes_expiry_period`，并将 `rts_gc_cpu_ms` 接入 CPU 派生链路（两次采样差分计算百分比，首样本可空）。
+- 2026-03-15 p10-5-fix12 completed: Dashboard 的 KES 展示改为 telemetry 优先（`snapshot.kes_*`），`kesStatusAll` 仅作 fallback；主文案切换为窗口数口径 `KES remain N`，tooltip 增加天数估算与 period 信息。
+- 2026-03-15 p10-5-fix12 completed: 新增静态回归测试，约束 Dashboard 依赖的 telemetry 关键指标在 `telemetry-metrics-catalog.json` 中存在，降低 catalog/实现漂移风险。
+
+### 53.3 Validation Evidence Delta
+- TC-P10-051 | stack: rust | command: cargo test -q tc_mon_ --manifest-path src-tauri/Cargo.toml | result: pass | note: monitor 31 项测试通过，覆盖 CPU 差分派生、KES 指标映射与 catalog 依赖校验
+- TC-P10-052 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过，Dashboard KES 文案与字段优先级变更无编译回归
+- TC-P10-053 | stack: static | command: rg -n "kes_remaining_periods|kes_current_period|kes_expiry_period|rts_gc_cpu_ms|resolveBpKesDisplay|KES remain" src-tauri/src/commands/monitor.rs src/lib/types.ts src/pages/Dashboard.tsx | result: pass | note: 后端字段、前端类型与展示逻辑均已接入
+
+### 53.4 Change Request Delta
+- 2026-03-15 交付完成：`KES remain` 与 `CPU(sys)` 的长期 `--` 已按 API-only 链路修复，且新增 catalog 防漂移约束。
