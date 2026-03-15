@@ -204,14 +204,33 @@ export async function refreshMonitorStore(): Promise<void> {
   });
   try {
     const snapshots = await monitorSnapshot();
-    setState({
-      snapshots,
-      status: "Live telemetry updated.",
-      telemetryPhase: "live",
-      usingCachedData: false,
-      lastCollectedAt: pickLatestCollectedAt(snapshots),
-      lastError: null,
-    });
+    const hadSnapshots = state.snapshots.length > 0;
+    if (snapshots.length > 0) {
+      setState({
+        snapshots,
+        status: "Live telemetry updated.",
+        telemetryPhase: "live",
+        usingCachedData: false,
+        lastCollectedAt: pickLatestCollectedAt(snapshots),
+        lastError: null,
+      });
+    } else if (hadSnapshots) {
+      setState({
+        status: "Refresh returned no data; showing previous snapshot.",
+        telemetryPhase: "degraded",
+        usingCachedData: true,
+        lastError: "本次刷新未返回数据，继续展示上次数据。",
+      });
+    } else {
+      setState({
+        snapshots,
+        status: "Live telemetry updated.",
+        telemetryPhase: "live",
+        usingCachedData: false,
+        lastCollectedAt: null,
+        lastError: null,
+      });
+    }
   } catch (error) {
     setState({
       status: "Telemetry refresh failed; keeping cached data and retrying.",
