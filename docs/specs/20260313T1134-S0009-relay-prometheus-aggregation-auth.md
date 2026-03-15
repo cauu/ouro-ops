@@ -901,3 +901,21 @@ Spec-ID: S0009
 
 ### 53.4 Change Request Delta
 - 2026-03-15 交付完成：`KES remain` 与 `CPU(sys)` 的长期 `--` 已按 API-only 链路修复，且新增 catalog 防漂移约束。
+
+## 54. Addendum (append-only)
+### 54.1 Execution Plan Delta
+- [x] p10-5-fix13 静默刷新：调用 telemetry 时集群概览不重置为空，仅用非空 snapshots 覆盖（monitorStore.ts）
+- [x] p10-5-fix14 CPU(sys) 不频繁重置：后端 last_known_cpu_percent registry + 回填逻辑（monitor.rs）
+
+### 54.2 Execution Log Delta
+- 2026-03-15 p10-5-fix13 started: 按 plan 在 refreshMonitorStore 中区分返回空/非空，返回空且已有数据时不覆盖 snapshots。
+- 2026-03-15 p10-5-fix13 completed: monitorStore 已实现静默刷新；返回空时保留原 snapshots 并设 degraded + lastError「本次刷新未返回数据，继续展示上次数据。」。
+- 2026-03-15 p10-5-fix14 started: 后端新增 last_known_cpu_percent_registry，在 resolve_machine_cpu_percent 中写入/回填。
+- 2026-03-15 p10-5-fix14 completed: 仅当 p.is_finite() && p > 0 时写入 registry；本次为 None 时用上次已知值回填，避免 0.0% 与估算值跳跃。
+
+### 54.3 Validation Evidence Delta
+- TC-P9-007 | stack: ui | command: rg -n "hadSnapshots|snapshots.length > 0|Refresh returned no data" src/lib/monitorStore.ts | result: pass | note: 静默刷新逻辑已落地
+- TC-P9-006 | stack: rust | command: rg -n "last_known_cpu_percent_registry|last_known.get|is_finite.*p > 0" src-tauri/src/commands/monitor.rs | result: pass | note: CPU 上次已知值 registry 与回填已落地
+
+### 54.4 Change Request Delta
+- 2026-03-15 交付完成：Dashboard 静默刷新与 CPU(sys) 展示稳定性已按 plan 实现，并纳入 S0009 追加项（immutable spec）。

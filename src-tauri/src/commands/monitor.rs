@@ -539,6 +539,11 @@ fn cpu_counter_registry() -> &'static Mutex<HashMap<i64, CpuCounterSample>> {
     REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn last_known_cpu_percent_registry() -> &'static Mutex<HashMap<i64, f64>> {
+    static REGISTRY: OnceLock<Mutex<HashMap<i64, f64>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 fn derive_cpu_percent_from_total_ms(
     previous: CpuCounterSample,
     current: CpuCounterSample,
@@ -1259,6 +1264,18 @@ fn resolve_machine_cpu_percent(
 
     if let Ok(mut registry) = cpu_counter_registry().lock() {
         registry.insert(machine_id, current_sample);
+    }
+
+    if let Some(p) = metrics.cpu_sys_percent {
+        if p.is_finite() && p > 0.0 {
+            if let Ok(mut last_known) = last_known_cpu_percent_registry().lock() {
+                last_known.insert(machine_id, p);
+            }
+        }
+    } else if let Ok(last_known) = last_known_cpu_percent_registry().lock() {
+        if let Some(&prev) = last_known.get(&machine_id) {
+            metrics.cpu_sys_percent = Some(prev);
+        }
     }
 }
 
