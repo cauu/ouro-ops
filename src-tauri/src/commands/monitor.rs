@@ -158,7 +158,10 @@ const RELAY_TELEMETRY_FIELD_METRICS: [(&str, &[&str]); 18] = [
         "tip_diff_blocks",
         &["cardano_node_metrics_chainDensityTipDiff_int"],
     ),
-    ("late_blocks", &["cardano_node_metrics_blockfetchclient_lateblocks"]),
+    (
+        "late_blocks",
+        &["cardano_node_metrics_blockfetchclient_lateblocks"],
+    ),
     (
         "peer_count",
         &[
@@ -404,7 +407,10 @@ fn map_prometheus_metrics(source: &str, metrics: &HashMap<String, f64>) -> Prome
                 "cardano_node_metrics_chainDensityTipDiff_int",
             ],
         ),
-        late_blocks: pick_prometheus_i64(metrics, &["cardano_node_metrics_blockfetchclient_lateblocks"]),
+        late_blocks: pick_prometheus_i64(
+            metrics,
+            &["cardano_node_metrics_blockfetchclient_lateblocks"],
+        ),
         peer_count: pick_prometheus_i64(
             metrics,
             &[
@@ -1514,13 +1520,12 @@ struct SnapshotBatch {
     degraded_message: Option<String>,
 }
 
-fn telemetry_snapshot_state(metrics: &PrometheusMetrics, now_epoch: i64) -> (&'static str, &'static str, &'static str) {
+fn telemetry_snapshot_state(
+    metrics: &PrometheusMetrics,
+    now_epoch: i64,
+) -> (&'static str, &'static str, &'static str) {
     if !metrics.has_any_value() {
-        return (
-            "telemetry_unavailable",
-            "telemetry_unavailable",
-            "critical",
-        );
+        return ("telemetry_unavailable", "telemetry_unavailable", "critical");
     }
     let stale = metrics
         .collected_at_epoch
@@ -1862,10 +1867,8 @@ pub async fn monitor_start_polling(
                     let _ = app_handle_for_task.emit("monitor:snapshot", &batch.snapshots);
                     if let Some(message) = batch.degraded_message {
                         audit_telemetry_degraded_retry(&db_state, &machine_ids, message.as_str());
-                        let _ = app_handle_for_task.emit(
-                            "monitor:error",
-                            serde_json::json!({ "message": message }),
-                        );
+                        let _ = app_handle_for_task
+                            .emit("monitor:error", serde_json::json!({ "message": message }));
                     }
                 }
                 Err(err) => {
@@ -2394,7 +2397,10 @@ mod tests {
         assert_eq!(next.status, "telemetry_stale");
         assert_eq!(next.sync_stage, "telemetry_stale");
         assert_eq!(next.health_level, "warning");
-        assert!(next.note.unwrap_or_default().contains("relay api unavailable"));
+        assert!(next
+            .note
+            .unwrap_or_default()
+            .contains("relay api unavailable"));
     }
 
     #[test]

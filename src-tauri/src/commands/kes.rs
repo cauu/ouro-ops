@@ -288,12 +288,13 @@ fn get_task_machine_statuses(
 
 fn build_kes_inventory(conn: &Connection, machine_id: i64) -> Result<Value, AppError> {
     let machine = ensure_bp_machine(conn, machine_id)?;
-    let pool = pool_get_single(conn)?
-        .ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
-    let all_pool_machines: Vec<MachineRow> = repo_machine_list(conn, None, Some(pool.network.as_str()))?
-        .into_iter()
-        .filter(|m| m.pool_id == machine.pool_id)
-        .collect();
+    let pool =
+        pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
+    let all_pool_machines: Vec<MachineRow> =
+        repo_machine_list(conn, None, Some(pool.network.as_str()))?
+            .into_iter()
+            .filter(|m| m.pool_id == machine.pool_id)
+            .collect();
     let relay_nodes: Vec<Value> = all_pool_machines
         .iter()
         .filter(|m| m.role == "relay")
@@ -562,7 +563,9 @@ pub async fn kes_push_start(
             )));
         }
         if task.status != "pending" {
-            return Err(AppError::Internal(format!("task is not pending: {task_id}")));
+            return Err(AppError::Internal(format!(
+                "task is not pending: {task_id}"
+            )));
         }
         let payload: KesRotationPayload = serde_json::from_str(
             task.payload
@@ -594,7 +597,9 @@ pub async fn kes_push_start(
     let payload_for_worker = payload.clone();
     let app_for_worker = app_handle.clone();
     thread::spawn(move || {
-        if let Err(err) = run_kes_push_worker(&app_for_worker, &task_id_for_worker, &payload_for_worker) {
+        if let Err(err) =
+            run_kes_push_worker(&app_for_worker, &task_id_for_worker, &payload_for_worker)
+        {
             let _ = mark_kes_task_failed_if_needed(
                 &app_for_worker,
                 &task_id_for_worker,

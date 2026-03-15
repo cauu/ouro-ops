@@ -6,6 +6,7 @@ import type { Pool } from "./lib/types";
 import Dashboard from "./pages/Dashboard";
 import DeployWizard from "./pages/DeployWizard";
 import KesManager from "./pages/KesManager";
+import OperationLogs from "./pages/OperationLogs";
 import Settings from "./pages/Settings";
 import SetupWizard from "./pages/SetupWizard";
 import TelemetryApi from "./pages/TelemetryApi";
@@ -66,6 +67,7 @@ function App() {
             <Dashboard />
           }
         />
+        <Route path="/logs" element={pool ? <OperationLogs /> : null} />
         <Route path="/kes" element={pool ? <KesManager poolTicker={pool.ticker} /> : null} />
         <Route path="/telemetry" element={pool ? <TelemetryApi /> : null} />
         <Route path="/deploy" element={pool ? <DeployWizard pool={pool} /> : null} />

@@ -49,6 +49,14 @@ function toolbarContextFromPath(pathname: string): ToolbarContext {
       statusTone: "info",
     };
   }
+  if (pathname === "/logs") {
+    return {
+      section: "Operations",
+      title: "Operation Logs",
+      status: "Indexed",
+      statusTone: "info",
+    };
+  }
   if (pathname === "/deploy") {
     return {
       section: "Workspace",
@@ -90,7 +98,7 @@ export default function Layout({ pool }: LayoutProps) {
 
   return (
     <div className="h-screen overflow-hidden bg-slate-100 text-slate-900">
-      <div className="mx-auto flex h-full max-w-[1600px] overflow-hidden border-x border-slate-200/80 bg-white/80 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
+      <div className="mx-auto flex h-full max-w-[1600px] overflow-hidden border-x border-slate-200/80 bg-white/80 shadow-app">
         <Sidebar
           network={pool.network}
           collapsed={sidebarCollapsed}
@@ -104,7 +112,7 @@ export default function Layout({ pool }: LayoutProps) {
                 title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
                 aria-label={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
                 onClick={() => setSidebarCollapsed((current) => !current)}
-                className="no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+                className="no-drag inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1"
               >
                 {sidebarCollapsed ? (
                   <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">

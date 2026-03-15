@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { formatTaskError } from "../lib/errors";
 import { kesStatusAll, taskRecentList } from "../lib/ipc";
@@ -254,10 +254,16 @@ interface TooltipBadgeProps {
 }
 
 function TooltipBadge({ label, tip, tone = "muted" }: TooltipBadgeProps) {
+  const id = useId();
   return (
-    <span tabIndex={0} className="group relative inline-flex">
+    <span
+      tabIndex={0}
+      className="group relative inline-flex"
+      aria-describedby={id}
+    >
       <span className={severityChipClass(tone)}>{label}</span>
       <span
+        id={id}
         role="tooltip"
         className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-20 hidden w-72 max-w-[min(28rem,90vw)] rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs leading-5 text-white shadow-xl group-hover:block group-focus-visible:block"
       >
@@ -268,12 +274,18 @@ function TooltipBadge({ label, tip, tone = "muted" }: TooltipBadgeProps) {
 }
 
 function InlineInfoTip({ tip }: { tip: string }) {
+  const id = useId();
   return (
-    <span className="group relative inline-flex" tabIndex={0}>
+    <span
+      className="group relative inline-flex"
+      tabIndex={0}
+      aria-describedby={id}
+    >
       <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] font-semibold text-slate-600">
         i
       </span>
       <span
+        id={id}
         role="tooltip"
         className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-20 hidden w-64 max-w-[min(24rem,90vw)] rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs leading-5 text-white shadow-xl group-hover:block group-focus-visible:block"
       >
@@ -284,12 +296,18 @@ function InlineInfoTip({ tip }: { tip: string }) {
 }
 
 function MetaIconTip({ tip, icon }: { tip: string; icon: ReactNode }) {
+  const id = useId();
   return (
-    <span className="group relative inline-flex" tabIndex={0}>
+    <span
+      className="group relative inline-flex"
+      tabIndex={0}
+      aria-describedby={id}
+    >
       <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500">
         {icon}
       </span>
       <span
+        id={id}
         role="tooltip"
         className="pointer-events-none absolute left-1/2 top-[calc(100%+8px)] z-20 hidden w-64 max-w-[min(22rem,90vw)] -translate-x-1/2 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs leading-5 text-white shadow-xl group-hover:block group-focus-visible:block"
       >
@@ -302,6 +320,7 @@ function MetaIconTip({ tip, icon }: { tip: string; icon: ReactNode }) {
 export default function Dashboard() {
   const foregroundIntervalSeconds = 15;
   const backgroundIntervalSeconds = 60;
+  const telemetryHeaderTipId = useId();
   const [kesStatuses, setKesStatuses] = useState<KesStatus[]>([]);
   const [recentTasks, setRecentTasks] = useState<RecentTaskSummary[]>([]);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
@@ -535,11 +554,16 @@ export default function Dashboard() {
               <span className="absolute top-[-2px] h-1.5 w-1.5 rounded-full bg-sky-500 shadow-[0_0_0_2px_rgba(255,255,255,0.9)]" />
             </span>
             <span className="font-semibold text-slate-900">Telemetry</span>
-            <span className="group relative inline-flex" tabIndex={0}>
+            <span
+              className="group relative inline-flex"
+              tabIndex={0}
+              aria-describedby={telemetryHeaderTipId}
+            >
               <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 text-[11px] font-semibold text-slate-600">
                 i
               </span>
               <span
+                id={telemetryHeaderTipId}
                 role="tooltip"
                 className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-20 hidden w-72 max-w-[min(28rem,90vw)] rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs leading-5 text-white shadow-xl group-hover:block group-focus-visible:block"
               >
@@ -553,7 +577,7 @@ export default function Dashboard() {
             <span className="text-[11px] text-slate-500">GW {gatewayRuntimeSummary}</span>
             <Link
               to="/telemetry"
-              className="inline-flex h-6 items-center rounded border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+              className="inline-flex h-8 items-center rounded border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
               title="进入 Telemetry API 管理页"
             >
               管理 API
@@ -562,7 +586,7 @@ export default function Dashboard() {
         </header>
 
         {auxRefreshError && (
-          <div className="px-4 pb-3">
+          <div className="px-4 pb-3" role="alert">
             <p className="text-xs font-medium text-amber-700">{auxRefreshError}</p>
           </div>
         )}
@@ -617,7 +641,7 @@ export default function Dashboard() {
                   return (
                     <article
                       key={snapshot.machine_id}
-                      className="relative w-[min(82vw,560px)] min-w-[360px] max-w-[560px] flex-none snap-start rounded-lg border border-slate-300 bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.06)] sm:min-w-[400px]"
+                      className="relative w-[min(82vw,560px)] min-w-[360px] max-w-[560px] flex-none snap-start rounded-lg border border-slate-300 bg-white p-3 shadow-card sm:min-w-[400px]"
                     >
                       <div className="absolute right-3 top-3 inline-flex flex-col items-end gap-1.5">
                         <TooltipBadge
@@ -657,7 +681,7 @@ export default function Dashboard() {
                       </header>
 
                       <div className="mt-3 grid gap-2 min-[480px]:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
-                        <section className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                        <section className="rounded-lg px-3 py-2">
                           <div className="flex items-end justify-between gap-2">
                             <div>
                               <p className="text-[11px] text-slate-500">Block</p>
@@ -689,10 +713,10 @@ export default function Dashboard() {
                             </div>
                           </div>
 
-                          <div className="mt-1.5 h-1.5 rounded-full bg-slate-200">
+                          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200">
                             <span
-                              className="block h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-700"
-                              style={{ width: `${progressWidth}%` }}
+                              className="block h-full rounded-full bg-blue-600 origin-left"
+                              style={{ transform: `scaleX(${progressWidth / 100})`, width: "100%" }}
                             />
                           </div>
                         </section>
@@ -799,7 +823,7 @@ export default function Dashboard() {
               return (
                 <article
                   key={snapshot.machine_id}
-                  className="relative w-full rounded-lg border border-slate-300 bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.06)]"
+                  className="relative w-full rounded-lg border border-slate-300 bg-white p-3 shadow-card"
                 >
                   <div className="absolute right-3 top-3 inline-flex flex-col items-end gap-1.5">
                     <TooltipBadge
@@ -839,7 +863,7 @@ export default function Dashboard() {
                   </header>
 
                   <div className="mt-3 grid gap-2 min-[480px]:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
-                    <section className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <section className="rounded-lg px-3 py-2">
                       <div className="flex items-end justify-between gap-2">
                         <div>
                           <p className="text-[11px] text-slate-500">Block</p>
@@ -871,10 +895,10 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      <div className="mt-1.5 h-1.5 rounded-full bg-slate-200">
+                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200">
                         <span
-                          className="block h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-700"
-                          style={{ width: `${progressWidth}%` }}
+                          className="block h-full rounded-full bg-blue-600 origin-left"
+                          style={{ transform: `scaleX(${progressWidth / 100})`, width: "100%" }}
                         />
                       </div>
                     </section>
@@ -943,7 +967,15 @@ export default function Dashboard() {
       <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-900 shadow-sm">
         <header className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold">近期操作日志</h2>
-          <span className="text-xs text-slate-500">最近 {Math.min(recentTasks.length, 6)} 条</span>
+          <div className="inline-flex items-center gap-2">
+            <span className="text-xs text-slate-500">最近 {Math.min(recentTasks.length, 6)} 条</span>
+            <Link
+              to="/logs"
+              className="inline-flex h-8 items-center rounded border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              查看全部
+            </Link>
+          </div>
         </header>
         <div className="mt-3 overflow-x-hidden rounded-lg border border-slate-200 bg-white">
           <table className="w-full table-fixed text-left text-xs">
@@ -1001,7 +1033,7 @@ export default function Dashboard() {
                             onClick={() => {
                               void handleCopyDetail(task.task_id, detailText);
                             }}
-                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1"
                             title={copiedTaskId === task.task_id ? "已复制" : "复制详情"}
                             aria-label={copiedTaskId === task.task_id ? "已复制" : "复制详情"}
                           >

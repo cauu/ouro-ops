@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 
-const linkBase = "flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors";
+const linkBase =
+  "flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1";
 
 function navClass(isActive: boolean, collapsed: boolean): string {
   if (isActive) {
@@ -38,7 +39,7 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
 
       <div className={`px-3 pb-3 pt-4 ${collapsed ? "text-center" : ""}`}>
         <div className={`mb-5 flex items-center ${collapsed ? "justify-center" : "gap-3"}`}>
-          <span className="inline-block h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 shadow-sm" aria-hidden="true" />
+          <span className="inline-block h-8 w-8 rounded-full bg-blue-600 shadow-sm" aria-hidden="true" />
           {!collapsed && (
             <div>
               <p className="text-xs uppercase tracking-widest text-slate-500">OURO OPS</p>
@@ -99,6 +100,20 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
                 </svg>
                 {!collapsed && <span>Telemetry API</span>}
               </NavLink>
+              <NavLink to="/logs" className={({ isActive }) => navClass(isActive, collapsed)} title="操作日志">
+                <svg
+                  viewBox="0 0 20 20"
+                  className="h-[17px] w-[17px] shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  aria-hidden="true"
+                >
+                  <path d="M5 5h10M5 10h10M5 15h7" strokeLinecap="round" />
+                  <circle cx="14.5" cy="15" r="1.5" />
+                </svg>
+                {!collapsed && <span>操作日志</span>}
+              </NavLink>
               <NavLink to="/upgrade" className={({ isActive }) => navClass(isActive, collapsed)} title="Upgrade">
                 <svg
                   viewBox="0 0 20 20"
@@ -120,10 +135,10 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
 
         <div className={`mt-6 rounded-md border border-slate-200 bg-white/80 px-3 py-2 text-xs text-slate-600 ${collapsed ? "hidden" : ""}`}>
           日常操作入口统一：
-          <br />Dashboard / KES Rotate / Telemetry API / Upgrade
+          <br />Dashboard / KES Rotate / Telemetry API / 操作日志 / Upgrade
         </div>
         {collapsed && (
-          <div className="mt-6 text-[11px] text-slate-500" title="日常操作入口统一：Dashboard / KES Rotate / Telemetry API / Upgrade">
+          <div className="mt-6 text-[11px] text-slate-500" title="日常操作入口统一：Dashboard / KES Rotate / Telemetry API / 操作日志 / Upgrade">
             OPS
           </div>
         )}

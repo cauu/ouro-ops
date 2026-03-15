@@ -93,6 +93,7 @@ pub fn run() {
             commands::runtime::runtime_restart,
             commands::runtime::runtime_restart_status,
             commands::task::task_recent_list,
+            commands::task::task_log_query,
             commands::upgrade::upgrade_start,
             commands::upgrade::upgrade_status,
             commands::upgrade::upgrade_confirm_next,
@@ -117,6 +118,7 @@ mod frontend_tests {
         let sidebar = include_str!("../../src/components/Sidebar.tsx");
         assert!(sidebar.contains("to=\"/\""));
         assert!(sidebar.contains("to=\"/kes\""));
+        assert!(sidebar.contains("to=\"/logs\""));
         assert!(sidebar.contains("to=\"/upgrade\""));
         assert!(!sidebar.contains("to=\"/deploy\""));
         assert!(!sidebar.contains("to=\"/settings\""));
@@ -688,7 +690,8 @@ mod frontend_tests {
     fn tc_dep_020_hardening_allows_relay_gateway_port_when_observability_enabled() {
         let hardening = include_str!("../../ansible/roles/hardening/tasks/main.yml");
         assert!(hardening.contains("Allow relay telemetry gateway port for relay hosts"));
-        assert!(hardening.contains("ufw allow {{ ops_metrics_gateway_listen_port | default(443) }}/tcp"));
+        assert!(hardening
+            .contains("ufw allow {{ ops_metrics_gateway_listen_port | default(443) }}/tcp"));
         assert!(hardening.contains("enable_ops_observability_gateway | default(true) | bool"));
     }
 

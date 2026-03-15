@@ -258,6 +258,22 @@ export interface RecentTaskSummary {
   finished_at: string | null;
 }
 
+export interface TaskLogQueryPayload {
+  page?: number;
+  page_size?: number;
+  keyword?: string;
+  task_type?: string;
+  status?: string;
+}
+
+export interface TaskLogPage {
+  items: RecentTaskSummary[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
 export interface ObservabilityTaskPayload {
   machine_ids?: number[];
 }

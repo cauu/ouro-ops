@@ -850,3 +850,36 @@ Spec-ID: S0009
 
 ### 50.4 Change Request Delta
 - 2026-03-14 21:46 +0800 交付完成：Telemetry 轮询刷新改为静默模式，前端状态不再在每次请求前被重置。
+
+## 51. Addendum (append-only)
+### 51.1 Execution Plan Delta
+- [x] p10-5-fix10 新增独立「操作日志」页面，支持分页与条件查询全量任务日志
+
+### 51.2 Execution Log Delta
+- 2026-03-14 22:13 +0800 p10-5-fix10 started: 用户要求新增独立操作日志页面，支持分页展示与查询全部操作日志。
+- 2026-03-14 22:13 +0800 p10-5-fix10 completed: 后端 `task` 命令新增 `task_log_query`（分页 + keyword + status + task_type），返回 `items/total/page/total_pages`。
+- 2026-03-14 22:13 +0800 p10-5-fix10 completed: 前端新增 `OperationLogs` 页面与 `/logs` 路由，接入侧边栏导航；Dashboard「近期操作日志」增加“查看全部”跳转。
+- 2026-03-14 22:13 +0800 p10-5-fix10 completed: 页面支持详情超长截断、复制、查询重置、上一页/下一页及 page size 切换。
+
+### 51.3 Validation Evidence Delta
+- TC-P10-046 | stack: rust | command: cargo test -q tc_task_ --manifest-path src-tauri/Cargo.toml | result: pass | note: `tc_task_001`、`tc_task_002` 通过，覆盖排序、分页与关键词/状态过滤
+- TC-P10-047 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过，新增 `/logs` 页面与查询交互无编译回归
+- TC-P10-048 | stack: static | command: rg -n "task_log_query|TaskLogPage|OperationLogs|path=\"/logs\"|to=\"/logs\"|查看全部" src-tauri/src/commands/task.rs src/lib/types.ts src/lib/ipc.ts src/pages/OperationLogs.tsx src/App.tsx src/components/Sidebar.tsx src/pages/Dashboard.tsx | result: pass | note: 后端命令、前端类型、IPC、路由与入口已完整接入
+
+### 51.4 Change Request Delta
+- 2026-03-14 22:13 +0800 交付完成：新增独立操作日志页，支持全量任务日志分页和查询，并与 Dashboard/侧边栏完成联动。
+
+## 52. Addendum (append-only)
+### 52.1 Execution Plan Delta
+- [x] p10-5-fix11 UI 审计与 polish（ConfirmModal ARIA/焦点陷阱/Esc、Tooltip aria-describedby、焦点环与 ring-offset 统一、按钮比例 h-9、错误 role=alert、shadow token、reduced-motion、表格滚动提示）
+
+### 52.2 Execution Log Delta
+- 2026-03-15 p10-5-fix11 started: 按 audit skill 与 Suggested Commands 执行 UI 优化：harden/normalize/adapt/polish。
+- 2026-03-15 p10-5-fix11 completed: ConfirmModal 增加 role/dialog、焦点陷阱、Esc、label；Tooltip 增加 useId+aria-describedby；全站主要按钮统一 focus-visible:ring-2 ring-offset-1；触控高度由 min-h-[44px] 调整为 h-9/h-8 以符合桌面比例；错误区块增加 role=alert；index.css 增加 prefers-reduced-motion；tailwind 增加 shadow-app/shadow-card；OperationLogs/TelemetryApi 表格增加横向滚动提示。
+
+### 52.3 Validation Evidence Delta
+- TC-P10-049 | stack: ui | command: pnpm -s build | result: pass | note: 前端构建通过
+- TC-P10-050 | stack: static | command: rg -n "role=\"dialog\"|aria-describedby|focus-visible:ring-2|prefers-reduced-motion|shadow-app|shadow-card" src/components/ConfirmModal.tsx src/pages/Dashboard.tsx src/index.css tailwind.config.js | result: pass | note: ARIA、焦点环、reduced-motion、shadow token 已落地
+
+### 52.4 Change Request Delta
+- 2026-03-15 交付完成：UI 审计项与按钮比例优化已纳入工作区，按 immutable spec 提交。

@@ -181,8 +181,10 @@ fn partition_upgrade_order(
     machines: &[MachineRow],
     original_ids: &[i64],
 ) -> (Vec<i64>, Vec<i64>, Vec<i64>) {
-    let by_id: std::collections::HashMap<i64, &MachineRow> =
-        machines.iter().map(|machine| (machine.id, machine)).collect();
+    let by_id: std::collections::HashMap<i64, &MachineRow> = machines
+        .iter()
+        .map(|machine| (machine.id, machine))
+        .collect();
     let mut relay_ids = Vec::new();
     let mut bp_ids = Vec::new();
     for machine_id in original_ids {
@@ -353,11 +355,16 @@ fn mark_pending_and_running_task_machines(
     Ok(())
 }
 
-fn upgrade_status_with_conn(conn: &Connection, task_id: &str) -> Result<DeployTaskStatus, AppError> {
+fn upgrade_status_with_conn(
+    conn: &Connection,
+    task_id: &str,
+) -> Result<DeployTaskStatus, AppError> {
     let task = get_task_row(conn, task_id)?
         .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
     if task.task_type != "upgrade" {
-        return Err(AppError::Internal(format!("task is not upgrade: {task_id}")));
+        return Err(AppError::Internal(format!(
+            "task is not upgrade: {task_id}"
+        )));
     }
     let payload = parse_task_payload(&task)?;
     let machine_statuses = get_task_machine_statuses(conn, task_id)?;
@@ -522,13 +529,14 @@ fn wait_for_gate_release(
         let task = get_task_row(&conn, task_id)?
             .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
         if task.status == "cancelled" {
-            return Err(AppError::Internal("upgrade cancelled while awaiting confirmation".into()));
+            return Err(AppError::Internal(
+                "upgrade cancelled while awaiting confirmation".into(),
+            ));
         }
         if task.status == "failed" {
-            return Err(AppError::Internal(
-                task.error_msg
-                    .unwrap_or_else(|| "upgrade failed while awaiting confirmation".into()),
-            ));
+            return Err(AppError::Internal(task.error_msg.unwrap_or_else(|| {
+                "upgrade failed while awaiting confirmation".into()
+            })));
         }
         let payload = parse_task_payload(&task)?;
         let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("");
@@ -551,7 +559,8 @@ fn run_upgrade_worker(
             .map_err(|_| AppError::Internal("lock".into()))?;
         fetch_upgrade_machines(&conn, &payload.machine_ids)?
     };
-    let (relay_ids, bp_ids, planned_machine_ids) = partition_upgrade_order(&selected, &payload.machine_ids);
+    let (relay_ids, bp_ids, planned_machine_ids) =
+        partition_upgrade_order(&selected, &payload.machine_ids);
     let network = selected
         .first()
         .map(|machine| machine.network.clone())
@@ -631,7 +640,12 @@ fn run_upgrade_worker(
             app_handle,
             task_id,
             relay_inventory,
-            build_upgrade_extra_vars(payload, &network, "UPGRADING_RELAY_N", Some(&backup_archive)),
+            build_upgrade_extra_vars(
+                payload,
+                &network,
+                "UPGRADING_RELAY_N",
+                Some(&backup_archive),
+            ),
         )?;
 
         {
@@ -786,7 +800,8 @@ pub async fn upgrade_start(
 
     let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
     let machines = fetch_upgrade_machines(&conn, &payload.machine_ids)?;
-    let (relay_ids, bp_ids, planned_machine_ids) = partition_upgrade_order(&machines, &payload.machine_ids);
+    let (relay_ids, bp_ids, planned_machine_ids) =
+        partition_upgrade_order(&machines, &payload.machine_ids);
     if relay_ids.is_empty() {
         return Err(AppError::Internal(
             "upgrade requires at least one relay machine".into(),
@@ -812,7 +827,12 @@ pub async fn upgrade_start(
     });
     let payload_json = serde_json::to_string(&task_payload)
         .map_err(|e| AppError::Internal(format!("upgrade payload serialize failed: {e}")))?;
-    insert_upgrade_task(&conn, task_id.as_str(), payload_json.as_str(), &payload.machine_ids)?;
+    insert_upgrade_task(
+        &conn,
+        task_id.as_str(),
+        payload_json.as_str(),
+        &payload.machine_ids,
+    )?;
     audit_log_insert(
         &conn,
         "upgrade_start",
@@ -832,7 +852,9 @@ pub async fn upgrade_start(
     let payload_for_worker = payload.clone();
     let app_for_worker = app_handle.clone();
     thread::spawn(move || {
-        if let Err(err) = run_upgrade_worker(&app_for_worker, &task_id_for_worker, &payload_for_worker) {
+        if let Err(err) =
+            run_upgrade_worker(&app_for_worker, &task_id_for_worker, &payload_for_worker)
+        {
             let failed_machine_id = {
                 let db_state = app_for_worker.state::<DbState>();
                 let conn = match db_state.0.lock() {

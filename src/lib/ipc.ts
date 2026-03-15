@@ -26,6 +26,8 @@ import type {
   RecentTaskSummary,
   RuntimeProbe,
   SshKeyInfo,
+  TaskLogPage,
+  TaskLogQueryPayload,
 } from "./types";
 
 export async function ping(): Promise<void> {
@@ -178,6 +180,10 @@ export async function runtimeRestartStatus(taskId: string): Promise<DeployTaskSt
 
 export async function taskRecentList(limit?: number): Promise<RecentTaskSummary[]> {
   return invoke("task_recent_list", { limit: limit ?? null });
+}
+
+export async function taskLogQuery(query?: TaskLogQueryPayload): Promise<TaskLogPage> {
+  return invoke("task_log_query", { query: query ?? null });
 }
 
 export async function observabilityGatewayStatus(): Promise<ObservabilityGatewayStatus> {

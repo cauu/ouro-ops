@@ -351,10 +351,7 @@ fn extract_string_list(value: Option<&Value>) -> Vec<String> {
             .iter()
             .filter_map(|item| item.as_str().map(ToString::to_string))
             .collect(),
-        Some(Value::Object(map)) => map
-            .keys()
-            .map(ToString::to_string)
-            .collect(),
+        Some(Value::Object(map)) => map.keys().map(ToString::to_string).collect(),
         _ => Vec::new(),
     }
 }
@@ -403,7 +400,11 @@ fn parse_reward_account_field(value: Option<&Value>) -> Option<String> {
             if let Some(key_hash) = map
                 .get("credential")
                 .and_then(Value::as_object)
-                .and_then(|credential| credential.get("keyHash").or_else(|| credential.get("scriptHash")))
+                .and_then(|credential| {
+                    credential
+                        .get("keyHash")
+                        .or_else(|| credential.get("scriptHash"))
+                })
                 .and_then(Value::as_str)
             {
                 return Some(key_hash.to_string());
@@ -588,13 +589,21 @@ fn parse_registration_details(
         metadata_url: map
             .get("metadataUrl")
             .or_else(|| metadata.and_then(|m| m.get("url")))
-            .or_else(|| map.get("spsMetadata").and_then(Value::as_object).and_then(|m| m.get("url")))
+            .or_else(|| {
+                map.get("spsMetadata")
+                    .and_then(Value::as_object)
+                    .and_then(|m| m.get("url"))
+            })
             .and_then(Value::as_str)
             .map(ToString::to_string),
         metadata_hash: map
             .get("metadataHash")
             .or_else(|| metadata.and_then(|m| m.get("hash")))
-            .or_else(|| map.get("spsMetadata").and_then(Value::as_object).and_then(|m| m.get("hash")))
+            .or_else(|| {
+                map.get("spsMetadata")
+                    .and_then(Value::as_object)
+                    .and_then(|m| m.get("hash"))
+            })
             .and_then(Value::as_str)
             .map(ToString::to_string),
     }))
@@ -655,7 +664,11 @@ fn resolve_remote_file_in_container(
     let mut last_error = None;
     for candidate in candidate_container_paths(path) {
         let probe = docker_exec_shell(
-            format!("test -f {} && printf found", shell_single_quote(candidate.as_str())).as_str(),
+            format!(
+                "test -f {} && printf found",
+                shell_single_quote(candidate.as_str())
+            )
+            .as_str(),
         );
         match ssh_exec(
             machine.ssh_user.as_str(),
@@ -684,7 +697,8 @@ fn read_remote_file_from_container(
         machine.ssh_user.as_str(),
         machine.ip.as_str(),
         machine.ssh_port,
-        docker_exec_shell(format!("cat {}", shell_single_quote(resolved.as_str())).as_str()).as_str(),
+        docker_exec_shell(format!("cat {}", shell_single_quote(resolved.as_str())).as_str())
+            .as_str(),
     )
     .map(|output| output.trim().to_string())
 }
@@ -696,9 +710,7 @@ fn query_pool_deposit(
 ) -> Result<Option<i64>, AppError> {
     let network_args = cli_network_args(network)?;
     for cli in [
-        format!(
-            "latest query protocol-parameters {network_args} --socket-path /ipc/node.socket"
-        ),
+        format!("latest query protocol-parameters {network_args} --socket-path /ipc/node.socket"),
         format!("query protocol-parameters {network_args} --socket-path /ipc/node.socket"),
     ] {
         if let Ok(output) = ssh_exec(
@@ -723,15 +735,20 @@ fn query_pool_deposit(
     Ok(None)
 }
 
-fn infer_registration_relays(conn: &Connection, machine: &MachineRow) -> Result<Vec<PoolOnchainRelay>, AppError> {
-    Ok(repo_machine_list(conn, Some("relay"), Some(machine.network.as_str()))?
-        .into_iter()
-        .filter(|candidate| candidate.pool_id == machine.pool_id)
-        .map(|candidate| PoolOnchainRelay {
-            address: candidate.ip,
-            port: 3001,
-        })
-        .collect())
+fn infer_registration_relays(
+    conn: &Connection,
+    machine: &MachineRow,
+) -> Result<Vec<PoolOnchainRelay>, AppError> {
+    Ok(
+        repo_machine_list(conn, Some("relay"), Some(machine.network.as_str()))?
+            .into_iter()
+            .filter(|candidate| candidate.pool_id == machine.pool_id)
+            .map(|candidate| PoolOnchainRelay {
+                address: candidate.ip,
+                port: 3001,
+            })
+            .collect(),
+    )
 }
 
 fn build_registration_tx_command_preview(
@@ -984,7 +1001,8 @@ fn pool_registration_prepare_with_conn_and_ssh(
 
     let required_deposit = query_pool_deposit(&machine, pool.network.as_str(), ssh_exec)?;
     let tx_inputs = if let Some(payment_address) = payment_address.as_deref() {
-        match query_payment_utxo_inputs(&machine, pool.network.as_str(), payment_address, ssh_exec) {
+        match query_payment_utxo_inputs(&machine, pool.network.as_str(), payment_address, ssh_exec)
+        {
             Ok(inputs) if !inputs.is_empty() => inputs,
             Ok(_) => {
                 push_missing_once(
@@ -1181,8 +1199,7 @@ fn pool_registration_submit_with_conn_and_ssh(
     let note = if submitted {
         format!(
             "Pre-signed registration transaction submitted to {} from {}.",
-            pool.network,
-            machine.name,
+            pool.network, machine.name,
         )
     } else {
         "Registration submission is blocked; provide the missing signed transaction artifact on the hot node before submission.".into()
@@ -1343,9 +1360,12 @@ fn pool_onchain_status_with_conn_ssh_and_metadata(
     ) {
         Ok(details) => details,
         Err(err)
-            if machine.role == "bp" && is_pool_query_unsupported_error(err.to_string().as_str()) =>
+            if machine.role == "bp"
+                && is_pool_query_unsupported_error(err.to_string().as_str()) =>
         {
-            if let Some(relay_machine) = find_pool_relay_fallback(conn, &machine, pool.network.as_str())? {
+            if let Some(relay_machine) =
+                find_pool_relay_fallback(conn, &machine, pool.network.as_str())?
+            {
                 note = format!(
                     "Primary bp query path is not supported by the current cardano-cli era handling; fell back to relay {}.",
                     relay_machine.name
@@ -1433,7 +1453,10 @@ fn pool_onchain_status_with_conn(
     )
 }
 
-fn persist_bound_pool_status(conn: &Connection, status: &PoolOnchainStatus) -> Result<Pool, AppError> {
+fn persist_bound_pool_status(
+    conn: &Connection,
+    status: &PoolOnchainStatus,
+) -> Result<Pool, AppError> {
     let registration = status.registration.as_ref().ok_or_else(|| {
         AppError::Internal("pool is not registered on-chain; cannot bind local pool".into())
     })?;
@@ -1479,11 +1502,19 @@ fn persist_bound_pool_status(conn: &Connection, status: &PoolOnchainStatus) -> R
     Ok(pool)
 }
 
-fn select_pool_query_machine(conn: &Connection, network: &str) -> Result<Option<MachineRow>, AppError> {
-    if let Some(relay) = repo_machine_list(conn, Some("relay"), Some(network))?.into_iter().next() {
+fn select_pool_query_machine(
+    conn: &Connection,
+    network: &str,
+) -> Result<Option<MachineRow>, AppError> {
+    if let Some(relay) = repo_machine_list(conn, Some("relay"), Some(network))?
+        .into_iter()
+        .next()
+    {
         return Ok(Some(relay));
     }
-    Ok(repo_machine_list(conn, Some("bp"), Some(network))?.into_iter().next())
+    Ok(repo_machine_list(conn, Some("bp"), Some(network))?
+        .into_iter()
+        .next())
 }
 
 fn pool_bind_onchain_with_conn(
@@ -1509,9 +1540,10 @@ fn pool_bind_onchain_with_conn(
 fn pool_refresh_bound_onchain_with_conn(conn: &Connection) -> Result<Pool, AppError> {
     let current =
         pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
-    let onchain_pool_id = current.onchain_pool_id.as_deref().ok_or_else(|| {
-        AppError::Internal("pool is not bound to an on-chain pool id".into())
-    })?;
+    let onchain_pool_id = current
+        .onchain_pool_id
+        .as_deref()
+        .ok_or_else(|| AppError::Internal("pool is not bound to an on-chain pool id".into()))?;
     let machine = select_pool_query_machine(conn, current.network.as_str())?.ok_or_else(|| {
         AppError::Internal("no relay or bp machine available for on-chain refresh".into())
     })?;
@@ -1834,8 +1866,8 @@ mod tests {
                 "SELECT COUNT(*) FROM audit_log WHERE action = 'pool_update'",
                 [],
                 |r| r.get(0),
-        )
-        .expect("count audit");
+            )
+            .expect("count audit");
         assert_eq!(count_audit, 1);
     }
 
@@ -1859,11 +1891,14 @@ mod tests {
 
         let ssh = |_: &str, _: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
             if remote_cmd.contains("--stake-pool-id pool1xyz")
-                && (remote_cmd.contains("query pool-state") || remote_cmd.contains("query pool-params"))
+                && (remote_cmd.contains("query pool-state")
+                    || remote_cmd.contains("query pool-params"))
             {
                 return Ok("{}".into());
             }
-            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+            Err(AppError::Internal(format!(
+                "unexpected ssh command: {remote_cmd}"
+            )))
         };
 
         let status = pool_onchain_status_with_conn_and_ssh(
@@ -1915,7 +1950,10 @@ mod tests {
         .expect("query contract");
 
         assert_eq!(status.query_source, "unresolved");
-        assert_eq!(status.missing_requirements, vec!["pool_id or cold_vkey_path"]);
+        assert_eq!(
+            status.missing_requirements,
+            vec!["pool_id or cold_vkey_path"]
+        );
     }
 
     #[test]
@@ -1969,8 +2007,7 @@ mod tests {
 
         let ssh = |_: &str, _: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
             if remote_cmd.contains("query pool-state") && remote_cmd.contains("pool1test") {
-                return Ok(
-                    r#"{
+                return Ok(r#"{
                         "pool1test": {
                             "currentPoolParams": {
                                 "margin": {"numerator": 1, "denominator": 20},
@@ -1986,10 +2023,11 @@ mod tests {
                             }
                         }
                     }"#
-                    .into(),
-                );
+                .into());
             }
-            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+            Err(AppError::Internal(format!(
+                "unexpected ssh command: {remote_cmd}"
+            )))
         };
 
         let status = pool_onchain_status_with_conn_and_ssh(
@@ -2050,7 +2088,9 @@ mod tests {
             {
                 return Ok("{}".into());
             }
-            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+            Err(AppError::Internal(format!(
+                "unexpected ssh command: {remote_cmd}"
+            )))
         };
 
         let status = pool_onchain_status_with_conn_and_ssh(
@@ -2074,7 +2114,8 @@ mod tests {
     fn tc_pool_011_wrap_remote_command_hides_first_docker_permission_error() {
         let wrapped = wrap_remote_command("docker exec cardano-node cardano-cli query tip");
         assert!(wrapped.contains("docker exec cardano-node cardano-cli query tip"));
-        assert!(wrapped.contains("2>/dev/null || sudo -n docker exec cardano-node cardano-cli query tip"));
+        assert!(wrapped
+            .contains("2>/dev/null || sudo -n docker exec cardano-node cardano-cli query tip"));
     }
 
     #[test]
@@ -2097,8 +2138,7 @@ mod tests {
 
         let ssh = |_: &str, _: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
             if remote_cmd.contains("query pool-state") && remote_cmd.contains("pool1nested") {
-                return Ok(
-                    r#"{
+                return Ok(r#"{
                         "pools": [
                             {
                                 "poolId": "pool1nested",
@@ -2115,10 +2155,11 @@ mod tests {
                             }
                         ]
                     }"#
-                    .into(),
-                );
+                .into());
             }
-            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+            Err(AppError::Internal(format!(
+                "unexpected ssh command: {remote_cmd}"
+            )))
         };
 
         let status = pool_onchain_status_with_conn_and_ssh(
@@ -2141,7 +2182,10 @@ mod tests {
             registration.reward_account.as_deref(),
             Some("stake1nestedreward")
         );
-        assert_eq!(registration.metadata_url.as_deref(), Some("https://example.com/nested.json"));
+        assert_eq!(
+            registration.metadata_url.as_deref(),
+            Some("https://example.com/nested.json")
+        );
         assert_eq!(registration.metadata_hash.as_deref(), Some("beadfeed"));
         assert_eq!(registration.relays.len(), 1);
     }
@@ -2206,7 +2250,9 @@ mod tests {
                     .into(),
                 );
             }
-            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+            Err(AppError::Internal(format!(
+                "unexpected ssh command: {remote_cmd}"
+            )))
         };
 
         let status = pool_onchain_status_with_conn_and_ssh(
@@ -2279,15 +2325,15 @@ mod tests {
 
         let ssh = |_: &str, ip: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
             if ip == "10.0.0.20"
-                && (remote_cmd.contains("query pool-state") || remote_cmd.contains("query pool-params"))
+                && (remote_cmd.contains("query pool-state")
+                    || remote_cmd.contains("query pool-params"))
             {
                 return Err(AppError::Internal(
                     "ssh command failed: Command failed: query pool-state Error: This query is not supported in the era: Babbage.".into(),
                 ));
             }
             if ip == "10.0.0.10" && remote_cmd.contains("query pool-state") {
-                return Ok(
-                    r#"{
+                return Ok(r#"{
                         "pool1fallback": {
                             "poolParams": {
                                 "spsCost": 170000000,
@@ -2309,10 +2355,11 @@ mod tests {
                             }
                         }
                     }"#
-                    .into(),
-                );
+                .into());
             }
-            Err(AppError::Internal(format!("unexpected ssh command: {ip} {remote_cmd}")))
+            Err(AppError::Internal(format!(
+                "unexpected ssh command: {ip} {remote_cmd}"
+            )))
         };
 
         let status = pool_onchain_status_with_conn_and_ssh(
@@ -2380,7 +2427,9 @@ mod tests {
                     .into(),
                 );
             }
-            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+            Err(AppError::Internal(format!(
+                "unexpected ssh command: {remote_cmd}"
+            )))
         };
         let fetch_ticker = |url: &str| -> Result<Option<String>, AppError> {
             assert_eq!(url, "https://www.bubble-studio.xyz/md.json");
@@ -2483,7 +2532,9 @@ mod tests {
             if remote_cmd.contains("query protocol-parameters") {
                 return Ok(r#"{"stakePoolDeposit":500000000}"#.into());
             }
-            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+            Err(AppError::Internal(format!(
+                "unexpected ssh command: {remote_cmd}"
+            )))
         };
 
         let result = pool_registration_prepare_with_conn_and_ssh(
@@ -2544,13 +2595,16 @@ mod tests {
 
         let ssh = |_: &str, _: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
             if (remote_cmd.contains("test -f")
-                && remote_cmd.contains("/opt/cardano/config/registration-drafts/pool-registration.cert"))
+                && remote_cmd
+                    .contains("/opt/cardano/config/registration-drafts/pool-registration.cert"))
                 || (remote_cmd.contains("test -f")
                     && remote_cmd.contains("/opt/cardano/config/keys/payment.addr"))
             {
                 return Ok("found".into());
             }
-            if remote_cmd.contains("cat") && remote_cmd.contains("/opt/cardano/config/keys/payment.addr") {
+            if remote_cmd.contains("cat")
+                && remote_cmd.contains("/opt/cardano/config/keys/payment.addr")
+            {
                 return Ok("addr_test1qpzexample".into());
             }
             if remote_cmd.contains("query protocol-parameters") {
@@ -2571,7 +2625,9 @@ mod tests {
             {
                 return Ok(String::new());
             }
-            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+            Err(AppError::Internal(format!(
+                "unexpected ssh command: {remote_cmd}"
+            )))
         };
 
         let result = pool_registration_prepare_with_conn_and_ssh(
@@ -2596,7 +2652,11 @@ mod tests {
             Some("addr_test1qpzexample")
         );
         assert_eq!(
-            result.registration_relays.iter().map(|relay| relay.address.as_str()).collect::<Vec<_>>(),
+            result
+                .registration_relays
+                .iter()
+                .map(|relay| relay.address.as_str())
+                .collect::<Vec<_>>(),
             vec!["10.0.0.31", "10.0.0.32"]
         );
         assert!(result
@@ -2645,7 +2705,9 @@ mod tests {
                     .into(),
             },
             &|_, _, _, remote_cmd| {
-                Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+                Err(AppError::Internal(format!(
+                    "unexpected ssh command: {remote_cmd}"
+                )))
             },
         )
         .expect_err("confirmation mismatch should fail");
@@ -2674,9 +2736,7 @@ mod tests {
         .expect("insert relay");
 
         let ssh = |_: &str, _: &str, _: i64, remote_cmd: &str| -> Result<String, AppError> {
-            if remote_cmd.contains("test -f")
-                && remote_cmd.contains("pool-registration.signed")
-            {
+            if remote_cmd.contains("test -f") && remote_cmd.contains("pool-registration.signed") {
                 return Ok("found".into());
             }
             if remote_cmd.contains("transaction txid")
@@ -2689,7 +2749,9 @@ mod tests {
             {
                 return Ok(String::new());
             }
-            Err(AppError::Internal(format!("unexpected ssh command: {remote_cmd}")))
+            Err(AppError::Internal(format!(
+                "unexpected ssh command: {remote_cmd}"
+            )))
         };
 
         let result = pool_registration_submit_with_conn_and_ssh(

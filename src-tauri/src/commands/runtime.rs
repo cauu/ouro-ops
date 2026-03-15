@@ -73,8 +73,8 @@ fn selected_machine(conn: &Connection, machine_id: i64) -> Result<MachineRow, Ap
 
 fn build_runtime_inventory(conn: &Connection, machine_id: i64) -> Result<Value, AppError> {
     let machine = selected_machine(conn, machine_id)?;
-    let pool = pool_get_single(conn)?
-        .ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
+    let pool =
+        pool_get_single(conn)?.ok_or_else(|| AppError::Internal("pool not initialized".into()))?;
     let all_pool_machines: Vec<MachineRow> =
         repo_machine_list(conn, None, Some(pool.network.as_str()))?
             .into_iter()
@@ -412,7 +412,13 @@ pub async fn runtime_apply_config(
         let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
         let payload_json =
             serde_json::to_string(&payload).map_err(|e| AppError::Internal(e.to_string()))?;
-        insert_runtime_task(&conn, &task_id, "runtime_config", payload.machine_id, &payload_json)?;
+        insert_runtime_task(
+            &conn,
+            &task_id,
+            "runtime_config",
+            payload.machine_id,
+            &payload_json,
+        )?;
     }
 
     let task_id_for_worker = task_id.clone();
@@ -604,8 +610,14 @@ mod tests {
         let task_id = uuid::Uuid::new_v4().to_string();
         let payload = RuntimeApplyConfigPayload { machine_id: bp_id };
         let payload_json = serde_json::to_string(&payload).expect("payload");
-        insert_runtime_task(&conn, &task_id, "runtime_config", payload.machine_id, &payload_json)
-            .expect("insert task");
+        insert_runtime_task(
+            &conn,
+            &task_id,
+            "runtime_config",
+            payload.machine_id,
+            &payload_json,
+        )
+        .expect("insert task");
         mark_task_running(&conn, &task_id).expect("running");
         let status = runtime_config_status_with_conn(&conn, &task_id).expect("status");
         assert_eq!(status.task_type, "runtime_config");

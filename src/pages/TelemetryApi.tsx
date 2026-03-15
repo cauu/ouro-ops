@@ -211,7 +211,7 @@ export default function TelemetryApi() {
               void handleGatewayBootstrap();
             }}
             disabled={gatewayActionBusy}
-            className="inline-flex h-8 items-center rounded border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
             title="执行 observability bootstrap"
           >
             {gatewaySubmittingKind === "bootstrap"
@@ -226,7 +226,7 @@ export default function TelemetryApi() {
               void handleGatewayRollback();
             }}
             disabled={gatewayActionBusy}
-            className="inline-flex h-8 items-center rounded border border-rose-300 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded border border-rose-300 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
             title="执行 observability rollback"
           >
             {gatewaySubmittingKind === "rollback"
@@ -261,6 +261,9 @@ export default function TelemetryApi() {
         </header>
 
         <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+          <p className="px-3 py-1.5 text-xs text-slate-500" role="note">
+            表格较宽，小屏可左右滑动查看。
+          </p>
           <table className="w-full min-w-[760px] text-left text-xs">
             <thead className="bg-slate-100 text-slate-600">
               <tr>
