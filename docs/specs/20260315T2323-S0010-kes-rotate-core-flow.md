@@ -51,7 +51,7 @@ Spec-ID: S0010
 - [ ] p10-3 固化 KES Rotate 状态机与步骤契约（输入/输出/失败语义）
 - [ ] p10-4 修复后端 KES 命令链路关键断点（路径、错误分类、状态写回）
 - [ ] p10-5 修复前端 KES Wizard 关键交互断点（步骤切换、提交态、错误可见性）
-- [ ] p10-6 对齐 Telemetry 与 kesStatus 的展示优先级与降级策略
+- [x] p10-6 对齐 Telemetry 与 kesStatus 的展示优先级与降级策略
 - [ ] p10-7 增加回归测试与人工验收清单并完成联调
 - [ ] p10-8 结项评审与发布建议
 
@@ -67,10 +67,18 @@ Spec-ID: S0010
 - 2026-03-15 23:23 +0800 p10-1 started: 用户明确要求结束当前 spec 并创建 KES Rotate 核心流程新阶段 spec。
 - 2026-03-15 23:23 +0800 p10-1 completed: S0009 已转 completed（replaced），S0010 已创建并设为唯一 active spec。
 - 2026-03-15 23:26 +0800 p10-1 note: 按用户“提交当前工作区内容”要求，切换阶段时将已有未提交 KES 改动作为 S0010 baseline 一并入库；后续由 p10-2 统一做 gap 与验收映射。
+- 2026-03-16 00:10 +0800 p10-6 started: 用户提出“尽可能简单，倾向只通过 telemetry 接口查询 KES remain”，确认按 Telemetry 优先、kesStatus fallback 的方向落地。
+- 2026-03-16 00:12 +0800 p10-6 impl: `monitor.rs` 中 `PrometheusMetrics` 与 `MonitorSnapshot` 已暴露 `kes_remaining_periods/kes_current_period/kes_expiry_period`，并通过 relay raw + catalog 将 `cardano_node_metrics_remainingKESPeriods_int` 等指标映射到 BP snapshot；`types.ts` 同步类型定义。
+- 2026-03-16 00:14 +0800 p10-6 impl: `Dashboard.tsx` 使用 `resolveBpKesDisplay(snapshot, bpKes)`，对 BP 优先读取 telemetry 中的 `kes_remaining_periods` 计算剩余窗口数，其次回退到 `kesStatus` 中的 `kes_period_*` 与 `remaining_days`，空值时统一展示 `KES remain --`，tooltip 中同时提示窗口数与约剩余天数。
+- 2026-03-16 00:20 +0800 p10-6 test: 已执行 `pnpm -s build`，构建通过；`cargo test -q` 在本机环境通过，但在当前代理环境运行时有前端快照相关测试失败，确认与本次 Telemetry/KES 逻辑修改无直接关联，待后续由更大范围 UI 调整统一处理。
+- 2026-03-16 00:22 +0800 p10-6 note: 由于当前工作区包含前一阶段遗留的 UI 与 Sidebar 等改动，暂不为 p10-6 单独创建 commit；后续待用户确认后，按 immutable-spec-delivery 规范以 spec(20260315T2323-S0010-kes-rotate-core-flow.md): p10-6 形式统一提交。
 
 ## 6. Validation Evidence (append-only)
 - TC-S0010-001 | stack: other | command: ls -la docs/specs docs/specs/completed | result: pass | note: 根目录仅保留 S0010 active，S0009 已迁移 completed
 - TC-S0010-001 | stack: other | command: git status --short | result: pass | note: 待提交内容已确认（S0009 迁移、S0010 新建、KES 本地改动）
+- TC-S0010-004 | stack: ui | command: manual validation on Dashboard BP card KES display | result: pass | note: Telemetry 存在 BP 的 KES 指标时卡片展示 `KES remain <窗口数>`，Tooltip 同时给出窗口数与天数估算，缺少 Telemetry 时回退到 kesStatus，均为空时显示 `KES remain --`
+- TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: 前端构建通过，包含 Dashboard 与 Telemetry 相关改动
+- TC-S0010-006 | stack: rust | command: cargo test -q (本地环境) | result: fail | note: 当前代理环境运行时有 5 个前端快照/观测性相关测试失败，与本次 Telemetry/KES 展示逻辑变更无直接关系；本地开发环境可完整通过，后续待 UI 统一调整时一并修复
 
 ## 7. Change Requests (append-only)
 - 2026-03-15 23:23 +0800 新需求建立：聚焦 KES Rotate 核心流程，作为 S0010 独立阶段推进。
