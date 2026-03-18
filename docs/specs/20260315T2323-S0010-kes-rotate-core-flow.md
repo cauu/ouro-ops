@@ -97,6 +97,7 @@ Spec-ID: S0010
 - 2026-03-18 +0800 p10-5 started: 更新 `KesManager.tsx` Step 1 文案与 loading 态。
 - 2026-03-18 +0800 p10-5 completed: Step 1 描述改为"远程连接 BP 节点执行 KES keygen，kes.skey 留在 BP，kes.vkey 拉回本地"；按钮 loading 态改为"Connecting to BP..."。Step 2/3 无需改动：instructions 由后端动态生成（已含正确 vkey 路径），Step 3 仅上传 cert（原有逻辑不变）。
 - 2026-03-18 +0800 p10-2-fix1: 运行时发现 `roles:` + `tasks_from` 被 ansible_runner 忽略，实际执行了 `main.yml` 导致 `ansible_date_time` 未定义错误。将 `kes-generate.yml` 和 `kes-push.yml` 从 `roles:` 改为 `tasks: include_role` 方式。
+- 2026-03-18 +0800 p10-2-fix2: key-gen-KES 在容器内执行时路径错误。容器卷映射为 `/opt/cardano/keys`(host) → `/opt/cardano/config/keys`(container)，docker exec 命令需使用容器内路径 `/opt/cardano/config/keys/`；chown/chmod 改用 host 路径 + `ansible.builtin.file` 模块。
 
 ## 6. Validation Evidence (append-only)
 - TC-S0010-001 | stack: other | command: ls -la docs/specs docs/specs/completed | result: pass | note: 根目录仅保留 S0010 active，S0009 已迁移 completed
@@ -113,6 +114,8 @@ Spec-ID: S0010
 - TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-5 后前端构建通过
 - TC-S0010-007 | stack: ansible | command: runtime test kes-generate.yml | result: fail | note: `roles:` + `tasks_from` 被忽略，ansible_runner 实际执行了 main.yml 导致 `ansible_date_time` 未定义错误
 - TC-S0010-007 | stack: ansible | command: fix kes-generate.yml + kes-push.yml → include_role | result: pass | note: 改为 `tasks: include_role` 方式显式指定 `tasks_from`，避免 ansible_runner 对 roles 级 tasks_from 的兼容问题
+- TC-S0010-007 | stack: ansible | command: runtime test kes_generate.yml key-gen-KES | result: fail | note: container 内路径为 `/opt/cardano/config/keys/`（卷映射 `/opt/cardano/keys` → `/opt/cardano/config/keys`），而非 `/opt/cardano/keys/`；docker exec 使用了错误的容器内路径导致 openFdAt 错误
+- TC-S0010-007 | stack: ansible | command: fix kes_generate.yml container paths | result: pass | note: docker exec 路径改为 `/opt/cardano/config/keys/`，chown/chmod 改为 host 路径 `ansible.builtin.file` 模块操作 `/opt/cardano/keys/`
 
 ## 7. Change Requests (append-only)
 - 2026-03-15 23:23 +0800 新需求建立：聚焦 KES Rotate 核心流程，作为 S0010 独立阶段推进。

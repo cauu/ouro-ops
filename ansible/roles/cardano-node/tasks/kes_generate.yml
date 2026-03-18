@@ -1,4 +1,7 @@
 ---
+# Container volume mapping: /opt/cardano/keys (host) -> /opt/cardano/config/keys (container)
+# docker exec commands use container-internal paths; fetch/stat use host paths.
+
 - name: Validate KES generate target inputs
   ansible.builtin.assert:
     that:
@@ -32,25 +35,24 @@
   ansible.builtin.command: >-
     docker exec cardano-node
     cardano-cli latest node key-gen-KES
-    --verification-key-file /opt/cardano/keys/kes.vkey
-    --signing-key-file /opt/cardano/keys/kes.skey
+    --verification-key-file /opt/cardano/config/keys/kes.vkey
+    --signing-key-file /opt/cardano/config/keys/kes.skey
   register: kes_gen_result
   changed_when: kes_gen_result.rc == 0
 
-- name: Set correct ownership on generated KES keys
-  ansible.builtin.command: >-
-    docker exec cardano-node
-    chown 1000:1000 /opt/cardano/keys/{{ item }}
+- name: Set correct ownership on generated KES keys (host path)
+  ansible.builtin.file:
+    path: "/opt/cardano/keys/{{ item }}"
+    owner: "1000"
+    group: "1000"
   loop:
     - kes.vkey
     - kes.skey
-  changed_when: true
 
-- name: Set correct permissions on KES signing key
-  ansible.builtin.command: >-
-    docker exec cardano-node
-    chmod 0400 /opt/cardano/keys/kes.skey
-  changed_when: true
+- name: Set correct permissions on KES signing key (host path)
+  ansible.builtin.file:
+    path: /opt/cardano/keys/kes.skey
+    mode: "0400"
 
 - name: Fetch kes.vkey from block producer to control plane
   ansible.builtin.fetch:
