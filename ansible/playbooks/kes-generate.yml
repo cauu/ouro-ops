@@ -1,0 +1,8 @@
+---
+- name: Generate KES keypair on block producer
+  hosts: bp
+  become: true
+  gather_facts: false
+  roles:
+    - role: cardano-node
+      tasks_from: kes_generate

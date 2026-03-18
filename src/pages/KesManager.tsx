@@ -375,7 +375,7 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                 <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
                   <h2 className="text-sm font-semibold">Step 1 · 生成 KES Keypairs</h2>
                   <p className="text-xs text-slate-500">
-                    在热环境执行 KES keygen，生成新的 `kes.skey` 与 `kes.vkey`。
+                    远程连接 BP 节点执行 KES keygen，`kes.skey` 留在 BP，`kes.vkey` 拉回本地。
                   </p>
                   <button
                     type="button"
@@ -383,7 +383,7 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                     disabled={selectedBusy}
                     className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1 disabled:opacity-60"
                   >
-                    {selectedBusy ? "Generating..." : "Generate KES"}
+                    {selectedBusy ? "Connecting to BP..." : "Generate KES"}
                   </button>
                 </section>
               )}

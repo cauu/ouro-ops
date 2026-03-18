@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -62,19 +61,16 @@ fn kes_staging_dir(app_handle: &AppHandle, machine_id: i64) -> Result<PathBuf, A
     Ok(app_dir.join("kes").join(machine_id.to_string()))
 }
 
-fn resolve_cardano_cli_path() -> String {
-    const ENV_KEY: &str = "OURO_OPS_CARDANO_CLI_PATH";
-    let path = match std::env::var(ENV_KEY) {
-        Ok(p) => p.trim().to_string(),
-        Err(_) => return "cardano-cli".to_string(),
-    };
-    if path.is_empty() {
-        return "cardano-cli".to_string();
-    }
-    if Path::new(&path).is_file() {
-        return path;
-    }
-    "cardano-cli".to_string()
+fn kes_generate_playbook_path() -> Result<String, AppError> {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .map_err(|_| AppError::Internal("CARGO_MANIFEST_DIR not set".into()))?;
+    let path = PathBuf::from(manifest_dir)
+        .parent()
+        .ok_or_else(|| AppError::Internal("no parent dir".into()))?
+        .join("ansible")
+        .join("playbooks")
+        .join("kes-generate.yml");
+    Ok(path.display().to_string())
 }
 
 fn severity_for_remaining_days(remaining_days: Option<i64>) -> String {
@@ -170,39 +166,15 @@ fn current_op_cert_counter(conn: &Connection, machine_id: i64) -> Result<i64, Ap
     }
 }
 
-fn run_command_checked(program: &str, args: &[&str]) -> Result<(), AppError> {
-    let output = Command::new(program).args(args).output().map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            AppError::Internal(
-                "cardano-cli 未找到，请安装或在环境变量 OURO_OPS_CARDANO_CLI_PATH 中配置可执行路径。".into(),
-            )
-        } else {
-            AppError::Io(e)
-        }
-    })?;
-    if output.status.success() {
-        return Ok(());
-    }
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    Err(AppError::Internal(format!("{program} failed: {stderr}")))
-}
-
-fn kes_generate_with_runner<F>(
+fn run_kes_generate_remote(
+    app_handle: &AppHandle,
+    machine_id: i64,
     staging_dir: &Path,
     counter_value: i64,
-    cardano_cli_path: &str,
-    run: F,
-) -> Result<KesSignRequest, AppError>
-where
-    F: Fn(&str, &[&str]) -> Result<(), AppError>,
-{
+) -> Result<KesSignRequest, AppError> {
     fs::create_dir_all(staging_dir)?;
-    let skey_path = staging_dir.join("kes.skey");
     let vkey_path = staging_dir.join("kes.vkey");
     let cert_path = staging_dir.join("node.cert");
-    if skey_path.exists() {
-        fs::remove_file(&skey_path)?;
-    }
     if vkey_path.exists() {
         fs::remove_file(&vkey_path)?;
     }
@@ -210,27 +182,46 @@ where
         fs::remove_file(&cert_path)?;
     }
 
-    let vkey = vkey_path
+    let inventory = {
+        let db_state = app_handle.state::<DbState>();
+        let conn = db_state
+            .0
+            .lock()
+            .map_err(|_| AppError::Internal("lock".into()))?;
+        build_kes_inventory(&conn, machine_id)?
+    };
+
+    let sidecar_state = {
+        let managed = app_handle.state::<Mutex<Option<Arc<SidecarState>>>>();
+        let guard = managed
+            .lock()
+            .map_err(|_| AppError::Internal("lock".into()))?;
+        guard.as_ref().cloned().ok_or(AppError::SidecarCrash)?
+    };
+
+    let vkey_dest = vkey_path
         .to_str()
         .ok_or_else(|| AppError::Internal("invalid kes.vkey path".into()))?;
-    let skey = skey_path
-        .to_str()
-        .ok_or_else(|| AppError::Internal("invalid kes.skey path".into()))?;
-    run(
-        cardano_cli_path,
-        &[
-            "node",
-            "key-gen-KES",
-            "--verification-key-file",
-            vkey,
-            "--signing-key-file",
-            skey,
-        ],
+
+    run_playbook(
+        sidecar_state.as_ref(),
+        app_handle,
+        &format!("kes-gen-{machine_id}"),
+        kes_generate_playbook_path()?.as_str(),
+        inventory,
+        json!({ "kes_vkey_fetch_dest": vkey_dest }),
     )?;
 
+    if !vkey_path.exists() {
+        return Err(AppError::Internal(
+            "KES vkey 未能从 BP 节点取回，请检查 BP 连接状态。".into(),
+        ));
+    }
+
+    let vkey = vkey_path.display().to_string();
     Ok(KesSignRequest {
-        machine_id: 0,
-        kes_vkey_path: vkey_path.display().to_string(),
+        machine_id,
+        kes_vkey_path: vkey.clone(),
         counter_value,
         instructions: format!(
             "1. 将 {vkey} 拷贝到离线冷环境。\n2. 使用当前 operational certificate counter={counter_value} 生成新的 node.cert。\n3. 返回到控制平面后调用 kes_import_cert(machine_id, cert_path) 导入证书。"
@@ -498,27 +489,29 @@ pub async fn kes_generate(
     db: State<'_, DbState>,
     app_handle: AppHandle,
 ) -> Result<KesSignRequest, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
-    ensure_bp_machine(&conn, machine_id)?;
-    let counter_value = current_op_cert_counter(&conn, machine_id)?;
+    let counter_value = {
+        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        ensure_bp_machine(&conn, machine_id)?;
+        current_op_cert_counter(&conn, machine_id)?
+    };
     let staging_dir = kes_staging_dir(&app_handle, machine_id)?;
-    let cardano_cli = resolve_cardano_cli_path();
-    let mut sign_request = kes_generate_with_runner(
-        staging_dir.as_path(),
-        counter_value,
-        &cardano_cli,
-        run_command_checked,
-    )?;
-    sign_request.machine_id = machine_id;
-    audit_log_insert(
-        &conn,
-        "kes_generate",
-        &json!({
-            "machine_id": machine_id,
-            "kes_vkey_path": sign_request.kes_vkey_path,
-            "counter_value": sign_request.counter_value
-        }),
-    )?;
+
+    let sign_request =
+        run_kes_generate_remote(&app_handle, machine_id, &staging_dir, counter_value)?;
+
+    {
+        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        audit_log_insert(
+            &conn,
+            "kes_generate",
+            &json!({
+                "machine_id": machine_id,
+                "kes_vkey_path": sign_request.kes_vkey_path,
+                "counter_value": sign_request.counter_value,
+                "mode": "remote"
+            }),
+        )?;
+    }
     Ok(sign_request)
 }
 
@@ -689,20 +682,9 @@ mod tests {
     }
 
     #[test]
-    fn tc_kes_002_generate_returns_sign_request_with_staging_paths() {
-        let base = std::env::temp_dir().join(format!("ouro-kes-generate-{}", uuid::Uuid::new_v4()));
-        let request = kes_generate_with_runner(base.as_path(), 7, "cardano-cli", |_, args| {
-            let vkey = PathBuf::from(args[3]);
-            let skey = PathBuf::from(args[5]);
-            fs::create_dir_all(vkey.parent().expect("parent"))?;
-            fs::write(&vkey, "vkey")?;
-            fs::write(&skey, "skey")?;
-            Ok(())
-        })
-        .expect("generate");
-        assert!(Path::new(&request.kes_vkey_path).exists());
-        assert_eq!(request.counter_value, 7);
-        assert!(request.instructions.contains("counter=7"));
+    fn tc_kes_002_generate_playbook_path_resolves() {
+        let path = kes_generate_playbook_path().expect("playbook path");
+        assert!(path.ends_with("ansible/playbooks/kes-generate.yml"));
     }
 
     #[test]
