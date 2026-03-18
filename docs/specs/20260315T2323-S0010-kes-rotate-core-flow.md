@@ -96,6 +96,7 @@ Spec-ID: S0010
 - 2026-03-18 +0800 p10-4 completed: 审查确认 `kes_push.yml` 原本就只推送 `node.cert`（line 36-44 copy src），不传输 skey；skey 和 vrf.skey 的 stat 检查（line 20-32）作为前置校验保留。远程生成后 skey 已在 BP 上，push 链路无需改动。
 - 2026-03-18 +0800 p10-5 started: 更新 `KesManager.tsx` Step 1 文案与 loading 态。
 - 2026-03-18 +0800 p10-5 completed: Step 1 描述改为"远程连接 BP 节点执行 KES keygen，kes.skey 留在 BP，kes.vkey 拉回本地"；按钮 loading 态改为"Connecting to BP..."。Step 2/3 无需改动：instructions 由后端动态生成（已含正确 vkey 路径），Step 3 仅上传 cert（原有逻辑不变）。
+- 2026-03-18 +0800 p10-2-fix1: 运行时发现 `roles:` + `tasks_from` 被 ansible_runner 忽略，实际执行了 `main.yml` 导致 `ansible_date_time` 未定义错误。将 `kes-generate.yml` 和 `kes-push.yml` 从 `roles:` 改为 `tasks: include_role` 方式。
 
 ## 6. Validation Evidence (append-only)
 - TC-S0010-001 | stack: other | command: ls -la docs/specs docs/specs/completed | result: pass | note: 根目录仅保留 S0010 active，S0009 已迁移 completed
@@ -110,6 +111,8 @@ Spec-ID: S0010
 - TC-S0010-008 | stack: ansible | command: review kes_push.yml | result: pass | note: push 仅 copy `kes_cert_path` → `/opt/cardano/keys/node.cert`，不涉及 skey 传输；skey/vrf.skey stat 检查作为前置校验保留
 - TC-S0010-003 | stack: ui | command: review KesManager.tsx Step 1 | result: pass | note: 远程生成语义已体现，loading 态显示"Connecting to BP..."；后端错误（BP 不可达、cardano-cli 缺失）通过 `toUserError` 展示在 error alert 中
 - TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-5 后前端构建通过
+- TC-S0010-007 | stack: ansible | command: runtime test kes-generate.yml | result: fail | note: `roles:` + `tasks_from` 被忽略，ansible_runner 实际执行了 main.yml 导致 `ansible_date_time` 未定义错误
+- TC-S0010-007 | stack: ansible | command: fix kes-generate.yml + kes-push.yml → include_role | result: pass | note: 改为 `tasks: include_role` 方式显式指定 `tasks_from`，避免 ansible_runner 对 roles 级 tasks_from 的兼容问题
 
 ## 7. Change Requests (append-only)
 - 2026-03-15 23:23 +0800 新需求建立：聚焦 KES Rotate 核心流程，作为 S0010 独立阶段推进。

@@ -3,6 +3,8 @@
   hosts: bp
   become: true
   gather_facts: false
-  roles:
-    - role: cardano-node
-      tasks_from: kes_generate
+  tasks:
+    - name: Include KES generate tasks
+      ansible.builtin.include_role:
+        name: cardano-node
+        tasks_from: kes_generate
