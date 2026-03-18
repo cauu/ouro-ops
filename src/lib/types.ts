@@ -379,5 +379,8 @@ export interface KesSignRequest {
   machine_id: number;
   kes_vkey_path: string;
   counter_value: number;
+  kes_period: number | null;
+  cardano_cli_version: string | null;
+  cardano_node_version: string | null;
   instructions: string;
 }

@@ -54,10 +54,30 @@
     path: /opt/cardano/keys/kes.skey
     mode: "0400"
 
+- name: Capture cardano-node version for release matching
+  ansible.builtin.command: docker exec cardano-node cardano-node --version
+  register: kes_gen_node_version
+  changed_when: false
+  failed_when: false
+
+- name: Write version metadata to host temp file
+  ansible.builtin.copy:
+    content: |
+      {{ kes_gen_cli_check.stdout | default('') | trim }}
+      {{ kes_gen_node_version.stdout_lines[0] | default('') | trim }}
+    dest: /tmp/ouro-kes-version.txt
+    mode: "0644"
+
 - name: Fetch kes.vkey from block producer to control plane
   ansible.builtin.fetch:
     src: /opt/cardano/keys/kes.vkey
     dest: "{{ kes_vkey_fetch_dest }}"
+    flat: true
+
+- name: Fetch version metadata to control plane
+  ansible.builtin.fetch:
+    src: /tmp/ouro-kes-version.txt
+    dest: "{{ kes_vkey_fetch_dest | dirname }}/cardano-version.txt"
     flat: true
 
 - name: Report KES generate result
@@ -66,3 +86,4 @@
       status: success
       kes_vkey_fetched: "{{ kes_vkey_fetch_dest }}"
       cardano_cli_version: "{{ kes_gen_cli_check.stdout | default('') | trim }}"
+      cardano_node_version: "{{ kes_gen_node_version.stdout_lines[0] | default('') | trim }}"

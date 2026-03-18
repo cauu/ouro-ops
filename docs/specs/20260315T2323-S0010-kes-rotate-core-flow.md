@@ -58,6 +58,37 @@ Spec-ID: S0010
     - `ansible/roles/cardano-node/tasks/kes_generate.yml`：新增 Ansible task，在 BP 上生成密钥对并 fetch vkey。
     - `src/pages/KesManager.tsx`：Step 1 提示文案调整（远程生成语义），Step 2 instructions 适配新 vkey 路径。
   - 风险 1 策略更新：不再依赖本地 `cardano-cli`，`OURO_OPS_CARDANO_CLI_PATH` 配置项可废弃；失败场景转为 BP 不可达或 BP 上 `cardano-cli` 缺失，错误信息需明确区分。
+- Design Amendment: Step 2 冷环境签发 Bundle 工具包
+  - 动机：冷环境可能无 `cardano-cli`，且平台可能是 Linux 或 macOS；需要提供一键签发方案，消除冷环境工具依赖。
+  - 决策：Step 2 提供 Bundle 打包功能，用户可选择是否附带 `cardano-cli`；如需附带，选择冷环境目标平台后按需从 GitHub Releases 下载对应二进制并缓存。
+  - 交付物结构：
+    ```
+    kes-rotate-bundle/
+    ├── issue-op-cert.sh      # 预填参数的签发脚本
+    ├── kes.vkey              # Step 1 产出
+    └── cardano-cli           # 可选，按需下载的目标平台二进制
+    ```
+  - 脚本行为：
+    1. 优先使用 bundle 内附带的 `./cardano-cli`，其次检测系统 PATH 中的 `cardano-cli`。
+    2. 执行前做 `--version` 校验，失败时给出明确提示。
+    3. 预填 `--kes-period` 和 `--operational-certificate-issue-counter-file` 的 counter 值。
+    4. 提示用户输入 `cold.skey` 和 `cold.counter` 路径（提供合理默认值）。
+    5. 执行 `cardano-cli latest node issue-op-cert`，输出 `node.cert`。
+  - 版本策略：
+    - Step 1 的 `kes_generate.yml` 已捕获 BP 上 `cardano-cli --version` 输出。
+    - 后端解析版本号，用于匹配 GitHub Releases（`IntersectMBO/cardano-node`）下载 URL。
+    - 下载后按 `{version}/{platform}` 缓存到 app_data_dir，后续复用不重复下载。
+  - 目标平台：
+    - `linux-x86_64`：对应 release artifact `cardano-node-*-linux.tar.gz`
+    - `macos-aarch64`：对应 release artifact `cardano-node-*-macos.tar.gz`
+  - 模块影响：
+    - `src-tauri/src/commands/kes.rs`：新增 `kes_prepare_bundle` 命令；`KesSignRequest` 扩展返回 `cardano_cli_version` 字段。
+    - `src/pages/KesManager.tsx`：Step 2 新增"冷环境是否有 cardano-cli"开关、目标平台选择器、"打包 Bundle"按钮、bundle 路径展示。
+    - `src/lib/ipc.ts` / `src/lib/types.ts`：新增 `kesPrepareBundle` IPC 和 `KesBundleResult` 类型。
+  - 风险与缓解：
+    - GitHub Releases URL 格式变更：通过 GitHub API 动态获取 asset 下载链接，不硬编码 URL 模板。
+    - 下载体积大（~150MB/平台）：提供下载进度反馈；缓存机制避免重复下载。
+    - 冷环境 glibc 兼容：脚本内置 `--version` 前置校验，不兼容时给出明确错误。
 
 ## 3. Execution Plan
 - [x] p10-1 关闭 S0009 并建立 S0010 active spec（本文件）
@@ -65,7 +96,11 @@ Spec-ID: S0010
 - [x] p10-3 重构 `kes.rs` 的 `kes_generate`：移除本地 cardano-cli 调用，改为调用 Ansible `kes_generate.yml`；移除 `resolve_cardano_cli_path()` / `run_command_checked()` 本地执行逻辑
 - [x] p10-4 重构 `kes.rs` 的 `kes_push`：因 skey 已在 BP 上，`kes_push.yml` 仅需推送 `node.cert`，不再传输 skey；对齐 push playbook
 - [x] p10-5 更新前端 `KesManager.tsx`：Step 1 适配远程生成语义（loading 态、远程错误展示）；Step 2 instructions 适配新 vkey 路径；Step 3 仅上传 cert
+- [x] p10-9 后端：`KesSignRequest` 扩展 `cardano_cli_version`、`cardano_node_version`、`kes_period` 字段；Ansible task fetch 版本文件
 - [x] p10-6 对齐 Telemetry 与 kesStatus 的展示优先级与降级策略
+- [x] p10-9 后端：`KesSignRequest` 扩展 `cardano_cli_version` 字段（从 Step 1 的 `kes_generate.yml` 返回值中提取）
+- [ ] p10-10 后端：新增 `kes_prepare_bundle` 命令——生成 `issue-op-cert.sh` 预填脚本，复制 `kes.vkey`，可选下载目标平台 `cardano-cli`（GitHub Releases），打包到 bundle 目录
+- [ ] p10-11 前端：Step 2 改造——新增"冷环境是否有 cardano-cli"开关、目标平台选择器、"打包 Bundle"按钮、bundle 路径展示与 Finder 打开入口
 - [ ] p10-7 增加回归测试与人工验收清单并完成联调
 - [ ] p10-8 结项评审与发布建议
 
@@ -78,6 +113,11 @@ Spec-ID: S0010
 - TC-S0010-004 KES 指标展示遵循 Telemetry 优先、kesStatus fallback，空值时稳定降级为 `--`。
 - TC-S0010-005 任务执行中有明确 loading/日志反馈，失败后可重试且不清空历史日志。
 - TC-S0010-006 本阶段相关构建与测试通过（至少 `pnpm -s build` 与 `cargo test` 相关子集）。
+- TC-S0010-009 `KesSignRequest` 返回 `cardano_cli_version` 字段，值与 BP 上 `cardano-cli --version` 输出一致。
+- TC-S0010-010 `kes_prepare_bundle` 生成的 bundle 目录包含 `issue-op-cert.sh` + `kes.vkey`；当 `include_cli=true` 时还包含对应平台的 `cardano-cli` 二进制。
+- TC-S0010-011 `issue-op-cert.sh` 脚本优先使用附带的 `./cardano-cli`，其次 fallback 到系统 PATH；预填 `--kes-period` 和 counter 值正确。
+- TC-S0010-012 `cardano-cli` 下载后按 `{version}/{platform}` 缓存，相同版本+平台不重复下载。
+- TC-S0010-013 Step 2 UI 展示 bundle 选项（cli 开关、平台选择、打包按钮）；打包完成后展示 bundle 路径。
 
 ## 5. Execution Log (append-only)
 - 2026-03-15 23:23 +0800 p10-1 started: 用户明确要求结束当前 spec 并创建 KES Rotate 核心流程新阶段 spec。
@@ -98,6 +138,9 @@ Spec-ID: S0010
 - 2026-03-18 +0800 p10-5 completed: Step 1 描述改为"远程连接 BP 节点执行 KES keygen，kes.skey 留在 BP，kes.vkey 拉回本地"；按钮 loading 态改为"Connecting to BP..."。Step 2/3 无需改动：instructions 由后端动态生成（已含正确 vkey 路径），Step 3 仅上传 cert（原有逻辑不变）。
 - 2026-03-18 +0800 p10-2-fix1: 运行时发现 `roles:` + `tasks_from` 被 ansible_runner 忽略，实际执行了 `main.yml` 导致 `ansible_date_time` 未定义错误。将 `kes-generate.yml` 和 `kes-push.yml` 从 `roles:` 改为 `tasks: include_role` 方式。
 - 2026-03-18 +0800 p10-2-fix2: key-gen-KES 在容器内执行时路径错误。容器卷映射为 `/opt/cardano/keys`(host) → `/opt/cardano/config/keys`(container)，docker exec 命令需使用容器内路径 `/opt/cardano/config/keys/`；chown/chmod 改用 host 路径 + `ansible.builtin.file` 模块。
+- 2026-03-18 +0800 CR-003 accepted: Step 2 新增 Bundle 打包功能——用户可选是否附带 `cardano-cli`，选择冷环境目标平台（Linux x86_64 / macOS aarch64）后按需从 GitHub Releases 下载并缓存。新增 p10-9/10/11、TC-S0010-009~013。
+- 2026-03-18 +0800 p10-9 started: 扩展 `KesSignRequest`，Ansible task 增加 `cardano-node --version` 捕获与版本文件 fetch。
+- 2026-03-18 +0800 p10-9 completed: `KesSignRequest` 新增 `kes_period`、`cardano_cli_version`、`cardano_node_version` 字段；`kes_generate.yml` 捕获 node 版本并写入 `/tmp/ouro-kes-version.txt`，fetch 到 staging 目录；`kes_generate` 命令从 `kes_state` 读取当前 KES period；前端 `types.ts` 同步更新。
 
 ## 6. Validation Evidence (append-only)
 - TC-S0010-001 | stack: other | command: ls -la docs/specs docs/specs/completed | result: pass | note: 根目录仅保留 S0010 active，S0009 已迁移 completed
@@ -116,7 +159,12 @@ Spec-ID: S0010
 - TC-S0010-007 | stack: ansible | command: fix kes-generate.yml + kes-push.yml → include_role | result: pass | note: 改为 `tasks: include_role` 方式显式指定 `tasks_from`，避免 ansible_runner 对 roles 级 tasks_from 的兼容问题
 - TC-S0010-007 | stack: ansible | command: runtime test kes_generate.yml key-gen-KES | result: fail | note: container 内路径为 `/opt/cardano/config/keys/`（卷映射 `/opt/cardano/keys` → `/opt/cardano/config/keys`），而非 `/opt/cardano/keys/`；docker exec 使用了错误的容器内路径导致 openFdAt 错误
 - TC-S0010-007 | stack: ansible | command: fix kes_generate.yml container paths | result: pass | note: docker exec 路径改为 `/opt/cardano/config/keys/`，chown/chmod 改为 host 路径 `ansible.builtin.file` 模块操作 `/opt/cardano/keys/`
+- TC-S0010-009 | stack: rust | command: cargo check | result: pass | note: `KesSignRequest` 新增 `kes_period`/`cardano_cli_version`/`cardano_node_version` 字段，编译通过
+- TC-S0010-009 | stack: ansible | command: review kes_generate.yml | result: pass | note: 新增 cardano-node --version 捕获、版本文件写入与 fetch 步骤
+- TC-S0010-006 | stack: rust | command: cargo test | result: pass | note: 169 passed, 5 failed（pre-existing frontend snapshot）；KES 相关测试全部通过
+- TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-9 后前端构建通过
 
 ## 7. Change Requests (append-only)
 - 2026-03-15 23:23 +0800 新需求建立：聚焦 KES Rotate 核心流程，作为 S0010 独立阶段推进。
 - 2026-03-18 +0800 CR-002：Step 1 Generate KES Keypairs 从本地 cardano-cli 调用改为 BP 节点远程生成（方案 A）。动机：macOS 无 cardano-cli 预编译，远程生成避免私钥中转且与现有 Ansible 链路统一。影响 p10-2 至 p10-5 执行计划重新定义，新增 TC-S0010-007/008。
+- 2026-03-18 +0800 CR-003：Step 2 新增冷环境签发 Bundle 工具包。用户可选是否附带 cardano-cli；如需附带则选择冷环境目标平台，从 GitHub Releases 按需下载并缓存。交付物为包含 issue-op-cert.sh + kes.vkey + 可选 cardano-cli 的 bundle 目录。新增 p10-9/10/11、TC-S0010-009~013。

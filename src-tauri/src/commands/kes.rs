@@ -32,6 +32,9 @@ pub struct KesSignRequest {
     pub machine_id: i64,
     pub kes_vkey_path: String,
     pub counter_value: i64,
+    pub kes_period: Option<i64>,
+    pub cardano_cli_version: Option<String>,
+    pub cardano_node_version: Option<String>,
     pub instructions: String,
 }
 
@@ -166,11 +169,24 @@ fn current_op_cert_counter(conn: &Connection, machine_id: i64) -> Result<i64, Ap
     }
 }
 
+fn parse_version_file(staging_dir: &Path) -> (Option<String>, Option<String>) {
+    let version_path = staging_dir.join("cardano-version.txt");
+    let content = match fs::read_to_string(&version_path) {
+        Ok(c) => c,
+        Err(_) => return (None, None),
+    };
+    let lines: Vec<&str> = content.lines().collect();
+    let cli_version = lines.first().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let node_version = lines.get(1).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    (cli_version, node_version)
+}
+
 fn run_kes_generate_remote(
     app_handle: &AppHandle,
     machine_id: i64,
     staging_dir: &Path,
     counter_value: i64,
+    kes_period: Option<i64>,
 ) -> Result<KesSignRequest, AppError> {
     fs::create_dir_all(staging_dir)?;
     let vkey_path = staging_dir.join("kes.vkey");
@@ -218,11 +234,16 @@ fn run_kes_generate_remote(
         ));
     }
 
+    let (cardano_cli_version, cardano_node_version) = parse_version_file(staging_dir);
+
     let vkey = vkey_path.display().to_string();
     Ok(KesSignRequest {
         machine_id,
         kes_vkey_path: vkey.clone(),
         counter_value,
+        kes_period,
+        cardano_cli_version,
+        cardano_node_version,
         instructions: format!(
             "1. 将 {vkey} 拷贝到离线冷环境。\n2. 使用当前 operational certificate counter={counter_value} 生成新的 node.cert。\n3. 返回到控制平面后调用 kes_import_cert(machine_id, cert_path) 导入证书。"
         ),
@@ -489,15 +510,23 @@ pub async fn kes_generate(
     db: State<'_, DbState>,
     app_handle: AppHandle,
 ) -> Result<KesSignRequest, AppError> {
-    let counter_value = {
+    let (counter_value, kes_period) = {
         let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
         ensure_bp_machine(&conn, machine_id)?;
-        current_op_cert_counter(&conn, machine_id)?
+        let counter = current_op_cert_counter(&conn, machine_id)?;
+        let period = conn
+            .query_row(
+                "SELECT kes_period_current FROM kes_state WHERE machine_id = ?1",
+                params![machine_id],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .unwrap_or(None);
+        (counter, period)
     };
     let staging_dir = kes_staging_dir(&app_handle, machine_id)?;
 
     let sign_request =
-        run_kes_generate_remote(&app_handle, machine_id, &staging_dir, counter_value)?;
+        run_kes_generate_remote(&app_handle, machine_id, &staging_dir, counter_value, kes_period)?;
 
     {
         let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
