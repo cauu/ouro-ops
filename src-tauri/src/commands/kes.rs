@@ -857,11 +857,13 @@ KES_PERIOD="{kes_period_str}"
 COUNTER_VALUE="{counter_value}"
 
 # --- User inputs ------------------------------------------
-read -rp "Path to cold.skey [cold.skey]: " COLD_SKEY
+# Note: cold.skey / cold.counter are also commonly named
+#       node.skey / node.counter — just a naming convention.
+read -rp "Path to cold signing key [cold.skey]: " COLD_SKEY
 COLD_SKEY="${{COLD_SKEY:-cold.skey}}"
 [ -f "$COLD_SKEY" ] || {{ echo "ERROR: $COLD_SKEY not found" >&2; exit 1; }}
 
-read -rp "Path to cold.counter [cold.counter]: " COLD_COUNTER
+read -rp "Path to cold counter file [cold.counter]: " COLD_COUNTER
 COLD_COUNTER="${{COLD_COUNTER:-cold.counter}}"
 [ -f "$COLD_COUNTER" ] || {{ echo "ERROR: $COLD_COUNTER not found" >&2; exit 1; }}
 
