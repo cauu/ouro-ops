@@ -5,11 +5,12 @@ import { useMonitorStore } from "../lib/monitorStore";
 import {
   kesGenerate,
   kesImportCert,
+  kesPrepareBundle,
   kesPushStart,
   kesRotationStatus,
   kesStatusAll,
 } from "../lib/ipc";
-import type { DeployTaskStatus, KesSignRequest, KesStatus } from "../lib/types";
+import type { DeployTaskStatus, KesBundleResult, KesSignRequest, KesStatus } from "../lib/types";
 
 function isTerminal(status: string): boolean {
   return status === "success" || status === "failed" || status === "cancelled";
@@ -61,6 +62,10 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
   const [pushConfirmValue, setPushConfirmValue] = useState("");
   const [selectedMachineId, setSelectedMachineId] = useState<number | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
+  const [bundleIncludeCli, setBundleIncludeCli] = useState(false);
+  const [bundlePlatform, setBundlePlatform] = useState<string>("linux-x86_64");
+  const [bundleResult, setBundleResult] = useState<KesBundleResult | null>(null);
+  const [bundleBusy, setBundleBusy] = useState(false);
 
   const selectedSnapshot = useMemo(
     () => (selectedMachineId != null ? snapshots.find((s) => s.machine_id === selectedMachineId) ?? null : null),
@@ -213,8 +218,27 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
     }
   }, [selectedMachineId, selectedRequest, selectedTask, wizardStep]);
 
+  const handlePrepareBundle = async (machineId: number) => {
+    setBundleBusy(true);
+    setBundleResult(null);
+    setError(null);
+    try {
+      const result = await kesPrepareBundle(
+        machineId,
+        bundleIncludeCli,
+        bundleIncludeCli ? bundlePlatform : null,
+      );
+      setBundleResult(result);
+    } catch (e) {
+      setError(toUserError(e));
+    } finally {
+      setBundleBusy(false);
+    }
+  };
+
   const handleGenerate = async (machineId: number) => {
     setBusyMachineId(machineId);
+    setBundleResult(null);
     setError(null);
     try {
       const request = await kesGenerate(machineId);
@@ -393,14 +417,81 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
                   <h2 className="text-sm font-semibold">Step 2 · 冷环境生成 node.cert</h2>
                   {selectedRequest ? (
                     <div className="space-y-3">
+                      <div className="grid gap-3 text-xs md:grid-cols-3">
+                        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                          <span className="block text-slate-500">KES Period</span>
+                          <strong className="text-slate-900">{selectedRequest.kes_period ?? "--"}</strong>
+                        </div>
+                        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                          <span className="block text-slate-500">Counter</span>
+                          <strong className="text-slate-900">{selectedRequest.counter_value}</strong>
+                        </div>
+                        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                          <span className="block text-slate-500">Node Version</span>
+                          <strong className="text-slate-900">{selectedRequest.cardano_node_version ?? "--"}</strong>
+                        </div>
+                      </div>
+
                       <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
                         <p className="font-medium text-slate-900">KES verification key</p>
                         <p className="mt-1 break-all text-slate-700">{selectedRequest.kes_vkey_path}</p>
                       </div>
-                      <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
-                        <p className="font-medium text-slate-900">Cold signing instructions</p>
-                        <pre className="mt-1 whitespace-pre-wrap text-slate-700">{selectedRequest.instructions}</pre>
+
+                      <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-xs font-medium text-slate-900">Bundle 工具包</p>
+                        <p className="text-xs text-slate-500">
+                          打包签发脚本 + kes.vkey，拷贝到冷环境执行即可生成 node.cert。
+                        </p>
+                        <label className="flex items-center gap-2 text-xs text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={bundleIncludeCli}
+                            onChange={(e) => setBundleIncludeCli(e.target.checked)}
+                            className="rounded border-slate-300"
+                          />
+                          冷环境无 cardano-cli，需要附带
+                        </label>
+                        {bundleIncludeCli && (
+                          <div className="flex items-center gap-2">
+                            <label htmlFor="bundle-platform" className="text-xs text-slate-600">
+                              目标平台
+                            </label>
+                            <select
+                              id="bundle-platform"
+                              value={bundlePlatform}
+                              onChange={(e) => setBundlePlatform(e.target.value)}
+                              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                            >
+                              <option value="linux-x86_64">Linux x86_64</option>
+                              <option value="macos-aarch64">macOS Apple Silicon</option>
+                            </select>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void handlePrepareBundle(selectedStatus.machine_id)}
+                          disabled={bundleBusy}
+                          className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1 disabled:opacity-60"
+                        >
+                          {bundleBusy
+                            ? bundleIncludeCli
+                              ? "Downloading cardano-cli..."
+                              : "Preparing..."
+                            : "Prepare Bundle"}
+                        </button>
+                        {bundleResult && (
+                          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800">
+                            <p className="font-medium">Bundle ready</p>
+                            <p className="mt-1 break-all text-emerald-700">{bundleResult.bundle_dir}</p>
+                            {bundleResult.includes_cli && (
+                              <p className="mt-1 text-emerald-600">
+                                Includes cardano-cli for {bundleResult.target_platform}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
+
                       <button
                         type="button"
                         onClick={() => setWizardStep(3)}

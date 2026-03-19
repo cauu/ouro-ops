@@ -100,7 +100,7 @@ Spec-ID: S0010
 - [x] p10-6 对齐 Telemetry 与 kesStatus 的展示优先级与降级策略
 - [x] p10-9 后端：`KesSignRequest` 扩展 `cardano_cli_version` 字段（从 Step 1 的 `kes_generate.yml` 返回值中提取）
 - [x] p10-10 后端：新增 `kes_prepare_bundle` 命令——生成 `issue-op-cert.sh` 预填脚本，复制 `kes.vkey`，可选下载目标平台 `cardano-cli`（GitHub Releases），打包到 bundle 目录
-- [ ] p10-11 前端：Step 2 改造——新增"冷环境是否有 cardano-cli"开关、目标平台选择器、"打包 Bundle"按钮、bundle 路径展示与 Finder 打开入口
+- [x] p10-11 前端：Step 2 改造——新增"冷环境是否有 cardano-cli"开关、目标平台选择器、"打包 Bundle"按钮、bundle 路径展示与 Finder 打开入口
 - [ ] p10-7 增加回归测试与人工验收清单并完成联调
 - [ ] p10-8 结项评审与发布建议
 
@@ -143,6 +143,8 @@ Spec-ID: S0010
 - 2026-03-18 +0800 p10-9 completed: `KesSignRequest` 新增 `kes_period`、`cardano_cli_version`、`cardano_node_version` 字段；`kes_generate.yml` 捕获 node 版本并写入 `/tmp/ouro-kes-version.txt`，fetch 到 staging 目录；`kes_generate` 命令从 `kes_state` 读取当前 KES period；前端 `types.ts` 同步更新。
 - 2026-03-19 +0800 p10-10 started: 实现 `kes_prepare_bundle` 后端命令。
 - 2026-03-19 +0800 p10-10 completed: 新增 `kes_prepare_bundle` Tauri 命令——生成预填参数的 `issue-op-cert.sh`（优先 bundle 内 cli → fallback 系统 PATH → --version 校验 → 确认后执行）；复制 `kes.vkey`；可选通过 GitHub API 动态获取 asset URL 下载目标平台 `cardano-cli` 并按 version/platform 缓存。新增 `reqwest`/`flate2`/`tar` 依赖。前端 `ipc.ts`/`types.ts` 新增 `kesPrepareBundle` 和 `KesBundleResult`。新增 5 个单元测试覆盖版本解析、平台映射、脚本生成。
+- 2026-03-19 +0800 p10-11 started: Step 2 前端改造。
+- 2026-03-19 +0800 p10-11 completed: Step 2 新增 KES period/counter/node version 信息展示；Bundle 区域含 checkbox（冷环境是否有 cli）、平台选择器（Linux x86_64 / macOS Apple Silicon）、Prepare Bundle 按钮（含下载态提示）、bundle 路径展示。
 
 ## 6. Validation Evidence (append-only)
 - TC-S0010-001 | stack: other | command: ls -la docs/specs docs/specs/completed | result: pass | note: 根目录仅保留 S0010 active，S0009 已迁移 completed
@@ -170,6 +172,8 @@ Spec-ID: S0010
 - TC-S0010-012 | stack: rust | command: review cli_cache_dir + download_cardano_cli | result: pass | note: 缓存路径为 `app_data_dir/cardano-cli-cache/{version}/{platform}/cardano-cli`，已缓存时直接返回
 - TC-S0010-006 | stack: rust | command: cargo test -- tc_kes | result: pass | note: 10 个 KES 测试全部通过
 - TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-10 后前端构建通过
+- TC-S0010-013 | stack: ui | command: review KesManager.tsx Step 2 | result: pass | note: 展示 KES period/counter/node version 信息卡片；Bundle 区域含 cli checkbox + 平台 select + prepare 按钮 + 结果展示
+- TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-11 后前端构建通过
 
 ## 7. Change Requests (append-only)
 - 2026-03-15 23:23 +0800 新需求建立：聚焦 KES Rotate 核心流程，作为 S0010 独立阶段推进。
