@@ -99,11 +99,13 @@ function App() {
     };
   }, [pool]);
 
-  // Clean query cache on pool switch
+  // Clean stale pool's query cache on pool switch
   useEffect(() => {
     if (!pool) return;
+    const poolId = pool.id;
     return () => {
-      queryClient.removeQueries({ queryKey: ["dashboard"] });
+      queryClient.removeQueries({ queryKey: ["dashboard", "kes", poolId] });
+      queryClient.removeQueries({ queryKey: ["dashboard", "tasks", poolId] });
     };
   }, [pool, queryClient]);
 
