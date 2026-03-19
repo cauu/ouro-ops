@@ -63,7 +63,7 @@
 - name: Write version metadata to host temp file
   ansible.builtin.copy:
     content: |
-      {{ kes_gen_cli_check.stdout | default('') | trim }}
+      {{ kes_gen_cli_check.stdout_lines[0] | default('') | trim }}
       {{ kes_gen_node_version.stdout_lines[0] | default('') | trim }}
     dest: /tmp/ouro-kes-version.txt
     mode: "0644"

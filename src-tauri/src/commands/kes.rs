@@ -176,9 +176,16 @@ fn parse_version_file(staging_dir: &Path) -> (Option<String>, Option<String>) {
         Ok(c) => c,
         Err(_) => return (None, None),
     };
-    let lines: Vec<&str> = content.lines().collect();
-    let cli_version = lines.first().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-    let node_version = lines.get(1).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let mut cli_version = None;
+    let mut node_version = None;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("cardano-cli") && cli_version.is_none() {
+            cli_version = Some(trimmed.to_string());
+        } else if trimmed.starts_with("cardano-node") && node_version.is_none() {
+            node_version = Some(trimmed.to_string());
+        }
+    }
     (cli_version, node_version)
 }
 
@@ -945,12 +952,11 @@ pub async fn kes_prepare_bundle(
             .ok_or_else(|| AppError::Internal("target_platform is required when include_cli is true".into()))?;
 
         // Read node version from the version file produced by Step 1
-        let version_file = staging_dir.join("cardano-version.txt");
-        let version_raw = fs::read_to_string(&version_file).map_err(|_| {
-            AppError::Internal("cardano-version.txt not found — please complete Step 1 first.".into())
+        let (_, node_version_line) = parse_version_file(&staging_dir);
+        let node_version_line = node_version_line.ok_or_else(|| {
+            AppError::Internal("cardano-node version not found — please re-run Step 1.".into())
         })?;
-        let node_version_line = version_raw.lines().nth(1).unwrap_or("").trim();
-        let node_version = extract_node_release_version(node_version_line).ok_or_else(|| {
+        let node_version = extract_node_release_version(&node_version_line).ok_or_else(|| {
             AppError::Internal(format!(
                 "cannot parse cardano-node version from: {node_version_line}"
             ))

@@ -145,6 +145,7 @@ Spec-ID: S0010
 - 2026-03-19 +0800 p10-10 completed: 新增 `kes_prepare_bundle` Tauri 命令——生成预填参数的 `issue-op-cert.sh`（优先 bundle 内 cli → fallback 系统 PATH → --version 校验 → 确认后执行）；复制 `kes.vkey`；可选通过 GitHub API 动态获取 asset URL 下载目标平台 `cardano-cli` 并按 version/platform 缓存。新增 `reqwest`/`flate2`/`tar` 依赖。前端 `ipc.ts`/`types.ts` 新增 `kesPrepareBundle` 和 `KesBundleResult`。新增 5 个单元测试覆盖版本解析、平台映射、脚本生成。
 - 2026-03-19 +0800 p10-11 started: Step 2 前端改造。
 - 2026-03-19 +0800 p10-11 completed: Step 2 新增 KES period/counter/node version 信息展示；Bundle 区域含 checkbox（冷环境是否有 cli）、平台选择器（Linux x86_64 / macOS Apple Silicon）、Prepare Bundle 按钮（含下载态提示）、bundle 路径展示。
+- 2026-03-19 +0800 p10-10-fix1: `cardano-cli --version` 输出多行（含 `Git rev:...`），Ansible 用 `stdout | trim` 保留了所有行导致版本文件第二行为 git rev 而非 node version。修复：Ansible 改用 `stdout_lines[0]`；Rust `parse_version_file` 改为按前缀 `cardano-cli`/`cardano-node` 匹配行而非依赖行索引；bundle 代码复用 `parse_version_file`。
 
 ## 6. Validation Evidence (append-only)
 - TC-S0010-001 | stack: other | command: ls -la docs/specs docs/specs/completed | result: pass | note: 根目录仅保留 S0010 active，S0009 已迁移 completed
