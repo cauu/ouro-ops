@@ -89,6 +89,18 @@ Spec-ID: S0010
     - GitHub Releases URL 格式变更：通过 GitHub API 动态获取 asset 下载链接，不硬编码 URL 模板。
     - 下载体积大（~150MB/平台）：提供下载进度反馈；缓存机制避免重复下载。
     - 冷环境 glibc 兼容：脚本内置 `--version` 前置校验，不兼容时给出明确错误。
+- Design Amendment: 前端数据加载与状态管理优化
+  - 动机：用户反馈两个体验问题——(1) 本地数据加载慢；(2) Dashboard 数据频繁重置为空值再恢复。
+  - 根因分析：
+    1. Dashboard 初始化串行阻塞：`startMonitorStore()`（含 `monitorSnapshot()` + `monitorStartPolling()` 两次 IPC）完成后才开始 `refreshDashboardData()`（`kesStatusAll()` + `taskRecentList()`），4 个 IPC 调用完全串行。
+    2. monitorStore 生命周期绑定 Dashboard：导航离开时 `stopMonitorStore()` 停止后端轮询并清空事件监听；返回时重新 `startMonitorStore()`，期间 phase 从 `idle` → `loading_cache` → `syncing_live` → `live` 快速切换，造成数据闪烁。
+  - 决策：
+    1. **并行加载**：Dashboard 初始化时 `startMonitorStore()` 与 `refreshDashboardData()` 并行执行，本地 DB 数据（KES status / tasks）不需要等待 telemetry 初始化。
+    2. **monitorStore 生命周期提升到 App 级别**：在 `App.tsx` 中启动 monitorStore，Dashboard 只消费不管理生命周期。避免页面切换时 stop/start 的开销和闪烁。monitorStore 在整个应用生命周期内持续运行。
+  - 模块影响：
+    - `src/App.tsx`：新增 monitorStore 初始化逻辑（`useEffect` 中 `startMonitorStore()`）。
+    - `src/pages/Dashboard.tsx`：移除 `startMonitorStore()` / `stopMonitorStore()` 调用；初始化时仅并行执行 `refreshDashboardData()` + `refreshMonitorStore()`。
+    - `src/lib/monitorStore.ts`：`startMonitorStore()` 增加幂等保护（已有 `started` 标志，确认即可）。
 
 ## 3. Execution Plan
 - [x] p10-1 关闭 S0009 并建立 S0010 active spec（本文件）
@@ -101,6 +113,8 @@ Spec-ID: S0010
 - [x] p10-9 后端：`KesSignRequest` 扩展 `cardano_cli_version` 字段（从 Step 1 的 `kes_generate.yml` 返回值中提取）
 - [x] p10-10 后端：新增 `kes_prepare_bundle` 命令——生成 `issue-op-cert.sh` 预填脚本，复制 `kes.vkey`，可选下载目标平台 `cardano-cli`（GitHub Releases），打包到 bundle 目录
 - [x] p10-11 前端：Step 2 改造——新增"冷环境是否有 cardano-cli"开关、目标平台选择器、"打包 Bundle"按钮、bundle 路径展示与 Finder 打开入口
+- [x] p10-12 monitorStore 生命周期提升到 App 级别：`App.tsx` 中启动，Dashboard 不再管理 start/stop
+- [x] p10-13 Dashboard 初始化并行化：`refreshDashboardData()` 与 monitorStore 刷新并行执行，本地数据不等待 telemetry
 - [ ] p10-7 增加回归测试与人工验收清单并完成联调
 - [ ] p10-8 结项评审与发布建议
 
@@ -118,6 +132,8 @@ Spec-ID: S0010
 - TC-S0010-011 `issue-op-cert.sh` 脚本优先使用附带的 `./cardano-cli`，其次 fallback 到系统 PATH；预填 `--kes-period` 和 counter 值正确。
 - TC-S0010-012 `cardano-cli` 下载后按 `{version}/{platform}` 缓存，相同版本+平台不重复下载。
 - TC-S0010-013 Step 2 UI 展示 bundle 选项（cli 开关、平台选择、打包按钮）；打包完成后展示 bundle 路径。
+- TC-S0010-014 monitorStore 在 App 级别启动后，页面切换（Dashboard ↔ KES ↔ 其他）不触发 stop/start，snapshots 持续可用无闪烁。
+- TC-S0010-015 Dashboard 首次加载时，本地数据（KES status / tasks）与 telemetry 并行获取，本地数据不阻塞于 telemetry 初始化。
 
 ## 5. Execution Log (append-only)
 - 2026-03-15 23:23 +0800 p10-1 started: 用户明确要求结束当前 spec 并创建 KES Rotate 核心流程新阶段 spec。
@@ -146,6 +162,11 @@ Spec-ID: S0010
 - 2026-03-19 +0800 p10-11 started: Step 2 前端改造。
 - 2026-03-19 +0800 p10-11 completed: Step 2 新增 KES period/counter/node version 信息展示；Bundle 区域含 checkbox（冷环境是否有 cli）、平台选择器（Linux x86_64 / macOS Apple Silicon）、Prepare Bundle 按钮（含下载态提示）、bundle 路径展示。
 - 2026-03-19 +0800 p10-10-fix1: `cardano-cli --version` 输出多行（含 `Git rev:...`），Ansible 用 `stdout | trim` 保留了所有行导致版本文件第二行为 git rev 而非 node version。修复：Ansible 改用 `stdout_lines[0]`；Rust `parse_version_file` 改为按前缀 `cardano-cli`/`cardano-node` 匹配行而非依赖行索引；bundle 代码复用 `parse_version_file`。
+- 2026-03-19 +0800 CR-004 accepted: 前端数据加载优化。(1) monitorStore 生命周期从 Dashboard 提升到 App 级别，避免导航切换时 stop/start 闪烁；(2) Dashboard 初始化并行化，本地数据不阻塞于 telemetry。新增 p10-12/13、TC-S0010-014/015。
+- 2026-03-19 +0800 p10-12 started: 将 monitorStore 生命周期提升到 App.tsx。
+- 2026-03-19 +0800 p10-12 completed: `App.tsx` 新增 `useEffect` 在 `pool` 可用时启动 `startMonitorStore(15)`，unmount 时 `stopMonitorStore()`。Dashboard 移除 `startMonitorStore`/`stopMonitorStore` 调用和导入。
+- 2026-03-19 +0800 p10-13 started: Dashboard 初始化并行化。
+- 2026-03-19 +0800 p10-13 completed: Dashboard `useEffect` 初始化改为 `Promise.all([refreshDashboardData(), refreshMonitorStore()])`，本地 DB 数据和 telemetry 刷新并行执行，不再串行等待 `startMonitorStore` 完成。
 
 ## 6. Validation Evidence (append-only)
 - TC-S0010-001 | stack: other | command: ls -la docs/specs docs/specs/completed | result: pass | note: 根目录仅保留 S0010 active，S0009 已迁移 completed
@@ -175,8 +196,12 @@ Spec-ID: S0010
 - TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-10 后前端构建通过
 - TC-S0010-013 | stack: ui | command: review KesManager.tsx Step 2 | result: pass | note: 展示 KES period/counter/node version 信息卡片；Bundle 区域含 cli checkbox + 平台 select + prepare 按钮 + 结果展示
 - TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-11 后前端构建通过
+- TC-S0010-014 | stack: ui | command: review App.tsx + Dashboard.tsx | result: pass | note: monitorStore 在 App 级别由 pool 依赖启动，Dashboard 不再调用 start/stop；页面切换时 snapshots 持续可用
+- TC-S0010-015 | stack: ui | command: review Dashboard.tsx init | result: pass | note: `Promise.all([refreshDashboardData(), refreshMonitorStore()])` 并行执行，本地数据不阻塞于 telemetry
+- TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-12/13 后前端构建通过，无警告
 
 ## 7. Change Requests (append-only)
 - 2026-03-15 23:23 +0800 新需求建立：聚焦 KES Rotate 核心流程，作为 S0010 独立阶段推进。
 - 2026-03-18 +0800 CR-002：Step 1 Generate KES Keypairs 从本地 cardano-cli 调用改为 BP 节点远程生成（方案 A）。动机：macOS 无 cardano-cli 预编译，远程生成避免私钥中转且与现有 Ansible 链路统一。影响 p10-2 至 p10-5 执行计划重新定义，新增 TC-S0010-007/008。
 - 2026-03-18 +0800 CR-003：Step 2 新增冷环境签发 Bundle 工具包。用户可选是否附带 cardano-cli；如需附带则选择冷环境目标平台，从 GitHub Releases 按需下载并缓存。交付物为包含 issue-op-cert.sh + kes.vkey + 可选 cardano-cli 的 bundle 目录。新增 p10-9/10/11、TC-S0010-009~013。
+- 2026-03-19 +0800 CR-004：前端数据加载优化。(1) monitorStore 生命周期从 Dashboard 提升到 App 级别；(2) Dashboard 初始化并行化。动机：本地数据加载慢 + Dashboard 数据频繁重置为空值。新增 p10-12/13、TC-S0010-014/015。

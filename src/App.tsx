@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { poolGet } from "./lib/ipc";
+import { startMonitorStore, stopMonitorStore } from "./lib/monitorStore";
 import type { Pool } from "./lib/types";
 import Dashboard from "./pages/Dashboard";
 import DeployWizard from "./pages/DeployWizard";
@@ -38,6 +39,14 @@ function App() {
   useEffect(() => {
     void refreshPool();
   }, [refreshPool]);
+
+  useEffect(() => {
+    if (!pool) return;
+    void startMonitorStore(15);
+    return () => {
+      void stopMonitorStore();
+    };
+  }, [pool]);
 
   if (booting) {
     return <LoadingScreen />;

@@ -6,8 +6,6 @@ import {
   refreshMonitorStore,
   resolveTelemetryBehavior,
   setMonitorStorePollingInterval,
-  startMonitorStore,
-  stopMonitorStore,
   useMonitorStore,
 } from "../lib/monitorStore";
 import type { KesStatus, MonitorSnapshot, RecentTaskSummary } from "../lib/types";
@@ -473,9 +471,9 @@ export default function Dashboard() {
     void (async () => {
       try {
         const initialInterval = currentIntervalSeconds();
-        await startMonitorStore(initialInterval);
         scheduleDashboardRefresh(initialInterval);
-        await refreshDashboardData();
+        // Parallel: local DB data + telemetry refresh
+        await Promise.all([refreshDashboardData(), refreshMonitorStore()]);
       } catch (error) {
         if (active) {
           setAuxRefreshError(`Dashboard 初始化失败：${String(error)}`);
@@ -499,7 +497,6 @@ export default function Dashboard() {
       if (typeof window !== "undefined") {
         window.removeEventListener("focus", onWindowFocus);
       }
-      void stopMonitorStore();
     };
   }, []);
 
