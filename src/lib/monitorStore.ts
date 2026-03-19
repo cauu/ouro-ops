@@ -126,50 +126,27 @@ export async function startMonitorStore(intervalSeconds = 30): Promise<void> {
   }
   started = true;
   setState({
-    status: "Loading cached telemetry...",
+    status: "Starting telemetry polling...",
     polling: false,
-    telemetryPhase: "loading_cache",
+    telemetryPhase: "syncing_live",
     usingCachedData: false,
     lastError: null,
   });
-  try {
-    const cachedSnapshots = await monitorSnapshot();
-    setState({
-      snapshots: cachedSnapshots,
-      status: cachedSnapshots.length > 0 ? "Loaded cached telemetry." : "No cached telemetry yet.",
-      usingCachedData: cachedSnapshots.length > 0,
-      lastCollectedAt: pickLatestCollectedAt(cachedSnapshots),
-    });
-  } catch (error) {
-    setState({
-      status: "Cached telemetry unavailable",
-      telemetryPhase: "degraded",
-      usingCachedData: false,
-      lastError: String(error),
-    });
-  }
 
-  setState({
-    status:
-      state.snapshots.length > 0
-        ? "Cached telemetry shown, refreshing latest data in background..."
-        : "Waiting for first live telemetry sample...",
-    telemetryPhase: "syncing_live",
-  });
-
+  // Skip eager monitorSnapshot() call — it holds the DB lock during HTTP
+  // calls to relay API, blocking other fast DB queries (kes_status_all,
+  // task_recent_list). Instead, start polling directly; the first poll
+  // cycle will push data via the monitor:snapshot event.
   try {
     await monitorStartPolling(undefined, intervalSeconds);
     setState({ polling: true });
   } catch (error) {
     started = false;
     setState({
-      status:
-        state.snapshots.length > 0
-          ? "Live telemetry unavailable; showing cached data and retrying."
-          : "Live telemetry unavailable; retrying.",
+      status: "Live telemetry unavailable; retrying.",
       polling: false,
       telemetryPhase: "degraded",
-      usingCachedData: state.snapshots.length > 0,
+      usingCachedData: false,
       lastError: String(error),
     });
   }

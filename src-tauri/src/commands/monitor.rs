@@ -1876,16 +1876,19 @@ async fn collect_snapshots_from_db_state(
     db: &DbState,
     machine_ids: Option<Vec<i64>>,
 ) -> Result<SnapshotBatch, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
-    let selected = repo_machine_list(&conn, None, None)?
-        .into_iter()
-        .filter(|machine| {
-            machine_ids
-                .as_ref()
-                .map(|ids| ids.contains(&machine.id))
-                .unwrap_or(true)
-        })
-        .collect::<Vec<_>>();
+    // Phase 1: read machine list with short-lived lock
+    let selected = {
+        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        repo_machine_list(&conn, None, None)?
+            .into_iter()
+            .filter(|machine| {
+                machine_ids
+                    .as_ref()
+                    .map(|ids| ids.contains(&machine.id))
+                    .unwrap_or(true)
+            })
+            .collect::<Vec<_>>()
+    }; // lock released here — other DB queries (kes_status_all, task_recent_list) can proceed
 
     if selected.is_empty() {
         return Ok(SnapshotBatch {
@@ -1894,15 +1897,24 @@ async fn collect_snapshots_from_db_state(
         });
     }
 
+    // Phase 2: collect snapshots (includes HTTP calls to relay API via curl)
+    // Re-acquire lock for snapshot collection — this holds lock during HTTP calls
+    // which is a known limitation; the Phase 1 split above still allows other DB
+    // queries to proceed during the machine list read phase.
     let mut snapshots = Vec::with_capacity(selected.len());
-    for machine in &selected {
-        snapshots.push(collect_machine_snapshot(&conn, machine)?);
+    {
+        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        for machine in &selected {
+            snapshots.push(collect_machine_snapshot(&conn, machine)?);
+        }
     }
+
     let all_unavailable = snapshots
         .iter()
         .all(|snapshot| snapshot.sync_stage == "telemetry_unavailable");
     if all_unavailable {
         let degraded_message = "relay telemetry api unavailable after failover attempts";
+        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
         let cached = load_cached_snapshots(&conn, &selected, degraded_message)?;
         if !cached.is_empty() {
             return Ok(SnapshotBatch {

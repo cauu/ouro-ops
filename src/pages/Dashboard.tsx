@@ -472,8 +472,8 @@ export default function Dashboard() {
       try {
         const initialInterval = currentIntervalSeconds();
         scheduleDashboardRefresh(initialInterval);
-        // Parallel: local DB data + telemetry refresh
-        await Promise.all([refreshDashboardData(), refreshMonitorStore()]);
+        // Local DB data loads immediately; telemetry arrives via monitor:snapshot events
+        await refreshDashboardData();
       } catch (error) {
         if (active) {
           setAuxRefreshError(`Dashboard 初始化失败：${String(error)}`);

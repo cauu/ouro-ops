@@ -167,6 +167,7 @@ Spec-ID: S0010
 - 2026-03-19 +0800 p10-12 completed: `App.tsx` 新增 `useEffect` 在 `pool` 可用时启动 `startMonitorStore(15)`，unmount 时 `stopMonitorStore()`。Dashboard 移除 `startMonitorStore`/`stopMonitorStore` 调用和导入。
 - 2026-03-19 +0800 p10-13 started: Dashboard 初始化并行化。
 - 2026-03-19 +0800 p10-13 completed: Dashboard `useEffect` 初始化改为 `Promise.all([refreshDashboardData(), refreshMonitorStore()])`，本地 DB 数据和 telemetry 刷新并行执行，不再串行等待 `startMonitorStore` 完成。
+- 2026-03-19 +0800 p10-13-fix1: 本地数据仍慢。根因：`monitor_snapshot` 后端实现在持有 DB 锁期间通过 curl 串行请求所有 relay Prometheus API，阻塞其他 DB 查询（`kes_status_all`/`task_recent_list`）。修复：(1) `startMonitorStore` 移除 eager `monitorSnapshot()` 调用——直接启动 polling，首次数据通过 `monitor:snapshot` 事件推送；(2) Dashboard 初始化只调用 `refreshDashboardData()`，不再调用 `refreshMonitorStore()`；(3) 后端 `collect_snapshots_from_db_state` 将 machine list 读取与 snapshot 收集分为两次短锁。
 
 ## 6. Validation Evidence (append-only)
 - TC-S0010-001 | stack: other | command: ls -la docs/specs docs/specs/completed | result: pass | note: 根目录仅保留 S0010 active，S0009 已迁移 completed
