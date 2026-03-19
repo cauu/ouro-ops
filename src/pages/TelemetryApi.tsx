@@ -1,14 +1,15 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import TaskLogStream from "../components/TaskLogStream";
 import { formatTaskError } from "../lib/errors";
 import {
   observabilityBootstrapStart,
   observabilityBootstrapStatus,
-  observabilityGatewayStatus,
   observabilityRollbackStart,
   observabilityRollbackStatus,
 } from "../lib/ipc";
-import type { DeployTaskStatus, ObservabilityGatewayStatus } from "../lib/types";
+import { useGatewayStatusQuery } from "../lib/queries";
+import type { DeployTaskStatus } from "../lib/types";
 
 function isTaskTerminal(status: string): boolean {
   return status === "success" || status === "failed" || status === "cancelled";
@@ -36,48 +37,17 @@ function taskChipClass(status: string): string {
 }
 
 export default function TelemetryApi() {
-  const [gatewayStatus, setGatewayStatus] = useState<ObservabilityGatewayStatus | null>(null);
+  const queryClient = useQueryClient();
+  const { data: gatewayStatus = null } = useGatewayStatusQuery();
   const [gatewayActionError, setGatewayActionError] = useState<string | null>(null);
   const [gatewayActionMessage, setGatewayActionMessage] = useState<string | null>(null);
   const [gatewayTask, setGatewayTask] = useState<{ taskId: string; kind: "bootstrap" | "rollback" } | null>(null);
   const [gatewaySubmittingKind, setGatewaySubmittingKind] = useState<"bootstrap" | "rollback" | null>(null);
   const [gatewayLogTaskId, setGatewayLogTaskId] = useState<string | null>(null);
 
-  const refreshGatewayStatus = async () => {
-    try {
-      const status = await observabilityGatewayStatus();
-      setGatewayStatus(status);
-    } catch (error) {
-      setGatewayActionError(String(error));
-    }
+  const refreshGatewayStatus = () => {
+    void queryClient.invalidateQueries({ queryKey: ["telemetry", "gateway"] });
   };
-
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const status = await observabilityGatewayStatus();
-        if (!active) {
-          return;
-        }
-        setGatewayStatus(status);
-      } catch {
-        if (!active) {
-          return;
-        }
-        setGatewayStatus(null);
-      }
-    })();
-
-    const timer = window.setInterval(() => {
-      void refreshGatewayStatus();
-    }, 15_000);
-
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, []);
 
   useEffect(() => {
     if (!gatewayTask) {

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { formatTaskError } from "../lib/errors";
-import { taskLogQuery } from "../lib/ipc";
-import type { RecentTaskSummary, TaskLogPage } from "../lib/types";
+import { useTaskLogQuery } from "../lib/queries";
+import type { RecentTaskSummary } from "../lib/types";
 
 const STATUS_OPTIONS = ["pending", "running", "paused", "success", "failed", "cancelled"];
 const TASK_TYPE_OPTIONS = [
@@ -78,9 +78,6 @@ async function copyPlainText(value: string): Promise<boolean> {
 }
 
 export default function OperationLogs() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pageData, setPageData] = useState<TaskLogPage | null>(null);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
 
   const [keywordInput, setKeywordInput] = useState("");
@@ -93,39 +90,14 @@ export default function OperationLogs() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    void taskLogQuery({
-      page,
-      page_size: pageSize,
-      keyword: keyword || undefined,
-      status: status || undefined,
-      task_type: taskType || undefined,
-    })
-      .then((result) => {
-        if (!active) {
-          return;
-        }
-        setPageData(result);
-        setError(null);
-      })
-      .catch((queryError) => {
-        if (!active) {
-          return;
-        }
-        setError(String(queryError));
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [keyword, status, taskType, page, pageSize]);
+  const { data: pageData, isLoading: loading, error: queryError } = useTaskLogQuery({
+    page,
+    page_size: pageSize,
+    keyword: keyword || undefined,
+    status: status || undefined,
+    task_type: taskType || undefined,
+  });
+  const error = queryError ? String(queryError) : null;
 
   const currentItems = useMemo<RecentTaskSummary[]>(() => pageData?.items ?? [], [pageData]);
 

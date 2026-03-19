@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import TaskLogStream from "../components/TaskLogStream";
 import { formatTaskError, toUserError } from "../lib/errors";
-import { useMonitorStore } from "../lib/monitorStore";
 import {
   kesGenerate,
   kesImportCert,
   kesPrepareBundle,
   kesPushStart,
   kesRotationStatus,
-  kesStatusAll,
 } from "../lib/ipc";
-import type { DeployTaskStatus, KesBundleResult, KesSignRequest, KesStatus } from "../lib/types";
+import { useMonitorStore } from "../lib/monitorStore";
+import { useKesStatusListQuery } from "../lib/queries";
+import type { DeployTaskStatus, KesBundleResult, KesSignRequest } from "../lib/types";
 
 function isTerminal(status: string): boolean {
   return status === "success" || status === "failed" || status === "cancelled";
@@ -51,9 +51,8 @@ interface KesManagerProps {
 
 export default function KesManager({ poolTicker }: KesManagerProps) {
   const { snapshots } = useMonitorStore();
-  const [loading, setLoading] = useState(true);
+  const { data: statuses = [], isLoading: loading, refetch: refetchKes } = useKesStatusListQuery();
   const [error, setError] = useState<string | null>(null);
-  const [statuses, setStatuses] = useState<KesStatus[]>([]);
   const [requests, setRequests] = useState<Record<number, KesSignRequest>>({});
   const [certPaths, setCertPaths] = useState<Record<number, string>>({});
   const [rotationTasks, setRotationTasks] = useState<Record<number, DeployTaskStatus>>({});
@@ -72,31 +71,19 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
     [snapshots, selectedMachineId],
   );
 
-  const loadKes = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const rows = await kesStatusAll();
-      setStatuses(rows);
-      setCertPaths((prev) => {
-        const next = { ...prev };
-        rows.forEach((row) => {
-          if (!(row.machine_id in next)) {
-            next[row.machine_id] = "";
-          }
-        });
-        return next;
-      });
-    } catch (e) {
-      setError(toUserError(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Initialize certPaths when statuses change
   useEffect(() => {
-    void loadKes();
-  }, []);
+    if (statuses.length === 0) return;
+    setCertPaths((prev) => {
+      const next = { ...prev };
+      statuses.forEach((row) => {
+        if (!(row.machine_id in next)) {
+          next[row.machine_id] = "";
+        }
+      });
+      return next;
+    });
+  }, [statuses]);
 
   useEffect(() => {
     const activeTasks = Object.entries(rotationTasks).filter(([, task]) => !isTerminal(task.status));
@@ -123,7 +110,7 @@ export default function KesManager({ poolTicker }: KesManagerProps) {
             return next;
           });
           if (rows.some(([, task]) => task.status === "success")) {
-            void loadKes();
+            void refetchKes();
           }
         })
         .catch((e) => {

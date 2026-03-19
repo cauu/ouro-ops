@@ -455,7 +455,7 @@ mod frontend_tests {
     fn tc_fe_014_kes_manager_page_exists() {
         let page = include_str!("../../src/pages/KesManager.tsx");
         assert!(page.contains("KES Rotate"));
-        assert!(page.contains("kesStatusAll()"));
+        assert!(page.contains("useKesStatusListQuery"));
         assert!(page.contains("kesGenerate("));
         assert!(page.contains("kesImportCert("));
         assert!(page.contains("kesPushStart("));
@@ -665,7 +665,7 @@ mod frontend_tests {
         assert!(dashboard.contains("useKesStatusQuery"));
         assert!(dashboard.contains("useRecentTasksQuery"));
         assert!(dashboard.contains("useMonitorStore"));
-        let queries = include_str!("../../src/lib/dashboardQueries.ts");
+        let queries = include_str!("../../src/lib/queries.ts");
         assert!(queries.contains("refetchInterval"));
         assert!(queries.contains("visibilityInterval"));
         assert!(queries.contains("refetchOnWindowFocus"));

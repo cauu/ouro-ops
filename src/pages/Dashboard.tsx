@@ -1,6 +1,6 @@
 import { type ReactNode, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useKesStatusQuery, useRecentTasksQuery } from "../lib/dashboardQueries";
+import { useKesStatusQuery, useRecentTasksQuery } from "../lib/queries";
 import { formatTaskError } from "../lib/errors";
 import {
   resolveTelemetryBehavior,
