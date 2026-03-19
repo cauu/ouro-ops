@@ -155,6 +155,7 @@ export async function startMonitorStore(intervalSeconds = 30): Promise<void> {
 export async function setMonitorStorePollingInterval(intervalSeconds: number): Promise<void> {
   await ensureEventListeners();
   if (!started) {
+    await startMonitorStore(intervalSeconds);
     return;
   }
   try {

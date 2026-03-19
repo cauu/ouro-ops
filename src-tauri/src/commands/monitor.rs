@@ -6,6 +6,7 @@ use std::sync::{
 };
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use chrono::{TimeZone, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -140,10 +141,26 @@ struct RelayMetricsAttempt {
     endpoint_errors: usize,
 }
 
+#[derive(Debug, Clone, Default)]
+struct RelayTelemetryContext {
+    config: Option<RelayTelemetryConfig>,
+    relays_by_network: HashMap<String, Vec<MachineRow>>,
+    relay_load_error: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct CpuCounterSample {
     total_ms: f64,
     sampled_at_epoch: i64,
+}
+
+#[derive(Debug)]
+struct SnapshotMaterial {
+    machine: MachineRow,
+    previous: Option<PreviousHealthSample>,
+    collected_at_epoch: i64,
+    collected_at: String,
+    prometheus: PrometheusMetrics,
 }
 
 const RELAY_TELEMETRY_RAW_ENDPOINT: &str = "raw";
@@ -1093,19 +1110,58 @@ fn collect_relay_metrics_from_single_relay(
     }
 }
 
-fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> PrometheusMetrics {
-    let Some(config) = relay_telemetry_config(conn) else {
+fn build_relay_telemetry_context(conn: &Connection) -> RelayTelemetryContext {
+    let config = relay_telemetry_config(conn);
+    if config.is_none() {
+        return RelayTelemetryContext::default();
+    }
+
+    let mut context = RelayTelemetryContext {
+        config,
+        relays_by_network: HashMap::new(),
+        relay_load_error: None,
+    };
+    match repo_machine_list(conn, Some("relay"), None) {
+        Ok(relays) => {
+            for relay in relays {
+                context
+                    .relays_by_network
+                    .entry(relay.network.clone())
+                    .or_default()
+                    .push(relay);
+            }
+            for relays in context.relays_by_network.values_mut() {
+                relays.sort_by_key(|relay| relay.sort_order);
+            }
+        }
+        Err(err) => {
+            context.relay_load_error = Some(format!("relay api disabled: failed to load relays: {err}"));
+        }
+    }
+    context
+}
+
+fn collect_relay_prometheus_metrics(
+    context: &RelayTelemetryContext,
+    machine: &MachineRow,
+) -> PrometheusMetrics {
+    let Some(config) = context.config.as_ref() else {
         return PrometheusMetrics::default();
     };
-    let mut relays = match repo_machine_list(conn, Some("relay"), Some(machine.network.as_str())) {
-        Ok(machines) => machines,
-        Err(err) => {
-            return PrometheusMetrics {
-                source: None,
-                note: Some(format!("relay api disabled: failed to load relays: {err}")),
-                ..PrometheusMetrics::default()
-            };
-        }
+    if let Some(message) = context.relay_load_error.as_ref() {
+        return PrometheusMetrics {
+            source: None,
+            note: Some(message.clone()),
+            ..PrometheusMetrics::default()
+        };
+    }
+
+    let Some(relays) = context.relays_by_network.get(machine.network.as_str()) else {
+        return PrometheusMetrics {
+            source: None,
+            note: Some("relay api disabled: no relay found in current network".into()),
+            ..PrometheusMetrics::default()
+        };
     };
     if relays.is_empty() {
         return PrometheusMetrics {
@@ -1114,7 +1170,6 @@ fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> 
             ..PrometheusMetrics::default()
         };
     }
-    relays.sort_by_key(|relay| relay.sort_order);
 
     let now_epoch = current_epoch_seconds().unwrap_or_default();
     let mut active_relays: Vec<MachineRow> = Vec::new();
@@ -1122,9 +1177,9 @@ fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> 
     for relay in relays {
         let retry_at = relay_backoff_retry_at(&relay).unwrap_or_default();
         if retry_at > now_epoch {
-            deferred_relays.push((relay, retry_at));
+            deferred_relays.push((relay.clone(), retry_at));
         } else {
-            active_relays.push(relay);
+            active_relays.push(relay.clone());
         }
     }
     deferred_relays.sort_by_key(|(_, retry_at)| *retry_at);
@@ -1140,7 +1195,7 @@ fn collect_relay_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> 
     let mut degraded_notes: Vec<String> = Vec::new();
 
     for relay in attempts {
-        let attempt = collect_relay_metrics_from_single_relay(&config, &relay, machine);
+        let attempt = collect_relay_metrics_from_single_relay(config, &relay, machine);
         if attempt.metrics.has_any_value() {
             relay_clear_backoff(&relay);
             let latest_timestamp = attempt.latest_timestamp.unwrap_or_default();
@@ -1231,8 +1286,11 @@ fn collect_local_prometheus_metrics(machine: &MachineRow) -> PrometheusMetrics {
     }
 }
 
-fn collect_prometheus_metrics(conn: &Connection, machine: &MachineRow) -> PrometheusMetrics {
-    let relay_metrics = collect_relay_prometheus_metrics(conn, machine);
+fn collect_prometheus_metrics(
+    context: &RelayTelemetryContext,
+    machine: &MachineRow,
+) -> PrometheusMetrics {
+    let relay_metrics = collect_relay_prometheus_metrics(context, machine);
     if relay_metrics.has_any_value() {
         return relay_metrics;
     }
@@ -1346,6 +1404,12 @@ fn current_epoch_seconds() -> Result<i64, AppError> {
     Ok(now.as_secs() as i64)
 }
 
+fn format_epoch_as_datetime(epoch_seconds: i64) -> Option<String> {
+    Utc.timestamp_opt(epoch_seconds, 0)
+        .single()
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+}
+
 fn sqlite_datetime(conn: &Connection, epoch_seconds: i64) -> Result<String, AppError> {
     conn.query_row(
         "SELECT datetime(?1, 'unixepoch')",
@@ -1355,14 +1419,10 @@ fn sqlite_datetime(conn: &Connection, epoch_seconds: i64) -> Result<String, AppE
     .map_err(AppError::from)
 }
 
-fn resolve_snapshot_collected_at(
-    conn: &Connection,
-    fallback: &str,
-    prometheus: &PrometheusMetrics,
-) -> String {
+fn resolve_snapshot_collected_at(fallback: &str, prometheus: &PrometheusMetrics) -> String {
     prometheus
         .collected_at_epoch
-        .and_then(|epoch| sqlite_datetime(conn, epoch).ok())
+        .and_then(format_epoch_as_datetime)
         .unwrap_or_else(|| fallback.to_string())
 }
 
@@ -1778,15 +1838,17 @@ fn load_cached_snapshots(
     Ok(snapshots)
 }
 
-fn collect_machine_snapshot(
+fn persist_snapshot_material(
     conn: &Connection,
-    machine: &MachineRow,
+    material: SnapshotMaterial,
 ) -> Result<MonitorSnapshot, AppError> {
-    let collected_at_epoch = current_epoch_seconds()?;
-    let collected_at = sqlite_datetime(conn, collected_at_epoch)?;
-    let previous = get_previous_health_sample(conn, machine.id)?;
-    let mut prometheus = collect_prometheus_metrics(conn, machine);
-    resolve_machine_cpu_percent(machine.id, &mut prometheus, collected_at_epoch);
+    let SnapshotMaterial {
+        machine,
+        previous,
+        collected_at_epoch,
+        collected_at,
+        prometheus,
+    } = material;
     let block_height = prometheus.block_height;
     let sync_progress = prometheus.sync_percent;
     let blocks_per_minute =
@@ -1810,8 +1872,7 @@ fn collect_machine_snapshot(
         ),
         _ => prometheus.note.clone(),
     };
-    let snapshot_collected_at =
-        resolve_snapshot_collected_at(conn, collected_at.as_str(), &prometheus);
+    let snapshot_collected_at = resolve_snapshot_collected_at(collected_at.as_str(), &prometheus);
     insert_health_sample(
         conn,
         machine.id,
@@ -1876,10 +1937,10 @@ async fn collect_snapshots_from_db_state(
     db: &DbState,
     machine_ids: Option<Vec<i64>>,
 ) -> Result<SnapshotBatch, AppError> {
-    // Phase 1: read machine list with short-lived lock
-    let selected = {
+    // Phase 1: short DB lock for local metadata reads
+    let (selected, previous_samples, telemetry_context) = {
         let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
-        repo_machine_list(&conn, None, None)?
+        let selected = repo_machine_list(&conn, None, None)?
             .into_iter()
             .filter(|machine| {
                 machine_ids
@@ -1887,8 +1948,14 @@ async fn collect_snapshots_from_db_state(
                     .map(|ids| ids.contains(&machine.id))
                     .unwrap_or(true)
             })
-            .collect::<Vec<_>>()
-    }; // lock released here — other DB queries (kes_status_all, task_recent_list) can proceed
+            .collect::<Vec<_>>();
+        let mut previous_samples = HashMap::new();
+        for machine in &selected {
+            previous_samples.insert(machine.id, get_previous_health_sample(&conn, machine.id)?);
+        }
+        let telemetry_context = build_relay_telemetry_context(&conn);
+        (selected, previous_samples, telemetry_context)
+    };
 
     if selected.is_empty() {
         return Ok(SnapshotBatch {
@@ -1897,35 +1964,49 @@ async fn collect_snapshots_from_db_state(
         });
     }
 
-    // Phase 2: collect snapshots (includes HTTP calls to relay API via curl)
-    // Re-acquire lock for snapshot collection — this holds lock during HTTP calls
-    // which is a known limitation; the Phase 1 split above still allows other DB
-    // queries to proceed during the machine list read phase.
-    let mut snapshots = Vec::with_capacity(selected.len());
-    {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
-        for machine in &selected {
-            snapshots.push(collect_machine_snapshot(&conn, machine)?);
-        }
+    // Phase 2: network collection outside DB lock
+    let mut materials = Vec::with_capacity(selected.len());
+    let mut previous_samples = previous_samples;
+    for machine in &selected {
+        let collected_at_epoch = current_epoch_seconds()?;
+        let collected_at = format_epoch_as_datetime(collected_at_epoch)
+            .unwrap_or_else(|| "1970-01-01 00:00:00".into());
+        let previous = previous_samples.remove(&machine.id).unwrap_or(None);
+        let mut prometheus = collect_prometheus_metrics(&telemetry_context, machine);
+        resolve_machine_cpu_percent(machine.id, &mut prometheus, collected_at_epoch);
+        materials.push(SnapshotMaterial {
+            machine: machine.clone(),
+            previous,
+            collected_at_epoch,
+            collected_at,
+            prometheus,
+        });
     }
 
-    let all_unavailable = snapshots
-        .iter()
-        .all(|snapshot| snapshot.sync_stage == "telemetry_unavailable");
-    if all_unavailable {
-        let degraded_message = "relay telemetry api unavailable after failover attempts";
+    // Phase 3: short DB lock for persistence and cache fallback reads
+    let mut snapshots = Vec::with_capacity(materials.len());
+    {
         let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
-        let cached = load_cached_snapshots(&conn, &selected, degraded_message)?;
-        if !cached.is_empty() {
+        for material in materials {
+            snapshots.push(persist_snapshot_material(&conn, material)?);
+        }
+        let all_unavailable = snapshots
+            .iter()
+            .all(|snapshot| snapshot.sync_stage == "telemetry_unavailable");
+        if all_unavailable {
+            let degraded_message = "relay telemetry api unavailable after failover attempts";
+            let cached = load_cached_snapshots(&conn, &selected, degraded_message)?;
+            if !cached.is_empty() {
+                return Ok(SnapshotBatch {
+                    snapshots: cached,
+                    degraded_message: Some(degraded_message.to_string()),
+                });
+            }
             return Ok(SnapshotBatch {
-                snapshots: cached,
+                snapshots,
                 degraded_message: Some(degraded_message.to_string()),
             });
         }
-        return Ok(SnapshotBatch {
-            snapshots,
-            degraded_message: Some(degraded_message.to_string()),
-        });
     }
 
     cache_latest_live_snapshots(&snapshots);

@@ -206,3 +206,20 @@ Spec-ID: S0010
 - 2026-03-18 +0800 CR-002：Step 1 Generate KES Keypairs 从本地 cardano-cli 调用改为 BP 节点远程生成（方案 A）。动机：macOS 无 cardano-cli 预编译，远程生成避免私钥中转且与现有 Ansible 链路统一。影响 p10-2 至 p10-5 执行计划重新定义，新增 TC-S0010-007/008。
 - 2026-03-18 +0800 CR-003：Step 2 新增冷环境签发 Bundle 工具包。用户可选是否附带 cardano-cli；如需附带则选择冷环境目标平台，从 GitHub Releases 按需下载并缓存。交付物为包含 issue-op-cert.sh + kes.vkey + 可选 cardano-cli 的 bundle 目录。新增 p10-9/10/11、TC-S0010-009~013。
 - 2026-03-19 +0800 CR-004：前端数据加载优化。(1) monitorStore 生命周期从 Dashboard 提升到 App 级别；(2) Dashboard 初始化并行化。动机：本地数据加载慢 + Dashboard 数据频繁重置为空值。新增 p10-12/13、TC-S0010-014/015。
+- [x] p10-13-fix2 修复轮询恢复与锁竞争残留：monitor snapshot 网络采集移出 DB 锁；monitorStore 启动失败后可自动恢复；Dashboard 回前台不再主动触发同步 snapshot
+
+## 8. Addendum (append-only)
+### 8.1 Execution Plan Delta
+- [x] p10-13-fix2 修复轮询恢复与锁竞争残留：monitor snapshot 网络采集移出 DB 锁；monitorStore 启动失败后可自动恢复；Dashboard 回前台不再主动触发同步 snapshot
+
+### 8.2 Execution Log Delta
+- 2026-03-19 +0800 p10-13-fix2 started: 基于最近 3 次 commit 的代码审查结果，修复 monitor 锁竞争未完全消除、monitorStore 启动失败后无法自恢复、以及 Dashboard 回前台仍触发同步 snapshot 的问题。
+- 2026-03-19 +0800 p10-13-fix2 completed: `monitor.rs` 重构为三阶段流程（短锁读取 machine/config/previous → 无锁 relay API 采集 → 短锁持久化 health/snapshot）；`monitorStore.ts` 在 `setMonitorStorePollingInterval` 中增加 `started=false` 自动 `startMonitorStore(interval)`；`Dashboard.tsx` 回前台仅刷新本地数据，不再主动调用 `refreshMonitorStore()`。
+
+### 8.3 Validation Evidence Delta
+- TC-S0010-015 | stack: rust | command: cargo test -q tc_mon_ --manifest-path src-tauri/Cargo.toml | result: pass | note: monitor 相关测试 31 项通过，确认锁分段重构未破坏 snapshot 采集语义
+- TC-S0010-014 | stack: rust | command: cargo test -q tc_obs_012_dashboard_polling_orchestration_supports_visibility_interval_switch --manifest-path src-tauri/Cargo.toml | result: pass | note: Dashboard 可见性调频与轮询编排静态断言通过
+- TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-13-fix2 后前端构建通过
+
+### 8.4 Change Request Delta
+- 2026-03-19 +0800 CR-005：根据用户发起的代码 review 反馈，补齐 p10-13 链路的并发与恢复语义，确保优化目标与实现一致。

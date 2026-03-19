@@ -667,7 +667,7 @@ mod frontend_tests {
         assert!(dashboard.contains("Promise.allSettled"));
         assert!(dashboard.contains("setMonitorStorePollingInterval"));
         assert!(dashboard.contains("visibilitychange"));
-        assert!(dashboard.contains("refreshMonitorStore"));
+        assert!(dashboard.contains("onWindowFocus"));
     }
 
     #[test]

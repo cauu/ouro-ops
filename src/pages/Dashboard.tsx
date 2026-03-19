@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { formatTaskError } from "../lib/errors";
 import { kesStatusAll, taskRecentList } from "../lib/ipc";
 import {
-  refreshMonitorStore,
   resolveTelemetryBehavior,
   setMonitorStorePollingInterval,
   useMonitorStore,
@@ -451,7 +450,7 @@ export default function Dashboard() {
       if (visible) {
         void (async () => {
           await applyPollingMode(foregroundIntervalSeconds);
-          await Promise.all([refreshDashboardData(), refreshMonitorStore()]);
+          await refreshDashboardData();
         })();
         return;
       }
@@ -464,7 +463,7 @@ export default function Dashboard() {
       }
       void (async () => {
         await applyPollingMode(foregroundIntervalSeconds);
-        await Promise.all([refreshDashboardData(), refreshMonitorStore()]);
+        await refreshDashboardData();
       })();
     };
 
