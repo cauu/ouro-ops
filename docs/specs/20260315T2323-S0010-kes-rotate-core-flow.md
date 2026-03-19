@@ -223,3 +223,7 @@ Spec-ID: S0010
 
 ### 8.4 Change Request Delta
 - 2026-03-19 +0800 CR-005：根据用户发起的代码 review 反馈，补齐 p10-13 链路的并发与恢复语义，确保优化目标与实现一致。
+- 2026-03-19 +0800 CR-006：Dashboard 数据（KES status / 近期操作日志）提升为 App 级别全局 store，页面切换时静默保持数据、后台持续刷新。
+
+### 8.5 Execution Plan Delta (CR-006)
+- [x] p10-14 新建 `dashboardStore.ts` 模块级 store（useSyncExternalStore 模式），将 kesStatuses/recentTasks/polling 从 Dashboard 组件提升；App.tsx 中启动 polling；Dashboard 只消费不管理生命周期

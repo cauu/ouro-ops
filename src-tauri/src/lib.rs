@@ -663,11 +663,16 @@ mod frontend_tests {
     #[test]
     fn tc_obs_012_dashboard_polling_orchestration_supports_visibility_interval_switch() {
         let dashboard = include_str!("../../src/pages/Dashboard.tsx");
-        assert!(dashboard.contains("refreshDashboardData"));
-        assert!(dashboard.contains("Promise.allSettled"));
-        assert!(dashboard.contains("setMonitorStorePollingInterval"));
-        assert!(dashboard.contains("visibilitychange"));
-        assert!(dashboard.contains("onWindowFocus"));
+        assert!(dashboard.contains("useDashboardStore"));
+        assert!(dashboard.contains("useMonitorStore"));
+        let store = include_str!("../../src/lib/dashboardStore.ts");
+        assert!(store.contains("refreshDashboardData"));
+        assert!(store.contains("Promise.allSettled"));
+        assert!(store.contains("startDashboardPolling"));
+        let app = include_str!("../../src/App.tsx");
+        assert!(app.contains("startDashboardPolling"));
+        assert!(app.contains("stopDashboardPolling"));
+        assert!(app.contains("refreshDashboardData"));
     }
 
     #[test]

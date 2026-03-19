@@ -1,13 +1,12 @@
-import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type ReactNode, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useDashboardStore } from "../lib/dashboardStore";
 import { formatTaskError } from "../lib/errors";
-import { kesStatusAll, taskRecentList } from "../lib/ipc";
 import {
   resolveTelemetryBehavior,
-  setMonitorStorePollingInterval,
   useMonitorStore,
 } from "../lib/monitorStore";
-import type { KesStatus, MonitorSnapshot, RecentTaskSummary } from "../lib/types";
+import type { KesStatus, MonitorSnapshot } from "../lib/types";
 
 const EPOCH_SLOTS_BY_NETWORK: Record<string, number> = {
   mainnet: 432000,
@@ -367,14 +366,9 @@ function MetaIconTip({ tip, icon }: { tip: string; icon: ReactNode }) {
 }
 
 export default function Dashboard() {
-  const foregroundIntervalSeconds = 15;
-  const backgroundIntervalSeconds = 60;
   const telemetryHeaderTipId = useId();
-  const [kesStatuses, setKesStatuses] = useState<KesStatus[]>([]);
-  const [recentTasks, setRecentTasks] = useState<RecentTaskSummary[]>([]);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
-  const [auxRefreshError, setAuxRefreshError] = useState<string | null>(null);
-  const refreshInFlightRef = useRef(false);
+  const { kesStatuses, recentTasks, refreshError: auxRefreshError } = useDashboardStore();
   const {
     snapshots,
     status: monitorStatus,
@@ -383,121 +377,6 @@ export default function Dashboard() {
     lastCollectedAt,
     lastError,
   } = useMonitorStore();
-
-  useEffect(() => {
-    let active = true;
-    let refreshTimer: number | null = null;
-
-    const clearRefreshTimer = () => {
-      if (refreshTimer != null) {
-        window.clearInterval(refreshTimer);
-        refreshTimer = null;
-      }
-    };
-
-    const currentIntervalSeconds = () =>
-      typeof document === "undefined" || document.visibilityState !== "hidden"
-        ? foregroundIntervalSeconds
-        : backgroundIntervalSeconds;
-
-    const refreshDashboardData = async () => {
-      if (!active || refreshInFlightRef.current) {
-        return;
-      }
-      refreshInFlightRef.current = true;
-      try {
-        const [kesResult, taskResult] = await Promise.allSettled([kesStatusAll(), taskRecentList(8)]);
-        if (!active) {
-          return;
-        }
-
-        const failures: string[] = [];
-
-        if (kesResult.status === "fulfilled") {
-          setKesStatuses(kesResult.value);
-        } else {
-          failures.push("KES");
-        }
-
-        if (taskResult.status === "fulfilled") {
-          setRecentTasks(taskResult.value);
-        } else {
-          failures.push("日志");
-        }
-
-        setAuxRefreshError(
-          failures.length > 0 ? `部分数据刷新失败（${failures.join(" / ")}），将自动重试。` : null,
-        );
-      } finally {
-        refreshInFlightRef.current = false;
-      }
-    };
-
-    const scheduleDashboardRefresh = (intervalSeconds: number) => {
-      clearRefreshTimer();
-      refreshTimer = window.setInterval(() => {
-        void refreshDashboardData();
-      }, intervalSeconds * 1000);
-    };
-
-    const applyPollingMode = async (intervalSeconds: number) => {
-      await setMonitorStorePollingInterval(intervalSeconds);
-      scheduleDashboardRefresh(intervalSeconds);
-    };
-
-    const onVisibilityChange = () => {
-      const visible = typeof document === "undefined" || document.visibilityState !== "hidden";
-      if (visible) {
-        void (async () => {
-          await applyPollingMode(foregroundIntervalSeconds);
-          await refreshDashboardData();
-        })();
-        return;
-      }
-      void applyPollingMode(backgroundIntervalSeconds);
-    };
-
-    const onWindowFocus = () => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        return;
-      }
-      void (async () => {
-        await applyPollingMode(foregroundIntervalSeconds);
-        await refreshDashboardData();
-      })();
-    };
-
-    void (async () => {
-      try {
-        const initialInterval = currentIntervalSeconds();
-        scheduleDashboardRefresh(initialInterval);
-        // Local DB data loads immediately; telemetry arrives via monitor:snapshot events
-        await refreshDashboardData();
-      } catch (error) {
-        if (active) {
-          setAuxRefreshError(`Dashboard 初始化失败：${String(error)}`);
-        }
-      }
-    })();
-
-    if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", onVisibilityChange);
-    }
-    if (typeof window !== "undefined") {
-      window.addEventListener("focus", onWindowFocus);
-    }
-
-    return () => {
-      active = false;
-      clearRefreshTimer();
-      if (typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", onVisibilityChange);
-      }
-      if (typeof window !== "undefined") {
-        window.removeEventListener("focus", onWindowFocus);
-      }
-    };
-  }, []);
 
   const nodes = useMemo(() => {
     const bp = snapshots.filter((row) => row.role === "bp");

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
+import { refreshDashboardData, startDashboardPolling, stopDashboardPolling } from "./lib/dashboardStore";
 import { poolGet } from "./lib/ipc";
 import { startMonitorStore, stopMonitorStore } from "./lib/monitorStore";
 import type { Pool } from "./lib/types";
@@ -43,8 +44,11 @@ function App() {
   useEffect(() => {
     if (!pool) return;
     void startMonitorStore(15);
+    void refreshDashboardData();
+    startDashboardPolling(15);
     return () => {
       void stopMonitorStore();
+      stopDashboardPolling();
     };
   }, [pool]);
 
