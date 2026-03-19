@@ -242,3 +242,97 @@ Spec-ID: S0010
 ### 8.9 Validation Evidence Delta
 - TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-15 后前端构建通过
 - TC-S0010-014 | stack: rust | command: cargo test -q tc_obs_012_dashboard_polling_orchestration_supports_visibility_interval_switch --manifest-path src-tauri/Cargo.toml | result: pass | note: 轮询编排静态断言通过
+
+### 8.10 Change Request Delta
+- 2026-03-19 +0800 CR-008：评估并落地 Query 中间层（TanStack Query）以替换 Dashboard 辅助数据的手写全局状态，目标是在不依赖业务自定义 store 的前提下实现页面切换无感刷新、后台静默更新、失败保留旧值。
+
+### 8.11 Outline Design Delta (CR-008)
+- 决策：采用 `@tanstack/react-query` 作为 UI 数据中间层，替换 `dashboardStore` 对 `kesStatusAll` / `taskRecentList` / `observabilityGatewayStatus` 的缓存与轮询职责。
+- 范围：
+  - 纳入 Query：`kesStatusAll`、`taskRecentList(8)`、`observabilityGatewayStatus`。
+  - 保持现状：`monitorStore`（Tauri event `monitor:snapshot` 驱动）暂不迁移，避免一次性改动 IPC/事件链路。
+- Query key 设计（防串数据）：
+  - `["dashboard","kes",pool.id]`
+  - `["dashboard","tasks",pool.id,8]`
+  - `["dashboard","gateway",pool.id]`
+- 轮询与静默刷新策略：
+  - 前台：`refetchInterval=15_000`
+  - 后台：`refetchInterval=60_000`
+  - 回前台：`refetchOnWindowFocus=true` 触发即时补拉
+  - 保留旧值：`placeholderData: (previous) => previous`
+- 错误与降级策略：
+  - Query 错误不清空旧数据；UI 显示轻量错误条并自动重试。
+  - 与现有 telemetry `degraded/cached` 语义并存，不改 monitor 状态机。
+- 生命周期与清理：
+  - `App.tsx` 挂载 `QueryClientProvider`。
+  - pool 变更时只失效对应 key（`invalidateQueries`），避免跨 pool 残留。
+  - 移除 `dashboardStore.ts` 后，不再手写 timer/refreshInFlight/generation。
+- 回滚策略：
+  - 保留一版兼容提交（Query 层引入但不删除 monitorStore）。
+  - 如联调不通过，可回退到 `dashboardStore` 方案，不影响 monitor 链路。
+
+### 8.12 Execution Plan Delta (CR-008)
+- [ ] p10-16 引入 `@tanstack/react-query` 并在 `App.tsx` 注入 `QueryClientProvider`；统一 query 默认策略（staleTime/cacheTime/retry）
+- [ ] p10-17 新增 `src/lib/dashboardQueries.ts`：封装 `useKesStatusQuery`、`useRecentTasksQuery`、`useGatewayStatusQuery`（含前后台分频与 key 设计）
+- [ ] p10-18 改造 `Dashboard.tsx` 使用 query hooks，移除 `useDashboardStore` 依赖；保留 monitorStore 消费逻辑
+- [ ] p10-19 清理 `src/lib/dashboardStore.ts` 与 App 中相关轮询代码，改为 query 驱动；保留/复用现有 UI 错误提示文案
+- [ ] p10-20 增加 pool 维度的 query 失效与页面切换回归（Dashboard ↔ KES ↔ Logs）验证，确保无重置闪烁
+- [ ] p10-21 增加静态/单测断言（query key 包含 poolId、前后台间隔策略、失败保留旧值）并补充人工验收清单
+
+### 8.13 Test And Acceptance Criteria Delta (CR-008)
+- TC-S0010-016 Dashboard 页面切换后，`KES status` 与 `近期操作日志` 不出现先清空再恢复；数据应持续展示并静默更新
+- TC-S0010-017 Query key 含 `pool.id`，切换/重建 pool 后不会复用旧 pool 的日志与 KES 数据
+- TC-S0010-018 前台 15s / 后台 60s / 回前台即时补拉策略在 Query 层生效（不依赖 dashboardStore timer）
+- TC-S0010-019 任一 query 请求失败时，UI 保留旧值并显示轻量错误提示，下一轮自动重试
+- TC-S0010-020 移除 `dashboardStore.ts` 后构建通过，Dashboard 功能与现有 monitor telemetry 展示无回归
+
+### 8.14 Execution Log Delta
+- 2026-03-19 +0800 p10-16~p10-21 planned: 已根据用户确认追加 Query 中间层落地方案，拆分可执行任务与验收条目；进入待实现状态。
+
+### 8.15 Change Request Delta (CR-008 Revision)
+- 2026-03-19 +0800 CR-008-R1：根据评审反馈修订 Query 中间层方案，补齐可见性分频实现细节、pool 切换缓存清理策略、TanStack v5 `gcTime` 配置，并收敛首批迁移范围与任务拆分。
+
+### 8.16 Outline Design Delta (CR-008-R1, supersede 8.11)
+- 适用版本：TanStack Query v5 语义（使用 `gcTime`，不使用 `cacheTime` 命名）。
+- 首批迁移范围（Phase 1）：
+  - 纳入 Query：`kesStatusAll`、`taskRecentList(8)`。
+  - 暂不纳入 Query：`observabilityGatewayStatus`（仅在 Dashboard 仍直接依赖该接口时，作为 Phase 2 可选项引入）。
+  - 保持现状：`monitorStore`（Tauri `monitor:snapshot` 事件链路）不迁移。
+- 前后台分频（必须实现）：
+  - `refetchInterval` 使用函数形式，按可见性动态返回间隔：
+    - 可见：15000ms
+    - 隐藏：60000ms
+  - 同时启用 `refetchOnWindowFocus: true`，回前台即时补拉。
+- Query 默认策略（v5）：
+  - `staleTime: 10_000`（可按接口特性微调）
+  - `gcTime: 5 * 60_000`
+  - `retry: 2`（保守重试）
+  - `placeholderData: (prev) => prev`（失败或重拉期间保留旧值）
+- pool 切换策略（防串数据）：
+  - 使用 `queryClient.removeQueries` 清除旧 pool 的 dashboard queries，避免旧数据残留与无意义 refetch。
+  - 对新 pool 当前 key 使用 `invalidateQueries` 触发新数据拉取。
+- 回滚策略：
+  - 迁移过程中保持 monitor 链路不变；
+  - Query 接入若出现联调问题，可快速回退到当前 store 版本，不影响 telemetry 主链路。
+
+### 8.17 Execution Plan Delta (CR-008-R1, supersede 8.12)
+- [x] p10-16 引入 `@tanstack/react-query` 并在 `App.tsx` 注入 `QueryClientProvider`；设置 v5 默认策略（含 `gcTime`）
+- [x] p10-17 新增 `src/lib/dashboardQueries.ts`：实现 `useKesStatusQuery`、`useRecentTasksQuery`（query key 含 `pool.id`，`refetchInterval` 函数按可见性分频）
+- [x] p10-18 一次性切换 `Dashboard.tsx` 到 query hooks，并同步移除 `dashboardStore.ts` + App 中对应轮询/重置代码（避免双数据源中间态）
+- [ ] p10-19（可选）仅当 Dashboard 仍直接请求 `observabilityGatewayStatus` 时，再补 `useGatewayStatusQuery` 迁移；否则跳过
+- [x] p10-20 实现 pool 切换缓存治理：`removeQueries` 清旧 pool
+- [ ] p10-21 增加静态/单测与人工验收清单，覆盖可见性分频、失败保留旧值、pool 防串数据、无 store 回归
+
+### 8.18 Test And Acceptance Criteria Delta (CR-008-R1, supersede 8.13)
+- TC-S0010-016 Dashboard 页面切换后，`KES status` 与 `近期操作日志` 不出现先清空再恢复；数据持续展示并静默更新
+- TC-S0010-017 Query key 含 `pool.id`；pool 切换时旧 pool 缓存被 `removeQueries` 清除，不会残留旧数据
+- TC-S0010-018 `refetchInterval` 函数分频生效：前台 15s、后台 60s，且 `refetchOnWindowFocus` 回前台即时补拉
+- TC-S0010-019 任一 query 请求失败时，UI 保留旧值并显示轻量错误提示，下一轮自动重试
+- TC-S0010-020 QueryClient 默认策略含 `gcTime`（v5），且移除 `dashboardStore.ts` 后构建通过、Dashboard 无功能回归
+
+### 8.19 Execution Log Delta
+- 2026-03-19 +0800 p10-16~p10-21 revised: 已按 CR-008-R1 更新为可执行版本，明确 Phase 1 范围（KES + Tasks）、可见性分频实现细节、pool 缓存清理策略与 v5 `gcTime` 要求。
+- 2026-03-19 +0800 p10-16 completed: 安装 `@tanstack/react-query@5.91.0`；`App.tsx` 新增 `QueryClientProvider`，默认 `staleTime: 10_000`、`gcTime: 5 * 60_000`、`retry: 2`。
+- 2026-03-19 +0800 p10-17 completed: 新建 `src/lib/dashboardQueries.ts`，实现 `useKesStatusQuery` 和 `useRecentTasksQuery`；query key 含 `pool.id`；`refetchInterval` 用函数形式按 `document.visibilityState` 动态返回 15s/60s；`placeholderData: (prev) => prev` 保留旧值。
+- 2026-03-19 +0800 p10-18 completed: Dashboard 改用 `useKesStatusQuery` / `useRecentTasksQuery` hooks；删除 `dashboardStore.ts`；App.tsx 移除所有 dashboardStore 相关导入和 polling/reset 代码；Dashboard 接受 `poolId` prop。
+- 2026-03-19 +0800 p10-20 completed: `App.tsx` pool effect cleanup 中 `queryClient.removeQueries({ queryKey: ["dashboard"] })` 清除旧 pool 缓存。

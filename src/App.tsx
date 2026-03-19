@@ -1,12 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
-import {
-  refreshDashboardData,
-  resetDashboardStore,
-  startDashboardPolling,
-  stopDashboardPolling,
-} from "./lib/dashboardStore";
 import { poolGet } from "./lib/ipc";
 import {
   setMonitorStorePollingInterval,
@@ -23,8 +18,8 @@ import SetupWizard from "./pages/SetupWizard";
 import TelemetryApi from "./pages/TelemetryApi";
 import UpgradeWizard from "./pages/UpgradeWizard";
 
-const FOREGROUND_POLL_INTERVAL_SECONDS = 15;
-const BACKGROUND_POLL_INTERVAL_SECONDS = 60;
+const FOREGROUND_INTERVAL_S = 15;
+const BACKGROUND_INTERVAL_S = 60;
 
 function LoadingScreen() {
   return (
@@ -37,6 +32,20 @@ function LoadingScreen() {
 function App() {
   const [booting, setBooting] = useState(true);
   const [pool, setPool] = useState<Pool | null>(null);
+
+  const queryClient = useMemo(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 10_000,
+            gcTime: 5 * 60_000,
+            retry: 2,
+          },
+        },
+      }),
+    [],
+  );
 
   const refreshPool = useCallback(async () => {
     try {
@@ -53,120 +62,86 @@ function App() {
     void refreshPool();
   }, [refreshPool]);
 
+  // Monitor store lifecycle (event-driven telemetry — not migrated to Query)
   useEffect(() => {
     if (!pool) return;
     let disposed = false;
 
-    const currentIntervalSeconds = () =>
-      typeof document !== "undefined" && document.visibilityState === "hidden"
-        ? BACKGROUND_POLL_INTERVAL_SECONDS
-        : FOREGROUND_POLL_INTERVAL_SECONDS;
-
-    const applyPollingMode = async (intervalSeconds: number) => {
+    const applyMonitorInterval = async (seconds: number) => {
       try {
-        await setMonitorStorePollingInterval(intervalSeconds);
+        await setMonitorStorePollingInterval(seconds);
       } catch {
-        // Keep auxiliary polling alive even if monitor interval update fails.
+        /* keep going */
       }
-      if (disposed) {
-        return;
-      }
-      startDashboardPolling(intervalSeconds);
     };
 
     const onVisibilityChange = () => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        void applyPollingMode(BACKGROUND_POLL_INTERVAL_SECONDS);
-        return;
-      }
-      void (async () => {
-        await applyPollingMode(FOREGROUND_POLL_INTERVAL_SECONDS);
-        await refreshDashboardData();
-      })();
-    };
-
-    const onWindowFocus = () => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        return;
-      }
-      void (async () => {
-        await applyPollingMode(FOREGROUND_POLL_INTERVAL_SECONDS);
-        await refreshDashboardData();
-      })();
+      const hidden =
+        typeof document !== "undefined" && document.visibilityState === "hidden";
+      void applyMonitorInterval(hidden ? BACKGROUND_INTERVAL_S : FOREGROUND_INTERVAL_S);
     };
 
     void (async () => {
-      const initialInterval = currentIntervalSeconds();
-      await startMonitorStore(initialInterval);
-      if (disposed) {
-        return;
-      }
-      startDashboardPolling(initialInterval);
-      await refreshDashboardData();
+      const initial =
+        typeof document !== "undefined" && document.visibilityState === "hidden"
+          ? BACKGROUND_INTERVAL_S
+          : FOREGROUND_INTERVAL_S;
+      await startMonitorStore(initial);
+      if (disposed) return;
     })();
 
-    if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", onVisibilityChange);
-    }
-    if (typeof window !== "undefined") {
-      window.addEventListener("focus", onWindowFocus);
-    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       disposed = true;
-      if (typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", onVisibilityChange);
-      }
-      if (typeof window !== "undefined") {
-        window.removeEventListener("focus", onWindowFocus);
-      }
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       void stopMonitorStore();
-      stopDashboardPolling();
-      resetDashboardStore();
     };
   }, [pool]);
+
+  // Clean query cache on pool switch
+  useEffect(() => {
+    if (!pool) return;
+    return () => {
+      queryClient.removeQueries({ queryKey: ["dashboard"] });
+    };
+  }, [pool, queryClient]);
 
   if (booting) {
     return <LoadingScreen />;
   }
 
   return (
-    <Routes>
-      <Route
-        path="/setup"
-        element={
-          pool ? (
-            <Navigate to="/" replace />
-          ) : (
-            <SetupWizard
-              onCreated={(createdPool) => {
-                setPool(createdPool);
-              }}
-            />
-          )
-        }
-      />
-
-      <Route element={pool ? <Layout pool={pool} /> : <Navigate to="/setup" replace />}>
+    <QueryClientProvider client={queryClient}>
+      <Routes>
         <Route
-          path="/"
+          path="/setup"
           element={
-            <Dashboard />
+            pool ? (
+              <Navigate to="/" replace />
+            ) : (
+              <SetupWizard
+                onCreated={(createdPool) => {
+                  setPool(createdPool);
+                }}
+              />
+            )
           }
         />
-        <Route path="/logs" element={pool ? <OperationLogs /> : null} />
-        <Route path="/kes" element={pool ? <KesManager poolTicker={pool.ticker} /> : null} />
-        <Route path="/telemetry" element={pool ? <TelemetryApi /> : null} />
-        <Route path="/deploy" element={pool ? <DeployWizard pool={pool} /> : null} />
-        <Route path="/upgrade" element={pool ? <UpgradeWizard poolTicker={pool.ticker} /> : null} />
-        <Route
-          path="/settings"
-          element={pool ? <Settings pool={pool} /> : null}
-        />
-      </Route>
 
-      <Route path="*" element={<Navigate to={pool ? "/" : "/setup"} replace />} />
-    </Routes>
+        <Route element={pool ? <Layout pool={pool} /> : <Navigate to="/setup" replace />}>
+          <Route path="/" element={<Dashboard poolId={pool?.id} />} />
+          <Route path="/logs" element={pool ? <OperationLogs /> : null} />
+          <Route path="/kes" element={pool ? <KesManager poolTicker={pool.ticker} /> : null} />
+          <Route path="/telemetry" element={pool ? <TelemetryApi /> : null} />
+          <Route path="/deploy" element={pool ? <DeployWizard pool={pool} /> : null} />
+          <Route path="/upgrade" element={pool ? <UpgradeWizard poolTicker={pool.ticker} /> : null} />
+          <Route path="/settings" element={pool ? <Settings pool={pool} /> : null} />
+        </Route>
+
+        <Route path="*" element={<Navigate to={pool ? "/" : "/setup"} replace />} />
+      </Routes>
+    </QueryClientProvider>
   );
 }
 

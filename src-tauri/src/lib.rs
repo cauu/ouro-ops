@@ -599,7 +599,6 @@ mod frontend_tests {
     fn tc_fe_024_app_wires_pool_binding_and_background_refresh() {
         let app = include_str!("../../src/App.tsx");
         assert!(app.contains("<Dashboard"));
-        assert!(app.contains("<Dashboard />"));
         assert!(!app.contains("onPoolRefreshed={(nextPool) => {"));
         assert!(!app.contains("path=\"/pool-status\""));
     }
@@ -663,16 +662,16 @@ mod frontend_tests {
     #[test]
     fn tc_obs_012_dashboard_polling_orchestration_supports_visibility_interval_switch() {
         let dashboard = include_str!("../../src/pages/Dashboard.tsx");
-        assert!(dashboard.contains("useDashboardStore"));
+        assert!(dashboard.contains("useKesStatusQuery"));
+        assert!(dashboard.contains("useRecentTasksQuery"));
         assert!(dashboard.contains("useMonitorStore"));
-        let store = include_str!("../../src/lib/dashboardStore.ts");
-        assert!(store.contains("refreshDashboardData"));
-        assert!(store.contains("Promise.allSettled"));
-        assert!(store.contains("startDashboardPolling"));
+        let queries = include_str!("../../src/lib/dashboardQueries.ts");
+        assert!(queries.contains("refetchInterval"));
+        assert!(queries.contains("visibilityInterval"));
+        assert!(queries.contains("refetchOnWindowFocus"));
         let app = include_str!("../../src/App.tsx");
-        assert!(app.contains("startDashboardPolling"));
-        assert!(app.contains("stopDashboardPolling"));
-        assert!(app.contains("refreshDashboardData"));
+        assert!(app.contains("QueryClientProvider"));
+        assert!(app.contains("removeQueries"));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { type ReactNode, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useDashboardStore } from "../lib/dashboardStore";
+import { useKesStatusQuery, useRecentTasksQuery } from "../lib/dashboardQueries";
 import { formatTaskError } from "../lib/errors";
 import {
   resolveTelemetryBehavior,
@@ -365,10 +365,21 @@ function MetaIconTip({ tip, icon }: { tip: string; icon: ReactNode }) {
   );
 }
 
-export default function Dashboard() {
+interface DashboardProps {
+  poolId: number | undefined;
+}
+
+export default function Dashboard({ poolId }: DashboardProps) {
   const telemetryHeaderTipId = useId();
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
-  const { kesStatuses, recentTasks, refreshError: auxRefreshError } = useDashboardStore();
+  const kesQuery = useKesStatusQuery(poolId);
+  const tasksQuery = useRecentTasksQuery(poolId);
+  const kesStatuses = kesQuery.data ?? [];
+  const recentTasks = tasksQuery.data ?? [];
+  const auxRefreshError =
+    kesQuery.isError || tasksQuery.isError
+      ? `部分数据刷新失败（${[kesQuery.isError && "KES", tasksQuery.isError && "日志"].filter(Boolean).join(" / ")}），将自动重试。`
+      : null;
   const {
     snapshots,
     status: monitorStatus,
