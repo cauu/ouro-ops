@@ -319,8 +319,8 @@ Spec-ID: S0010
 - [x] p10-16 引入 `@tanstack/react-query` 并在 `App.tsx` 注入 `QueryClientProvider`；设置 v5 默认策略（含 `gcTime`）
 - [x] p10-17 新增 `src/lib/dashboardQueries.ts`：实现 `useKesStatusQuery`、`useRecentTasksQuery`（query key 含 `pool.id`，`refetchInterval` 函数按可见性分频）
 - [x] p10-18 一次性切换 `Dashboard.tsx` 到 query hooks，并同步移除 `dashboardStore.ts` + App 中对应轮询/重置代码（避免双数据源中间态）
-- [ ] p10-19（可选）仅当 Dashboard 仍直接请求 `observabilityGatewayStatus` 时，再补 `useGatewayStatusQuery` 迁移；否则跳过
-- [x] p10-20 实现 pool 切换缓存治理：`removeQueries` 清旧 pool
+- [x] p10-19 迁移 OperationLogs（`useTaskLogQuery`）、KesManager 初始加载（`useKesStatusListQuery`）、TelemetryApi 状态轮询（`useGatewayStatusQuery`）；新增共享 `useMachineListQuery`；`dashboardQueries.ts` 重命名为 `queries.ts`
+- [x] p10-20 实现 pool 切换缓存治理：按 poolId 精确 `removeQueries` 清旧 pool（p10-20-fix1 修正宽泛清理）
 - [ ] p10-21 增加静态/单测与人工验收清单，覆盖可见性分频、失败保留旧值、pool 防串数据、无 store 回归
 
 ### 8.18 Test And Acceptance Criteria Delta (CR-008-R1, supersede 8.13)
@@ -336,3 +336,5 @@ Spec-ID: S0010
 - 2026-03-19 +0800 p10-17 completed: 新建 `src/lib/dashboardQueries.ts`，实现 `useKesStatusQuery` 和 `useRecentTasksQuery`；query key 含 `pool.id`；`refetchInterval` 用函数形式按 `document.visibilityState` 动态返回 15s/60s；`placeholderData: (prev) => prev` 保留旧值。
 - 2026-03-19 +0800 p10-18 completed: Dashboard 改用 `useKesStatusQuery` / `useRecentTasksQuery` hooks；删除 `dashboardStore.ts`；App.tsx 移除所有 dashboardStore 相关导入和 polling/reset 代码；Dashboard 接受 `poolId` prop。
 - 2026-03-19 +0800 p10-20 completed: `App.tsx` pool effect cleanup 中 `queryClient.removeQueries({ queryKey: ["dashboard"] })` 清除旧 pool 缓存。
+- 2026-03-19 +0800 p10-20-fix1 completed: pool 切换缓存清理改为按 poolId 精确清除 `["dashboard","kes",poolId]` 和 `["dashboard","tasks",poolId]`，避免误清新 pool 活跃 query。
+- 2026-03-19 +0800 p10-19 completed: 迁移 OperationLogs（`useTaskLogQuery` 替代 `useEffect` + 手动 fetch）、KesManager（`useKesStatusListQuery` 替代 `loadKes`）、TelemetryApi（`useGatewayStatusQuery` 替代 15s `setInterval`）。`dashboardQueries.ts` 重命名为 `queries.ts` 并扩展，新增共享 `useMachineListQuery`。
