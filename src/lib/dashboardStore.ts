@@ -18,6 +18,7 @@ let state: DashboardStoreState = DEFAULT_STATE;
 const listeners = new Set<() => void>();
 let refreshInFlight = false;
 let refreshTimer: number | null = null;
+let storeGeneration = 0;
 
 function emit(): void {
   for (const listener of listeners) {
@@ -46,6 +47,7 @@ export function useDashboardStore(): DashboardStoreState {
 }
 
 export async function refreshDashboardData(): Promise<void> {
+  const requestGeneration = storeGeneration;
   if (refreshInFlight) return;
   refreshInFlight = true;
   try {
@@ -53,25 +55,31 @@ export async function refreshDashboardData(): Promise<void> {
       kesStatusAll(),
       taskRecentList(8),
     ]);
+    if (requestGeneration !== storeGeneration) {
+      return;
+    }
+
     const failures: string[] = [];
+    const partial: Partial<DashboardStoreState> = {};
     if (kesResult.status === "fulfilled") {
-      setState({ kesStatuses: kesResult.value });
+      partial.kesStatuses = kesResult.value;
     } else {
       failures.push("KES");
     }
     if (taskResult.status === "fulfilled") {
-      setState({ recentTasks: taskResult.value });
+      partial.recentTasks = taskResult.value;
     } else {
       failures.push("日志");
     }
-    setState({
-      refreshError:
-        failures.length > 0
-          ? `部分数据刷新失败（${failures.join(" / ")}），将自动重试。`
-          : null,
-    });
+    partial.refreshError =
+      failures.length > 0
+        ? `部分数据刷新失败（${failures.join(" / ")}），将自动重试。`
+        : null;
+    setState(partial);
   } finally {
-    refreshInFlight = false;
+    if (requestGeneration === storeGeneration) {
+      refreshInFlight = false;
+    }
   }
 }
 
@@ -87,4 +95,14 @@ export function stopDashboardPolling(): void {
     window.clearInterval(refreshTimer);
     refreshTimer = null;
   }
+}
+
+export function resetDashboardStore(): void {
+  storeGeneration += 1;
+  refreshInFlight = false;
+  stopDashboardPolling();
+  state = {
+    ...DEFAULT_STATE,
+  };
+  emit();
 }

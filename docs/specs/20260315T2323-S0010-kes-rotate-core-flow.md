@@ -115,6 +115,7 @@ Spec-ID: S0010
 - [x] p10-11 前端：Step 2 改造——新增"冷环境是否有 cardano-cli"开关、目标平台选择器、"打包 Bundle"按钮、bundle 路径展示与 Finder 打开入口
 - [x] p10-12 monitorStore 生命周期提升到 App 级别：`App.tsx` 中启动，Dashboard 不再管理 start/stop
 - [x] p10-13 Dashboard 初始化并行化：`refreshDashboardData()` 与 monitorStore 刷新并行执行，本地数据不等待 telemetry
+- [x] p10-15 全局轮询编排与 Dashboard store 生命周期修复：恢复前台/后台分频与前台即时补拉；清理跨 pool 残留状态
 - [ ] p10-7 增加回归测试与人工验收清单并完成联调
 - [ ] p10-8 结项评审与发布建议
 
@@ -227,3 +228,17 @@ Spec-ID: S0010
 
 ### 8.5 Execution Plan Delta (CR-006)
 - [x] p10-14 新建 `dashboardStore.ts` 模块级 store（useSyncExternalStore 模式），将 kesStatuses/recentTasks/polling 从 Dashboard 组件提升；App.tsx 中启动 polling；Dashboard 只消费不管理生命周期
+
+### 8.6 Change Request Delta
+- 2026-03-19 13:56 +0800 CR-007：修复 code review 发现的两处回归：`App` 侧可见性分频逻辑丢失（后台未降频、回前台无即时补拉）以及 `dashboardStore` 在 pool 生命周期切换时残留旧数据。
+
+### 8.7 Execution Plan Delta (CR-007)
+- [x] p10-15 全局轮询编排与 Dashboard store 生命周期修复：恢复前台/后台分频与前台即时补拉；清理跨 pool 残留状态
+
+### 8.8 Execution Log Delta
+- 2026-03-19 13:56 +0800 p10-15 started: 根据最近改动 review 结论，开始修复 App 级轮询策略与 dashboardStore 生命周期问题。
+- 2026-03-19 13:56 +0800 p10-15 completed: `App.tsx` 新增 visibility/focus 监听并统一调度轮询（前台 15s、后台 60s、回前台立即补拉）；`dashboardStore.ts` 增加 `resetDashboardStore()` 与 generation 防串写，避免跨 pool 残留与过期请求回写。
+
+### 8.9 Validation Evidence Delta
+- TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-15 后前端构建通过
+- TC-S0010-014 | stack: rust | command: cargo test -q tc_obs_012_dashboard_polling_orchestration_supports_visibility_interval_switch --manifest-path src-tauri/Cargo.toml | result: pass | note: 轮询编排静态断言通过

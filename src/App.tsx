@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
-import { refreshDashboardData, startDashboardPolling, stopDashboardPolling } from "./lib/dashboardStore";
+import {
+  refreshDashboardData,
+  resetDashboardStore,
+  startDashboardPolling,
+  stopDashboardPolling,
+} from "./lib/dashboardStore";
 import { poolGet } from "./lib/ipc";
-import { startMonitorStore, stopMonitorStore } from "./lib/monitorStore";
+import {
+  setMonitorStorePollingInterval,
+  startMonitorStore,
+  stopMonitorStore,
+} from "./lib/monitorStore";
 import type { Pool } from "./lib/types";
 import Dashboard from "./pages/Dashboard";
 import DeployWizard from "./pages/DeployWizard";
@@ -13,6 +22,9 @@ import Settings from "./pages/Settings";
 import SetupWizard from "./pages/SetupWizard";
 import TelemetryApi from "./pages/TelemetryApi";
 import UpgradeWizard from "./pages/UpgradeWizard";
+
+const FOREGROUND_POLL_INTERVAL_SECONDS = 15;
+const BACKGROUND_POLL_INTERVAL_SECONDS = 60;
 
 function LoadingScreen() {
   return (
@@ -43,12 +55,74 @@ function App() {
 
   useEffect(() => {
     if (!pool) return;
-    void startMonitorStore(15);
-    void refreshDashboardData();
-    startDashboardPolling(15);
+    let disposed = false;
+
+    const currentIntervalSeconds = () =>
+      typeof document !== "undefined" && document.visibilityState === "hidden"
+        ? BACKGROUND_POLL_INTERVAL_SECONDS
+        : FOREGROUND_POLL_INTERVAL_SECONDS;
+
+    const applyPollingMode = async (intervalSeconds: number) => {
+      try {
+        await setMonitorStorePollingInterval(intervalSeconds);
+      } catch {
+        // Keep auxiliary polling alive even if monitor interval update fails.
+      }
+      if (disposed) {
+        return;
+      }
+      startDashboardPolling(intervalSeconds);
+    };
+
+    const onVisibilityChange = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        void applyPollingMode(BACKGROUND_POLL_INTERVAL_SECONDS);
+        return;
+      }
+      void (async () => {
+        await applyPollingMode(FOREGROUND_POLL_INTERVAL_SECONDS);
+        await refreshDashboardData();
+      })();
+    };
+
+    const onWindowFocus = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
+      void (async () => {
+        await applyPollingMode(FOREGROUND_POLL_INTERVAL_SECONDS);
+        await refreshDashboardData();
+      })();
+    };
+
+    void (async () => {
+      const initialInterval = currentIntervalSeconds();
+      await startMonitorStore(initialInterval);
+      if (disposed) {
+        return;
+      }
+      startDashboardPolling(initialInterval);
+      await refreshDashboardData();
+    })();
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", onWindowFocus);
+    }
+
     return () => {
+      disposed = true;
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", onWindowFocus);
+      }
       void stopMonitorStore();
       stopDashboardPolling();
+      resetDashboardStore();
     };
   }, [pool]);
 
