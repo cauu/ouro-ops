@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -671,6 +672,321 @@ pub async fn kes_rotation_status(
     kes_rotation_status_with_conn(&conn, task_id.as_str())
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct KesBundleResult {
+    pub bundle_dir: String,
+    pub includes_cli: bool,
+    pub target_platform: Option<String>,
+}
+
+/// Parse `cardano-node 10.1.4 - linux-x86_64 - ghc-9.8\nGit rev: ...` → `"10.1.4"`
+fn extract_node_release_version(raw: &str) -> Option<String> {
+    let first_line = raw.lines().next()?.trim();
+    // "cardano-node 10.1.4 - ..."
+    let parts: Vec<&str> = first_line.split_whitespace().collect();
+    if parts.len() >= 2 && parts[0] == "cardano-node" {
+        return Some(parts[1].to_string());
+    }
+    None
+}
+
+/// Map user-facing platform to GitHub release asset name fragment.
+fn platform_asset_fragment(platform: &str) -> Result<&'static str, AppError> {
+    match platform {
+        "linux-x86_64" => Ok("linux"),
+        "macos-aarch64" => Ok("macos"),
+        _ => Err(AppError::Internal(format!(
+            "unsupported target platform: {platform}"
+        ))),
+    }
+}
+
+fn cli_cache_dir(app_handle: &AppHandle, version: &str, platform: &str) -> Result<PathBuf, AppError> {
+    let app_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|err| AppError::Internal(format!("app_data_dir error: {err}")))?;
+    Ok(app_dir.join("cardano-cli-cache").join(version).join(platform))
+}
+
+async fn download_cardano_cli(
+    app_handle: &AppHandle,
+    node_version: &str,
+    platform: &str,
+) -> Result<PathBuf, AppError> {
+    let cache_dir = cli_cache_dir(app_handle, node_version, platform)?;
+    let cached_bin = cache_dir.join("cardano-cli");
+    if cached_bin.exists() {
+        return Ok(cached_bin);
+    }
+
+    let asset_frag = platform_asset_fragment(platform)?;
+    // Use GitHub API to find the asset download URL for this release tag
+    let api_url = format!(
+        "https://api.github.com/repos/IntersectMBO/cardano-node/releases/tags/{node_version}"
+    );
+    let client = reqwest::Client::builder()
+        .user_agent("ouro-ops")
+        .build()
+        .map_err(|e| AppError::Internal(format!("http client error: {e}")))?;
+
+    let release: serde_json::Value = client
+        .get(&api_url)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("GitHub API request failed: {e}")))?
+        .error_for_status()
+        .map_err(|e| AppError::Internal(format!("GitHub API error (version {node_version} may not exist): {e}")))?
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("GitHub API parse error: {e}")))?;
+
+    // Find asset matching pattern: cardano-node-<version>-<platform>.tar.gz
+    let expected_suffix = format!("-{asset_frag}.tar.gz");
+    let assets = release["assets"]
+        .as_array()
+        .ok_or_else(|| AppError::Internal("no assets in release".into()))?;
+    let asset_url = assets
+        .iter()
+        .find_map(|a| {
+            let name = a["name"].as_str()?;
+            if name.starts_with("cardano-node-") && name.ends_with(&expected_suffix) {
+                a["browser_download_url"].as_str().map(|s| s.to_string())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            AppError::Internal(format!(
+                "no matching asset for platform '{platform}' in release {node_version}"
+            ))
+        })?;
+
+    let response = client
+        .get(&asset_url)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("download failed: {e}")))?
+        .error_for_status()
+        .map_err(|e| AppError::Internal(format!("download error: {e}")))?;
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| AppError::Internal(format!("download read error: {e}")))?;
+
+    // Extract cardano-cli from the tarball
+    let decoder = flate2::read::GzDecoder::new(bytes.as_ref());
+    let mut archive = tar::Archive::new(decoder);
+    let mut found = false;
+    for entry in archive
+        .entries()
+        .map_err(|e| AppError::Internal(format!("tar read error: {e}")))?
+    {
+        let mut entry = entry.map_err(|e| AppError::Internal(format!("tar entry error: {e}")))?;
+        let path = entry
+            .path()
+            .map_err(|e| AppError::Internal(format!("tar path error: {e}")))?;
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if file_name == "cardano-cli" {
+            fs::create_dir_all(&cache_dir)?;
+            entry
+                .unpack(&cached_bin)
+                .map_err(|e| AppError::Internal(format!("tar unpack error: {e}")))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&cached_bin, fs::Permissions::from_mode(0o755))?;
+            }
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        return Err(AppError::Internal(
+            "cardano-cli binary not found in release archive".into(),
+        ));
+    }
+    Ok(cached_bin)
+}
+
+fn generate_issue_script(
+    kes_period: Option<i64>,
+    counter_value: i64,
+) -> String {
+    let kes_period_str = kes_period
+        .map(|p| p.to_string())
+        .unwrap_or_else(|| "<FILL_KES_PERIOD>".to_string());
+    format!(
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+
+# ============================================================
+# KES Operational Certificate Issue Script
+# Generated by ouro-ops — do NOT edit parameters manually
+# unless you know what you are doing.
+# ============================================================
+
+SCRIPT_DIR="$(cd "$(dirname "${{0}}")" && pwd)"
+
+# --- Resolve cardano-cli ---------------------------------
+if [ -x "$SCRIPT_DIR/cardano-cli" ]; then
+  CLI="$SCRIPT_DIR/cardano-cli"
+elif command -v cardano-cli >/dev/null 2>&1; then
+  CLI="$(command -v cardano-cli)"
+else
+  echo "ERROR: cardano-cli not found. Place it next to this script or install to PATH." >&2
+  exit 1
+fi
+
+echo "Using: $CLI"
+"$CLI" --version || {{ echo "ERROR: cardano-cli --version failed — binary may be incompatible with this system." >&2; exit 1; }}
+
+# --- Pre-filled parameters --------------------------------
+KES_PERIOD="{kes_period_str}"
+COUNTER_VALUE="{counter_value}"
+
+# --- User inputs ------------------------------------------
+read -rp "Path to cold.skey [cold.skey]: " COLD_SKEY
+COLD_SKEY="${{COLD_SKEY:-cold.skey}}"
+[ -f "$COLD_SKEY" ] || {{ echo "ERROR: $COLD_SKEY not found" >&2; exit 1; }}
+
+read -rp "Path to cold.counter [cold.counter]: " COLD_COUNTER
+COLD_COUNTER="${{COLD_COUNTER:-cold.counter}}"
+[ -f "$COLD_COUNTER" ] || {{ echo "ERROR: $COLD_COUNTER not found" >&2; exit 1; }}
+
+KES_VKEY="$SCRIPT_DIR/kes.vkey"
+[ -f "$KES_VKEY" ] || {{ echo "ERROR: kes.vkey not found in bundle directory" >&2; exit 1; }}
+
+echo ""
+echo "=== Issue Operational Certificate ==="
+echo "  KES vkey:       $KES_VKEY"
+echo "  Cold skey:      $COLD_SKEY"
+echo "  Cold counter:   $COLD_COUNTER"
+echo "  KES period:     $KES_PERIOD"
+echo "  Counter value:  $COUNTER_VALUE"
+echo ""
+read -rp "Proceed? [y/N] " CONFIRM
+[[ "$CONFIRM" =~ ^[Yy]$ ]] || {{ echo "Aborted."; exit 0; }}
+
+"$CLI" latest node issue-op-cert \
+  --kes-verification-key-file "$KES_VKEY" \
+  --cold-signing-key-file "$COLD_SKEY" \
+  --operational-certificate-issue-counter-file "$COLD_COUNTER" \
+  --kes-period "$KES_PERIOD" \
+  --out-file "$SCRIPT_DIR/node.cert"
+
+echo ""
+echo "SUCCESS: $SCRIPT_DIR/node.cert generated."
+echo "Copy node.cert back to ouro-ops and proceed to Step 3."
+"#
+    )
+}
+
+#[tauri::command]
+pub async fn kes_prepare_bundle(
+    machine_id: i64,
+    include_cli: bool,
+    target_platform: Option<String>,
+    db: State<'_, DbState>,
+    app_handle: AppHandle,
+) -> Result<KesBundleResult, AppError> {
+    let (counter_value, kes_period) = {
+        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        ensure_bp_machine(&conn, machine_id)?;
+        let counter = current_op_cert_counter(&conn, machine_id)?;
+        let period = conn
+            .query_row(
+                "SELECT kes_period_current FROM kes_state WHERE machine_id = ?1",
+                params![machine_id],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .unwrap_or(None);
+        (counter, period)
+    };
+
+    let staging_dir = kes_staging_dir(&app_handle, machine_id)?;
+    let vkey_path = staging_dir.join("kes.vkey");
+    if !vkey_path.exists() {
+        return Err(AppError::Internal(
+            "kes.vkey not found — please complete Step 1 (Generate KES) first.".into(),
+        ));
+    }
+
+    let bundle_dir = staging_dir.join("bundle");
+    if bundle_dir.exists() {
+        fs::remove_dir_all(&bundle_dir)?;
+    }
+    fs::create_dir_all(&bundle_dir)?;
+
+    // Copy kes.vkey into bundle
+    fs::copy(&vkey_path, bundle_dir.join("kes.vkey"))?;
+
+    // Generate issue script
+    let script_content = generate_issue_script(kes_period, counter_value);
+    let script_path = bundle_dir.join("issue-op-cert.sh");
+    {
+        let mut f = fs::File::create(&script_path)?;
+        f.write_all(script_content.as_bytes())?;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755))?;
+    }
+
+    // Optionally download cardano-cli
+    if include_cli {
+        let platform = target_platform
+            .as_deref()
+            .ok_or_else(|| AppError::Internal("target_platform is required when include_cli is true".into()))?;
+
+        // Read node version from the version file produced by Step 1
+        let version_file = staging_dir.join("cardano-version.txt");
+        let version_raw = fs::read_to_string(&version_file).map_err(|_| {
+            AppError::Internal("cardano-version.txt not found — please complete Step 1 first.".into())
+        })?;
+        let node_version_line = version_raw.lines().nth(1).unwrap_or("").trim();
+        let node_version = extract_node_release_version(node_version_line).ok_or_else(|| {
+            AppError::Internal(format!(
+                "cannot parse cardano-node version from: {node_version_line}"
+            ))
+        })?;
+
+        let cli_bin = download_cardano_cli(&app_handle, &node_version, platform).await?;
+        fs::copy(&cli_bin, bundle_dir.join("cardano-cli"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(
+                &bundle_dir.join("cardano-cli"),
+                fs::Permissions::from_mode(0o755),
+            )?;
+        }
+    }
+
+    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    audit_log_insert(
+        &conn,
+        "kes_prepare_bundle",
+        &json!({
+            "machine_id": machine_id,
+            "include_cli": include_cli,
+            "target_platform": target_platform,
+            "bundle_dir": bundle_dir.display().to_string(),
+        }),
+    )?;
+
+    Ok(KesBundleResult {
+        bundle_dir: bundle_dir.display().to_string(),
+        includes_cli: include_cli,
+        target_platform,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -714,6 +1030,57 @@ mod tests {
     fn tc_kes_002_generate_playbook_path_resolves() {
         let path = kes_generate_playbook_path().expect("playbook path");
         assert!(path.ends_with("ansible/playbooks/kes-generate.yml"));
+    }
+
+    #[test]
+    fn tc_kes_006_extract_node_release_version() {
+        assert_eq!(
+            extract_node_release_version("cardano-node 10.1.4 - linux-x86_64 - ghc-9.8\nGit rev: abc"),
+            Some("10.1.4".to_string())
+        );
+        assert_eq!(
+            extract_node_release_version("cardano-node 10.2.1 - macos-aarch64 - ghc-9.8"),
+            Some("10.2.1".to_string())
+        );
+        assert_eq!(extract_node_release_version(""), None);
+        assert_eq!(extract_node_release_version("not-a-version"), None);
+    }
+
+    #[test]
+    fn tc_kes_007_platform_asset_fragment() {
+        assert_eq!(platform_asset_fragment("linux-x86_64").unwrap(), "linux");
+        assert_eq!(platform_asset_fragment("macos-aarch64").unwrap(), "macos");
+        assert!(platform_asset_fragment("windows-x86_64").is_err());
+    }
+
+    #[test]
+    fn tc_kes_008_generate_issue_script_contains_params() {
+        let script = generate_issue_script(Some(450), 7);
+        assert!(script.contains("KES_PERIOD=\"450\""));
+        assert!(script.contains("COUNTER_VALUE=\"7\""));
+        assert!(script.contains("latest node issue-op-cert"));
+        assert!(script.contains("--kes-period \"$KES_PERIOD\""));
+    }
+
+    #[test]
+    fn tc_kes_009_generate_issue_script_missing_period() {
+        let script = generate_issue_script(None, 3);
+        assert!(script.contains("<FILL_KES_PERIOD>"));
+        assert!(script.contains("COUNTER_VALUE=\"3\""));
+    }
+
+    #[test]
+    fn tc_kes_010_parse_version_file() {
+        let dir = std::env::temp_dir().join(format!("ouro-kes-ver-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("dir");
+        fs::write(
+            dir.join("cardano-version.txt"),
+            "cardano-cli 10.14.0.0 - linux-x86_64\ncardano-node 10.1.4 - linux-x86_64\n",
+        )
+        .expect("write");
+        let (cli, node) = parse_version_file(&dir);
+        assert!(cli.unwrap().contains("10.14.0.0"));
+        assert!(node.unwrap().contains("10.1.4"));
     }
 
     #[test]

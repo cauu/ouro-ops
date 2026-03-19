@@ -384,3 +384,9 @@ export interface KesSignRequest {
   cardano_node_version: string | null;
   instructions: string;
 }
+
+export interface KesBundleResult {
+  bundle_dir: string;
+  includes_cli: boolean;
+  target_platform: string | null;
+}

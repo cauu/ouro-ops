@@ -88,6 +88,7 @@ pub fn run() {
             commands::kes::kes_import_cert,
             commands::kes::kes_push_start,
             commands::kes::kes_rotation_status,
+            commands::kes::kes_prepare_bundle,
             commands::runtime::runtime_apply_config,
             commands::runtime::runtime_config_status,
             commands::runtime::runtime_restart,

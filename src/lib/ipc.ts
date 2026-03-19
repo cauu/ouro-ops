@@ -10,6 +10,7 @@ import type {
   MonitorSnapshot,
   ObservabilityGatewayStatus,
   ObservabilityTaskPayload,
+  KesBundleResult,
   KesSignRequest,
   KesStatus,
   Pool,
@@ -148,6 +149,14 @@ export async function kesStatusAll(): Promise<KesStatus[]> {
 
 export async function kesGenerate(machineId: number): Promise<KesSignRequest> {
   return invoke("kes_generate", { machineId });
+}
+
+export async function kesPrepareBundle(
+  machineId: number,
+  includeCli: boolean,
+  targetPlatform: string | null,
+): Promise<KesBundleResult> {
+  return invoke("kes_prepare_bundle", { machineId, includeCli, targetPlatform });
 }
 
 export async function kesImportCert(machineId: number, certPath: string): Promise<string> {

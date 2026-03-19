@@ -99,7 +99,7 @@ Spec-ID: S0010
 - [x] p10-9 后端：`KesSignRequest` 扩展 `cardano_cli_version`、`cardano_node_version`、`kes_period` 字段；Ansible task fetch 版本文件
 - [x] p10-6 对齐 Telemetry 与 kesStatus 的展示优先级与降级策略
 - [x] p10-9 后端：`KesSignRequest` 扩展 `cardano_cli_version` 字段（从 Step 1 的 `kes_generate.yml` 返回值中提取）
-- [ ] p10-10 后端：新增 `kes_prepare_bundle` 命令——生成 `issue-op-cert.sh` 预填脚本，复制 `kes.vkey`，可选下载目标平台 `cardano-cli`（GitHub Releases），打包到 bundle 目录
+- [x] p10-10 后端：新增 `kes_prepare_bundle` 命令——生成 `issue-op-cert.sh` 预填脚本，复制 `kes.vkey`，可选下载目标平台 `cardano-cli`（GitHub Releases），打包到 bundle 目录
 - [ ] p10-11 前端：Step 2 改造——新增"冷环境是否有 cardano-cli"开关、目标平台选择器、"打包 Bundle"按钮、bundle 路径展示与 Finder 打开入口
 - [ ] p10-7 增加回归测试与人工验收清单并完成联调
 - [ ] p10-8 结项评审与发布建议
@@ -141,6 +141,8 @@ Spec-ID: S0010
 - 2026-03-18 +0800 CR-003 accepted: Step 2 新增 Bundle 打包功能——用户可选是否附带 `cardano-cli`，选择冷环境目标平台（Linux x86_64 / macOS aarch64）后按需从 GitHub Releases 下载并缓存。新增 p10-9/10/11、TC-S0010-009~013。
 - 2026-03-18 +0800 p10-9 started: 扩展 `KesSignRequest`，Ansible task 增加 `cardano-node --version` 捕获与版本文件 fetch。
 - 2026-03-18 +0800 p10-9 completed: `KesSignRequest` 新增 `kes_period`、`cardano_cli_version`、`cardano_node_version` 字段；`kes_generate.yml` 捕获 node 版本并写入 `/tmp/ouro-kes-version.txt`，fetch 到 staging 目录；`kes_generate` 命令从 `kes_state` 读取当前 KES period；前端 `types.ts` 同步更新。
+- 2026-03-19 +0800 p10-10 started: 实现 `kes_prepare_bundle` 后端命令。
+- 2026-03-19 +0800 p10-10 completed: 新增 `kes_prepare_bundle` Tauri 命令——生成预填参数的 `issue-op-cert.sh`（优先 bundle 内 cli → fallback 系统 PATH → --version 校验 → 确认后执行）；复制 `kes.vkey`；可选通过 GitHub API 动态获取 asset URL 下载目标平台 `cardano-cli` 并按 version/platform 缓存。新增 `reqwest`/`flate2`/`tar` 依赖。前端 `ipc.ts`/`types.ts` 新增 `kesPrepareBundle` 和 `KesBundleResult`。新增 5 个单元测试覆盖版本解析、平台映射、脚本生成。
 
 ## 6. Validation Evidence (append-only)
 - TC-S0010-001 | stack: other | command: ls -la docs/specs docs/specs/completed | result: pass | note: 根目录仅保留 S0010 active，S0009 已迁移 completed
@@ -163,6 +165,11 @@ Spec-ID: S0010
 - TC-S0010-009 | stack: ansible | command: review kes_generate.yml | result: pass | note: 新增 cardano-node --version 捕获、版本文件写入与 fetch 步骤
 - TC-S0010-006 | stack: rust | command: cargo test | result: pass | note: 169 passed, 5 failed（pre-existing frontend snapshot）；KES 相关测试全部通过
 - TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-9 后前端构建通过
+- TC-S0010-010 | stack: rust | command: cargo check | result: pass | note: `kes_prepare_bundle` 命令编译通过，含 reqwest/flate2/tar 新依赖
+- TC-S0010-011 | stack: rust | command: cargo test -- tc_kes_008/009 | result: pass | note: 脚本生成正确预填 kes_period/counter_value，缺失 period 时填入占位符
+- TC-S0010-012 | stack: rust | command: review cli_cache_dir + download_cardano_cli | result: pass | note: 缓存路径为 `app_data_dir/cardano-cli-cache/{version}/{platform}/cardano-cli`，已缓存时直接返回
+- TC-S0010-006 | stack: rust | command: cargo test -- tc_kes | result: pass | note: 10 个 KES 测试全部通过
+- TC-S0010-006 | stack: node | command: pnpm -s build | result: pass | note: p10-10 后前端构建通过
 
 ## 7. Change Requests (append-only)
 - 2026-03-15 23:23 +0800 新需求建立：聚焦 KES Rotate 核心流程，作为 S0010 独立阶段推进。
