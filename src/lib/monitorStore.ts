@@ -75,6 +75,10 @@ function pickLatestCollectedAt(snapshots: MonitorSnapshot[]): string | null {
   return latest;
 }
 
+export async function ensureMonitorEventListeners(): Promise<void> {
+  return ensureEventListeners();
+}
+
 async function ensureEventListeners(): Promise<void> {
   if (unlisteners.length > 0) {
     return;

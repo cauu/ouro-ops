@@ -283,7 +283,7 @@ fn run_runtime_config_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         mark_task_running(&conn, task_id)?;
     }
@@ -292,7 +292,7 @@ fn run_runtime_config_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         build_runtime_inventory(&conn, payload.machine_id)?
     };
@@ -317,7 +317,7 @@ fn run_runtime_config_worker(
     let db_state = app_handle.state::<DbState>();
     let conn = db_state
         .0
-        .lock()
+        .get()
         .map_err(|_| AppError::Internal("lock".into()))?;
     mark_task_terminal(&conn, task_id, "success", None)?;
     Ok(())
@@ -332,7 +332,7 @@ fn run_runtime_restart_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         mark_task_running(&conn, task_id)?;
     }
@@ -341,7 +341,7 @@ fn run_runtime_restart_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         build_runtime_inventory(&conn, payload.machine_id)?
     };
@@ -366,7 +366,7 @@ fn run_runtime_restart_worker(
     let db_state = app_handle.state::<DbState>();
     let conn = db_state
         .0
-        .lock()
+        .get()
         .map_err(|_| AppError::Internal("lock".into()))?;
     mark_task_terminal(&conn, task_id, "success", None)?;
     Ok(())
@@ -380,7 +380,7 @@ fn mark_runtime_task_failed_if_needed(
     let db_state = app_handle.state::<DbState>();
     let conn = db_state
         .0
-        .lock()
+        .get()
         .map_err(|_| AppError::Internal("lock".into()))?;
     mark_task_terminal(&conn, task_id, "failed", Some(message))?;
     Ok(())
@@ -393,7 +393,7 @@ pub async fn runtime_apply_config(
     app_handle: tauri::AppHandle,
 ) -> Result<String, AppError> {
     {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         let machine = selected_machine(&conn, machine_id)?;
         audit_log_insert(
             &conn,
@@ -409,7 +409,7 @@ pub async fn runtime_apply_config(
     let task_id = uuid::Uuid::new_v4().to_string();
     let payload = RuntimeApplyConfigPayload { machine_id };
     {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         let payload_json =
             serde_json::to_string(&payload).map_err(|e| AppError::Internal(e.to_string()))?;
         insert_runtime_task(
@@ -446,7 +446,7 @@ pub async fn runtime_restart(
     app_handle: tauri::AppHandle,
 ) -> Result<String, AppError> {
     {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         let machine = selected_machine(&conn, machine_id)?;
         audit_log_insert(
             &conn,
@@ -462,7 +462,7 @@ pub async fn runtime_restart(
     let task_id = uuid::Uuid::new_v4().to_string();
     let payload = RuntimeRestartPayload { machine_id };
     {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         let payload_json =
             serde_json::to_string(&payload).map_err(|e| AppError::Internal(e.to_string()))?;
         insert_runtime_task(
@@ -497,7 +497,7 @@ pub async fn runtime_config_status(
     task_id: String,
     db: State<'_, DbState>,
 ) -> Result<DeployTaskStatus, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     runtime_config_status_with_conn(&conn, task_id.as_str())
 }
 
@@ -506,7 +506,7 @@ pub async fn runtime_restart_status(
     task_id: String,
     db: State<'_, DbState>,
 ) -> Result<DeployTaskStatus, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     runtime_restart_status_with_conn(&conn, task_id.as_str())
 }
 

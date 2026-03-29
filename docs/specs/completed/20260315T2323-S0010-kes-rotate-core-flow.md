@@ -1,12 +1,12 @@
 # Phase 7 KES Rotate Core Workflow Delivery
 
 Spec-ID: S0010
-状态: active
+状态: completed
 创建时间: 2026-03-15 23:23 +0800
 开始时间: 2026-03-15 23:23 +0800
-完成时间:
+完成时间: 2026-03-29T16:30:00+08:00
 前一个 Spec-ID: S0009
-结项原因:
+结项原因: delivered
 
 ## 1. Requirement Details
 - Background
@@ -116,8 +116,8 @@ Spec-ID: S0010
 - [x] p10-12 monitorStore 生命周期提升到 App 级别：`App.tsx` 中启动，Dashboard 不再管理 start/stop
 - [x] p10-13 Dashboard 初始化并行化：`refreshDashboardData()` 与 monitorStore 刷新并行执行，本地数据不等待 telemetry
 - [x] p10-15 全局轮询编排与 Dashboard store 生命周期修复：恢复前台/后台分频与前台即时补拉；清理跨 pool 残留状态
-- [ ] p10-7 增加回归测试与人工验收清单并完成联调
-- [ ] p10-8 结项评审与发布建议
+- [x] p10-7 增加回归测试与人工验收清单并完成联调
+- [x] p10-8 结项评审与发布建议
 
 ## 4. Test And Acceptance Criteria
 - TC-S0010-001 `docs/specs/` 根目录仅存在一个 active spec，且为 `S0010`。
@@ -321,7 +321,7 @@ Spec-ID: S0010
 - [x] p10-18 一次性切换 `Dashboard.tsx` 到 query hooks，并同步移除 `dashboardStore.ts` + App 中对应轮询/重置代码（避免双数据源中间态）
 - [x] p10-19 迁移 OperationLogs（`useTaskLogQuery`）、KesManager 初始加载（`useKesStatusListQuery`）、TelemetryApi 状态轮询（`useGatewayStatusQuery`）；新增共享 `useMachineListQuery`；`dashboardQueries.ts` 重命名为 `queries.ts`
 - [x] p10-20 实现 pool 切换缓存治理：按 poolId 精确 `removeQueries` 清旧 pool（p10-20-fix1 修正宽泛清理）
-- [ ] p10-21 增加静态/单测与人工验收清单，覆盖可见性分频、失败保留旧值、pool 防串数据、无 store 回归
+- [x] p10-21 增加静态/单测与人工验收清单，覆盖可见性分频、失败保留旧值、pool 防串数据、无 store 回归
 
 ### 8.18 Test And Acceptance Criteria Delta (CR-008-R1, supersede 8.13)
 - TC-S0010-016 Dashboard 页面切换后，`KES status` 与 `近期操作日志` 不出现先清空再恢复；数据持续展示并静默更新

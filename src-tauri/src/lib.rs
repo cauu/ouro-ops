@@ -12,6 +12,7 @@ use tauri::Manager;
 
 use crate::commands::monitor::MonitorPollingState;
 pub use db::DbState;
+pub use db::open_pool;
 
 pub fn run() {
     tauri::Builder::default()
@@ -21,8 +22,8 @@ pub fn run() {
             let path = app.path().app_data_dir().map_err(|e| e.to_string())?;
             std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
             let db_path = path.join("ouro_ops.sqlite");
-            let conn = db::open_and_migrate(&db_path).map_err(|e| e.to_string())?;
-            app.manage(DbState(Mutex::new(conn)));
+            let pool = open_pool(&db_path).map_err(|e| e.to_string())?;
+            app.manage(DbState(pool));
             app.manage(MonitorPollingState(Mutex::new(None)));
 
             let sidecar_state =

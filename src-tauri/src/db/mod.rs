@@ -1,9 +1,10 @@
 mod repo;
 mod schema;
 
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use std::path::Path;
-use std::sync::Mutex;
 
 use crate::error::AppError;
 
@@ -29,14 +30,47 @@ pub fn run_migrations(conn: &Connection) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 打开应用数据目录下的 SQLite 连接并执行迁移
+#[derive(Debug)]
+struct PragmaCustomizer;
+
+impl r2d2::CustomizeConnection<Connection, rusqlite::Error> for PragmaCustomizer {
+    fn on_acquire(&self, conn: &mut Connection) -> Result<(), rusqlite::Error> {
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL;
+             PRAGMA busy_timeout = 5000;
+             PRAGMA synchronous = NORMAL;
+             PRAGMA foreign_keys = ON;",
+        )?;
+        Ok(())
+    }
+}
+
+/// 创建连接池并执行迁移
+pub fn open_pool(db_path: &Path) -> Result<Pool<SqliteConnectionManager>, AppError> {
+    let manager = SqliteConnectionManager::file(db_path);
+    let pool = Pool::builder()
+        .max_size(4)
+        .connection_customizer(Box::new(PragmaCustomizer))
+        .build(manager)
+        .map_err(|e| AppError::Internal(format!("pool: {e}")))?;
+    {
+        let conn = pool
+            .get()
+            .map_err(|e| AppError::Internal(format!("pool: {e}")))?;
+        run_migrations(&conn)?;
+    }
+    Ok(pool)
+}
+
+/// 打开单连接并执行迁移（仅测试用）
+#[cfg(test)]
 pub fn open_and_migrate(db_path: &Path) -> Result<Connection, AppError> {
     let conn = Connection::open(db_path)?;
     run_migrations(&conn)?;
     Ok(conn)
 }
 
-pub struct DbState(pub Mutex<Connection>);
+pub struct DbState(pub Pool<SqliteConnectionManager>);
 
 pub use repo::*;
 

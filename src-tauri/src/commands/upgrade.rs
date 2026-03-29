@@ -423,7 +423,7 @@ fn mark_upgrade_task_failed_if_needed(
     let db_state = app_handle.state::<DbState>();
     let conn = db_state
         .0
-        .lock()
+        .get()
         .map_err(|_| AppError::Internal("lock".into()))?;
     let Some(task) = get_task_row(&conn, task_id)? else {
         return Ok(());
@@ -524,7 +524,7 @@ fn wait_for_gate_release(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         let task = get_task_row(&conn, task_id)?
             .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
@@ -555,7 +555,7 @@ fn run_upgrade_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         fetch_upgrade_machines(&conn, &payload.machine_ids)?
     };
@@ -579,7 +579,7 @@ fn run_upgrade_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         let task = get_task_row(&conn, task_id)?
             .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
@@ -594,7 +594,7 @@ fn run_upgrade_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         build_upgrade_inventory(&conn, &planned_machine_ids)?
     };
@@ -610,7 +610,7 @@ fn run_upgrade_worker(
             let db_state = app_handle.state::<DbState>();
             let conn = db_state
                 .0
-                .lock()
+                .get()
                 .map_err(|_| AppError::Internal("lock".into()))?;
             let task = get_task_row(&conn, task_id)?
                 .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
@@ -632,7 +632,7 @@ fn run_upgrade_worker(
             let db_state = app_handle.state::<DbState>();
             let conn = db_state
                 .0
-                .lock()
+                .get()
                 .map_err(|_| AppError::Internal("lock".into()))?;
             build_upgrade_inventory(&conn, &[*relay_id])?
         };
@@ -652,7 +652,7 @@ fn run_upgrade_worker(
             let db_state = app_handle.state::<DbState>();
             let conn = db_state
                 .0
-                .lock()
+                .get()
                 .map_err(|_| AppError::Internal("lock".into()))?;
             let task = get_task_row(&conn, task_id)?
                 .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
@@ -675,7 +675,7 @@ fn run_upgrade_worker(
                 let db_state = app_handle.state::<DbState>();
                 let conn = db_state
                     .0
-                    .lock()
+                    .get()
                     .map_err(|_| AppError::Internal("lock".into()))?;
                 let task = get_task_row(&conn, task_id)?
                     .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
@@ -712,7 +712,7 @@ fn run_upgrade_worker(
             let db_state = app_handle.state::<DbState>();
             let conn = db_state
                 .0
-                .lock()
+                .get()
                 .map_err(|_| AppError::Internal("lock".into()))?;
             let task = get_task_row(&conn, task_id)?
                 .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
@@ -735,7 +735,7 @@ fn run_upgrade_worker(
             let db_state = app_handle.state::<DbState>();
             let conn = db_state
                 .0
-                .lock()
+                .get()
                 .map_err(|_| AppError::Internal("lock".into()))?;
             mark_task_machine_status(&conn, task_id, *bp_id, "running")?;
         }
@@ -743,7 +743,7 @@ fn run_upgrade_worker(
             let db_state = app_handle.state::<DbState>();
             let conn = db_state
                 .0
-                .lock()
+                .get()
                 .map_err(|_| AppError::Internal("lock".into()))?;
             build_upgrade_inventory(&conn, &[*bp_id])?
         };
@@ -757,7 +757,7 @@ fn run_upgrade_worker(
             let db_state = app_handle.state::<DbState>();
             let conn = db_state
                 .0
-                .lock()
+                .get()
                 .map_err(|_| AppError::Internal("lock".into()))?;
             let task = get_task_row(&conn, task_id)?
                 .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
@@ -773,7 +773,7 @@ fn run_upgrade_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         let task = get_task_row(&conn, task_id)?
             .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
@@ -798,7 +798,7 @@ pub async fn upgrade_start(
     let payload = normalize_upgrade_payload(&payload);
     validate_upgrade_payload(&payload)?;
 
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     let machines = fetch_upgrade_machines(&conn, &payload.machine_ids)?;
     let (relay_ids, bp_ids, planned_machine_ids) =
         partition_upgrade_order(&machines, &payload.machine_ids);
@@ -857,7 +857,7 @@ pub async fn upgrade_start(
         {
             let failed_machine_id = {
                 let db_state = app_for_worker.state::<DbState>();
-                let conn = match db_state.0.lock() {
+                let conn = match db_state.0.get() {
                     Ok(conn) => conn,
                     Err(_) => return,
                 };
@@ -884,13 +884,13 @@ pub async fn upgrade_status(
     task_id: String,
     db: State<'_, DbState>,
 ) -> Result<DeployTaskStatus, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     upgrade_status_with_conn(&conn, task_id.as_str())
 }
 
 #[tauri::command]
 pub async fn upgrade_confirm_next(task_id: String, db: State<'_, DbState>) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     let task = get_task_row(&conn, task_id.as_str())?
         .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
     if task.task_type != "upgrade" {
@@ -938,7 +938,7 @@ pub async fn upgrade_rollback(
     machine_id: i64,
     db: State<'_, DbState>,
 ) -> Result<String, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     let task = get_task_row(&conn, task_id.as_str())?
         .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
     if task.task_type != "upgrade" {

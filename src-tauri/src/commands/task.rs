@@ -199,7 +199,7 @@ pub async fn task_recent_list(
     limit: Option<i64>,
     db: State<'_, DbState>,
 ) -> Result<Vec<RecentTaskSummary>, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     recent_task_list_with_conn(&conn, limit.unwrap_or(8).clamp(1, 20))
 }
 
@@ -208,7 +208,7 @@ pub async fn task_log_query(
     query: Option<TaskLogQueryPayload>,
     db: State<'_, DbState>,
 ) -> Result<TaskLogPage, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     task_log_page_with_conn(&conn, &query.unwrap_or_default())
 }
 

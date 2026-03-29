@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { type QueryClient, useQuery } from "@tanstack/react-query";
 import {
   kesStatusAll,
   machineList,
@@ -23,6 +23,21 @@ function visibilityInterval(): number {
   return typeof document !== "undefined" && document.visibilityState === "hidden"
     ? BACKGROUND_MS
     : FOREGROUND_MS;
+}
+
+// --- Dashboard prefetch (called from App.tsx after pool_get) ---
+
+export function prefetchDashboardQueries(client: QueryClient, poolId: number): void {
+  void client.prefetchQuery({
+    queryKey: ["dashboard", "kes", poolId],
+    queryFn: kesStatusAll,
+    staleTime: 10_000,
+  });
+  void client.prefetchQuery({
+    queryKey: ["dashboard", "tasks", poolId, 8],
+    queryFn: () => taskRecentList(8),
+    staleTime: 10_000,
+  });
 }
 
 // --- Dashboard ---

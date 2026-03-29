@@ -4,10 +4,12 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { poolGet } from "./lib/ipc";
 import {
+  ensureMonitorEventListeners,
   setMonitorStorePollingInterval,
   startMonitorStore,
   stopMonitorStore,
 } from "./lib/monitorStore";
+import { prefetchDashboardQueries } from "./lib/queries";
 import type { Pool } from "./lib/types";
 import Dashboard from "./pages/Dashboard";
 import DeployWizard from "./pages/DeployWizard";
@@ -50,50 +52,40 @@ function App() {
   const refreshPool = useCallback(async () => {
     try {
       const currentPool = await poolGet();
+      if (currentPool) {
+        prefetchDashboardQueries(queryClient, currentPool.id);
+        void startMonitorStore(
+          typeof document !== "undefined" && document.visibilityState === "hidden"
+            ? BACKGROUND_INTERVAL_S
+            : FOREGROUND_INTERVAL_S,
+        );
+      }
       setPool(currentPool);
     } catch {
       setPool(null);
     } finally {
       setBooting(false);
     }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
+    void ensureMonitorEventListeners();
     void refreshPool();
   }, [refreshPool]);
 
-  // Monitor store lifecycle (event-driven telemetry — not migrated to Query)
+  // Monitor store lifecycle: started in refreshPool, visibility interval managed here
   useEffect(() => {
     if (!pool) return;
-    let disposed = false;
-
-    const applyMonitorInterval = async (seconds: number) => {
-      try {
-        await setMonitorStorePollingInterval(seconds);
-      } catch {
-        /* keep going */
-      }
-    };
 
     const onVisibilityChange = () => {
       const hidden =
         typeof document !== "undefined" && document.visibilityState === "hidden";
-      void applyMonitorInterval(hidden ? BACKGROUND_INTERVAL_S : FOREGROUND_INTERVAL_S);
+      void setMonitorStorePollingInterval(hidden ? BACKGROUND_INTERVAL_S : FOREGROUND_INTERVAL_S).catch(() => {});
     };
-
-    void (async () => {
-      const initial =
-        typeof document !== "undefined" && document.visibilityState === "hidden"
-          ? BACKGROUND_INTERVAL_S
-          : FOREGROUND_INTERVAL_S;
-      await startMonitorStore(initial);
-      if (disposed) return;
-    })();
 
     document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
-      disposed = true;
       document.removeEventListener("visibilitychange", onVisibilityChange);
       void stopMonitorStore();
     };

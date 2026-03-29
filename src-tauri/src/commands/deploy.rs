@@ -646,7 +646,7 @@ fn run_deploy_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         mark_task_running(&conn, task_id)?;
     }
@@ -655,7 +655,7 @@ fn run_deploy_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         let selected = fetch_selected_machines(&conn, &payload.machine_ids)?;
         ensure_minimum_topology(&selected)?;
@@ -677,7 +677,7 @@ fn run_deploy_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         build_inventory(&conn, &payload.machine_ids)?
     };
@@ -687,7 +687,7 @@ fn run_deploy_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         let (username, password) = ensure_relay_telemetry_credentials(&conn)?;
         let scrape_targets = build_pool_scrape_targets(&conn, &payload.machine_ids)?;
@@ -728,7 +728,7 @@ fn run_deploy_worker(
     let db_state = app_handle.state::<DbState>();
     let conn = db_state
         .0
-        .lock()
+        .get()
         .map_err(|_| AppError::Internal("lock".into()))?;
     if !task_is_cancelled(&conn, task_id)? {
         mark_task_terminal(&conn, task_id, "success", None)?;
@@ -745,7 +745,7 @@ fn mark_task_failed_if_needed(
     let db_state = app_handle.state::<DbState>();
     let conn = db_state
         .0
-        .lock()
+        .get()
         .map_err(|_| AppError::Internal("lock".into()))?;
     if task_is_cancelled(&conn, task_id)? {
         return Ok(());
@@ -766,7 +766,7 @@ pub async fn deploy_start(
     validate_deploy_payload(&payload)?;
 
     {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         let selected = fetch_selected_machines(&conn, &payload.machine_ids)?;
         ensure_minimum_topology(&selected)?;
         let pool = pool_get_single(&conn)?
@@ -780,7 +780,7 @@ pub async fn deploy_start(
 
     let task_id = uuid::Uuid::new_v4().to_string();
     {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         insert_task_with_machines(&conn, &task_id, &payload)?;
         audit_log_insert(
             &conn,
@@ -819,7 +819,7 @@ pub async fn deploy_status(
     task_id: String,
     db: State<'_, DbState>,
 ) -> Result<DeployTaskStatus, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     deploy_status_with_conn(&conn, task_id.as_str())
 }
 
@@ -831,7 +831,7 @@ pub async fn deploy_cancel(
     app_handle: tauri::AppHandle,
 ) -> Result<(), AppError> {
     let should_interrupt = {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         let should_interrupt = cancel_task_with_conn(&conn, task_id.as_str())?;
         if should_interrupt {
             audit_deploy_cancel(&conn, task_id.as_str())?;

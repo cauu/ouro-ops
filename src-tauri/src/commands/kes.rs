@@ -210,7 +210,7 @@ fn run_kes_generate_remote(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         build_kes_inventory(&conn, machine_id)?
     };
@@ -446,7 +446,7 @@ fn run_kes_push_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         mark_task_running(&conn, task_id)?;
     }
@@ -455,7 +455,7 @@ fn run_kes_push_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         build_kes_inventory(&conn, payload.machine_id)?
     };
@@ -480,7 +480,7 @@ fn run_kes_push_worker(
     let db_state = app_handle.state::<DbState>();
     let conn = db_state
         .0
-        .lock()
+        .get()
         .map_err(|_| AppError::Internal("lock".into()))?;
     conn.execute(
         "INSERT INTO kes_state (machine_id, last_checked_at)
@@ -500,7 +500,7 @@ fn mark_kes_task_failed_if_needed(
     let db_state = app_handle.state::<DbState>();
     let conn = db_state
         .0
-        .lock()
+        .get()
         .map_err(|_| AppError::Internal("lock".into()))?;
     mark_task_terminal(&conn, task_id, "failed", Some(message))?;
     Ok(())
@@ -508,7 +508,7 @@ fn mark_kes_task_failed_if_needed(
 
 #[tauri::command]
 pub async fn kes_status_all(db: State<'_, DbState>) -> Result<Vec<KesStatus>, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     read_kes_statuses(&conn)
 }
 
@@ -519,7 +519,7 @@ pub async fn kes_generate(
     app_handle: AppHandle,
 ) -> Result<KesSignRequest, AppError> {
     let (counter_value, kes_period) = {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         ensure_bp_machine(&conn, machine_id)?;
         let counter = current_op_cert_counter(&conn, machine_id)?;
         let period = conn
@@ -537,7 +537,7 @@ pub async fn kes_generate(
         run_kes_generate_remote(&app_handle, machine_id, &staging_dir, counter_value, kes_period)?;
 
     {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         audit_log_insert(
             &conn,
             "kes_generate",
@@ -559,7 +559,7 @@ pub async fn kes_import_cert(
     db: State<'_, DbState>,
     app_handle: AppHandle,
 ) -> Result<String, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     ensure_bp_machine(&conn, machine_id)?;
     let source_path = PathBuf::from(cert_path.as_str());
     let cert_json = validate_operational_cert(source_path.as_path())?;
@@ -613,7 +613,7 @@ pub async fn kes_push_start(
     app_handle: AppHandle,
 ) -> Result<String, AppError> {
     let payload = {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         let task = get_task_row(&conn, task_id.as_str())?
             .ok_or_else(|| AppError::Internal(format!("task not found: {task_id}")))?;
         if task.task_type != "kes_rotation" {
@@ -675,7 +675,7 @@ pub async fn kes_rotation_status(
     task_id: String,
     db: State<'_, DbState>,
 ) -> Result<DeployTaskStatus, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     kes_rotation_status_with_conn(&conn, task_id.as_str())
 }
 
@@ -904,7 +904,7 @@ pub async fn kes_prepare_bundle(
     app_handle: AppHandle,
 ) -> Result<KesBundleResult, AppError> {
     let (counter_value, kes_period) = {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         ensure_bp_machine(&conn, machine_id)?;
         let counter = current_op_cert_counter(&conn, machine_id)?;
         let period = conn
@@ -976,7 +976,7 @@ pub async fn kes_prepare_bundle(
         }
     }
 
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     audit_log_insert(
         &conn,
         "kes_prepare_bundle",

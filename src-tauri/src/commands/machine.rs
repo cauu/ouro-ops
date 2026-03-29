@@ -470,13 +470,13 @@ pub async fn machine_add(
     payload: MachineAddPayload,
     db: State<'_, DbState>,
 ) -> Result<Machine, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     machine_add_with_deps(&conn, payload, &verify_ssh_agent_key, &run_ssh_command)
 }
 
 #[tauri::command]
 pub async fn machine_remove(machine_id: i64, db: State<'_, DbState>) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     machine_remove_with_conn(&conn, machine_id)
 }
 
@@ -485,7 +485,7 @@ pub async fn machine_list(
     filter: Option<MachineFilter>,
     db: State<'_, DbState>,
 ) -> Result<Vec<Machine>, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     machine_list_with_conn(&conn, filter)
 }
 
@@ -506,7 +506,7 @@ pub async fn machine_preflight(
     db: State<'_, DbState>,
 ) -> Result<PreflightReport, AppError> {
     let machine = {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         machine_get(&conn, machine_id)?
             .ok_or_else(|| AppError::Internal(format!("machine not found: {machine_id}")))?
     };
@@ -520,7 +520,7 @@ pub async fn machine_runtime_probe(
     db: State<'_, DbState>,
 ) -> Result<RuntimeProbe, AppError> {
     let machine = {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         machine_get(&conn, machine_id)?
             .ok_or_else(|| AppError::Internal(format!("machine not found: {machine_id}")))?
     };

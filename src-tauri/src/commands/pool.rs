@@ -1659,13 +1659,13 @@ fn pool_update_with_conn(conn: &Connection, payload: PoolUpdatePayload) -> Resul
 
 #[tauri::command]
 pub async fn pool_init(payload: PoolInitPayload, db: State<'_, DbState>) -> Result<Pool, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     pool_init_with_conn(&conn, payload)
 }
 
 #[tauri::command]
 pub async fn pool_get(db: State<'_, DbState>) -> Result<Pool, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     pool_get_with_conn(&conn)
 }
 
@@ -1674,7 +1674,7 @@ pub async fn pool_update(
     payload: PoolUpdatePayload,
     db: State<'_, DbState>,
 ) -> Result<Pool, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     pool_update_with_conn(&conn, payload)
 }
 
@@ -1683,7 +1683,7 @@ pub async fn pool_onchain_status(
     payload: PoolOnchainQueryPayload,
     db: State<'_, DbState>,
 ) -> Result<PoolOnchainStatus, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     pool_onchain_status_with_conn(&conn, payload)
 }
 
@@ -1692,19 +1692,19 @@ pub async fn pool_bind_onchain(
     payload: PoolBindOnchainPayload,
     db: State<'_, DbState>,
 ) -> Result<Pool, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     pool_bind_onchain_with_conn(&conn, payload)
 }
 
 #[tauri::command]
 pub async fn pool_refresh_bound_onchain(db: State<'_, DbState>) -> Result<Pool, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     pool_refresh_bound_onchain_with_conn(&conn)
 }
 
 #[tauri::command]
 pub async fn pool_unbind_onchain(db: State<'_, DbState>) -> Result<Pool, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     pool_unbind_onchain_with_conn(&conn)
 }
 
@@ -1713,7 +1713,7 @@ pub async fn pool_registration_prepare(
     payload: PoolRegistrationPreparePayload,
     db: State<'_, DbState>,
 ) -> Result<PoolRegistrationPrepareResult, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     pool_registration_prepare_with_conn(&conn, payload)
 }
 
@@ -1722,7 +1722,7 @@ pub async fn pool_registration_submit(
     payload: PoolRegistrationSubmitPayload,
     db: State<'_, DbState>,
 ) -> Result<PoolRegistrationSubmitResult, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     pool_registration_submit_with_conn(&conn, payload)
 }
 

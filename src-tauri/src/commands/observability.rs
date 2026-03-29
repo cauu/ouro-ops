@@ -520,7 +520,7 @@ fn run_observability_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         resolve_target_relays(&conn, machine_ids.as_ref())?
     };
@@ -529,7 +529,7 @@ fn run_observability_worker(
         let db_state = app_handle.state::<DbState>();
         let conn = db_state
             .0
-            .lock()
+            .get()
             .map_err(|_| AppError::Internal("lock".into()))?;
         mark_task_running(&conn, task_id)?;
     }
@@ -549,7 +549,7 @@ fn run_observability_worker(
             let db_state = app_handle.state::<DbState>();
             let conn = db_state
                 .0
-                .lock()
+                .get()
                 .map_err(|_| AppError::Internal("lock".into()))?;
             let (username, password) = ensure_relay_telemetry_credentials(&conn)?;
             let scrape_targets = build_pool_scrape_targets(&conn)?;
@@ -583,7 +583,7 @@ fn run_observability_worker(
     let db_state = app_handle.state::<DbState>();
     let conn = db_state
         .0
-        .lock()
+        .get()
         .map_err(|_| AppError::Internal("lock".into()))?;
     mark_task_terminal(&conn, task_id, "success", None)?;
     Ok(())
@@ -597,7 +597,7 @@ fn mark_task_failed_if_needed(
     let db_state = app_handle.state::<DbState>();
     let conn = db_state
         .0
-        .lock()
+        .get()
         .map_err(|_| AppError::Internal("lock".into()))?;
     mark_task_terminal(&conn, task_id, "failed", Some(message))?;
     let _ = app_handle.emit(
@@ -624,7 +624,7 @@ fn start_observability_task(
         .filter(|ids| !ids.is_empty());
     let task_id = uuid::Uuid::new_v4().to_string();
     {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         let relays = resolve_target_relays(&conn, machine_ids.as_ref())?;
         let payload_value = json!({
             "machine_ids": relays.iter().map(|relay| relay.id).collect::<Vec<_>>(),
@@ -701,7 +701,7 @@ pub async fn observability_bootstrap_status(
     task_id: String,
     db: State<'_, DbState>,
 ) -> Result<DeployTaskStatus, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     observability_task_status_with_conn(&conn, task_id.as_str(), TASK_TYPE_BOOTSTRAP)
 }
 
@@ -710,7 +710,7 @@ pub async fn observability_rollback_status(
     task_id: String,
     db: State<'_, DbState>,
 ) -> Result<DeployTaskStatus, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     observability_task_status_with_conn(&conn, task_id.as_str(), TASK_TYPE_ROLLBACK)
 }
 
@@ -718,7 +718,7 @@ pub async fn observability_rollback_status(
 pub async fn observability_gateway_status(
     db: State<'_, DbState>,
 ) -> Result<ObservabilityGatewayStatus, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     let relays = resolve_target_relays(&conn, None)?;
     let probes = relays.iter().map(probe_relay_gateway).collect::<Vec<_>>();
     let configured_relays = probes.iter().filter(|probe| probe.configured).count();

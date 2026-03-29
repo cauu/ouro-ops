@@ -36,7 +36,7 @@ pub async fn ping(sidecar: State<'_, Mutex<Option<Arc<SidecarState>>>>) -> Resul
 /// 返回 DB user_version 与表是否存在（用于 TC-DB-001）
 #[tauri::command]
 pub async fn db_version(db: State<'_, DbState>) -> Result<serde_json::Value, AppError> {
-    let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+    let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
     let version = get_user_version(&conn)?;
     let tables = [
         "pool",

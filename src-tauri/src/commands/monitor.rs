@@ -1939,7 +1939,7 @@ async fn collect_snapshots_from_db_state(
 ) -> Result<SnapshotBatch, AppError> {
     // Phase 1: short DB lock for local metadata reads
     let (selected, previous_samples, telemetry_context) = {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         let selected = repo_machine_list(&conn, None, None)?
             .into_iter()
             .filter(|machine| {
@@ -1986,7 +1986,7 @@ async fn collect_snapshots_from_db_state(
     // Phase 3: short DB lock for persistence and cache fallback reads
     let mut snapshots = Vec::with_capacity(materials.len());
     {
-        let conn = db.0.lock().map_err(|_| AppError::Internal("lock".into()))?;
+        let conn = db.0.get().map_err(|e| AppError::Internal(format!("pool: {e}")))?;
         for material in materials {
             snapshots.push(persist_snapshot_material(&conn, material)?);
         }
@@ -2017,7 +2017,7 @@ async fn collect_snapshots_from_db_state(
 }
 
 fn audit_telemetry_degraded_retry(db: &DbState, machine_ids: &Option<Vec<i64>>, message: &str) {
-    let Ok(conn) = db.0.lock() else {
+    let Ok(conn) = db.0.get() else {
         return;
     };
     let detail = serde_json::json!({
