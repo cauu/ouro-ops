@@ -390,3 +390,27 @@ export interface KesBundleResult {
   includes_cli: boolean;
   target_platform: string | null;
 }
+
+// --- Staking ---
+
+export interface StakingSummary {
+  live_delegators: number;
+  live_stake: number;
+  live_stake_ada: number;
+  active_stake: number;
+  active_stake_ada: number;
+}
+
+export interface StakingEpochEntry {
+  epoch_no: number;
+  delegator_cnt: number;
+  active_stake: number;
+  active_stake_ada: number;
+}
+
+export interface Delegator {
+  stake_address: string;
+  amount: number;
+  amount_ada: number;
+  active_epoch_no: number;
+}

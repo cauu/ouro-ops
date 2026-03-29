@@ -1,6 +1,7 @@
 import { type ReactNode, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useKesStatusQuery, useRecentTasksQuery } from "../lib/queries";
+import { useKesStatusQuery, useRecentTasksQuery, useStakingSummaryQuery, useStakingHistoryQuery } from "../lib/queries";
+import StakingTrendChart from "../components/StakingTrendChart";
 import { formatTaskError } from "../lib/errors";
 import {
   resolveTelemetryBehavior,
@@ -367,12 +368,15 @@ function MetaIconTip({ tip, icon }: { tip: string; icon: ReactNode }) {
 
 interface DashboardProps {
   poolId: number | undefined;
+  onchainPoolId?: string | null;
 }
 
-export default function Dashboard({ poolId }: DashboardProps) {
+export default function Dashboard({ poolId, onchainPoolId }: DashboardProps) {
   const telemetryHeaderTipId = useId();
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const kesQuery = useKesStatusQuery(poolId);
+  const stakingSummaryQuery = useStakingSummaryQuery(onchainPoolId);
+  const stakingHistoryQuery = useStakingHistoryQuery(onchainPoolId);
   const tasksQuery = useRecentTasksQuery(poolId);
   const kesStatuses = kesQuery.data ?? [];
   const recentTasks = tasksQuery.data ?? [];
@@ -967,6 +971,59 @@ export default function Dashboard({ poolId }: DashboardProps) {
               )}
             </tbody>
           </table>
+        </div>
+      </section>
+      {/* Staking Overview */}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
+        <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <div>
+            <h2 className="text-sm font-semibold">Staking Overview</h2>
+            <p className="text-xs text-slate-600">质押用户数与质押量趋势，数据来源 Koios。</p>
+          </div>
+          {onchainPoolId && (
+            <Link to="/delegators" className="text-xs font-medium text-blue-600 hover:text-blue-800">
+              查看全部 Delegators →
+            </Link>
+          )}
+        </header>
+        <div className="px-4 py-4">
+          {!onchainPoolId ? (
+            <div className="flex h-24 items-center justify-center text-xs text-slate-400">
+              请先在 Settings 中绑定链上矿池（onchain pool id）后查看质押数据。
+            </div>
+          ) : stakingSummaryQuery.isError ? (
+            <div className="flex h-24 items-center justify-center text-xs text-amber-600">
+              质押数据暂不可用，将自动重试。
+            </div>
+          ) : (
+            <>
+              <div className="mb-4 flex gap-6">
+                <div>
+                  <p className="text-xs text-slate-500">Delegators</p>
+                  <p className="text-xl font-semibold tabular-nums">
+                    {stakingSummaryQuery.data?.live_delegators?.toLocaleString() ?? "--"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Total Stake</p>
+                  <p className="text-xl font-semibold tabular-nums">
+                    {stakingSummaryQuery.data
+                      ? `${stakingSummaryQuery.data.live_stake_ada.toLocaleString(undefined, { maximumFractionDigits: 0 })} ADA`
+                      : "--"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Active Stake</p>
+                  <p className="text-xl font-semibold tabular-nums">
+                    {stakingSummaryQuery.data
+                      ? `${stakingSummaryQuery.data.active_stake_ada.toLocaleString(undefined, { maximumFractionDigits: 0 })} ADA`
+                      : "--"}
+                  </p>
+                </div>
+              </div>
+              <StakingTrendChart data={stakingHistoryQuery.data ?? []} />
+            </>
+          )}
         </div>
       </section>
     </section>

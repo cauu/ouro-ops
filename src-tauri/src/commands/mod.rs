@@ -7,6 +7,7 @@ pub mod monitor;
 pub mod observability;
 pub mod pool;
 pub mod runtime;
+pub mod staking;
 pub mod task;
 pub mod upgrade;
 

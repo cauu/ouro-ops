@@ -230,3 +230,17 @@ export async function upgradeConfirmNext(taskId: string): Promise<void> {
 export async function upgradeRollback(taskId: string, machineId: number): Promise<string> {
   return invoke("upgrade_rollback", { taskId, machineId });
 }
+
+// --- Staking ---
+
+export async function poolStakingSummary(): Promise<import("./types").StakingSummary> {
+  return invoke("pool_staking_summary");
+}
+
+export async function poolStakingHistory(epochCount?: number): Promise<import("./types").StakingEpochEntry[]> {
+  return invoke("pool_staking_history", { epochCount: epochCount ?? null });
+}
+
+export async function poolDelegatorList(): Promise<import("./types").Delegator[]> {
+  return invoke("pool_delegator_list");
+}

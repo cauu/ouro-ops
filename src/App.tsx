@@ -12,6 +12,7 @@ import {
 import { prefetchDashboardQueries } from "./lib/queries";
 import type { Pool } from "./lib/types";
 import Dashboard from "./pages/Dashboard";
+import Delegators from "./pages/Delegators";
 import DeployWizard from "./pages/DeployWizard";
 import KesManager from "./pages/KesManager";
 import OperationLogs from "./pages/OperationLogs";
@@ -124,7 +125,8 @@ function App() {
         />
 
         <Route element={pool ? <Layout pool={pool} /> : <Navigate to="/setup" replace />}>
-          <Route path="/" element={<Dashboard poolId={pool?.id} />} />
+          <Route path="/" element={<Dashboard poolId={pool?.id} onchainPoolId={pool?.onchain_pool_id} />} />
+          <Route path="/delegators" element={pool ? <Delegators onchainPoolId={pool.onchain_pool_id} /> : null} />
           <Route path="/logs" element={pool ? <OperationLogs /> : null} />
           <Route path="/kes" element={pool ? <KesManager poolTicker={pool.ticker} /> : null} />
           <Route path="/telemetry" element={pool ? <TelemetryApi /> : null} />

@@ -100,6 +100,9 @@ pub fn run() {
             commands::upgrade::upgrade_status,
             commands::upgrade::upgrade_confirm_next,
             commands::upgrade::upgrade_rollback,
+            commands::staking::pool_staking_summary,
+            commands::staking::pool_staking_history,
+            commands::staking::pool_delegator_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

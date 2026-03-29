@@ -3,15 +3,21 @@ import {
   kesStatusAll,
   machineList,
   observabilityGatewayStatus,
+  poolDelegatorList,
+  poolStakingHistory,
+  poolStakingSummary,
   taskLogQuery,
   taskRecentList,
 } from "./ipc";
 import type {
+  Delegator,
   KesStatus,
   Machine,
   MachineFilter,
   ObservabilityGatewayStatus,
   RecentTaskSummary,
+  StakingEpochEntry,
+  StakingSummary,
   TaskLogPage,
   TaskLogQueryPayload,
 } from "./types";
@@ -101,6 +107,46 @@ export function useGatewayStatusQuery() {
     queryFn: observabilityGatewayStatus,
     staleTime: 10_000,
     refetchInterval: visibilityInterval,
+    refetchOnWindowFocus: true,
+    placeholderData: (prev) => prev,
+    retry: 2,
+  });
+}
+
+// --- Staking ---
+
+const STAKING_STALE_MS = 5 * 60_000; // 5 min — staking data changes per epoch (~5 days)
+
+export function useStakingSummaryQuery(onchainPoolId: string | null | undefined) {
+  return useQuery<StakingSummary>({
+    queryKey: ["staking", "summary", onchainPoolId],
+    queryFn: poolStakingSummary,
+    enabled: onchainPoolId != null,
+    staleTime: STAKING_STALE_MS,
+    refetchOnWindowFocus: true,
+    placeholderData: (prev) => prev,
+    retry: 2,
+  });
+}
+
+export function useStakingHistoryQuery(onchainPoolId: string | null | undefined, epochCount = 20) {
+  return useQuery<StakingEpochEntry[]>({
+    queryKey: ["staking", "history", onchainPoolId, epochCount],
+    queryFn: () => poolStakingHistory(epochCount),
+    enabled: onchainPoolId != null,
+    staleTime: STAKING_STALE_MS,
+    refetchOnWindowFocus: true,
+    placeholderData: (prev) => prev,
+    retry: 2,
+  });
+}
+
+export function useDelegatorListQuery(onchainPoolId: string | null | undefined) {
+  return useQuery<Delegator[]>({
+    queryKey: ["staking", "delegators", onchainPoolId],
+    queryFn: poolDelegatorList,
+    enabled: onchainPoolId != null,
+    staleTime: STAKING_STALE_MS,
     refetchOnWindowFocus: true,
     placeholderData: (prev) => prev,
     retry: 2,

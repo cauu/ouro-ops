@@ -66,6 +66,22 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
               </svg>
               {!collapsed && <span>Dashboard</span>}
             </NavLink>
+            <NavLink to="/delegators" className={({ isActive }) => navClass(isActive, collapsed)} title="Delegators">
+              <svg
+                viewBox="0 0 20 20"
+                className="h-[17px] w-[17px] shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                aria-hidden="true"
+              >
+                <circle cx="7" cy="7" r="3" />
+                <path d="M1.5 16.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5" strokeLinecap="round" />
+                <circle cx="14.5" cy="6" r="2.2" />
+                <path d="M18.5 15c0-2.2-1.8-3.7-4-3.7" strokeLinecap="round" />
+              </svg>
+              {!collapsed && <span>Delegators</span>}
+            </NavLink>
           </section>
 
           <section>
