@@ -1,11 +1,12 @@
 # Pool Staking Overview: Delegator Dashboard + Detail List
 
 Spec-ID: S0012
-Status: active
+Status: completed
 Created Time: 2026-03-29T18:30:00+08:00
 Start Time: 2026-03-29T19:00:00+08:00
-Completion Time:
+Completion Time: 2026-03-29T20:30:00+08:00
 Previous Spec-ID: S0011
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
