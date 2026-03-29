@@ -114,12 +114,16 @@ pub async fn pool_staking_history(
     db: State<'_, DbState>,
 ) -> Result<Vec<StakingEpochEntry>, AppError> {
     let (pool_id, network) = require_onchain_pool_id(&db)?;
-    let url = format!("{}/pool_history", koios_base_url(&network));
-    let body = serde_json::json!({ "_pool_bech32_ids": [pool_id] });
+    let limit = epoch_count.unwrap_or(20);
+    let url = format!(
+        "{}/pool_history?_pool_bech32={}&limit={}",
+        koios_base_url(&network),
+        pool_id,
+        limit
+    );
 
     let resp = reqwest::Client::new()
-        .post(&url)
-        .json(&body)
+        .get(&url)
         .send()
         .await
         .map_err(|e| AppError::Internal(format!("koios request failed: {e}")))?;
@@ -151,12 +155,6 @@ pub async fn pool_staking_history(
         .collect();
 
     result.sort_by_key(|e| e.epoch_no);
-
-    let limit = epoch_count.unwrap_or(20) as usize;
-    if result.len() > limit {
-        result = result.split_off(result.len() - limit);
-    }
-
     Ok(result)
 }
 
@@ -182,12 +180,14 @@ pub async fn pool_delegator_list(
     db: State<'_, DbState>,
 ) -> Result<Vec<Delegator>, AppError> {
     let (pool_id, network) = require_onchain_pool_id(&db)?;
-    let url = format!("{}/pool_delegators", koios_base_url(&network));
-    let body = serde_json::json!({ "_pool_bech32_ids": [pool_id] });
+    let url = format!(
+        "{}/pool_delegators?_pool_bech32={}",
+        koios_base_url(&network),
+        pool_id
+    );
 
     let resp = reqwest::Client::new()
-        .post(&url)
-        .json(&body)
+        .get(&url)
         .send()
         .await
         .map_err(|e| AppError::Internal(format!("koios request failed: {e}")))?;

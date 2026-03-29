@@ -1,7 +1,6 @@
 import { type ReactNode, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useKesStatusQuery, useRecentTasksQuery, useStakingSummaryQuery, useStakingHistoryQuery } from "../lib/queries";
-import StakingTrendChart from "../components/StakingTrendChart";
+import { useKesStatusQuery, useRecentTasksQuery, useStakingSummaryQuery } from "../lib/queries";
 import { formatTaskError } from "../lib/errors";
 import {
   resolveTelemetryBehavior,
@@ -376,7 +375,6 @@ export default function Dashboard({ poolId, onchainPoolId }: DashboardProps) {
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const kesQuery = useKesStatusQuery(poolId);
   const stakingSummaryQuery = useStakingSummaryQuery(onchainPoolId);
-  const stakingHistoryQuery = useStakingHistoryQuery(onchainPoolId);
   const tasksQuery = useRecentTasksQuery(poolId);
   const kesStatuses = kesQuery.data ?? [];
   const recentTasks = tasksQuery.data ?? [];
@@ -508,33 +506,30 @@ export default function Dashboard({ poolId, onchainPoolId }: DashboardProps) {
               质押数据暂不可用，将自动重试。
             </div>
           ) : (
-            <>
-              <div className="mb-4 flex gap-6">
-                <div>
-                  <p className="text-xs text-slate-500">Delegators</p>
-                  <p className="text-xl font-semibold tabular-nums">
-                    {stakingSummaryQuery.data?.live_delegators?.toLocaleString() ?? "--"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Total Stake</p>
-                  <p className="text-xl font-semibold tabular-nums">
-                    {stakingSummaryQuery.data
-                      ? `${stakingSummaryQuery.data.live_stake_ada.toLocaleString(undefined, { maximumFractionDigits: 0 })} ADA`
-                      : "--"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Active Stake</p>
-                  <p className="text-xl font-semibold tabular-nums">
-                    {stakingSummaryQuery.data
-                      ? `${stakingSummaryQuery.data.active_stake_ada.toLocaleString(undefined, { maximumFractionDigits: 0 })} ADA`
-                      : "--"}
-                  </p>
-                </div>
+            <div className="flex gap-6">
+              <div>
+                <p className="text-xs text-slate-500">Delegators</p>
+                <p className="text-xl font-semibold tabular-nums">
+                  {stakingSummaryQuery.data?.live_delegators?.toLocaleString() ?? "--"}
+                </p>
               </div>
-              <StakingTrendChart data={stakingHistoryQuery.data ?? []} />
-            </>
+              <div>
+                <p className="text-xs text-slate-500">Total Stake</p>
+                <p className="text-xl font-semibold tabular-nums">
+                  {stakingSummaryQuery.data
+                    ? `${stakingSummaryQuery.data.live_stake_ada.toLocaleString(undefined, { maximumFractionDigits: 0 })} ADA`
+                    : "--"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Active Stake</p>
+                <p className="text-xl font-semibold tabular-nums">
+                  {stakingSummaryQuery.data
+                    ? `${stakingSummaryQuery.data.active_stake_ada.toLocaleString(undefined, { maximumFractionDigits: 0 })} ADA`
+                    : "--"}
+                </p>
+              </div>
+            </div>
           )}
         </div>
       </section>

@@ -152,7 +152,7 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
 
         <div className="flex-1" />
 
-        <div className="px-3 pb-4">
+        <section className="px-3 pb-4">
           <NavLink to="/settings" className={({ isActive }) => navClass(isActive, collapsed)} title="Settings">
             <svg
               viewBox="0 0 20 20"
@@ -167,7 +167,7 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
             </svg>
             {!collapsed && <span>Settings</span>}
           </NavLink>
-        </div>
+        </section>
       </div>
     </aside>
   );
