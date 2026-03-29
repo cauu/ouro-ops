@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { onDragRegionMouseDown } from "../lib/useDragRegion";
 import type { Pool } from "../lib/types";
 import Sidebar from "./Sidebar";
 
@@ -105,7 +106,7 @@ export default function Layout({ pool }: LayoutProps) {
         />
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <header className="drag-region border-b border-slate-200/80 bg-white/78 backdrop-blur-md" data-tauri-drag-region>
+          <header className="drag-region border-b border-slate-200/80 bg-white/78 backdrop-blur-md" data-tauri-drag-region onMouseDown={onDragRegionMouseDown}>
             <div className="drag-region flex h-14 items-center gap-4 px-5" data-tauri-drag-region>
               <button
                 type="button"
@@ -130,12 +131,12 @@ export default function Layout({ pool }: LayoutProps) {
               </button>
 
               <div className="drag-region min-w-0" data-tauri-drag-region>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                <p className="drag-region text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   {toolbar.section} · {networkLabel(pool.network)}
                 </p>
-                <div className="mt-0.5 flex items-center gap-2">
-                  <h1 className="truncate text-[14px] font-semibold text-slate-900">{toolbar.title}</h1>
-                  <span className={`inline-flex min-h-6 items-center rounded-full border px-2 text-[11px] font-semibold ${statusToneClass(toolbar.statusTone)}`}>
+                <div className="drag-region mt-0.5 flex items-center gap-2">
+                  <h1 className="drag-region truncate text-[14px] font-semibold text-slate-900">{toolbar.title}</h1>
+                  <span className={`drag-region inline-flex min-h-6 items-center rounded-full border px-2 text-[11px] font-semibold ${statusToneClass(toolbar.statusTone)}`}>
                     {toolbar.status}
                   </span>
                 </div>

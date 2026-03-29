@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { onDragRegionMouseDown } from "../lib/useDragRegion";
 
 const linkBase =
   "flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1";
@@ -31,7 +32,7 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
       className={`flex h-full flex-col border-r border-slate-200/80 bg-slate-50/85 backdrop-blur-md transition-[width] duration-200 ${collapsed ? "w-[88px]" : "w-64"
         }`}
     >
-      <header className="drag-region border-slate-200/80" data-tauri-drag-region>
+      <header className="drag-region border-slate-200/80" data-tauri-drag-region onMouseDown={onDragRegionMouseDown}>
         <div className={`drag-region flex h-14 items-center pl-[74px] ${collapsed ? "pr-2" : "pr-3"}`} data-tauri-drag-region>
           <div className="drag-region flex-1" data-tauri-drag-region />
         </div>

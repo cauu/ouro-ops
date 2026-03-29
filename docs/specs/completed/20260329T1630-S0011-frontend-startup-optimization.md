@@ -1,11 +1,12 @@
 # Startup Speed Optimization: SQLite Connection Pool + Frontend Prefetch
 
 Spec-ID: S0011
-Status: active
+Status: completed
 Created Time: 2026-03-29T16:00:00+08:00
 Start Time: 2026-03-29T16:30:00+08:00
-Completion Time:
+Completion Time: 2026-03-29T18:00:00+08:00
 Previous Spec-ID: S0010
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
