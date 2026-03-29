@@ -470,7 +470,6 @@ fn map_prometheus_metrics(source: &str, metrics: &HashMap<String, f64>) -> Prome
             &[
                 "nview_cpu_sys_percent",
                 "cardano_node_resources_cpuSys_percent",
-                "cardano_node_resources_cpuSys_int",
             ],
         )),
         cpu_total_ms: pick_prometheus_value(metrics, &["rts_gc_cpu_ms"]),
@@ -1297,6 +1296,9 @@ fn collect_prometheus_metrics(
     relay_metrics
 }
 
+/// EMA smoothing factor: 0.3 = 30% new sample, 70% previous smoothed value.
+const CPU_EMA_ALPHA: f64 = 0.3;
+
 fn resolve_machine_cpu_percent(
     machine_id: i64,
     metrics: &mut PrometheusMetrics,
@@ -1310,13 +1312,22 @@ fn resolve_machine_cpu_percent(
         sampled_at_epoch: metrics.collected_at_epoch.unwrap_or(collected_at_epoch),
     };
 
-    if metrics.cpu_sys_percent.is_none() {
-        let previous_sample = cpu_counter_registry()
-            .lock()
-            .ok()
-            .and_then(|registry| registry.get(&machine_id).copied());
-        if let Some(previous_sample) = previous_sample {
-            metrics.cpu_sys_percent = derive_cpu_percent_from_total_ms(previous_sample, current_sample);
+    // When rts_gc_cpu_ms is available, always use differential — ignore any
+    // direct cpuSys_percent value which is often 0 or stale.
+    let previous_sample = cpu_counter_registry()
+        .lock()
+        .ok()
+        .and_then(|registry| registry.get(&machine_id).copied());
+    if let Some(previous_sample) = previous_sample {
+        if let Some(raw) = derive_cpu_percent_from_total_ms(previous_sample, current_sample) {
+            // Apply EMA smoothing against last known value to reduce jitter.
+            let smoothed = last_known_cpu_percent_registry()
+                .lock()
+                .ok()
+                .and_then(|reg| reg.get(&machine_id).copied())
+                .map(|prev| CPU_EMA_ALPHA * raw + (1.0 - CPU_EMA_ALPHA) * prev)
+                .unwrap_or(raw);
+            metrics.cpu_sys_percent = Some(smoothed.clamp(0.0, 100.0));
         }
     }
 
@@ -2725,20 +2736,40 @@ mod tests {
     }
 
     #[test]
-    fn tc_mon_029_cpu_derivation_keeps_direct_percent_priority() {
+    fn tc_mon_029_cpu_differential_overrides_direct_percent() {
         if let Ok(mut registry) = cpu_counter_registry().lock() {
             registry.clear();
         }
+        if let Ok(mut registry) = last_known_cpu_percent_registry().lock() {
+            registry.clear();
+        }
 
-        let machine_id = 9_001_i64;
-        let mut metrics = PrometheusMetrics {
+        let machine_id = 9_029_i64;
+
+        // First sample: seed the counter registry (no previous → keeps direct value).
+        let mut metrics1 = PrometheusMetrics {
             cpu_sys_percent: Some(73.2),
-            cpu_total_ms: Some(50_000.0),
-            collected_at_epoch: Some(2_000),
+            cpu_total_ms: Some(10_000.0),
+            collected_at_epoch: Some(1_000),
             ..PrometheusMetrics::default()
         };
-        resolve_machine_cpu_percent(machine_id, &mut metrics, 2_000);
-        assert_eq!(metrics.cpu_sys_percent, Some(73.2));
+        resolve_machine_cpu_percent(machine_id, &mut metrics1, 1_000);
+        // No previous sample yet, so direct value is kept.
+        assert_eq!(metrics1.cpu_sys_percent, Some(73.2));
+
+        // Second sample: differential should override direct percent.
+        let mut metrics2 = PrometheusMetrics {
+            cpu_sys_percent: Some(73.2), // direct says 73.2%
+            cpu_total_ms: Some(12_500.0), // delta 2500ms over 10s = 25%
+            collected_at_epoch: Some(1_010),
+            ..PrometheusMetrics::default()
+        };
+        resolve_machine_cpu_percent(machine_id, &mut metrics2, 1_010);
+        // Differential (25%) with EMA against previous (73.2):
+        // smoothed = 0.3 * 25.0 + 0.7 * 73.2 = 7.5 + 51.24 = 58.74
+        let cpu = metrics2.cpu_sys_percent.expect("should have cpu%");
+        assert!((cpu - 58.74).abs() < 0.1, "expected ~58.74, got {cpu}");
+        assert_ne!(cpu, 73.2, "differential must override direct value");
     }
 
     #[test]

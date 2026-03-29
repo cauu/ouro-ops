@@ -219,6 +219,11 @@ App mounts ─▶ ensureEventListeners()                    // 立即，不等 p
 - [x] p2-3 Move startMonitorStore into refreshPool callback, parallel with prefetch; simplify monitor useEffect to visibility-only
 - [x] p2-4 pnpm build + tsc --noEmit — verify compilation and type check pass
 
+**Phase 3: CPU 百分比算法统一**
+- [x] p3-1 Fix resolve_machine_cpu_percent: when rts_gc_cpu_ms is available, always use differential algorithm (ignore direct cpuSys_int/cpuSys_percent); add EMA smoothing (alpha=0.3) to reduce inter-sample jitter
+- [x] p3-2 Remove cardano_node_resources_cpuSys_int from cpu_sys_percent pick list (raw counter, not percentage)
+- [x] p3-3 cargo build + cargo test — verify no regression
+
 ## 4. Test and Acceptance Criteria
 
 **后端**
@@ -234,6 +239,11 @@ App mounts ─▶ ensureEventListeners()                    // 立即，不等 p
 - TC-8 telemetry 卡片在首条 monitor:snapshot 到达后正常更新
 - TC-9 无 pool 时仍正确跳转到 /setup
 
+**CPU 算法**
+- TC-10 当 rts_gc_cpu_ms 可用时，cpu_sys_percent 始终由差分算法产出，不受直连 cpuSys_percent/cpuSys_int 值干扰
+- TC-11 cpuSys_int（原始计数器）不再被 normalize_percent 误映射为百分比
+- TC-12 连续采样间 CPU% 无大幅跳动（EMA 平滑生效）
+
 ## 5. Execution Log (append-only)
 - 2026-03-29T16:30:00+08:00 S0010 closed (delivered), S0011 activated as sole active spec.
 - 2026-03-29T16:35:00+08:00 p1-1 started: adding r2d2 + r2d2_sqlite dependencies to Cargo.toml.
@@ -246,11 +256,19 @@ App mounts ─▶ ensureEventListeners()                    // 立即，不等 p
 - 2026-03-29T16:46:00+08:00 p2-2 completed: exported ensureMonitorEventListeners from monitorStore.ts; called in App mount useEffect before poolGet.
 - 2026-03-29T16:47:00+08:00 p2-3 completed: startMonitorStore moved into refreshPool callback (parallel with prefetch); monitor useEffect simplified to visibility-change listener + cleanup only.
 - 2026-03-29T16:48:00+08:00 p2-4 completed: pnpm build passes (382KB JS); tsc --noEmit passes with no errors.
+- 2026-03-29T17:00:00+08:00 CR-001: user added Phase 3 — fix CPU% jitter caused by resolve_machine_cpu_percent switching between direct cpuSys metric (often 0) and differential rts_gc_cpu_ms algorithm. Scope: unify to differential-only when rts_gc_cpu_ms present, add EMA smoothing, audit cpuSys_int mapping.
+- 2026-03-29T17:05:00+08:00 p3-1 completed: resolve_machine_cpu_percent now always uses differential when previous sample exists (ignores direct cpuSys); EMA smoothing (alpha=0.3) applied against last_known value; test tc_mon_029 updated to verify override + smoothing.
+- 2026-03-29T17:05:00+08:00 p3-2 completed: removed cpuSys_int from map_prometheus_metrics pick list (was at line 473); catalog already correct.
+- 2026-03-29T17:06:00+08:00 p3-3 completed: cargo check passes; cargo test: 174 passed, 5 failed (same pre-existing).
 
 ## 6. Validation Evidence (append-only)
 TC-1 | stack: rust | command: cargo build | result: pass | note: compilation passes with r2d2 pool, WAL pragmas, all lock→get replacements
 TC-2 | stack: rust | command: cargo test -q | result: pass | note: 174 passed, 5 failed (pre-existing frontend snapshot tests unrelated to DB changes)
 TC-5 | stack: node | command: pnpm -s build | result: pass | note: 107 modules, 382KB JS output
 TC-6 | stack: node | command: npx tsc --noEmit | result: pass | note: no type errors
+TC-10 | stack: rust | command: cargo test -- tc_mon_029 | result: pass | note: differential (25%) overrides direct (73.2%); EMA smooths to ~58.74%; direct value no longer preserved
+TC-11 | stack: rust | command: grep cpuSys_int map_prometheus_metrics | result: pass | note: cpuSys_int removed from cpu_sys_percent pick list; only cpuSys_percent remains
+TC-12 | stack: rust | command: cargo test -- tc_mon_028 tc_mon_029 | result: pass | note: EMA smoothing verified in tc_mon_029 (0.3*25+0.7*73.2≈58.74)
 
 ## 7. Change Requests (append-only)
+- 2026-03-29T17:00:00+08:00 CR-001: Dashboard CPU% 跳动修复。根因：`resolve_machine_cpu_percent` 在「直连 `cpuSys_percent`/`cpuSys_int`（常为 0 或原始计数器）」与「无直连时的 `rts_gc_cpu_ms` 差分」之间切换。修复方向：(1) 有 `rts_gc_cpu_ms` 时固定使用差分 + EMA 平滑；(2) `cardano_node_resources_cpuSys_int` 是单调递增计数器不是百分比，不应参与 `cpu_sys_percent` 映射。新增 p3-1~p3-3、TC-10~TC-12。
