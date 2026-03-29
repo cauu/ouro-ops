@@ -150,15 +150,24 @@ export default function Sidebar({ network, collapsed }: SidebarProps) {
           </section>
         </div>
 
-        <div className={`mt-6 rounded-md border border-slate-200 bg-white/80 px-3 py-2 text-xs text-slate-600 ${collapsed ? "hidden" : ""}`}>
-          日常操作入口统一：
-          <br />Dashboard / KES Rotate / Telemetry API / 操作日志 / Upgrade
+        <div className="flex-1" />
+
+        <div className="px-3 pb-4">
+          <NavLink to="/settings" className={({ isActive }) => navClass(isActive, collapsed)} title="Settings">
+            <svg
+              viewBox="0 0 20 20"
+              className="h-[17px] w-[17px] shrink-0"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              aria-hidden="true"
+            >
+              <circle cx="10" cy="10" r="2.5" />
+              <path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4" strokeLinecap="round" />
+            </svg>
+            {!collapsed && <span>Settings</span>}
+          </NavLink>
         </div>
-        {collapsed && (
-          <div className="mt-6 text-[11px] text-slate-500" title="日常操作入口统一：Dashboard / KES Rotate / Telemetry API / 操作日志 / Upgrade">
-            OPS
-          </div>
-        )}
       </div>
     </aside>
   );
