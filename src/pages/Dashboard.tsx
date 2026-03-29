@@ -368,9 +368,11 @@ function MetaIconTip({ tip, icon }: { tip: string; icon: ReactNode }) {
 interface DashboardProps {
   poolId: number | undefined;
   onchainPoolId?: string | null;
+  poolTicker?: string;
+  poolNetwork?: string;
 }
 
-export default function Dashboard({ poolId, onchainPoolId }: DashboardProps) {
+export default function Dashboard({ poolId, onchainPoolId, poolTicker, poolNetwork }: DashboardProps) {
   const telemetryHeaderTipId = useId();
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const kesQuery = useKesStatusQuery(poolId);
@@ -481,8 +483,14 @@ export default function Dashboard({ poolId, onchainPoolId }: DashboardProps) {
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
         <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold">Staking Overview</h2>
-            <p className="text-xs text-slate-600">质押用户数与质押量趋势，数据来源 Koios。</p>
+            <h2 className="text-sm font-semibold">
+              {onchainPoolId ? `${poolTicker ?? "Pool"} · ${poolNetwork ?? ""}` : "Staking Overview"}
+            </h2>
+            {onchainPoolId ? (
+              <p className="font-mono text-[11px] text-slate-400" title={onchainPoolId}>{onchainPoolId}</p>
+            ) : (
+              <p className="text-xs text-slate-600">绑定链上矿池以查看质押数据</p>
+            )}
           </div>
           {onchainPoolId && (
             <Link to="/delegators" className="text-xs font-medium text-blue-600 hover:text-blue-800">

@@ -241,13 +241,12 @@ mod frontend_tests {
     }
 
     #[test]
-    fn tc_fe_026_settings_is_read_only_for_chain_fields() {
+    fn tc_fe_026_settings_is_read_only_with_bind_link() {
         let settings = include_str!("../../src/pages/Settings.tsx");
-        assert!(settings.contains("ticker, margin"));
-        assert!(settings.contains("不可在此编辑"));
         assert!(!settings.contains("poolUpdate("));
         assert!(!settings.contains("type=\"submit\""));
         assert!(settings.contains("/bind-pool"));
+        assert!(settings.contains("链上绑定"));
     }
 
     #[test]

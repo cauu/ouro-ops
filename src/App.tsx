@@ -126,7 +126,7 @@ function App() {
         />
 
         <Route element={pool ? <Layout pool={pool} /> : <Navigate to="/setup" replace />}>
-          <Route path="/" element={<Dashboard poolId={pool?.id} onchainPoolId={pool?.onchain_pool_id} />} />
+          <Route path="/" element={<Dashboard poolId={pool?.id} onchainPoolId={pool?.onchain_pool_id} poolTicker={pool?.ticker} poolNetwork={pool?.network} />} />
           <Route path="/bind-pool" element={pool ? <BindPool poolTicker={pool.ticker} onBound={setPool} /> : null} />
           <Route path="/delegators" element={pool ? <Delegators onchainPoolId={pool.onchain_pool_id} /> : null} />
           <Route path="/logs" element={pool ? <OperationLogs /> : null} />
