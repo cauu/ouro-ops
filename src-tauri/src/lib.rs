@@ -243,12 +243,11 @@ mod frontend_tests {
     #[test]
     fn tc_fe_026_settings_is_read_only_for_chain_fields() {
         let settings = include_str!("../../src/pages/Settings.tsx");
-        assert!(settings.contains("ticker`, `margin` and `fixed cost` are not edited here."));
-        assert!(settings.contains(
-            "Chain-facing pool parameters are read from the bound on-chain registration."
-        ));
+        assert!(settings.contains("ticker, margin"));
+        assert!(settings.contains("不可在此编辑"));
         assert!(!settings.contains("poolUpdate("));
         assert!(!settings.contains("type=\"submit\""));
+        assert!(settings.contains("/bind-pool"));
     }
 
     #[test]
@@ -608,13 +607,11 @@ mod frontend_tests {
     }
 
     #[test]
-    fn tc_fe_025_dashboard_owns_pool_binding_ui() {
+    fn tc_fe_025_dashboard_delegates_binding_to_bind_pool_page() {
         let dashboard = include_str!("../../src/pages/Dashboard.tsx");
-        assert!(!dashboard.contains("Bound On-chain Pool"));
-        assert!(!dashboard.contains("Bind Existing Pool"));
-        assert!(!dashboard.contains("Register New Pool"));
+        assert!(dashboard.contains("/bind-pool"));
+        assert!(dashboard.contains("绑定链上矿池"));
         assert!(!dashboard.contains("<PoolRegistrationStatus"));
-        assert!(!dashboard.contains("<PoolRegistrationWizard"));
     }
 
     #[test]

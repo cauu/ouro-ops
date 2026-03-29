@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useDelegatorListQuery } from "../lib/queries";
 
 interface DelegatorsProps {
@@ -38,8 +39,14 @@ export default function Delegators({ onchainPoolId }: DelegatorsProps) {
 
   if (!onchainPoolId) {
     return (
-      <section className="flex h-64 items-center justify-center">
-        <p className="text-sm text-slate-400">请先在 Settings 中绑定链上矿池（onchain pool id）后查看质押用户。</p>
+      <section className="flex h-64 flex-col items-center justify-center gap-3">
+        <p className="text-sm text-slate-500">绑定链上矿池后可查看质押用户</p>
+        <Link
+          to="/bind-pool"
+          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+        >
+          绑定链上矿池
+        </Link>
       </section>
     );
   }

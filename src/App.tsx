@@ -11,6 +11,7 @@ import {
 } from "./lib/monitorStore";
 import { prefetchDashboardQueries } from "./lib/queries";
 import type { Pool } from "./lib/types";
+import BindPool from "./pages/BindPool";
 import Dashboard from "./pages/Dashboard";
 import Delegators from "./pages/Delegators";
 import DeployWizard from "./pages/DeployWizard";
@@ -126,13 +127,14 @@ function App() {
 
         <Route element={pool ? <Layout pool={pool} /> : <Navigate to="/setup" replace />}>
           <Route path="/" element={<Dashboard poolId={pool?.id} onchainPoolId={pool?.onchain_pool_id} />} />
+          <Route path="/bind-pool" element={pool ? <BindPool poolTicker={pool.ticker} onBound={setPool} /> : null} />
           <Route path="/delegators" element={pool ? <Delegators onchainPoolId={pool.onchain_pool_id} /> : null} />
           <Route path="/logs" element={pool ? <OperationLogs /> : null} />
           <Route path="/kes" element={pool ? <KesManager poolTicker={pool.ticker} /> : null} />
           <Route path="/telemetry" element={pool ? <TelemetryApi /> : null} />
           <Route path="/deploy" element={pool ? <DeployWizard pool={pool} /> : null} />
           <Route path="/upgrade" element={pool ? <UpgradeWizard poolTicker={pool.ticker} /> : null} />
-          <Route path="/settings" element={pool ? <Settings pool={pool} onPoolUpdated={setPool} /> : null} />
+          <Route path="/settings" element={pool ? <Settings pool={pool} /> : null} />
         </Route>
 
         <Route path="*" element={<Navigate to={pool ? "/" : "/setup"} replace />} />

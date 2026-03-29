@@ -988,8 +988,14 @@ export default function Dashboard({ poolId, onchainPoolId }: DashboardProps) {
         </header>
         <div className="px-4 py-4">
           {!onchainPoolId ? (
-            <div className="flex h-24 items-center justify-center text-xs text-slate-400">
-              请先在 Settings 中绑定链上矿池（onchain pool id）后查看质押数据。
+            <div className="flex flex-col items-center justify-center gap-3 py-6">
+              <p className="text-sm text-slate-500">绑定链上矿池后可查看质押用户与趋势数据</p>
+              <Link
+                to="/bind-pool"
+                className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1"
+              >
+                绑定链上矿池
+              </Link>
             </div>
           ) : stakingSummaryQuery.isError ? (
             <div className="flex h-24 items-center justify-center text-xs text-amber-600">
