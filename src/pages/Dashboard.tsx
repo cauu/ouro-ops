@@ -479,6 +479,66 @@ export default function Dashboard({ poolId, onchainPoolId }: DashboardProps) {
 
   return (
     <section className="space-y-5 overflow-x-hidden">
+      {/* Staking Overview — highest priority */}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
+        <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <div>
+            <h2 className="text-sm font-semibold">Staking Overview</h2>
+            <p className="text-xs text-slate-600">质押用户数与质押量趋势，数据来源 Koios。</p>
+          </div>
+          {onchainPoolId && (
+            <Link to="/delegators" className="text-xs font-medium text-blue-600 hover:text-blue-800">
+              查看全部 Delegators →
+            </Link>
+          )}
+        </header>
+        <div className="px-4 py-4">
+          {!onchainPoolId ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-6">
+              <p className="text-sm text-slate-500">绑定链上矿池后可查看质押用户与趋势数据</p>
+              <Link
+                to="/bind-pool"
+                className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1"
+              >
+                绑定链上矿池
+              </Link>
+            </div>
+          ) : stakingSummaryQuery.isError ? (
+            <div className="flex h-24 items-center justify-center text-xs text-amber-600">
+              质押数据暂不可用，将自动重试。
+            </div>
+          ) : (
+            <>
+              <div className="mb-4 flex gap-6">
+                <div>
+                  <p className="text-xs text-slate-500">Delegators</p>
+                  <p className="text-xl font-semibold tabular-nums">
+                    {stakingSummaryQuery.data?.live_delegators?.toLocaleString() ?? "--"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Total Stake</p>
+                  <p className="text-xl font-semibold tabular-nums">
+                    {stakingSummaryQuery.data
+                      ? `${stakingSummaryQuery.data.live_stake_ada.toLocaleString(undefined, { maximumFractionDigits: 0 })} ADA`
+                      : "--"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Active Stake</p>
+                  <p className="text-xl font-semibold tabular-nums">
+                    {stakingSummaryQuery.data
+                      ? `${stakingSummaryQuery.data.active_stake_ada.toLocaleString(undefined, { maximumFractionDigits: 0 })} ADA`
+                      : "--"}
+                  </p>
+                </div>
+              </div>
+              <StakingTrendChart data={stakingHistoryQuery.data ?? []} />
+            </>
+          )}
+        </div>
+      </section>
+
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <div>
@@ -971,65 +1031,6 @@ export default function Dashboard({ poolId, onchainPoolId }: DashboardProps) {
               )}
             </tbody>
           </table>
-        </div>
-      </section>
-      {/* Staking Overview */}
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
-        <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-          <div>
-            <h2 className="text-sm font-semibold">Staking Overview</h2>
-            <p className="text-xs text-slate-600">质押用户数与质押量趋势，数据来源 Koios。</p>
-          </div>
-          {onchainPoolId && (
-            <Link to="/delegators" className="text-xs font-medium text-blue-600 hover:text-blue-800">
-              查看全部 Delegators →
-            </Link>
-          )}
-        </header>
-        <div className="px-4 py-4">
-          {!onchainPoolId ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-6">
-              <p className="text-sm text-slate-500">绑定链上矿池后可查看质押用户与趋势数据</p>
-              <Link
-                to="/bind-pool"
-                className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1"
-              >
-                绑定链上矿池
-              </Link>
-            </div>
-          ) : stakingSummaryQuery.isError ? (
-            <div className="flex h-24 items-center justify-center text-xs text-amber-600">
-              质押数据暂不可用，将自动重试。
-            </div>
-          ) : (
-            <>
-              <div className="mb-4 flex gap-6">
-                <div>
-                  <p className="text-xs text-slate-500">Delegators</p>
-                  <p className="text-xl font-semibold tabular-nums">
-                    {stakingSummaryQuery.data?.live_delegators?.toLocaleString() ?? "--"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Total Stake</p>
-                  <p className="text-xl font-semibold tabular-nums">
-                    {stakingSummaryQuery.data
-                      ? `${stakingSummaryQuery.data.live_stake_ada.toLocaleString(undefined, { maximumFractionDigits: 0 })} ADA`
-                      : "--"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Active Stake</p>
-                  <p className="text-xl font-semibold tabular-nums">
-                    {stakingSummaryQuery.data
-                      ? `${stakingSummaryQuery.data.active_stake_ada.toLocaleString(undefined, { maximumFractionDigits: 0 })} ADA`
-                      : "--"}
-                  </p>
-                </div>
-              </div>
-              <StakingTrendChart data={stakingHistoryQuery.data ?? []} />
-            </>
-          )}
         </div>
       </section>
     </section>
