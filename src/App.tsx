@@ -132,7 +132,7 @@ function App() {
           <Route path="/telemetry" element={pool ? <TelemetryApi /> : null} />
           <Route path="/deploy" element={pool ? <DeployWizard pool={pool} /> : null} />
           <Route path="/upgrade" element={pool ? <UpgradeWizard poolTicker={pool.ticker} /> : null} />
-          <Route path="/settings" element={pool ? <Settings pool={pool} /> : null} />
+          <Route path="/settings" element={pool ? <Settings pool={pool} onPoolUpdated={setPool} /> : null} />
         </Route>
 
         <Route path="*" element={<Navigate to={pool ? "/" : "/setup"} replace />} />

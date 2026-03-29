@@ -1,61 +1,71 @@
 import type { Pool } from "../lib/types";
+import PoolRegistrationStatus from "./PoolRegistrationStatus";
 
 interface SettingsProps {
   pool: Pool;
+  onPoolUpdated: (pool: Pool) => void;
 }
 
-export default function Settings({ pool }: SettingsProps) {
+export default function Settings({ pool, onPoolUpdated }: SettingsProps) {
   const isBound = pool.onchain_registered && Boolean(pool.onchain_pool_id);
 
   return (
     <section className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-1 text-sm text-zinc-400">
+        <h1 className="text-sm font-semibold">Settings</h1>
+        <p className="mt-1 text-xs text-slate-500">
           Created at: {pool.created_at} · Updated at: {pool.updated_at}
         </p>
       </header>
 
-      <section className="max-w-3xl rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
+      <section className="max-w-3xl rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-3">
-            <h2 className="text-sm font-medium text-zinc-200">Workspace Pool Record</h2>
-            <dl className="mt-3 space-y-2 text-sm text-zinc-300">
+          <div className="rounded-md border border-slate-200 bg-white p-3">
+            <h2 className="text-sm font-medium text-slate-900">Workspace Pool Record</h2>
+            <dl className="mt-3 space-y-2 text-sm text-slate-700">
               <div className="flex items-center justify-between gap-4">
-                <dt className="text-zinc-500">Network</dt>
+                <dt className="text-slate-500">Network</dt>
                 <dd>{pool.network}</dd>
               </div>
               <div className="flex items-center justify-between gap-4">
-                <dt className="text-zinc-500">Local ticker cache</dt>
+                <dt className="text-slate-500">Local ticker cache</dt>
                 <dd>{pool.ticker || "—"}</dd>
               </div>
               <div className="flex items-center justify-between gap-4">
-                <dt className="text-zinc-500">Bound on-chain pool</dt>
-                <dd>{pool.onchain_pool_id ?? "Not bound"}</dd>
+                <dt className="text-slate-500">Bound on-chain pool</dt>
+                <dd className="break-all font-mono text-xs">{pool.onchain_pool_id ?? "Not bound"}</dd>
               </div>
               <div className="flex items-center justify-between gap-4">
-                <dt className="text-zinc-500">On-chain sync</dt>
+                <dt className="text-slate-500">On-chain sync</dt>
                 <dd>{pool.onchain_synced_at ?? "Never"}</dd>
               </div>
             </dl>
           </div>
 
-          <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-3">
-            <h2 className="text-sm font-medium text-zinc-200">Configuration Source of Truth</h2>
-            <ul className="mt-3 space-y-2 text-sm text-zinc-300">
-              <li>`ticker`, `margin` and `fixed cost` are not edited here.</li>
-              <li>Chain-facing pool parameters are read from the bound on-chain registration.</li>
-              <li>Use Dashboard to bind an existing `pool_id` or continue with the registration flow.</li>
-              <li>Node runtime operations stay within Deploy, KES and Upgrade flows.</li>
+          <div className="rounded-md border border-slate-200 bg-white p-3">
+            <h2 className="text-sm font-medium text-slate-900">Configuration Source of Truth</h2>
+            <ul className="mt-3 space-y-2 text-sm text-slate-600">
+              <li>ticker, margin 和 fixed cost 在此页面不可编辑。</li>
+              <li>链上参数来自绑定的 on-chain registration。</li>
+              <li>节点运维操作在 Deploy、KES、Upgrade 流程中进行。</li>
             </ul>
           </div>
         </div>
 
-        <div className="mt-4 rounded-md border border-amber-700/40 bg-amber-950/20 px-3 py-3 text-sm text-amber-200">
+        <div className={`mt-4 rounded-md border px-3 py-3 text-sm ${isBound ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
           {isBound
-            ? "This workspace is bound to an on-chain pool. Dashboard shows the latest on-chain ticker, margin, fixed cost and metadata."
-            : "This workspace is not yet bound to an on-chain pool. Bind an existing pool from Dashboard, or continue with pool registration there."}
+            ? "此工作区已绑定链上矿池。Dashboard 展示最新的链上 ticker、margin、fixed cost 和 metadata。"
+            : "此工作区尚未绑定链上矿池。请在下方查询并绑定。"}
         </div>
+      </section>
+
+      <section className="max-w-3xl">
+        <h2 className="mb-3 text-sm font-semibold text-slate-900">On-chain Pool Binding</h2>
+        <PoolRegistrationStatus
+          poolTicker={pool.ticker}
+          onBound={onPoolUpdated}
+          embedded
+        />
       </section>
     </section>
   );
