@@ -46,6 +46,12 @@
   "plugins": {
     "shell": {
       "open": false
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/cauu/ouro-ops/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
     }
   }
 }

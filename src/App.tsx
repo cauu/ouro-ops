@@ -11,6 +11,7 @@ import {
 } from "./lib/monitorStore";
 import { prefetchDashboardQueries } from "./lib/queries";
 import type { Pool } from "./lib/types";
+import { type UpdateStatus, checkForUpdate, installUpdate } from "./lib/updater";
 import BindPool from "./pages/BindPool";
 import Dashboard from "./pages/Dashboard";
 import Delegators from "./pages/Delegators";
@@ -36,6 +37,8 @@ function LoadingScreen() {
 function App() {
   const [booting, setBooting] = useState(true);
   const [pool, setPool] = useState<Pool | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [updating, setUpdating] = useState(false);
 
   const queryClient = useMemo(
     () =>
@@ -75,6 +78,14 @@ function App() {
     void refreshPool();
   }, [refreshPool]);
 
+  // Check for updates on startup (non-blocking)
+  useEffect(() => {
+    if (booting) return;
+    void checkForUpdate().then((status) => {
+      if (status.available) setUpdateStatus(status);
+    });
+  }, [booting]);
+
   // Monitor store lifecycle: started in refreshPool, visibility interval managed here
   useEffect(() => {
     if (!pool) return;
@@ -107,8 +118,37 @@ function App() {
     return <LoadingScreen />;
   }
 
+  const handleInstallUpdate = async () => {
+    setUpdating(true);
+    try {
+      await installUpdate();
+    } catch {
+      setUpdating(false);
+    }
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
+      {updateStatus?.available && (
+        <div className="flex items-center justify-center gap-3 border-b border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-700">
+          <span>新版本 {updateStatus.version} 可用</span>
+          <button
+            type="button"
+            onClick={() => void handleInstallUpdate()}
+            disabled={updating}
+            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {updating ? "更新中..." : "立即更新"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setUpdateStatus(null)}
+            className="text-blue-500 hover:text-blue-700"
+          >
+            忽略
+          </button>
+        </div>
+      )}
       <Routes>
         <Route
           path="/setup"

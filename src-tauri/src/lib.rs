@@ -17,6 +17,8 @@ pub use db::open_pool;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
             let path = app.path().app_data_dir().map_err(|e| e.to_string())?;
