@@ -1,11 +1,12 @@
 # GitHub Release + Auto-Update
 
 Spec-ID: S0013
-Status: active
+Status: completed
 Created Time: 2026-03-29T20:30:00+08:00
 Start Time: 2026-03-29T21:00:00+08:00
-Completion Time:
+Completion Time: 2026-07-07T22:10:00+08:00
 Previous Spec-ID: S0012
+Closure Reason: replaced
 
 ## 1. Requirement Details
 
@@ -141,6 +142,7 @@ ouro-ops 目前只能本地 `tauri build` 生成安装包，没有 CI/CD、没�
 ## 5. Execution Log (append-only)
 - 2026-03-29T21:00:00+08:00 p1-2~p1-6, p2-1 completed: updater + process plugins integrated; GitHub Actions release.yml created; pubkey placeholder pending user key generation.
 - 2026-03-29T21:00:00+08:00 p1-1 deferred: tauri signer generate requires interactive password; user must run manually.
+- 2026-07-07T22:10:00+08:00 spec closed (replaced): 用户确认整体方案转向「CLI + Skills」架构（见 draft S0014-agent-tooling），Tauri 桌面应用被移除，本 spec 的桌面应用内自动更新已失去意义。剩余未完成项 p1-1 / p2-2 / p2-3 不再推进。Status → completed，Closure Reason: replaced，文件迁入 docs/specs/completed/。
 
 ## 6. Validation Evidence (append-only)
 TC-1 | stack: rust | command: cargo check | result: pass | note: updater + process plugins compile
@@ -148,3 +150,4 @@ TC-2 | stack: node | command: pnpm -s build | result: pass | note: 415KB JS
 TC-4 | stack: node | command: npx tsc --noEmit | result: pass | note: updater.ts types valid
 
 ## 7. Change Requests (append-only)
+- 2026-07-07T22:10:00+08:00 CR-001 replaced：产品架构从「Tauri 桌面 app + Python sidecar + Ansible」整体转向「一个 CLI + 一组 skills」，agent loop 与 UI 复用现成 agent harness。本 spec 面向 Tauri 桌面应用的 GitHub Release + 应用内自动更新方案随之作废。后续方向见 draft `docs/specs/draft/S0014-agent-tooling.md`（该 spec 晋升为 active 时在其 Previous Spec-ID 记录 S0013）。
