@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use crate::{
     audit::AuditStore,
     config::ConfigPaths,
+    domain::PoolSpec,
     migration,
     output::{self, ToolOutput},
     OuroError, Result,
@@ -32,6 +33,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         }
         "audit" => run_audit(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
+        "spec" => run_spec(&args[2..])?,
         other => return Err(OuroError::InvalidArgs(format!("unknown command {other}"))),
     }
     Ok(())
@@ -39,7 +41,26 @@ pub fn run(args: Vec<String>) -> Result<()> {
 
 fn print_help() {
     println!("ouro: deterministic Cardano stake pool operations CLI");
-    println!("commands: version, paths, contract, audit init, legacy inspect --db <path>");
+    println!("commands: version, paths, contract, spec validate --spec <path>, audit init, legacy inspect --db <path>");
+}
+
+fn run_spec(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        Some("validate") => {
+            let spec_path = flag_value(args, "--spec")?;
+            let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
+            output::print_json(
+                &ToolOutput::ok("ouro.spec.validate", false).with_data(json!({
+                    "valid": true,
+                    "resolved_plan": spec.resolved_non_secret_plan()
+                })),
+            )?;
+            Ok(())
+        }
+        _ => Err(OuroError::InvalidArgs(
+            "expected spec validate --spec <path>".to_string(),
+        )),
+    }
 }
 
 fn run_audit(args: &[String]) -> Result<()> {

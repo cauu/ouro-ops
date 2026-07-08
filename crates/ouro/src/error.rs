@@ -12,6 +12,8 @@ pub enum OuroError {
     Io(#[from] std::io::Error),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("yaml error: {0}")]
+    Yaml(#[from] serde_yaml::Error),
     #[error("sqlite error: {0}")]
     Sqlite(#[from] rusqlite::Error),
 }
@@ -20,7 +22,7 @@ impl OuroError {
     pub fn exit_code(&self) -> i32 {
         match self {
             OuroError::InvalidArgs(_) | OuroError::Validation(_) => 10,
-            OuroError::Io(_) | OuroError::Json(_) | OuroError::Sqlite(_) => 20,
+            OuroError::Io(_) | OuroError::Json(_) | OuroError::Yaml(_) | OuroError::Sqlite(_) => 20,
         }
     }
 }

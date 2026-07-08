@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::{collections::BTreeSet, fs, path::Path};
 
 use crate::{secrets::CredentialRef, OuroError, Result};
@@ -39,6 +40,14 @@ impl Network {
             Network::Mainnet => 764_824_073,
             Network::Preprod => 1,
             Network::Preview => 2,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Network::Mainnet => "mainnet",
+            Network::Preprod => "preprod",
+            Network::Preview => "preview",
         }
     }
 }
@@ -108,9 +117,14 @@ pub struct MithrilSync {
 }
 
 impl PoolSpec {
-    pub fn from_json_file(path: &Path) -> Result<Self> {
+    pub fn from_file(path: &Path) -> Result<Self> {
         let text = fs::read_to_string(path)?;
-        let spec: PoolSpec = serde_json::from_str(&text)?;
+        let spec: PoolSpec = match path.extension().and_then(|ext| ext.to_str()) {
+            Some("yaml" | "yml") => serde_yaml::from_str(&text).map_err(|err| {
+                OuroError::Validation(format!("pool spec yaml parse failed: {err}"))
+            })?,
+            _ => serde_json::from_str(&text)?,
+        };
         spec.validate()?;
         Ok(spec)
     }
@@ -125,6 +139,7 @@ impl PoolSpec {
                 self.pool.network_magic, self.pool.network
             )));
         }
+        self.pool.genesis_hashes.validate()?;
         if self.pool.ticker.len() < 3 || self.pool.ticker.len() > 5 {
             return Err(OuroError::Validation(
                 "pool ticker must be 3-5 characters".to_string(),
@@ -181,6 +196,83 @@ impl PoolSpec {
         }
         Ok(())
     }
+
+    pub fn resolved_non_secret_plan(&self) -> serde_json::Value {
+        let bp = self
+            .machines
+            .iter()
+            .find(|machine| machine.role == MachineRole::Bp)
+            .map(|machine| machine.id.as_str())
+            .unwrap_or_default();
+        let relays = self
+            .machines
+            .iter()
+            .filter(|machine| machine.role == MachineRole::Relay)
+            .map(|machine| {
+                json!({
+                    "id": machine.id,
+                    "public_endpoint": machine.public_endpoint
+                })
+            })
+            .collect::<Vec<_>>();
+        json!({
+            "spec_version": self.spec_version,
+            "pool": {
+                "ticker": self.pool.ticker,
+                "network": self.pool.network.as_str(),
+                "network_magic": self.pool.network_magic,
+                "genesis_hashes": self.pool.genesis_hashes,
+                "metadata_url": self.pool.metadata_url,
+                "pledge_lovelace": self.pool.pledge_lovelace,
+                "margin": self.pool.margin,
+                "cost_lovelace": self.pool.cost_lovelace
+            },
+            "topology_mode": self.topology_mode,
+            "node_version": self.node_version,
+            "machines": {
+                "bp": bp,
+                "relays": relays,
+                "count": self.machines.len()
+            },
+            "sync": {
+                "mode": self.sync.mode,
+                "mithril_enabled": self.sync.mode == SyncMode::Mithril
+            },
+            "secrets": {
+                "policy": "redacted",
+                "credential_refs_present": self.credential_ref_count()
+            }
+        })
+    }
+
+    fn credential_ref_count(&self) -> usize {
+        let ssh_refs = self.machines.len();
+        let mithril_refs = usize::from(self.sync.mithril.is_some());
+        ssh_refs + mithril_refs
+    }
+}
+
+impl GenesisHashes {
+    fn validate(&self) -> Result<()> {
+        for (name, value) in [
+            ("byron", self.byron.as_ref()),
+            ("shelley", Some(&self.shelley)),
+            ("alonzo", self.alonzo.as_ref()),
+            ("conway", self.conway.as_ref()),
+        ] {
+            if let Some(value) = value {
+                if value.len() < 16
+                    || value.len() > 128
+                    || !value.chars().all(|ch| ch.is_ascii_hexdigit())
+                {
+                    return Err(OuroError::Validation(format!(
+                        "genesis hash {name} must be 16-128 hex characters"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -196,5 +288,15 @@ mod tests {
         assert!(spec.validate().is_ok());
         spec.pool.network = Network::Mainnet;
         assert!(spec.validate().is_err());
+    }
+
+    #[test]
+    fn resolved_plan_redacts_credential_refs() {
+        let spec =
+            PoolSpec::from_file(std::path::Path::new("examples/pool-spec.minimal.yaml")).unwrap();
+        let plan = spec.resolved_non_secret_plan();
+        let text = serde_json::to_string(&plan).unwrap();
+        assert!(text.contains("\"policy\":\"redacted\""));
+        assert!(!text.contains("creds://"));
     }
 }
