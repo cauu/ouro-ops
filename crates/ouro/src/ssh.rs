@@ -82,9 +82,9 @@ impl SshRunner {
             format!("{}@{}", target.user, target.host),
             "sudo".to_string(),
             "-n".to_string(),
-            "/usr/local/bin/ouro".to_string(),
-            "tool".to_string(),
-            "run".to_string(),
+            // Fixed root-owned wrapper (sudoers allowlist, D3): it only runs
+            // `ouro tool run "$@"`, so ouro-exec cannot invoke other ouro subcommands.
+            "/usr/local/sbin/ouro-tool-run".to_string(),
             tool.to_string(),
             // Target-side LOCAL execution: `--machine` (not `--dispatch`) so the target
             // sets OURO_MACHINE and runs the L2 script itself instead of re-dispatching.
@@ -161,8 +161,8 @@ mod tests {
             "/opt/ouro/pool-spec.yaml",
         );
         let joined = args.join(" ");
-        // Fixed absolute CLI path (matches the sudoers allowlist, D3).
-        assert!(joined.contains("sudo -n /usr/local/bin/ouro tool run deploy/provision"));
+        // Fixed root-owned wrapper path (matches the sudoers allowlist, D3).
+        assert!(joined.contains("sudo -n /usr/local/sbin/ouro-tool-run deploy/provision"));
         assert!(joined.contains("ouro-exec@relay1.example.com"));
         assert!(joined.contains("BatchMode=yes"));
         // Target-side call uses --machine (local exec, no re-dispatch); no secret inlined.

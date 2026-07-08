@@ -13,8 +13,10 @@
 # Base carries the pinned `ouro` + ouro-skills + schemas (p1-2, built by `make e2e-build-base`).
 FROM ouro-e2e-base:local
 
+# python3 (+ yaml) is required by the L2 scripts: ouro-lib.sh emits JSON via python3 and
+# several scripts parse pool-spec.yaml. bash/coreutils come from the base.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends openssh-server sudo \
+ && apt-get install -y --no-install-recommends openssh-server sudo python3 python3-yaml \
  && rm -rf /var/lib/apt/lists/* \
  && rm -f /etc/ssh/ssh_host_* \
  && mkdir -p /run/sshd \
@@ -37,6 +39,19 @@ RUN printf '%s\n' \
       'PubkeyAuthentication yes' \
       'AllowUsers ouro-exec ouro-diag' \
       > /etc/ssh/sshd_config.d/10-ouro-e2e.conf
+
+# p1-5: sudoers confines ouro-exec to a fixed, root-owned wrapper that only ever runs
+# `ouro tool run` — NO argv matching (fragile); the CLI self-guards audit/confirm (D3).
+# ouro-exec cannot `sudo ouro confirm create` etc. — only tool run.
+RUN printf '#!/bin/sh\nexec /usr/local/bin/ouro tool run "$@"\n' > /usr/local/sbin/ouro-tool-run \
+ && chmod 0755 /usr/local/sbin/ouro-tool-run \
+ && printf '%s\n%s\n' \
+      'Defaults:ouro-exec env_reset, secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \
+      'ouro-exec ALL=(root) NOPASSWD: /usr/local/sbin/ouro-tool-run' \
+      > /etc/sudoers.d/ouro-exec \
+ && chmod 0440 /etc/sudoers.d/ouro-exec \
+ && visudo -cf /etc/sudoers.d/ouro-exec \
+ && install -d -m0700 -o ouro-exec -g ouro-exec /home/ouro-exec/.ssh
 
 EXPOSE 22
 # Readiness signal so `docker compose up --wait` blocks until sshd is accepting.
