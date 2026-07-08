@@ -149,7 +149,7 @@
   "$defs": {
     "credentialRef": {
       "type": "string",
-      "pattern": "^creds://[A-Za-z0-9._/@:-]+$"
+      "pattern": "^creds://[A-Za-z0-9._-]+$"
     },
     "hashHex": {
       "type": "string",

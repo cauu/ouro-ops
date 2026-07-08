@@ -8,7 +8,9 @@
 - **决策（p1-3 实现细化：触发标志由 `--machine` 改为 `--dispatch`）**：
   `ouro tool run <tool> --dispatch <m> --spec <f>`（在 `control`）= **远端派发**。control 的 L1 SSH runner
   （`crates/ouro/src/ssh.rs::execute`）以 `ouro-exec` 身份 SSH 到 `<m>`，执行
-  `sudo /usr/local/bin/ouro tool run <tool> --machine <m> --spec <remote_spec>`。
+  `sudo -n /usr/local/sbin/ouro-tool-run <tool> --machine <m> --spec <remote_spec>`（root-owned wrapper，见 D3；
+  实现中 `<tool>`/`<machine>`/`<remote_spec>` 均 shell-quote，`<tool>` 另在 control 侧过 `validate_tool_name`，
+  杜绝远端命令注入）。
 - 目标机上的 `ouro tool run <tool> --machine <m>`（**无 `--dispatch`**）= **本地执行**：`--machine` 设 `OURO_MACHINE`
   并运行 `ouro-skills/<skill>/scripts/<script>.sh`（skills 路径解析：`$OURO_SKILLS_DIR` → `./ouro-skills` →
   `/opt/ouro/ouro-skills`），在目标机产生真实系统副作用；**不再 re-dispatch**。

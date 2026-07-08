@@ -5,6 +5,14 @@ use std::process::Command;
 use crate::domain::SshTarget;
 use crate::Result;
 
+/// Single-quote a value for safe inclusion in a remote shell command. `ssh` joins the
+/// remote argv into one string and runs it through the target's shell, so every dynamic
+/// field MUST be quoted or a metacharacter (`;`, `|`, `$(...)`, backticks) injects a
+/// command that runs as the SSH user on the target.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SshRunner {
     pub dry_run: bool,
@@ -78,6 +86,9 @@ impl SshRunner {
             "-o".to_string(),
             "BatchMode=yes".to_string(),
             "-o".to_string(),
+            // accept-new: known hosts are pre-populated by provision.sh (ssh-keyscan), so
+            // this verifies them; it only TOFU-trusts a host never seen before. Production
+            // should use `yes` with a managed known_hosts (bed-convenience default).
             "StrictHostKeyChecking=accept-new".to_string(),
             format!("{}@{}", target.user, target.host),
             "sudo".to_string(),
@@ -85,13 +96,15 @@ impl SshRunner {
             // Fixed root-owned wrapper (sudoers allowlist, D3): it only runs
             // `ouro tool run "$@"`, so ouro-exec cannot invoke other ouro subcommands.
             "/usr/local/sbin/ouro-tool-run".to_string(),
-            tool.to_string(),
+            // Every dynamic field is shell-quoted: ssh reassembles these into a remote
+            // shell command, so an unquoted `<tool>`/`<remote_spec>` would allow injection.
+            shell_quote(tool),
             // Target-side LOCAL execution: `--machine` (not `--dispatch`) so the target
             // sets OURO_MACHINE and runs the L2 script itself instead of re-dispatching.
             "--machine".to_string(),
-            machine.to_string(),
+            shell_quote(machine),
             "--spec".to_string(),
-            remote_spec.to_string(),
+            shell_quote(remote_spec),
         ]
     }
 
@@ -161,15 +174,34 @@ mod tests {
             "/opt/ouro/pool-spec.yaml",
         );
         let joined = args.join(" ");
-        // Fixed root-owned wrapper path (matches the sudoers allowlist, D3).
-        assert!(joined.contains("sudo -n /usr/local/sbin/ouro-tool-run deploy/provision"));
+        // Fixed root-owned wrapper path (matches the sudoers allowlist, D3); the tool is
+        // shell-quoted.
+        assert!(joined.contains("sudo -n /usr/local/sbin/ouro-tool-run 'deploy/provision'"));
         assert!(joined.contains("ouro-exec@relay1.example.com"));
         assert!(joined.contains("BatchMode=yes"));
         // Target-side call uses --machine (local exec, no re-dispatch); no secret inlined.
-        assert!(joined.contains("--machine relay1"));
+        assert!(joined.contains("--machine 'relay1'"));
         assert!(!joined.contains("--dispatch"));
         assert!(!joined.contains("creds://"));
         assert!(joined.contains("-i /home/op/.ouro/credentials/relay1"));
+    }
+
+    #[test]
+    fn tool_run_argv_neutralizes_shell_metacharacters() {
+        // A crafted tool / remote_spec must NOT break out of the quoted remote command.
+        let args = SshRunner::tool_run_argv(
+            &target(),
+            Path::new("/k"),
+            "deploy/preflight; touch /tmp/pwned #",
+            "bp1",
+            "/spec; rm -rf /",
+        );
+        let joined = args.join(" ");
+        // The metacharacters are inside single quotes → inert; ouro then rejects the name.
+        assert!(joined.contains("'deploy/preflight; touch /tmp/pwned #'"));
+        assert!(joined.contains("'/spec; rm -rf /'"));
+        // No unquoted `;` that the remote shell could act on.
+        assert!(!joined.contains("run deploy/preflight; touch"));
     }
 
     #[test]

@@ -123,8 +123,10 @@ fn skills_root() -> PathBuf {
     PathBuf::from("ouro-skills")
 }
 
-/// Resolve `<skill>/<script>` to an allowlisted L2 script path, rejecting traversal.
-fn resolve_skill_script(tool_name: &str) -> Result<PathBuf> {
+/// Validate a `<skill>/<script>` tool name: exactly two segments, each `[a-z0-9-]`, no
+/// traversal. Enforced BEFORE remote dispatch (control) AND before local execution
+/// (target), so a crafted name can never reach a remote shell or the filesystem.
+fn validate_tool_name(tool_name: &str) -> Result<()> {
     let mut parts = tool_name.split('/');
     let skill = parts.next().unwrap_or_default();
     let script = parts.next().unwrap_or_default();
@@ -136,9 +138,16 @@ fn resolve_skill_script(tool_name: &str) -> Result<PathBuf> {
         || !script.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
     {
         return Err(OuroError::InvalidArgs(format!(
-            "tool name must be <skill>/<script>: got {tool_name}"
+            "tool name must be <skill>/<script> of [a-z0-9-]: got {tool_name}"
         )));
     }
+    Ok(())
+}
+
+/// Resolve `<skill>/<script>` to an allowlisted L2 script path, rejecting traversal.
+fn resolve_skill_script(tool_name: &str) -> Result<PathBuf> {
+    validate_tool_name(tool_name)?;
+    let (skill, script) = tool_name.split_once('/').expect("validated tool name");
     let path = skills_root().join(format!("{skill}/scripts/{script}.sh"));
     if !path.is_file() {
         return Err(OuroError::Validation(format!(
@@ -160,8 +169,13 @@ fn run_tool_dispatch(args: &[String]) -> Result<()> {
         .filter(|value| !value.starts_with("--"))
         .ok_or_else(|| OuroError::InvalidArgs("missing tool name".to_string()))?
         .clone();
+    // Validate on control BEFORE building the remote command (defense in depth on top of
+    // ssh.rs shell-quoting): a crafted tool name is rejected here, not on the target.
+    validate_tool_name(&tool_name)?;
     let machine_id = flag_value(args, "--dispatch")?;
     let spec_path = flag_value(args, "--spec")?;
+    // remote_spec defaults to the same path on the target (provisioning pushes the spec
+    // to the same absolute path); override with --remote-spec if they differ.
     let remote_spec = optional_flag_value(args, "--remote-spec").unwrap_or(spec_path);
     let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
     let machine = spec
@@ -170,7 +184,13 @@ fn run_tool_dispatch(args: &[String]) -> Result<()> {
         .find(|candidate| candidate.id == machine_id)
         .ok_or_else(|| OuroError::Validation(format!("unknown machine {machine_id}")))?;
     let paths = ConfigPaths::discover();
-    let key_path = machine.ssh.key_ref.resolve(&paths.credentials_dir);
+    let key_path = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
+    if !key_path.is_file() {
+        return Err(OuroError::Validation(format!(
+            "credential key not found for {machine_id}: {} (run provisioning)",
+            key_path.display()
+        )));
+    }
     let outcome = SshRunner::new(false).execute(
         &machine.ssh,
         &key_path,

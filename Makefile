@@ -38,7 +38,7 @@ e2e-bed-up: e2e-build-base ## Build + start the S0015 E2E container bed (waits f
 e2e-provision: ## Provision SSH keys/creds/spec into the running bed (run after e2e-bed-up)
 	bash "$(REPO_ROOT)/fixtures/e2e/provision.sh"
 
-e2e-t2: ## Run the deterministic T2 container E2E suite (up, provision, assert, teardown)
+e2e-t2: e2e-build-base ## Run the deterministic T2 container E2E suite (build, up, provision, assert, teardown)
 	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2.sh"
 
 e2e-bed-down: ## Tear down the S0015 E2E bed (incl. volumes/networks)
