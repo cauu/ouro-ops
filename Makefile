@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help fmt test check ci e2e status e2e-build-base e2e-bed-up e2e-bed-down e2e-provision e2e-t2 e2e-clean
+.PHONY: help fmt test check ci e2e status e2e-build-base e2e-bed-up e2e-bed-down e2e-provision e2e-t2 e2e-t2-node e2e-clean
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -40,6 +40,9 @@ e2e-provision: ## Provision SSH keys/creds/spec into the running bed (run after 
 
 e2e-t2: e2e-build-base ## Run the deterministic T2 container E2E suite (build, up, provision, assert, teardown)
 	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2.sh"
+
+e2e-t2-node: e2e-build-base ## Run the T2 REAL-node status E2E (p2-2: live cardano-cli query tip over dispatch)
+	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-node.sh"
 
 e2e-bed-down: ## Tear down the S0015 E2E bed (incl. volumes/networks)
 	docker compose -f "$(E2E_COMPOSE)" down -v --remove-orphans
