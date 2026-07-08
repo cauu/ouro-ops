@@ -6,6 +6,7 @@ pub mod error;
 pub mod kes;
 pub mod migration;
 pub mod output;
+pub mod pool;
 pub mod render;
 pub mod secrets;
 pub mod ssh;

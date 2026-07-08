@@ -7,7 +7,7 @@ use crate::{
     domain::PoolSpec,
     kes, migration,
     output::{self, ToolOutput},
-    render,
+    pool, render,
     ssh::SshRunner,
     status::StatusSnapshot,
     OuroError, Result,
@@ -38,11 +38,32 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "config" => run_config(&args[2..])?,
         "kes" => run_kes(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
+        "pool" => run_pool(&args[2..])?,
         "spec" => run_spec(&args[2..])?,
         "status" => run_status(&args[2..])?,
         other => return Err(OuroError::InvalidArgs(format!("unknown command {other}"))),
     }
     Ok(())
+}
+
+fn run_pool(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        Some("register-tx") => {
+            let spec_path = flag_value(args, "--spec")?;
+            let out_dir = flag_value(args, "--out").unwrap_or(".ouro/staging/register-tx");
+            let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
+            let paths = ConfigPaths::discover();
+            let store = AuditStore::open(&paths.audit_db)?;
+            let report = pool::build_register_tx(&spec, &PathBuf::from(out_dir), &store)?;
+            output::print_json(
+                &ToolOutput::ok("ouro.pool.register-tx", true).with_data(json!(report)),
+            )?;
+            Ok(())
+        }
+        _ => Err(OuroError::InvalidArgs(
+            "expected pool register-tx --spec <path>".to_string(),
+        )),
+    }
 }
 
 fn run_kes(args: &[String]) -> Result<()> {
