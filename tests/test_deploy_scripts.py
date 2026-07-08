@@ -53,12 +53,29 @@ def main():
 
     verify = run_script("verify.sh", env)[1]
     names = {check["name"] for check in verify["checks"]}
-    assert "bp1.network_magic" in names
-    assert "bp1.genesis_hash" in names
-    assert "bp1.topology_p2p" in names
-    assert "bp1.db_integrity" in names
-    assert "bp1.kes_remaining" in names
-    assert "pool.parameters" in names
+    expected = {
+        "bp1.container_running",
+        "bp1.restart_window",
+        "bp1.node_version",
+        "bp1.tip_lag",
+        "bp1.metrics",
+        "bp1.chrony",
+        "bp1.network_magic",
+        "bp1.genesis_hash",
+        "bp1.topology_p2p",
+        "bp1.db_integrity",
+        "bp1.bp_port_private",
+        "bp1.forging",
+        "bp1.kes_remaining",
+        "relay1.container_running",
+        "relay1.topology_p2p",
+        "relay1.db_integrity",
+        "pool.id_query",
+        "pool.parameters",
+    }
+    assert expected <= names
+    for check in verify["checks"]:
+        assert {"severity", "exit_class", "rollback_safe"} <= check.keys()
     print("deploy scripts passed")
 
 
