@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>S0014 · Agent 侧工具拆分与定义（Design Draft）</title>
+<style>
+  :root {
+    --ink: #1d1d1f;
+    --ink-2: #6e6e73;
+    --line: #e5e5e7;
+    --bg: #ffffff;
+    --bg-2: #f7f7f8;
+    --accent: #0033ad;        /* Cardano blue */
+    --accent-soft: #eef1fa;
+    --ok: #1a7f37;
+    --warn: #9a6700;
+    --danger: #b42318;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .page { max-width: 880px; margin: 0 auto; padding: 64px 32px 96px; }
+
+  header { margin-bottom: 56px; }
+  .kicker {
+    font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin-bottom: 12px;
+  }
+  h1 { font-size: 32px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 12px; }
+  .lede { font-size: 17px; color: var(--ink-2); max-width: 620px; }
+
+  h2 {
+    font-size: 21px; font-weight: 700; letter-spacing: -.01em;
+    margin: 64px 0 8px; padding-top: 24px; border-top: 1px solid var(--line);
+  }
+  h2 .no { color: var(--ink-2); font-weight: 400; margin-right: 10px; font-variant-numeric: tabular-nums; }
+  h3 { font-size: 16px; font-weight: 600; margin: 28px 0 8px; }
+  p { margin: 10px 0; }
+  p.note { color: var(--ink-2); font-size: 14px; }
+  strong { font-weight: 600; }
+
+  code {
+    font-family: var(--mono); font-size: 13px;
+    background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 5px; padding: 1px 6px;
+  }
+  pre {
+    font-family: var(--mono); font-size: 13px; line-height: 1.65;
+    background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 18px 20px; overflow-x: auto; margin: 16px 0;
+  }
+  pre code { background: none; border: none; padding: 0; }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th {
+    text-align: left; font-weight: 600; font-size: 13px; color: var(--ink-2);
+    padding: 8px 12px; border-bottom: 1px solid var(--ink);
+  }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td code { white-space: nowrap; }
+
+  .pill {
+    display: inline-block; font-size: 12px; font-weight: 600;
+    padding: 1px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  .pill.l1 { background: #fdeceb; color: var(--danger); }
+  .pill.l2 { background: var(--accent-soft); color: var(--accent); }
+  .pill.l3 { background: #eaf5ec; color: var(--ok); }
+  .pill.gate { background: #fff4e0; color: var(--warn); }
+
+  /* 分层架构图 */
+  .arch { margin: 24px 0; }
+  .arch-row {
+    border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 20px; margin-bottom: 0; background: var(--bg);
+    display: flex; align-items: baseline; gap: 16px;
+  }
+  .arch-row + .arch-connector { text-align: center; color: var(--ink-2); font-size: 12px; padding: 2px 0; }
+  .arch-row .who { font-weight: 600; min-width: 190px; }
+  .arch-row .what { color: var(--ink-2); font-size: 14px; }
+  .arch-row.hl { background: var(--accent-soft); border-color: #c9d3ee; }
+
+  /* 三层卡片 */
+  .tiers { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin: 20px 0; }
+  .tier {
+    border: 1px solid var(--line); border-radius: 12px; padding: 18px;
+    background: var(--bg);
+  }
+  .tier h4 { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+  .tier .sub { font-size: 12px; color: var(--ink-2); margin-bottom: 10px; }
+  .tier p { font-size: 13px; color: var(--ink-2); margin: 6px 0 0; }
+  .tier .rule { font-size: 13px; color: var(--ink); margin-top: 10px; }
+  @media (max-width: 720px) { .tiers { grid-template-columns: 1fr; } }
+
+  /* 阶梯 */
+  .ladder { counter-reset: step; margin: 18px 0; }
+  .ladder .step {
+    display: flex; gap: 14px; padding: 12px 0;
+    border-bottom: 1px dashed var(--line); align-items: baseline;
+  }
+  .ladder .step:last-child { border-bottom: none; }
+  .ladder .step::before {
+    counter-increment: step; content: counter(step);
+    font-size: 12px; font-weight: 700; color: var(--accent);
+    border: 1px solid #c9d3ee; background: var(--accent-soft);
+    border-radius: 999px; width: 22px; height: 22px; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    transform: translateY(3px);
+  }
+  .ladder .step .t { font-weight: 600; margin-right: 6px; }
+  .ladder .step .d { color: var(--ink-2); font-size: 14px; }
+
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+    border-radius: 0 10px 10px 0; padding: 14px 18px; margin: 18px 0; font-size: 14px;
+  }
+  .callout.red { border-left-color: var(--danger); background: #fdf3f2; }
+
+  footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-size: 13px; color: var(--ink-2); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="kicker">Ouro Ops · S0014 Design Draft（渲染稿，规格以 MD 为准）</div>
+  <h1>Agent 侧工具的拆分与定义</h1>
+  <p class="lede">从「Tauri + Ansible 固定编排」演进为「CLI + Skills」：prompt 只做调度与诊断，一切写操作走确定性工具。本文定义 agent 可见的工具面——如何分层、每层包含什么、以什么契约暴露。</p>
+</header>
+
+<h2><span class="no">1</span>总体架构</h2>
+<div class="arch">
+  <div class="arch-row">
+    <span class="who">Agent Harness</span>
+    <span class="what">Claude Code / Cowork——agent loop、确认交互、流式日志、会话记录，全部复用，不自研</span>
+  </div>
+  <div class="arch-connector">↓ 加载</div>
+  <div class="arch-row hl">
+    <span class="who">Skills（runbook 层）</span>
+    <span class="what">SKILL.md 只写决策树与红线；scripts/ 承载全部已知操作逻辑</span>
+  </div>
+  <div class="arch-connector">↓ 调用</div>
+  <div class="arch-row hl">
+    <span class="who"><code>ouro</code> CLI（确定性内核）</span>
+    <span class="what">Rust 单二进制：密钥、签名、配置渲染、审计——危险且已知的操作只在这里发生</span>
+  </div>
+  <div class="arch-connector">↓ SSH（唯一传输层，无框架）</div>
+  <div class="arch-row">
+    <span class="who">目标机器</span>
+    <span class="what">BP / Relay，节点跑容器，主机侧要求收敛为「容器运行时 + SSH 可达」</span>
+  </div>
+</div>
+<p class="note">Ansible、Python sidecar、Tauri/React 整体移除。原 Jinja2 模板迁入 <code>ouro config render</code>；原 playbook 逻辑按下述三层重新归位。</p>
+
+<h2><span class="no">2</span>拆分依据：危险度 × 已知度</h2>
+<p>每个操作按两个维度归类：<strong>做错的代价</strong>（危险度）和<strong>能否预先写成代码</strong>（已知度）。这决定它属于哪一层、以什么形式暴露给 agent。</p>
+
+<div class="tiers">
+  <div class="tier">
+    <h4><span class="pill l1">L1</span>&nbsp; ouro CLI</h4>
+    <div class="sub">危险且已知 · Rust · 确认门控 + 审计</div>
+    <p>密钥生成与推送、注册交易、配置渲染、回滚触发。错一次代价极高，因此用最可测的形式实现。</p>
+    <p class="rule">冷钥与签名永不经过模型上下文；破坏性动作 CLI 层强制确认，与 agent 是否可靠无关。</p>
+  </div>
+  <div class="tier">
+    <h4><span class="pill l2">L2</span>&nbsp; Skill Scripts</h4>
+    <div class="sub">普通且已知 · Bash · 幂等 + JSON 契约</div>
+    <p>装依赖、系统准备、配置下发、重启、逐台升级。已知的环境差异（apt/dnf、ufw/firewalld）在脚本内部用确定性代码探测处理。</p>
+    <p class="rule">每个变更脚本配对 verify；失败以结构化错误退出，绝不「尽力而为」。</p>
+  </div>
+  <div class="tier">
+    <h4><span class="pill l3">L3</span>&nbsp; 只读诊断</h4>
+    <div class="sub">未知情况 · 自由命令 · 严格只读</div>
+    <p>读日志、查 systemd 状态、拉 metrics、看磁盘内存。这是 agent 自适应能力的用武之地：看懂现场，而不是即兴改机器。</p>
+    <p class="rule">诊断自由，写入禁止——发现问题后仍须通过 L1/L2 参数化执行修复。</p>
+  </div>
+</div>
+
+<div class="callout"><strong>读写分界是整个设计的一条线：</strong>read = 自由，write = 工具。agent 的价值是缩短「失败 → 诊断」的路径，而不是获得即兴写生产机器的权力。</div>
+
+<h2><span class="no">3</span>L1 工具清单：<code>ouro</code> CLI</h2>
+<table>
+  <thead><tr><th>命令</th><th>作用</th><th>门控</th></tr></thead>
+  <tbody>
+    <tr><td><code>ouro spec validate</code></td><td>静态校验 <code>pool-spec.yaml</code>（角色、端点、版本合法性）</td><td>只读</td></tr>
+    <tr><td><code>ouro config render --machine &lt;m&gt;</code></td><td>由 spec 确定性生成 node config / topology（替代 Jinja2 模板）</td><td>只产出文件</td></tr>
+    <tr><td><code>ouro status --machine &lt;m&gt;</code></td><td>结构化运行状态：tip、slot lag、peers、KES 剩余期数（JSON）</td><td>只读</td></tr>
+    <tr><td><code>ouro kes generate</code></td><td>生成新 KES 密钥对 + opcert（cold counter 在离线机递增）</td><td><span class="pill gate">确认 + 审计</span></td></tr>
+    <tr><td><code>ouro kes push --machine bp</code></td><td>推送热钥三件套到 BP 并滚动重启</td><td><span class="pill gate">确认 + 审计</span></td></tr>
+    <tr><td><code>ouro pool register-tx</code></td><td>构造注册 / 更新交易（<strong>未签名</strong>，签名永远离线）</td><td><span class="pill gate">审计</span></td></tr>
+    <tr><td><code>ouro rollback --machine &lt;m&gt; --to &lt;backup-id&gt;</code></td><td>回滚到指定备份点</td><td><span class="pill gate">确认 + 审计</span></td></tr>
+    <tr><td><code>ouro audit log</code></td><td>查询 append-only 审计日志（每次 L1/L2 调用自动落库，无论谁调的）</td><td>只读</td></tr>
+  </tbody>
+</table>
+<p class="note">复用现有 <code>src-tauri/src/commands/</code> 中 kes.rs、pool.rs 的 Rust 逻辑，剥离 Tauri 依赖抽为独立二进制。</p>
+
+<h2><span class="no">4</span>L2 工具清单：Skill Scripts</h2>
+<pre><code>ouro-skills/
+├── deploy/
+│   ├── SKILL.md            # 决策树 + 红线，约 1 页
+│   └── scripts/
+│       ├── preflight.sh    # 只读：硬件/端口/发行版/连通性 → JSON 报告
+│       ├── provision.sh    # 幂等：容器运行时、用户、chrony、防火墙
+│       ├── sync.sh         # Mithril 快照恢复（默认）或 genesis 同步
+│       ├── start.sh        # 拉起节点容器
+│       └── verify.sh       # tip 推进、peer 连接、metrics 可达
+├── upgrade/
+│   └── scripts/            # preflight / backup / upgrade-one / verify / rollback
+├── runtime/
+│   └── scripts/            # topology-apply / restart / verify
+├── observability/
+│   └── scripts/            # install-gateway / verify / rollback
+├── kes-rotation/
+│   └── SKILL.md            # 无脚本：纯粹编排 ouro kes 命令序列
+└── troubleshooting/
+    └── SKILL.md            # 唯一以 prompt 为主的 skill，限定 L3 只读</code></pre>
+<p>判断标准：<strong>SKILL.md 里一旦出现具体命令序列，就该下沉为脚本。</strong>脚本可在 CI 里对容器矩阵（Ubuntu / Debian / Rocky）做集成测试——prompt 测不了，脚本测得了，这是确定性的来源。</p>
+
+<h2><span class="no">5</span>工具契约</h2>
+<p>agent 与工具之间的接口必须让模型「只解析结构，不猜测文本」。所有 L1/L2 工具遵守同一契约：</p>
+
+<h3>输入</h3>
+<p>参数来源只有两个：<code>pool-spec.yaml</code>（声明式目标状态，用户唯一需要提供的信息）+ 显式命令行参数（如 <code>--machine relay1</code>）。工具不依赖环境变量或隐式状态。</p>
+
+<h3>输出：单行 JSON</h3>
+<pre><code>// 成功
+{"tool":"upgrade-one","machine":"relay1","status":"ok","changed":true,
+ "checks":[{"name":"tip_within_60s","pass":true}],"duration_s":184}
+
+// 失败（结构化，含下一步提示）
+{"tool":"upgrade-one","machine":"relay1","status":"failed_needs_rollback",
+ "error":{"code":"NODE_NOT_SYNCING","detail":"tip lag 3402s after restart",
+          "hint":"run rollback.sh, then diagnose via journalctl"}}</code></pre>
+
+<h3>Exit code 分类</h3>
+<table>
+  <thead><tr><th>Code</th><th>语义</th><th>机器状态</th><th>agent 必须做的事</th></tr></thead>
+  <tbody>
+    <tr><td><code>0</code></td><td>成功</td><td>已变更且 verify 通过</td><td>继续下一步</td></tr>
+    <tr><td><code>10</code></td><td>前置条件不满足</td><td><strong>未变更</strong></td><td>修复前置条件后重跑（幂等）</td></tr>
+    <tr><td><code>20</code></td><td>执行失败（安全）</td><td><strong>未变更</strong></td><td>L3 只读诊断 → 报告</td></tr>
+    <tr><td><code>30</code></td><td>执行失败（已部分变更）</td><td>不一致</td><td><strong>先 rollback，再诊断</strong>，禁止继续</td></tr>
+    <tr><td><code>40</code></td><td>状态未知</td><td>无法判定</td><td><strong>立即停止一切写操作，呼叫人工</strong></td></tr>
+  </tbody>
+</table>
+
+<h3>两条硬性性质</h3>
+<p><strong>幂等</strong>：任何脚本重跑不产生副作用，这让「修复后重试」成为安全的默认动作。<strong>verify 配对</strong>：每个变更脚本必须有对应 verify，变更后强制执行——不存在模糊的成功状态（对应设计原则 status integrity）。</p>
+
+<h2><span class="no">6</span>部署验收标准</h2>
+<p>「部署成功」不是一段描述，而是 <code>deploy/verify.sh</code> 的断言清单：<strong>全部 pass 才算完成，任一 fail 即验收不通过</strong>（exit 30，走回滚阶梯）。每条断言输出到 JSON 的 <code>checks[]</code>，agent 与人看到的是同一份结果。</p>
+<table>
+  <thead><tr><th>范围</th><th>断言</th><th>判定方式</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="5"><strong>每台机器</strong></td>
+        <td>节点容器运行且稳定</td><td>运行中，且启动后 10 分钟内重启次数 = 0</td></tr>
+    <tr><td>版本与 spec 一致</td><td><code>ouro status</code> 上报版本 == <code>spec.node_version</code></td></tr>
+    <tr><td>同步完成</td><td>本机 tip 与网络 tip 差 &lt; 60s，且 slot 持续推进</td></tr>
+    <tr><td>metrics 可达</td><td><code>:12798/metrics</code> 返回 200 且含 node 指标</td></tr>
+    <tr><td>时钟同步</td><td>chrony offset &lt; 50ms（slot 计算依赖时钟）</td></tr>
+    <tr><td rowspan="3"><strong>Relay</strong></td>
+        <td>公网可达</td><td>从操作机对 <code>public_endpoint</code> TCP 拨测成功</td></tr>
+    <tr><td>双向 peer 建立</td><td>outbound &gt; 0 且 inbound &gt; 0（inbound 证明公网真实可达）</td></tr>
+    <tr><td>与 BP 互连</td><td>peer 列表包含 BP 内网地址</td></tr>
+    <tr><td rowspan="3"><strong>BP</strong></td>
+        <td>出块已使能</td><td>日志/指标显示 forging enabled，KES/VRF/opcert 已加载</td></tr>
+    <tr><td>KES 有效期充足</td><td>剩余期数 &gt; 阈值（默认 30 期）</td></tr>
+    <tr><td>拓扑隔离</td><td>仅连接自家 relay；节点端口自公网<strong>不可达</strong>（防火墙断言）</td></tr>
+    <tr><td><strong>池级</strong><span class="note">（如含注册）</span></td>
+        <td>链上状态与 spec 一致</td><td>pool ID 可查，pledge / margin / relay 端点与 spec 匹配</td></tr>
+  </tbody>
+</table>
+<p class="note">验收<strong>不包含</strong>「产出第一个区块」——这取决于 slot leadership 抽签，可能在数天之后。出块验证交给部署后的监控：scheduled task 每个 epoch 检查 leadership 排期与 forge 指标，属于 troubleshooting/monitoring skill 的职责，不阻塞部署验收。</p>
+
+<h2><span class="no">7</span>SKILL.md 的角色：调度，不是操作</h2>
+<p>以最复杂的 upgrade 为例，SKILL.md 的全部内容就是这样一棵决策树：</p>
+<pre><code>1. ouro spec validate → 每台机器跑 preflight.sh，任一 exit 10 → 修复后重跑
+2. 逐台执行，relay 在前、BP 最后，每台：
+     backup.sh → upgrade-one.sh → verify.sh
+   verify 通过才允许下一台（原 Ansible serial:1 语义，一句话表达）
+3. 任一台 exit 30 → rollback.sh → 停止整个批次 → L3 诊断 → 报告
+4. 红线：
+   - BP 与任一 relay 不得同时离线
+   - 任何 exit 40 → 停止全部写操作，呼叫人工
+   - 写操作仅限本 skill 列出的工具，禁止即兴 SSH 写命令</code></pre>
+
+<h2><span class="no">8</span>失败处理阶梯</h2>
+<p>环境长尾（未知发行版、诡异报错）不靠预写分支覆盖，靠这个阶梯：</p>
+<div class="ladder">
+  <div class="step"><div><span class="t">脚本内确定性处理</span><span class="d">已知差异（包管理器、防火墙）在脚本内探测解决，不消耗模型</span></div></div>
+  <div class="step"><div><span class="t">结构化失败退出</span><span class="d">遇到未预见情况，带 error.code / detail / hint 退出，不「尽力而为」</span></div></div>
+  <div class="step"><div><span class="t">agent 只读诊断</span><span class="d">L3 自由读取日志、状态、指标，形成对现场的判断</span></div></div>
+  <div class="step"><div><span class="t">提出修复方案</span><span class="d">向人说明原因与拟采取的动作，等待确认</span></div></div>
+  <div class="step"><div><span class="t">参数化执行</span><span class="d">确认后仍通过 L1/L2 工具执行修复，然后 verify、重试原步骤</span></div></div>
+</div>
+
+<h2><span class="no">9</span>Agent 行为红线（写进每个 SKILL.md）</h2>
+<div class="callout red">
+  <strong>① 写操作只能调用列出的工具</strong>，禁止手搓 SSH 写命令。<br>
+  <strong>② L3 诊断禁止 sudo 写入</strong>，只读命令自由。<br>
+  <strong>③ 密钥材料（cold/KES/VRF）不得读入模型上下文</strong>，一律经 <code>ouro</code> CLI 流转。<br>
+  <strong>④ exit 30 必须先回滚</strong>；<strong>exit 40 停止一切写操作</strong>并升级到人工。<br>
+  <strong>⑤ 每次变更后必须 verify</strong>，verify 失败视同操作失败。
+</div>
+<p class="note">红线的最终保障不在 prompt：确认门、审计、密钥隔离都在 CLI 层强制执行。即使 agent 行为异常，危险操作也过不去。</p>
+
+<h2><span class="no">10</span>暴露方式：CLI + Bash 优先，MCP 可选</h2>
+<p>第一版不做 MCP server：agent harness 本身就有 bash 工具，CLI 在 PATH、脚本在 skill 目录即可被发现和调用，且 JSON 契约已保证输出可解析。当出现「非 bash 环境的 agent 也要接入」或「需要更细粒度权限声明」的需求时，再用薄薄一层 MCP 包装 <code>ouro</code> CLI，工具语义不变。</p>
+
+<footer>Ouro Ops · S0014（设计稿，正式规格见 docs/specs/draft/S0014-agent-tooling.md）· 2026-07 · 依赖清单：一个 Rust 二进制 + 一组 bash 脚本 + SSH。</footer>
+
+</div>
+</body>
+</html>
