@@ -1,0 +1,44 @@
+{
+  "machines": [
+    {
+      "id": "bp1",
+      "role": "bp",
+      "container_running": true,
+      "restarts_10m": 0,
+      "node_version": "10.5.4",
+      "tip_lag_s": 12,
+      "slot_advancing": true,
+      "metrics_12798": true,
+      "chrony_offset_ms": 8,
+      "network_magic": 1,
+      "genesis_hash": "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35",
+      "peers": { "inbound": 0, "outbound": 1 },
+      "topology": { "mode": "p2p", "local_roots_ok": true, "peer_sharing_ok": true },
+      "db": { "ledger_sanity": true, "era_mismatch": false },
+      "bp_public_port_reachable": false,
+      "forging_enabled": true,
+      "kes": { "remaining_periods": 42, "remaining_days": 63.0 }
+    },
+    {
+      "id": "relay1",
+      "role": "relay",
+      "container_running": true,
+      "restarts_10m": 0,
+      "node_version": "10.5.4",
+      "tip_lag_s": 10,
+      "slot_advancing": true,
+      "metrics_12798": true,
+      "chrony_offset_ms": 4,
+      "network_magic": 1,
+      "genesis_hash": "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35",
+      "peers": { "inbound": 4, "outbound": 7 },
+      "topology": { "mode": "p2p", "local_roots_ok": true, "peer_sharing_ok": true },
+      "db": { "ledger_sanity": true, "era_mismatch": false }
+    }
+  ],
+  "pool": {
+    "pool_id": "pool1xyz",
+    "pledge_lovelace": 100000000000,
+    "margin": 0.02
+  }
+}
