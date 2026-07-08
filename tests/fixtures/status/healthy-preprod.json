@@ -1,0 +1,48 @@
+{
+  "machines": [
+    {
+      "id": "bp1",
+      "tip": {
+        "slot": 12345678,
+        "block": 654321,
+        "hash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+      },
+      "slot_lag_s": 12,
+      "peers": {
+        "inbound": 0,
+        "outbound": 1,
+        "local_roots": 1,
+        "public_roots": 0
+      },
+      "kes": {
+        "remaining_periods": 42,
+        "remaining_days": 63.0
+      },
+      "network_magic": 1,
+      "genesis_hash": "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35",
+      "sync_mode": "genesis"
+    },
+    {
+      "id": "relay1",
+      "tip": {
+        "slot": 12345680,
+        "block": 654322,
+        "hash": "bbcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+      },
+      "slot_lag_s": 8,
+      "peers": {
+        "inbound": 3,
+        "outbound": 5,
+        "local_roots": 1,
+        "public_roots": 2
+      },
+      "kes": {
+        "remaining_periods": 0,
+        "remaining_days": 0.0
+      },
+      "network_magic": 1,
+      "genesis_hash": "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35",
+      "sync_mode": "genesis"
+    }
+  ]
+}

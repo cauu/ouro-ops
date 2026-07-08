@@ -1,0 +1,26 @@
+{
+  "machines": [
+    {
+      "id": "bp1",
+      "tip": {
+        "slot": 12345678,
+        "block": 654321,
+        "hash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+      },
+      "slot_lag_s": 12,
+      "peers": {
+        "inbound": 0,
+        "outbound": 1,
+        "local_roots": 1,
+        "public_roots": 0
+      },
+      "kes": {
+        "remaining_periods": 42,
+        "remaining_days": 63.0
+      },
+      "network_magic": 2,
+      "genesis_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "sync_mode": "genesis"
+    }
+  ]
+}

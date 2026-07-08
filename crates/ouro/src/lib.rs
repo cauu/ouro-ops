@@ -8,5 +8,6 @@ pub mod output;
 pub mod render;
 pub mod secrets;
 pub mod ssh;
+pub mod status;
 
 pub use error::{OuroError, Result};

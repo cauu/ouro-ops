@@ -9,6 +9,7 @@ use crate::{
     output::{self, ToolOutput},
     render,
     ssh::SshRunner,
+    status::StatusSnapshot,
     OuroError, Result,
 };
 
@@ -37,8 +38,26 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "config" => run_config(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
         "spec" => run_spec(&args[2..])?,
+        "status" => run_status(&args[2..])?,
         other => return Err(OuroError::InvalidArgs(format!("unknown command {other}"))),
     }
+    Ok(())
+}
+
+fn run_status(args: &[String]) -> Result<()> {
+    let snapshot_path = flag_value(args, "--snapshot")?;
+    let snapshot = StatusSnapshot::from_file(&PathBuf::from(snapshot_path))?;
+    let diff = if args.iter().any(|arg| arg == "--diff-spec") {
+        let spec_path = flag_value(args, "--spec")?;
+        let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
+        Some(snapshot.diff_spec(&spec))
+    } else {
+        None
+    };
+    output::print_json(&ToolOutput::ok("ouro.status", false).with_data(json!({
+        "machines": snapshot.machines,
+        "diff_spec": diff
+    })))?;
     Ok(())
 }
 
