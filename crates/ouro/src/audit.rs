@@ -77,6 +77,32 @@ impl AuditStore {
             .query_row("select count(*) from audit_events", [], |row| row.get(0))?)
     }
 
+    pub fn list(&self, limit: u32) -> Result<Vec<AuditEvent>> {
+        let mut stmt = self.conn.prepare(
+            "select id, invocation_id, event, tool, machine, detail, created_at
+             from audit_events
+             order by created_at desc
+             limit ?1",
+        )?;
+        let events = stmt
+            .query_map([limit], |row| {
+                let created_at: String = row.get(6)?;
+                Ok(AuditEvent {
+                    id: row.get(0)?,
+                    invocation_id: row.get(1)?,
+                    event: row.get(2)?,
+                    tool: row.get(3)?,
+                    machine: row.get(4)?,
+                    detail: row.get(5)?,
+                    created_at: chrono::DateTime::parse_from_rfc3339(&created_at)
+                        .map(|value| value.with_timezone(&Utc))
+                        .unwrap_or_else(|_| Utc::now()),
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(events)
+    }
+
     fn migrate(&self) -> Result<()> {
         self.conn.execute_batch(
             "create table if not exists audit_events (

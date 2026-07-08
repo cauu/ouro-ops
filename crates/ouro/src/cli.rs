@@ -39,10 +39,29 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "kes" => run_kes(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
         "pool" => run_pool(&args[2..])?,
+        "rollback" => run_rollback(&args[2..])?,
         "spec" => run_spec(&args[2..])?,
         "status" => run_status(&args[2..])?,
         other => return Err(OuroError::InvalidArgs(format!("unknown command {other}"))),
     }
+    Ok(())
+}
+
+fn run_rollback(args: &[String]) -> Result<()> {
+    let machine = flag_value(args, "--machine")?;
+    let backup_id = flag_value(args, "--to")?;
+    let token = optional_flag_value(args, "--confirm-token");
+    validate_confirmation(token, "rollback", machine)?;
+    let paths = ConfigPaths::discover();
+    let store = AuditStore::open(&paths.audit_db)?;
+    let audit_id = store.begin_invocation("rollback", Some(machine))?;
+    output::print_json(&ToolOutput::ok("ouro.rollback", true).with_data(json!({
+        "audit_id": audit_id,
+        "machine": machine,
+        "to": backup_id,
+        "confirmation": "accepted",
+        "execution": "planned-forward-change"
+    })))?;
     Ok(())
 }
 
@@ -212,6 +231,18 @@ fn run_audit(args: &[String]) -> Result<()> {
             })))?;
             Ok(())
         }
+        Some("log") => {
+            let limit = optional_flag_value(args, "--limit")
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(20);
+            let paths = ConfigPaths::discover();
+            let store = AuditStore::open(&paths.audit_db)?;
+            let events = store.list(limit)?;
+            output::print_json(
+                &ToolOutput::ok("ouro.audit.log", false).with_data(json!({ "events": events })),
+            )?;
+            Ok(())
+        }
         _ => Err(OuroError::InvalidArgs("expected audit init".to_string())),
     }
 }
@@ -243,4 +274,17 @@ fn optional_flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|pair| pair[0] == flag)
         .map(|pair| pair[1].as_str())
+}
+
+fn validate_confirmation(token: Option<&str>, action: &str, machine: &str) -> Result<()> {
+    let expected = format!("confirm:{action}:{machine}");
+    match token {
+        Some(token) if token == expected => Ok(()),
+        Some(_) => Err(OuroError::Validation(
+            "confirmation token action or machine mismatch".to_string(),
+        )),
+        None => Err(OuroError::Validation(format!(
+            "dangerous {action} requires human-issued confirmation token"
+        ))),
+    }
 }
