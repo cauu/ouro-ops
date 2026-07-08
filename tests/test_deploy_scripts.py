@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import subprocess
+from pathlib import Path
 
 import jsonschema
 
@@ -63,8 +64,23 @@ def main():
         "pool.parameters",
     }
     assert expected <= names
+    assert "machine_inventory" in names
     for check in verify["checks"]:
         assert {"severity", "exit_class", "rollback_safe"} <= check.keys()
+
+    # Machine-set integrity: dropping a spec-declared machine from the snapshot must
+    # fail verify (it must not silently pass by only checking the machines present).
+    healthy = json.loads((ROOT / "tests/fixtures/deploy/verify-healthy.json").read_text())
+    healthy["machines"] = [m for m in healthy["machines"] if m["id"] != "relay1"]
+    partial = Path("/tmp/ouro-deploy-missing-relay.json")
+    partial.write_text(json.dumps(healthy))
+    env = dict(env_extra())
+    env["OURO_STATUS_SNAPSHOT"] = str(partial)
+    result = tool_run("deploy/verify", spec=SPEC, machine="bp1", env=env, home=HOME, check=False)
+    payload = json.loads(result.stdout)
+    assert result.returncode != 0, result.stdout
+    inventory = next(c for c in payload["checks"] if c["name"] == "machine_inventory")
+    assert inventory["pass"] is False
     print("deploy scripts passed")
 
 

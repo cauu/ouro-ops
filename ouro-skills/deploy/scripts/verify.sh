@@ -32,6 +32,23 @@ expected_version = spec["node_version"]
 topology_mode = spec["topology_mode"]
 machines = snapshot["machines"]
 
+# Machine-set integrity: the snapshot must cover exactly the spec's declared machines.
+# Otherwise a deploy could be judged healthy while a spec machine (e.g. a relay) is
+# absent from — and therefore never checked by — the snapshot.
+expected_ids = {m["id"] for m in spec["machines"]}
+actual_ids = {m["id"] for m in machines}
+missing = sorted(expected_ids - actual_ids)
+unexpected = sorted(actual_ids - expected_ids)
+add(
+    "machine_inventory",
+    not missing and not unexpected,
+    detail=(
+        "snapshot covers exactly the spec machines"
+        if not missing and not unexpected
+        else f"missing={missing} unexpected={unexpected}"
+    ),
+)
+
 for machine in machines:
     mid = machine["id"]
     add(f"{mid}.container_running", machine.get("container_running") is True, detail="container is running")
