@@ -4,16 +4,17 @@ The project now uses the immutable-spec workflow for active delivery.
 
 ## Current Active Spec
 
-- [20260708T0000-S0014-agent-tooling.md](./specs/20260708T0000-S0014-agent-tooling.md) — Agent 侧工具面拆分：`ouro` CLI + skills 架构，退役旧 Tauri/React/sidecar/Ansible 栈。
+- 暂无（S0014 已 delivered 并归档；S0015 为 draft，尚未 activate）。
 
 如需开始新需求，请先在 `docs/specs/draft/` 创建新的 draft spec，并在启动执行时提升为 `docs/specs/` 根目录中的唯一 active spec。
 
 ## Draft Specs
 
-- 暂无。
+- [S0015-containerized-e2e.md](./specs/draft/S0015-containerized-e2e.md) — 容器化端到端验收：CLI 确定性 E2E + skill/agent 行为验收（项目「验收通过」的最终标准）。
 
 ## Completed Specs
 
+- [20260708T0000-S0014-agent-tooling.md](./specs/completed/20260708T0000-S0014-agent-tooling.md) — Agent 侧工具面拆分：`ouro` CLI + skills 架构，退役旧 Tauri/React/sidecar/Ansible 栈。
 - [20260329T2100-S0013-github-release-and-auto-update.md](./specs/completed/20260329T2100-S0013-github-release-and-auto-update.md)
 - [20260329T1900-S0012-pool-staking-overview.md](./specs/completed/20260329T1900-S0012-pool-staking-overview.md)
 - [20260329T1630-S0011-frontend-startup-optimization.md](./specs/completed/20260329T1630-S0011-frontend-startup-optimization.md)
