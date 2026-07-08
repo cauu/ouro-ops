@@ -7,14 +7,26 @@ source "$ROOT/ouro-skills/lib/ouro-lib.sh"
 ouro_require_audit_context
 SPEC="${OURO_SPEC:?OURO_SPEC required}"
 STATE_DIR="${OURO_STATE_DIR:-/tmp/ouro-upgrade-state}"
-LOCK="$STATE_DIR/upgrade.lock"
+LOCK="$STATE_DIR/upgrade.lock.d"
+OWNER="$LOCK/owner"
 mkdir -p "$STATE_DIR"
 
-if [[ -f "$LOCK" ]]; then
-  ouro_emit_error 10 "upgrade_lock_held" "another upgrade is already running"
+# Atomic mutex: `mkdir` succeeds for exactly one racer (no TOCTOU window). If the
+# directory already exists, a lock with recorded owner metadata is genuinely held;
+# a lock without an owner file is stale (left by a crash before it could claim it)
+# and is reclaimed.
+if ! mkdir "$LOCK" 2>/dev/null; then
+  if [[ -s "$OWNER" ]]; then
+    ouro_emit_error 10 "upgrade_lock_held" "another upgrade is already running (owner $(cat "$OWNER"))"
+  fi
+  rm -rf "$LOCK"
+  if ! mkdir "$LOCK" 2>/dev/null; then
+    ouro_emit_error 10 "upgrade_lock_held" "another upgrade is already running"
+  fi
 fi
-printf '%s\n' "$OURO_AUDIT_ID" > "$LOCK"
-trap 'rm -f "$LOCK"' EXIT
+printf '%s\n' "$OURO_AUDIT_ID" > "$OWNER"
+# Release only the lock we still own (never delete a lock a later run reclaimed).
+trap '[[ "$(cat "$OWNER" 2>/dev/null)" == "$OURO_AUDIT_ID" ]] && rm -rf "$LOCK"' EXIT
 
 # Plan: relays first (BP-last), each line "id role". First line is "<relay_total> <quorum_min>".
 # Quorum is a HUMAN-authored spec policy (spec.upgrade.min_online_relays, default 1), NOT an

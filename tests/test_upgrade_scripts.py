@@ -36,14 +36,24 @@ def main():
     payload = validate(run(TWO_RELAY, state).stdout)
     assert payload["data"]["completed"] == ["relay1", "relay2", "bp1"]
 
-    # Lock contention: a pre-existing lock blocks a second batch (exit 10).
+    # Lock contention: an owned lock (atomic mkdir dir + owner metadata) blocks a
+    # second batch (exit 10). This is mutual exclusion with no TOCTOU window.
     locked = "/tmp/ouro-upgrade-script-locked"
     subprocess.run(["rm", "-rf", locked], check=True)
-    Path(locked).mkdir(parents=True)
-    Path(locked, "upgrade.lock").write_text("held")
+    (Path(locked) / "upgrade.lock.d").mkdir(parents=True)
+    (Path(locked) / "upgrade.lock.d" / "owner").write_text("audit-other-run")
     lock_result = run(TWO_RELAY, locked, check=False)
     assert lock_result.returncode == 10
     assert validate(lock_result.stdout)["error"]["code"] == "upgrade_lock_held"
+
+    # Stale lock (dir exists but no owner file — a crash before claiming) is reclaimed,
+    # so a crashed prior run does not permanently block future upgrades.
+    stale = "/tmp/ouro-upgrade-script-stale"
+    subprocess.run(["rm", "-rf", stale], check=True)
+    (Path(stale) / "upgrade.lock.d").mkdir(parents=True)
+    reclaimed = run(TWO_RELAY, stale)
+    assert validate(reclaimed.stdout)["data"]["completed"] == ["relay1", "relay2", "bp1"]
+    assert not (Path(stale) / "upgrade.lock.d").exists()  # released after completion
 
     # Verify failure stops the batch before BP and rolls back the failed machine.
     # Failure injection is via an allowlisted state marker (env hooks are stripped).
