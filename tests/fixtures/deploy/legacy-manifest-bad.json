@@ -1,0 +1,9 @@
+{
+  "machines": {
+    "bp1": {
+      "legacy_container_running": false,
+      "keys_present": true,
+      "node_socket_active": false
+    }
+  }
+}
