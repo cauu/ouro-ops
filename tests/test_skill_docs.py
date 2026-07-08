@@ -8,6 +8,8 @@ SKILLS = [
     ROOT / "ouro-skills/upgrade/SKILL.md",
     ROOT / "ouro-skills/runtime/SKILL.md",
     ROOT / "ouro-skills/observability/SKILL.md",
+    ROOT / "ouro-skills/kes-rotation/SKILL.md",
+    ROOT / "ouro-skills/troubleshooting/SKILL.md",
 ]
 FORBIDDEN = [" ssh ", " scp ", " docker ", " bash ", "sudo ", "rsync "]
 
