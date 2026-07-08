@@ -12,6 +12,13 @@ SKILLS = [
     ROOT / "ouro-skills/troubleshooting/SKILL.md",
 ]
 FORBIDDEN = [" ssh ", " scp ", " docker ", " bash ", "sudo ", "rsync "]
+REQUIRED_RED_LINES = [
+    "ouro tool run",
+    "no secret directory access",
+    "cold, KES secret, or VRF",
+    "exit 30",
+    "exit 40",
+]
 
 
 def main():
@@ -23,7 +30,8 @@ def main():
         lowered = f" {text.lower()} "
         for word in FORBIDDEN:
             assert word not in lowered, f"{path} contains forbidden primitive {word!r}"
-        assert "ouro tool run" in text or path.name == "SKILL.md"
+        for phrase in REQUIRED_RED_LINES:
+            assert phrase in text, f"{path} lacks red line {phrase!r}"
     print("skill docs passed")
 
 

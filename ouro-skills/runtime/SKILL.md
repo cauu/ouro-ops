@@ -16,5 +16,10 @@ Apply runtime topology/config changes and verify the node returns healthy.
 
 ## Red Lines
 - No direct file copy or container mutation outside tool entrypoints.
+- Writes only through `ouro tool run`.
+- L3 diagnostics are read-only and have no secret directory access.
 - No secret paths in output.
+- No cold, KES secret, or VRF material enters context or output.
 - Verify after every topology or restart change.
+- On exit 30, run the rollback-capable path before continuing.
+- On exit 40, stop all writes and require human intervention.

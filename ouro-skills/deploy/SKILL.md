@@ -19,3 +19,5 @@ Deploy or take over one pool from a validated `pool-spec.yaml`.
 - L3 diagnostics are read-only and have no secret directory access.
 - No cold, KES secret, or VRF material enters context or output.
 - Every change step is followed by verify.
+- On exit 30, run the rollback-capable path before continuing.
+- On exit 40, stop all writes and require human intervention.

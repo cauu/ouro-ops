@@ -21,3 +21,8 @@ Rotate KES by generating BP-local KES vkey metadata and installing opcert-only p
 - Never request or print cold, KES secret, or VRF material.
 - Do not install VRF or KES secret payloads during rotation.
 - Do not continue after counter replay is detected.
+- Writes only through `ouro tool run`.
+- L3 diagnostics are read-only and have no secret directory access.
+- Every change step is followed by verify.
+- On exit 30, run the rollback-capable path before continuing.
+- On exit 40, stop all writes and require human intervention.

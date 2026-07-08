@@ -19,3 +19,8 @@ Diagnose failures after an L1/L2 tool returns non-zero.
 - L3 is read-only.
 - Diagnostic principal has no secret directory access and no write capability.
 - Do not turn a diagnosis into an ad hoc mutation.
+- Writes only through `ouro tool run`.
+- No cold, KES secret, or VRF material enters context or output.
+- Every change step is followed by verify.
+- On exit 30, run the rollback-capable path before continuing.
+- On exit 40, stop all writes and require human intervention.

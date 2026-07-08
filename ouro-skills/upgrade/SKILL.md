@@ -18,3 +18,8 @@ Upgrade pool machines while preserving availability.
 - Do not bypass `upgrade/run`.
 - Do not run writes outside `ouro tool run`.
 - Keep BP plus at least one relay available.
+- L3 diagnostics are read-only and have no secret directory access.
+- No cold, KES secret, or VRF material enters context or output.
+- On exit 30, run the rollback-capable path before continuing.
+- On exit 40, stop all writes and require human intervention.
+- Every change step is followed by verify.
