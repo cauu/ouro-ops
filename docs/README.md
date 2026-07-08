@@ -4,13 +4,13 @@ The project now uses the immutable-spec workflow for active delivery.
 
 ## Current Active Spec
 
-- 暂无（S0014 已 delivered 并归档；S0015 为 draft，尚未 activate）。
+- [20260708T0710-S0015-containerized-e2e.md](./specs/20260708T0710-S0015-containerized-e2e.md) — 容器化端到端验收：CLI 确定性 E2E + skill/agent 行为验收（项目「验收通过」的最终标准）。
 
 如需开始新需求，请先在 `docs/specs/draft/` 创建新的 draft spec，并在启动执行时提升为 `docs/specs/` 根目录中的唯一 active spec。
 
 ## Draft Specs
 
-- [S0015-containerized-e2e.md](./specs/draft/S0015-containerized-e2e.md) — 容器化端到端验收：CLI 确定性 E2E + skill/agent 行为验收（项目「验收通过」的最终标准）。
+- 暂无。
 
 ## Completed Specs
 
