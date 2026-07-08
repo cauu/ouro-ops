@@ -1,9 +1,0 @@
----
-- name: Apply runtime config and controlled restart
-  hosts: relay:bp
-  become: true
-  tasks:
-    - name: Run cardano-node runtime config tasks
-      ansible.builtin.include_role:
-        name: cardano-node
-        tasks_from: runtime_config

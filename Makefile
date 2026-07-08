@@ -2,76 +2,25 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install dev build preview tauri-dev tauri-build \
-	fmt fmt-rust fmt-rust-check \
-	test test-rust test-rust-quiet \
-	check check-rust \
-	ansible-syntax-check \
-	phase1-verify phase2-verify phase3-verify phase3-6-verify phase4-verify \
-	status
+.PHONY: help fmt test check ci e2e status
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-install: ## Install frontend dependencies
-	pnpm install
+fmt: ## Format Rust code
+	cargo fmt
 
-dev: ## Run frontend dev server
-	pnpm dev
+test: ## Run Rust tests
+	cargo test
 
-build: ## Build frontend assets
-	pnpm build
+check: ## Run Rust compile checks
+	cargo check
 
-preview: ## Preview frontend build
-	pnpm preview
+ci: ## Run L2 integration suite
+	bash ci/l2-integration.sh
 
-tauri-dev: ## Run Tauri app in dev mode
-	pnpm tauri dev
-
-tauri-build: ## Build Tauri app
-	pnpm tauri build
-
-fmt: fmt-rust ## Format code
-
-fmt-rust: ## Format Rust code
-	cd src-tauri && cargo fmt
-
-fmt-rust-check: ## Check Rust formatting without changing files
-	cd src-tauri && cargo fmt -- --check
-
-test: test-rust ## Run default tests
-
-test-rust: ## Run Rust tests
-	cd src-tauri && cargo test
-
-test-rust-quiet: ## Run Rust tests with concise output
-	cd src-tauri && cargo test -q
-
-check: check-rust ## Run default checks
-
-check-rust: ## Run Rust compile checks
-	cd src-tauri && cargo check
-
-ansible-syntax-check: ## Run deploy playbook syntax check
-	mkdir -p /tmp/ansible-local
-	ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml
-
-phase1-verify: test-rust ## Verify Phase 1 baseline tests
-
-phase2-verify: test-rust ## Verify Phase 2 backend tests
-
-phase3-verify: test-rust build ## Verify Phase 3 backend + frontend baseline
-
-phase3-6-verify: test-rust-quiet build ansible-syntax-check ## Verify Phase 3.6 Mithril local checks
-
-phase4-verify: test-rust-quiet build ## Verify Phase 4 local checks
-	mkdir -p /tmp/ansible-local
-	ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/deploy.yml
-	ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/runtime-config.yml
-	ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/runtime-restart.yml
-	ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/kes-push.yml
-	ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/upgrade.yml
-	ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCAL_TEMP=/tmp/ansible-local ansible-playbook --syntax-check ansible/playbooks/rollback.yml
+e2e: ## Run harness-style end-to-end flow
+	bash ci/harness-e2e.sh
 
 status: ## Show concise git status
 	git status --short

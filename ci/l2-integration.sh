@@ -12,4 +12,5 @@ python3 tests/test_skill_docs.py
 python3 tests/test_security_negative.py
 python3 tests/test_parity_audit.py
 python3 tests/test_retirement_inventory.py
+python3 tests/test_dependency_convergence.py
 cargo test -q
