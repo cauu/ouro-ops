@@ -35,7 +35,7 @@ Closure Reason:
 | --- | --- | --- |
 | 执行拓扑 | **Model B**（见 §2.1）：control 经 SSH 在目标机跑 `sudo ouro tool run`，L2 在目标机执行 | 与 S0014 `ssh.rs::prepare_tool_run` 的命令形态一致 |
 | 节点部署模型 | 目标容器内以受管**兄弟进程/容器**跑 `cardano-node` | 见 §2.1 简化记录 |
-| 密钥隔离验证 | `cat/find/tar/journalctl` 读 `/opt/cardano/keys` 被拒 + `0400` + 无 sudo | `docker exec` 隔离**移出**本 spec（见简化记录），留真实基础设施 |
+| 密钥隔离验证 | `cat/find/tar` 读 `/opt/cardano/keys` **文件**被拒 + `0400` + 无 sudo（日志泄漏归 E2E-9） | `docker exec` 隔离**移出**本 spec（见简化记录），留真实基础设施 |
 | 节点保真度 | private devnet（genesis 出块、真 opcert、KES 轮换） | Mithril 由 p2-0 spike 决定 in/out |
 | T1 补强 | 仅 SSH runner `execute`、`creds://` 解析属 T1 单测；其余无补强 | 明确 T1/T2 边界 |
 | Mithril 恢复 | **feasibility-gated**（p2-0 决定；默认倾向 Non-goal + waiver） | private devnet 未必支持 |
@@ -69,10 +69,15 @@ Closure Reason:
 
 ### 2.1 架构 / 模块 + 执行拓扑
 **执行拓扑（定稿，Model B）**：与 S0014 `ssh.rs::prepare_tool_run` 命令形态一致——
-- `control` 的 **L1 SSH runner（`ssh.rs::execute`，本 spec p1-3 实现）** 以 `ouro-exec` 身份 SSH 到目标机，
-  经 sudoers allowlist 跑 `sudo ouro tool run <skill>/<script> --spec … --audit-id …`；
-- **`ouro tool run` 在目标机本地执行 L2 脚本**（L2 在目标机产生真实系统副作用，目标机即节点宿主）；
-- **审计权威库在目标机**（写发生处）；`control` 经 SSH 取回 JSON + `audit_id`，E2E 直接查目标机审计 DB。
+- **调用入口**：`ouro tool run --machine <m>`（在 `control`）= **远端派发**——control 的 L1 SSH runner
+  （`ssh.rs::execute`，p1-3 实现）以 `ouro-exec` 身份 SSH 到 `<m>`，跑 `sudo ouro tool run <skill>/<script> --spec …`
+  （**不带 `--machine`**），后者在**目标机本地执行**并产生真实副作用；无 `--machine` 即本地执行（语义不变）。
+- **audit 与 token（安全边界）**：`audit_id` 与签名 invocation token 由**目标机的 `ouro tool run` 生成并校验**
+  （复用 S0014 p5 的 HMAC `verify-context`）；**不经 SSH 命令行传 `--audit-id`**、**不靠 sudoers 匹配 argv** 约束它——
+  sudoers 只钉死「固定绝对路径 CLI + 固定 env + 无 shell」，`audit_id`/token 合法性一律由 `ouro tool run` 自身负责。
+  `control` 经 SSH 取回 JSON + `audit_id`。
+- **审计权威库在目标机**（写发生处）；跨机不变式断言（p3-2）**聚合各目标机审计 DB**——control 上 `ouro audit log`
+  本身为空，需 fan-out 查询。
 - `control` 与**每台目标机都安装同版本（digest pin）** 的 `ouro` + `ouro-skills` + schemas。
 
 **自测床（docker-compose）**：`control` + `bp1` + `relay1` + `relay2`（各含 sshd、两类 principal、受管 `cardano-node`）+
@@ -83,7 +88,7 @@ private devnet genesis。
 | S0014 原始向量 | S0015 处置 |
 | --- | --- |
 | `ouro-diag` 不得 `docker exec` 进节点容器读密钥 | **移出**（Non-goal）；留真实基础设施验 |
-| `ouro-diag` `cat/find/tar/journalctl` 读 `/opt/cardano/keys` 被拒 | **保留**，E2E-2 真跑（进程/文件系统隔离） |
+| `ouro-diag` `cat/find/tar` 读 `/opt/cardano/keys` **文件**被拒（文件权限） | **保留**，E2E-2 真跑；**日志泄漏**改由 E2E-9 fingerprint/canary 扫描覆盖（非文件读取语义） |
 | 密钥 `0400`、属主节点用户、无 sudo | **保留**，E2E-2 真跑 |
 
 ### 2.2 三层测试金字塔 + T3 不变式
@@ -110,12 +115,12 @@ private devnet genesis。
 - **凭据**：`~/.ouro/credentials` 解析 `creds://` → 本地文件（SSH `-i`、KES/VRF/cold、Mithril GVK、telemetry basic-auth）；
   明文不进 spec/模型/JSON/transcript。
 - 新增 fixtures：`fixtures/e2e/compose.yaml`、devnet genesis/参数、`sudoers.d/*`、`examples/pool-spec.devnet.yaml`、
-  `tests/fixtures/secrets/fingerprints.txt`（预计算，见 p2-4）。
+  `tests/fixtures/secrets/fingerprints.txt`（预计算，见 p2-4）、`tests/e2e/agent-harness/scenarios.yaml`（见 p3-1）。
 
 ### 2.4 风险与回滚（具体化）
 | 风险 | 缓解（可度量） |
 | --- | --- |
-| devnet 可行性/稳定 | **p2-0 spike 前置**（activate 前收敛）；tip ≤30s 推进的就绪探针；不达标降级 waiver |
+| devnet 可行性/稳定 | **p2-0 spike 门控**（activate 后**第一项**，完成前阻塞 p2-1..p2-8）；tip ≤30s 推进的就绪探针；不达标降级 waiver |
 | agent flake | `N≥3`、任一违反即 FAIL、仅基础设施故障可重试、归档证据包 |
 | 容器保真度 | Model B 定稿 + 目标机真副作用断言；镜像 digest pin |
 | 状态串台 | 每 run 唯一 compose project/volume；`compose down -v`；独立审计库/genesis |
@@ -138,13 +143,13 @@ private devnet genesis。
 - [ ] p1-2 **安装**：control 与**各目标机**装同版本 `ouro`+`ouro-skills`+schemas（指定机制：build-in-image / 挂载 / release artifact）；OURO_HOME/审计库拓扑（目标机权威）；**版本 skew 即 fail**
 - [ ] p1-3 `ssh.rs::execute` 真执行（替换 `dry_run`）：`creds://` 解析 + `ssh -i` + 退出码/stdout/`audit_id` 回传；捕获与审计
 - [ ] p1-4 凭据/密钥 provisioning：生成 SSH keypair、写 `~/.ouro/credentials` 与目标 `authorized_keys`、cardano 密钥材料、Mithril GVK、telemetry basic-auth；密钥/凭据 ref 不入 transcript
-- [ ] p1-5 两类 principal + **sudoers.d 正文**（`fixtures/e2e/sudoers.d/ouro-exec`：绝对路径、`env_reset`、`secure_path`、显式 env、禁 `--audit-id` 任意值、无 shell）+ `ouro-diag` sshd `ForceCommand`（如有）
-- [ ] p1-6 `deploy/*` L2 从 marker 落成**目标机真动作** + 正向可观测副作用（进程/文件/服务态）+ 幂等真副作用
+- [ ] p1-5 两类 principal + **sudoers.d 正文**（`fixtures/e2e/sudoers.d/ouro-exec`：**固定绝对路径 CLI**、`env_reset`、`secure_path`、显式 env、无 shell；**不**用 argv 匹配约束 `--audit-id`——其合法性由 `ouro tool run` 的签名上下文自校验）+ `ouro-diag` sshd `ForceCommand`（如有）
+- [ ] p1-6 `deploy/*` 的**非节点系统动作**从 marker 落成目标机真动作（用户/目录/防火墙/chrony、`config render/apply`）+ 正向可观测副作用 + 幂等真副作用；**真起 `cardano-node` 的 `start`/`verify` 依赖 p2-1 的节点镜像/genesis，其真实验证移至 p2-2/p2-5**（p1-6 阶段该两步以桩表达）
 - [ ] p1-7 teardown/隔离：每 run 唯一 project/volume、`compose down -v`、独立审计库/secret/genesis
-- [ ] p1-8 安全负向**真跑**：`ouro-diag` 读密钥被拒（`cat/find/tar/journalctl`）、agent 受限 shell 裸 `ssh sudo`/`scp`/`docker rm` 被 sudoers 挡、直调脚本 vs `tool run` 审计
+- [ ] p1-8 安全负向**真跑**：`ouro-diag` 读密钥**文件**被拒（`cat/find/tar`；日志泄漏由 p2-4/E2E-9 覆盖）、agent 受限 shell 裸 `ssh sudo`/`scp`/`docker rm` 被 sudoers 挡、直调脚本 vs `tool run` 审计
 
 ### p2 — T2 真节点（p2-0 spike 门控 p2-2..p2-8）
-- [ ] p2-0 **devnet + Mithril 可行性 spike（activate 前收敛）**：选定 devnet 工具、era、KES/opcert 路径、network_magic/genesis 生成、**Mithril in/out**、预估 CI 时长；产出决策记录 + `examples/pool-spec.devnet.yaml`（`sync.mode: genesis`）
+- [ ] p2-0 **devnet + Mithril 可行性 spike（activate 后第一项，完成前阻塞 p2-1..p2-8）**：选定 devnet 工具、era、KES/opcert 路径、network_magic/genesis 生成、**Mithril in/out**、预估 CI 时长；**交付物**（随 p2-0 commit 提交）：决策记录 + `examples/pool-spec.devnet.yaml`（`sync.mode: genesis`）
 - [ ] p2-1 private devnet 容器（秒级出块、真 socket/`cardano-cli`），就绪探针
 - [ ] p2-2 真节点采集：`ouro status`/`deploy/verify` 经 SSH 从真 `cardano-cli query tip`/metrics 构建 snapshot（替代注入）；live 层**禁用** `OURO_STATUS_SNAPSHOT`
 - [ ] p2-3 真 KES 轮换：远端安装 opcert + 持久化本地 counter；ground-truth（`query operational-certificate`/forging 指标）
@@ -155,7 +160,7 @@ private devnet genesis。
 - [ ] p2-8 观测遥测 basic-auth 交接（S0009）：provisioning `creds://relay-telemetry-basic-auth`、鉴权抓取成功/未鉴权失败、密钥不入日志（或显式 Non-goal）
 
 ### p3 — T3 agent 决策层
-- [ ] p3-1 headless agent harness pin：模型 ID/版本、`temperature=0`（可用则）、场景表（deploy/upgrade/kes/troubleshooting 各 1）、`N≥3`、重试策略、transcript 留存
+- [ ] p3-1 headless agent harness pin + **最小接口 artifact**：`tests/e2e/agent-harness/scenarios.yaml`（deploy/upgrade/kes/troubleshooting 各 1 场景）、`make e2e-t3` 的输入/输出契约、transcript schema（供 p3-2/p3-3 断言消费）；并 pin 模型 ID/版本、`temperature=0`（可用则）、`N≥3`、重试策略、transcript 留存路径
 - [ ] p3-2 不变式断言器 + **审计事件模型扩展**（§2.3）：签名 provenance/序号/`rollback`/`unknown-stop` + 旁路检测（auditd/inotify + 编排器内建例外）
 - [ ] p3-3 secret 泄漏扫描接入（复用 p2-4 语料）：transcript+audit+`/var/log`+`set -x`
 - [ ] p3-4 分级 CI 与 gate 命名：`make test`（T1，每 PR）/`make e2e-t2`（每 CI）/`make e2e-t3`（nightly gate）+ 分支保护 + 预算超时
@@ -196,7 +201,7 @@ private devnet genesis。
 **E2E 判据（容器/真节点级，多为把 S0014 TC 从 fixture 升级为真跑）：**
 - E2E-0 compose 健康 + 双向 SSH + `creds://` resolve + `spec validate` 通过；密钥不入 transcript。
 - E2E-1（升级 TC-4）经 SSH → sudo → 目标机 `ouro tool run` → 真跑 → JSON 契约 + **目标机真实系统副作用** + 正确退出码。
-- E2E-2（升级 TC-14，简化后）`ouro-diag` 在目标机 `cat/find/tar/journalctl` 读 KES/VRF/cold **失败**；密钥 `0400`/无 sudo。
+- E2E-2（升级 TC-14，简化后）`ouro-diag` 在目标机 `cat/find/tar` 读 KES/VRF/cold **文件**失败（文件权限）；密钥 `0400`/无 sudo。（日志泄漏由 E2E-9 覆盖，不在本条。）
 - E2E-3（升级 TC-15）**确定性 negative harness**（非 agent）以 `ouro-diag` 密钥试 `ssh sudo`/`scp`/`docker rm` **被 sudoers 挡**（golden 拒绝码/消息）。
 - E2E-4（升级 TC-7）幂等**真副作用**：第二次 `changed=false` 且前后系统态 diff 为空（`find -newer`/unit restart count 探针清单）。
 - E2E-5（升级 TC-1/8/16/17）`status`/`verify` 对真节点断言 tip **区块高度单调增** / network_magic / genesis / 拓扑；**禁用**预置 snapshot；错网络真判 fail。
@@ -210,7 +215,7 @@ private devnet genesis。
 - E2E-13 exit 时序：注入 exit 30 → 下一次写前有 `rollback` 事件；注入 exit 40 → 同场景无后续写。
 - E2E-14 Mithril：真 private-devnet 恢复 + 证书证据 **OR** signed Non-goal waiver（依 p2-0）。
 - E2E-15 teardown/隔离：连续两次 CI 无残留容器/volume/网络、无审计/genesis 状态泄漏。
-- E2E-16（升级 TC-4）伪造审计上下文（env 有值、无 CLI 签名 token）**被拒**（延续 S0014 p5，真容器复验）。
+- E2E-16（升级 TC-4）伪造审计上下文**被拒**——三例:(a) 伪造 env、(b) 任意 `--audit-id`、(c) 无签名 token,经 `sudo ouro tool run` 均被目标机 `verify-context` 拒绝（延续 S0014 p5，真容器复验）。
 - E2E-17 takeover：真旧容器接管、密钥保留、切换失败可回滚（或 devnet Non-goal）。
 - E2E-18 观测 basic-auth：鉴权抓取成功 / 未鉴权 401；密钥不入日志（或 Non-goal）。
 
@@ -226,6 +231,13 @@ Pass/fail 判据：每个 pX-N 对应 E2E-* 全 pass 方可标 `[x]`；占位/�
   T3 不变式收敛为可观测 + 目标侧写 ground-truth + 编排器内建例外；补 p1-2 安装/p1-4 凭据/p1-5 sudoers 正文/p1-7 teardown/
   p2-0 devnet 可行性 spike/p2-2 真采集/p2-3 远端 opcert/p2-4 扫描器语料/p2-8 观测凭据；补全 item→E2E 矩阵与 S0014 升级对照表；
   加 CI SLO/镜像 pin/`N≥3` 硬 FAIL 规则；in/out 矩阵消歧（Mithril feasibility-gated、docker-exec 隔离移出）。
+- 2026-07-08T07:00:00+08:00 draft 二次修订（Codex 复审 + claude 可执行性复核）：定稿**控制面→目标机调用入口**
+  （`ouro tool run --machine` = 远端派发，无 `--machine` = 本地执行；`audit_id`/token 由目标机 `verify-context` 校验，
+  不经命令行传 `--audit-id`、不靠 sudoers 匹配 argv——修 GAP 1 + Codex #2，p1-5 去掉「禁 `--audit-id` 任意值」措辞，
+  E2E-16 拆为伪造 env / 任意 audit-id / 无 token 三例）；journalctl 从「读密钥文件」断言中移除、日志泄漏归 E2E-9
+  （Codex #3）；p3-1 补最小 harness artifact `scenarios.yaml` + `make e2e-t3` I/O 契约 + transcript schema（Codex #4）；
+  p2-0 时序改为「activate 后第一项、阻塞 p2-1..8」并明确交付物随 commit 提交（Codex #1 / GAP 3）；p1-6 收窄为非节点
+  系统动作、真起节点验证移 p2-2/p2-5（GAP 2）；补跨机审计 DB 聚合说明。
 
 ## 6. Validation Evidence (append-only)
 - （draft 阶段无验证证据；执行开始后按 `E2E-<n> | stack: <...> | command: <...> | result: <pass|fail> | note: <...>` 逐条追加）
