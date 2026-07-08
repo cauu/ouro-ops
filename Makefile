@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help fmt test check ci e2e status e2e-bed-up e2e-bed-down
+.PHONY: help fmt test check ci e2e status e2e-build-base e2e-bed-up e2e-bed-down
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -25,10 +25,14 @@ e2e: ## Run harness-style end-to-end flow
 status: ## Show concise git status
 	git status --short
 
-# Absolute path to the E2E compose file, independent of the caller's CWD.
-E2E_COMPOSE := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))fixtures/e2e/compose.yaml)
+# Repo root + E2E paths, independent of the caller's CWD.
+REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+E2E_COMPOSE := $(REPO_ROOT)/fixtures/e2e/compose.yaml
 
-e2e-bed-up: ## Build + start the S0015 E2E container bed (waits for healthy)
+e2e-build-base: ## Compile ouro + build the shared E2E base image (ouro-e2e-base:local)
+	docker build -f "$(REPO_ROOT)/fixtures/e2e/Dockerfile.base" -t ouro-e2e-base:local "$(REPO_ROOT)"
+
+e2e-bed-up: e2e-build-base ## Build + start the S0015 E2E container bed (waits for healthy)
 	docker compose -f "$(E2E_COMPOSE)" up -d --build --wait
 
 e2e-bed-down: ## Tear down the S0015 E2E bed (incl. volumes/networks)

@@ -1,0 +1,10 @@
+# Keep the S0015 E2E base build context small + reproducible.
+# Needed by fixtures/e2e/Dockerfile.base: Cargo.toml, Cargo.lock, crates/, ouro-skills/, schemas/.
+target/
+tmp/
+.git/
+code_review/
+node_modules/
+docs/
+*.log
+.DS_Store

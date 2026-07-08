@@ -10,10 +10,11 @@
 # Secrets: real KES/VRF/cold material is provisioned at RUNTIME (mount/exec, p1-4).
 # NEVER COPY/bake secret key material into an image layer (unremovable + leak-prone);
 # only the non-secret placeholder below may live in a layer.
-FROM debian:12-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df
+# Base carries the pinned `ouro` + ouro-skills + schemas (p1-2, built by `make e2e-build-base`).
+FROM ouro-e2e-base:local
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends openssh-server sudo ca-certificates \
+ && apt-get install -y --no-install-recommends openssh-server sudo \
  && rm -rf /var/lib/apt/lists/* \
  && rm -f /etc/ssh/ssh_host_* \
  && mkdir -p /run/sshd \

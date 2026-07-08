@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1
+# S0015 E2E base image (p1-2): compiles `ouro` ONCE and installs it + ouro-skills +
+# schemas at fixed paths. node/control images FROM this, so every bed container runs the
+# SAME pinned ouro (E2E-12 version equality). Build context = repo root (needs Cargo.toml,
+# Cargo.lock, crates/, ouro-skills/, schemas/).
+#
+# The builder is a BUILD tool (not shipped); its rust tag is not digest-pinned here — the
+# SHIPPED base is debian:12-slim@digest. Full toolchain/apt pinning + SBOM land with p2-1.
+
+FROM rust:1-slim-bookworm AS builder
+WORKDIR /build
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gcc libc6-dev pkg-config \
+ && rm -rf /var/lib/apt/lists/*
+# Cache deps: copy manifests first, then sources.
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+RUN cargo build --release --locked \
+ && strip target/release/ouro || true
+
+FROM debian:12-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df AS base
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/target/release/ouro /usr/local/bin/ouro
+COPY ouro-skills /opt/ouro/ouro-skills
+COPY schemas    /opt/ouro/schemas
+# Provenance for the version-skew check (E2E-12): every container built FROM this base
+# reports the same ouro version by construction.
+RUN /usr/local/bin/ouro version > /opt/ouro/VERSION
