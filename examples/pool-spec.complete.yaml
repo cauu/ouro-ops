@@ -1,0 +1,50 @@
+spec_version: 1
+pool:
+  ticker: OURO
+  network: mainnet
+  network_magic: 764824073
+  genesis_hashes:
+    byron: "f0f7892e57e32a7fbb6cfefb84c6a9c8b5d6847096d842e3"
+    shelley: "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35"
+    alonzo: "7e94a15f55d1e82d9b1d322dbbd5c8f0a11a9c6a8f5f2d0e"
+    conway: "4f8c2e9db1a334c66cf1217e2d308f794b08dd761d3e84ba"
+  metadata_url: "https://pool.example.com/metadata.json"
+  pledge_lovelace: 100000000000
+  margin: 0.02
+  cost_lovelace: 340000000
+topology_mode: p2p
+node_version: "10.5.4"
+machines:
+  - id: bp1
+    role: bp
+    ssh:
+      host: 10.0.0.10
+      port: 22
+      user: ouro-exec
+      key_ref: "creds://bp1"
+  - id: relay1
+    role: relay
+    public_endpoint:
+      host: relay1.example.com
+      port: 3001
+    ssh:
+      host: 203.0.113.5
+      port: 22
+      user: ouro-exec
+      key_ref: "creds://relay1"
+  - id: relay2
+    role: relay
+    public_endpoint:
+      host: relay2.example.com
+      port: 3001
+    ssh:
+      host: 203.0.113.6
+      port: 22
+      user: ouro-exec
+      key_ref: "creds://relay2"
+sync:
+  mode: mithril
+  mithril:
+    aggregator_endpoint: "https://aggregator.release-mainnet.api.mithril.network/aggregator"
+    genesis_verification_key_ref: "creds://mithril-gvk"
+    verify_snapshot_digest: true

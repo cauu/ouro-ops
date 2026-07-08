@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ouro-ops.local/schemas/pool-spec.schema.json",
+  "title": "Ouro pool specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["spec_version", "pool", "topology_mode", "node_version", "machines", "sync"],
+  "properties": {
+    "spec_version": {
+      "description": "Schema version. v1 is the only supported version in S0014.",
+      "const": 1
+    },
+    "pool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ticker",
+        "network",
+        "network_magic",
+        "genesis_hashes",
+        "metadata_url",
+        "pledge_lovelace",
+        "margin",
+        "cost_lovelace"
+      ],
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]{3,5}$"
+        },
+        "network": {
+          "type": "string",
+          "enum": ["mainnet", "preprod", "preview"]
+        },
+        "network_magic": {
+          "type": "integer"
+        },
+        "genesis_hashes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["shelley"],
+          "properties": {
+            "byron": { "$ref": "#/$defs/hashHex" },
+            "shelley": { "$ref": "#/$defs/hashHex" },
+            "alonzo": { "$ref": "#/$defs/hashHex" },
+            "conway": { "$ref": "#/$defs/hashHex" }
+          }
+        },
+        "metadata_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "pledge_lovelace": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "margin": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cost_lovelace": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "network": { "const": "mainnet" } }, "required": ["network"] },
+          "then": { "properties": { "network_magic": { "const": 764824073 } } }
+        },
+        {
+          "if": { "properties": { "network": { "const": "preprod" } }, "required": ["network"] },
+          "then": { "properties": { "network_magic": { "const": 1 } } }
+        },
+        {
+          "if": { "properties": { "network": { "const": "preview" } }, "required": ["network"] },
+          "then": { "properties": { "network_magic": { "const": 2 } } }
+        }
+      ]
+    },
+    "topology_mode": {
+      "type": "string",
+      "enum": ["p2p", "legacy"]
+    },
+    "node_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-.+][A-Za-z0-9.]+)?$"
+    },
+    "machines": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/machine" },
+      "contains": {
+        "type": "object",
+        "required": ["role"],
+        "properties": { "role": { "const": "bp" } }
+      }
+    },
+    "sync": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["mithril", "genesis"]
+        },
+        "mithril": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "aggregator_endpoint",
+            "genesis_verification_key_ref",
+            "verify_snapshot_digest"
+          ],
+          "properties": {
+            "aggregator_endpoint": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "genesis_verification_key_ref": { "$ref": "#/$defs/credentialRef" },
+            "verify_snapshot_digest": { "type": "boolean" }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "mode": { "const": "mithril" } }, "required": ["mode"] },
+          "then": { "required": ["mithril"] }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "credentialRef": {
+      "type": "string",
+      "pattern": "^creds://[A-Za-z0-9._/@:-]+$"
+    },
+    "hashHex": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{16,128}$"
+    },
+    "machine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "ssh"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,62}$"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["bp", "relay"]
+        },
+        "public_endpoint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host", "port"],
+          "properties": {
+            "host": {
+              "type": "string",
+              "minLength": 1
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        },
+        "ssh": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host", "port", "user", "key_ref"],
+          "properties": {
+            "host": {
+              "type": "string",
+              "minLength": 1
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "user": {
+              "type": "string",
+              "enum": ["ouro-exec"]
+            },
+            "key_ref": { "$ref": "#/$defs/credentialRef" }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "role": { "const": "relay" } }, "required": ["role"] },
+          "then": { "required": ["public_endpoint"] }
+        }
+      ]
+    }
+  }
+}
