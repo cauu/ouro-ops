@@ -1,14 +1,13 @@
 use chrono::{DateTime, Duration, Utc};
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::hash_map::DefaultHasher,
-    fs,
-    hash::{Hash, Hasher},
-    path::Path,
-};
+use sha2::Sha256;
+use std::{fs, path::Path};
 use uuid::Uuid;
 
 use crate::{OuroError, Result};
+
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ConfirmationToken {
@@ -133,25 +132,72 @@ pub fn load_or_create_secret(path: &Path) -> Result<String> {
     Ok(secret)
 }
 
-/// Signed token binding an audit invocation id to the local signing secret. It is
-/// injected into `ouro tool run` child scripts as `OURO_INVOCATION_TOKEN`; the
-/// scripts verify it (via `ouro tool verify-context`), so a fabricated
-/// `OURO_AUDIT_ID` env var alone cannot satisfy the L2 write gate. Bound to the
-/// audit id only (not the tool name) so an orchestrator batch that re-labels
-/// `OURO_TOOL_NAME` for sub-steps keeps a valid token.
+/// Signed token binding an audit invocation id to the local signing secret. It is a
+/// keyed MAC (HMAC-SHA256, secret = key, audit id = message), injected into
+/// `ouro tool run` child scripts as `OURO_INVOCATION_TOKEN`; the scripts verify it
+/// (via `ouro tool verify-context`), so a fabricated `OURO_AUDIT_ID` env var alone
+/// cannot satisfy the L2 write gate. Bound to the audit id only (not the tool name)
+/// so an orchestrator batch that re-labels `OURO_TOOL_NAME` for sub-steps keeps a
+/// valid token.
 pub fn invocation_token(secret: &str, audit_id: &str) -> String {
-    format!("inv_{}", stable_hash(&format!("{secret}:{audit_id}")))
+    format!("inv_{}", hex_encode(&mac_bytes(secret, audit_id)))
 }
 
-fn stable_hash(value: &str) -> String {
-    let mut hasher = DefaultHasher::new();
-    value.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+/// Constant-time verification of an invocation token against `(secret, audit_id)`.
+pub fn verify_invocation_token(secret: &str, audit_id: &str, token: &str) -> bool {
+    let Some(hex) = token.strip_prefix("inv_") else {
+        return false;
+    };
+    let Some(bytes) = hex_decode(hex) else {
+        return false;
+    };
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(audit_id.as_bytes());
+    mac.verify_slice(&bytes).is_ok()
+}
+
+fn mac_bytes(secret: &str, audit_id: &str) -> Vec<u8> {
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(audit_id.as_bytes());
+    mac.finalize().into_bytes().to_vec()
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+fn hex_decode(text: &str) -> Option<Vec<u8>> {
+    if text.len() % 2 != 0 {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).ok())
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_ttl, ConfirmationStore};
+    use super::{invocation_token, parse_ttl, verify_invocation_token, ConfirmationStore};
+
+    #[test]
+    fn invocation_token_is_a_verifiable_mac() {
+        let token = invocation_token("secret-key", "audit-123");
+        assert!(token.starts_with("inv_"));
+        assert!(verify_invocation_token("secret-key", "audit-123", &token));
+        // Wrong secret, wrong audit id, and a tampered token all fail.
+        assert!(!verify_invocation_token("other-secret", "audit-123", &token));
+        assert!(!verify_invocation_token("secret-key", "audit-999", &token));
+        assert!(!verify_invocation_token("secret-key", "audit-123", "inv_deadbeef"));
+        assert!(!verify_invocation_token("secret-key", "audit-123", "not-a-token"));
+    }
 
     #[test]
     fn token_is_single_use() {

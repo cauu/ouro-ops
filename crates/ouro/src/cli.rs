@@ -231,9 +231,10 @@ fn run_tool_verify_context(args: &[String]) -> Result<()> {
     let token = flag_value(args, "--token")?;
     let paths = ConfigPaths::discover();
     let secret = confirm::load_or_create_secret(&paths.tool_run_secret)?;
-    let expected = confirm::invocation_token(&secret, audit_id);
     let store = AuditStore::open(&paths.audit_db)?;
-    if token == expected && store.invocation_has_start(audit_id)? {
+    if confirm::verify_invocation_token(&secret, audit_id, token)
+        && store.invocation_has_start(audit_id)?
+    {
         output::print_json(&ToolOutput::ok("ouro.tool.verify-context", false).with_data(json!({
             "audit_id": audit_id,
             "verified": true
