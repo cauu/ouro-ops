@@ -8,39 +8,47 @@ export OURO_HOME=/tmp/ouro-harness-home
 export OURO_STATE_DIR=/tmp/ouro-harness-state
 rm -rf "$OURO_HOME" "$OURO_STATE_DIR" /tmp/ouro-harness-*
 
-cargo run -q -- spec validate --spec examples/pool-spec.minimal.yaml >/tmp/ouro-harness-spec.json
+# Build once so `ouro tool run` and the in-script `ouro tool verify-context`
+# callback resolve to the same binary.
+cargo build -q
+OURO="$ROOT/target/debug/ouro"
+SPEC=examples/pool-spec.minimal.yaml
 
-export OURO_AUDIT_ID=audit-harness-deploy
-export OURO_TOOL_NAME=deploy/preflight
-export OURO_SPEC=examples/pool-spec.minimal.yaml
-export OURO_MACHINE=bp1
-bash ouro-skills/deploy/scripts/preflight.sh >/tmp/ouro-harness-deploy-preflight.json
-bash ouro-skills/deploy/scripts/provision.sh >/tmp/ouro-harness-deploy-provision.json
-bash ouro-skills/deploy/scripts/sync.sh >/tmp/ouro-harness-deploy-sync.json
-bash ouro-skills/deploy/scripts/start.sh >/tmp/ouro-harness-deploy-start.json
-export OURO_STATUS_SNAPSHOT=tests/fixtures/deploy/verify-healthy.json
-bash ouro-skills/deploy/scripts/verify.sh >/tmp/ouro-harness-deploy-verify.json
+"$OURO" spec validate --spec "$SPEC" >/tmp/ouro-harness-spec.json
 
-export OURO_AUDIT_ID=audit-harness-upgrade
-export OURO_TOOL_NAME=upgrade/run
-bash ouro-skills/upgrade/scripts/run.sh >/tmp/ouro-harness-upgrade.json
+# Deploy flow — every write goes through the audited `ouro tool run` entrypoint
+# (no bare `bash script.sh`; the L2 gate now requires a CLI-signed audit context).
+"$OURO" tool run deploy/preflight --spec "$SPEC" --machine bp1 >/tmp/ouro-harness-deploy-preflight.json
+"$OURO" tool run deploy/provision --spec "$SPEC" --machine bp1 >/tmp/ouro-harness-deploy-provision.json
+"$OURO" tool run deploy/sync --spec "$SPEC" --machine bp1 >/tmp/ouro-harness-deploy-sync.json
+"$OURO" tool run deploy/start --spec "$SPEC" --machine bp1 >/tmp/ouro-harness-deploy-start.json
+OURO_STATUS_SNAPSHOT=tests/fixtures/deploy/verify-healthy.json \
+  "$OURO" tool run deploy/verify --spec "$SPEC" --machine bp1 >/tmp/ouro-harness-deploy-verify.json
 
-cargo run -q -- kes counter status --state tests/fixtures/kes/counter-state.json >/tmp/ouro-harness-kes-counter.json
-cargo run -q -- kes generate --spec examples/pool-spec.minimal.yaml --machine bp1 --out /tmp/ouro-harness-kes >/tmp/ouro-harness-kes-generate.json
-cargo run -q -- confirm create --action kes-push --machine bp1 --ttl 60s >/tmp/ouro-harness-confirm.json
+# Upgrade — single-relay demo topology, so the operator explicitly accepts the brief
+# relay downtime via the quorum override (a multi-relay pool would not need it).
+OURO_QUORUM_MIN_RELAYS=0 \
+  "$OURO" tool run upgrade/run --spec "$SPEC" >/tmp/ouro-harness-upgrade.json
+
+# KES rotation with a real, out-of-band confirmation token.
+"$OURO" kes counter status --state tests/fixtures/kes/counter-state.json >/tmp/ouro-harness-kes-counter.json
+"$OURO" kes generate --spec "$SPEC" --machine bp1 --out /tmp/ouro-harness-kes >/tmp/ouro-harness-kes-generate.json
+"$OURO" confirm create --action kes-push --machine bp1 --ttl 60s >/tmp/ouro-harness-confirm.json
 TOKEN="$(python3 - <<'PY'
 import json
 print(json.load(open('/tmp/ouro-harness-confirm.json'))['data']['token'])
 PY
 )"
-cargo run -q -- kes push --spec examples/pool-spec.minimal.yaml --machine bp1 --cert tests/fixtures/kes/node-cert-valid.json --counter-state tests/fixtures/kes/counter-state.json --confirm-token "$TOKEN" >/tmp/ouro-harness-kes-push.json
+"$OURO" kes push --spec "$SPEC" --machine bp1 --cert tests/fixtures/kes/node-cert-valid.json --counter-state tests/fixtures/kes/counter-state.json --confirm-token "$TOKEN" >/tmp/ouro-harness-kes-push.json
 
-export OURO_AUDIT_ID=audit-harness-takeover
-export OURO_TOOL_NAME=deploy/takeover
-export OURO_LEGACY_MANIFEST=tests/fixtures/deploy/legacy-manifest.json
-bash ouro-skills/deploy/scripts/takeover.sh >/tmp/ouro-harness-takeover.json
-export OURO_TOOL_NAME=deploy/takeover-verify
-bash ouro-skills/deploy/scripts/takeover-verify.sh >/tmp/ouro-harness-takeover-verify.json
+# Point-in-time staking facts via the read-only overview (replaces the Delegators UI).
+"$OURO" pool overview --spec "$SPEC" >/tmp/ouro-harness-pool-overview.json
+
+# Takeover of an existing legacy node.
+OURO_LEGACY_MANIFEST=tests/fixtures/deploy/legacy-manifest.json \
+  "$OURO" tool run deploy/takeover --spec "$SPEC" --machine bp1 >/tmp/ouro-harness-takeover.json
+OURO_LEGACY_MANIFEST=tests/fixtures/deploy/legacy-manifest.json \
+  "$OURO" tool run deploy/takeover-verify --spec "$SPEC" --machine bp1 >/tmp/ouro-harness-takeover-verify.json
 
 python3 - <<'PY'
 import glob, json

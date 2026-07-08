@@ -1,5 +1,7 @@
 use serde_json::json;
+use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
 
 use crate::{
     audit::AuditStore,
@@ -55,9 +57,10 @@ fn run_rollback(args: &[String]) -> Result<()> {
     let backup_id = flag_value(args, "--to")?;
     let token = optional_flag_value(args, "--confirm-token");
     let paths = ConfigPaths::discover();
-    consume_confirmation_if_needed(&paths, token, "rollback", machine)?;
+    consume_confirmation(&paths, token, "rollback", machine)?;
     let store = AuditStore::open(&paths.audit_db)?;
     let audit_id = store.begin_invocation("rollback", Some(machine))?;
+    store.finish_invocation(&audit_id, "rollback")?;
     output::print_json(&ToolOutput::ok("ouro.rollback", true).with_data(json!({
         "audit_id": audit_id,
         "machine": machine,
@@ -95,29 +98,128 @@ fn run_confirm(args: &[String]) -> Result<()> {
 
 fn run_tool(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {
-        Some("run") => {
-            let tool_name = args
-                .get(1)
-                .ok_or_else(|| OuroError::InvalidArgs("missing tool name".to_string()))?;
-            let spec_path = flag_value(args, "--spec")?;
-            let machine = optional_flag_value(args, "--machine");
-            let paths = ConfigPaths::discover();
-            let store = AuditStore::open(&paths.audit_db)?;
-            let audit_id = store.begin_invocation(tool_name, machine)?;
-            let readonly_token = confirm::readonly_invocation_token(&audit_id, tool_name);
-            output::print_json(&ToolOutput::ok("ouro.tool.run", false).with_data(json!({
-                "tool": tool_name,
-                "spec": spec_path,
-                "machine": machine,
-                "audit_id": audit_id,
-                "readonly_token": readonly_token,
-                "execution": "audit-context-created"
-            })))?;
-            Ok(())
-        }
+        Some("run") => run_tool_exec(args),
+        Some("verify-context") => run_tool_verify_context(args),
         _ => Err(OuroError::InvalidArgs(
-            "expected tool run <skill/script> --spec <path>".to_string(),
+            "expected tool run <skill/script> --spec <path> | tool verify-context".to_string(),
         )),
+    }
+}
+
+/// Resolve `<skill>/<script>` to an allowlisted L2 script path, rejecting traversal.
+fn resolve_skill_script(tool_name: &str) -> Result<PathBuf> {
+    let mut parts = tool_name.split('/');
+    let skill = parts.next().unwrap_or_default();
+    let script = parts.next().unwrap_or_default();
+    if skill.is_empty()
+        || script.is_empty()
+        || parts.next().is_some()
+        || tool_name.contains("..")
+        || !skill.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        || !script.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return Err(OuroError::InvalidArgs(format!(
+            "tool name must be <skill>/<script>: got {tool_name}"
+        )));
+    }
+    let path = PathBuf::from(format!("ouro-skills/{skill}/scripts/{script}.sh"));
+    if !path.is_file() {
+        return Err(OuroError::Validation(format!(
+            "no such tool script: {}",
+            path.display()
+        )));
+    }
+    Ok(path)
+}
+
+/// `ouro tool run` — the sole audited write entrypoint. It creates (or reuses via
+/// `--audit-id`) an audit invocation, signs an invocation token bound to that id,
+/// executes the resolved L2 script with a controlled environment, captures its
+/// output, and records a finish/crash terminal audit event before propagating the
+/// child's exit code. Scripts verify the signed token (via `tool verify-context`),
+/// so a fabricated `OURO_AUDIT_ID` env var alone can no longer satisfy the gate.
+fn run_tool_exec(args: &[String]) -> Result<()> {
+    let tool_name = args
+        .get(1)
+        .filter(|value| !value.starts_with("--"))
+        .ok_or_else(|| OuroError::InvalidArgs("missing tool name".to_string()))?
+        .clone();
+    let spec_path = optional_flag_value(args, "--spec");
+    let machine = optional_flag_value(args, "--machine");
+    let provided_audit = optional_flag_value(args, "--audit-id");
+    let script = resolve_skill_script(&tool_name)?;
+
+    let paths = ConfigPaths::discover();
+    let store = AuditStore::open(&paths.audit_db)?;
+    // Reuse a caller-supplied audit id (e.g. an orchestrator's) when it refers to a
+    // real invocation; otherwise begin a fresh one.
+    let audit_id = match provided_audit {
+        Some(id) if store.invocation_has_start(id)? => id.to_string(),
+        _ => store.begin_invocation(&tool_name, machine)?,
+    };
+    let secret = confirm::load_or_create_secret(&paths.tool_run_secret)?;
+    let token = confirm::invocation_token(&secret, &audit_id);
+    let self_bin = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "ouro".to_string());
+
+    let mut cmd = Command::new("bash");
+    cmd.arg(&script)
+        .env("OURO_AUDIT_ID", &audit_id)
+        .env("OURO_TOOL_NAME", &tool_name)
+        .env("OURO_INVOCATION_TOKEN", &token)
+        .env("OURO_BIN", &self_bin);
+    if let Some(spec_path) = spec_path {
+        cmd.env("OURO_SPEC", spec_path);
+    }
+    if let Some(machine) = machine {
+        cmd.env("OURO_MACHINE", machine);
+    }
+    let output = cmd.output()?;
+    // Forward the child's stdout (the single-line JSON contract) to our caller.
+    std::io::stdout().write_all(&output.stdout)?;
+    std::io::stdout().flush()?;
+
+    match output.status.code() {
+        Some(code) => {
+            store.record_terminal(
+                &audit_id,
+                &tool_name,
+                machine,
+                "finish",
+                &format!("exit_{code}"),
+            )?;
+            std::process::exit(code);
+        }
+        None => {
+            // Terminated by a signal — a crash, not a structured exit.
+            store.record_crash(&audit_id, &tool_name, "child terminated by signal")?;
+            std::process::exit(40);
+        }
+    }
+}
+
+/// Verify that an L2 script is running inside a genuine `ouro tool run` context: the
+/// invocation id must exist as a `start` audit event AND the supplied token must match
+/// the id signed with the local secret. Exits nonzero (→ script refuses to write) on
+/// any mismatch. Called by `ouro_require_audit_context` in `ouro-lib.sh`.
+fn run_tool_verify_context(args: &[String]) -> Result<()> {
+    let audit_id = flag_value(args, "--audit-id")?;
+    let token = flag_value(args, "--token")?;
+    let paths = ConfigPaths::discover();
+    let secret = confirm::load_or_create_secret(&paths.tool_run_secret)?;
+    let expected = confirm::invocation_token(&secret, audit_id);
+    let store = AuditStore::open(&paths.audit_db)?;
+    if token == expected && store.invocation_has_start(audit_id)? {
+        output::print_json(&ToolOutput::ok("ouro.tool.verify-context", false).with_data(json!({
+            "audit_id": audit_id,
+            "verified": true
+        })))?;
+        Ok(())
+    } else {
+        Err(OuroError::Validation(
+            "invalid or forged invocation token; run via ouro tool run".to_string(),
+        ))
     }
 }
 
@@ -135,8 +237,18 @@ fn run_pool(args: &[String]) -> Result<()> {
             )?;
             Ok(())
         }
+        Some("overview") => {
+            let spec_path = flag_value(args, "--spec")?;
+            let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
+            let snapshot = optional_flag_value(args, "--snapshot").map(PathBuf::from);
+            let overview = pool::overview(&spec, snapshot.as_deref())?;
+            output::print_json(
+                &ToolOutput::ok("ouro.pool.overview", false).with_data(json!(overview)),
+            )?;
+            Ok(())
+        }
         _ => Err(OuroError::InvalidArgs(
-            "expected pool register-tx --spec <path>".to_string(),
+            "expected pool register-tx --spec <path> | pool overview --spec <path>".to_string(),
         )),
     }
 }
@@ -169,10 +281,11 @@ fn run_kes(args: &[String]) -> Result<()> {
             let token = optional_flag_value(args, "--confirm-token");
             let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
             let paths = ConfigPaths::discover();
-            consume_confirmation_if_needed(&paths, token, "kes-push", machine)?;
+            // Single confirmation gate: consume the out-of-band token here, then run
+            // the push. push_opcert no longer re-checks a (fabricated) token.
+            consume_confirmation(&paths, token, "kes-push", machine)?;
             let store = AuditStore::open(&paths.audit_db)?;
-            let compat = format!("confirm:kes-push:{machine}");
-            let report = kes::push_opcert(&spec, machine, &cert, &counter, Some(&compat), &store)?;
+            let report = kes::push_opcert(&spec, machine, &cert, &counter, &store)?;
             output::print_json(&ToolOutput::ok("ouro.kes.push", true).with_data(json!(report)))?;
             Ok(())
         }
@@ -236,6 +349,7 @@ fn run_config(args: &[String]) -> Result<()> {
             let paths = ConfigPaths::discover();
             let store = AuditStore::open(&paths.audit_db)?;
             let audit_id = store.begin_invocation("config/apply", Some(machine_id))?;
+            store.finish_invocation(&audit_id, "config/apply")?;
             let prepared = SshRunner::new(true).prepare_tool_run(
                 &machine.ssh,
                 "config/apply",
@@ -334,20 +448,11 @@ fn optional_flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
         .map(|pair| pair[1].as_str())
 }
 
-fn validate_confirmation(token: Option<&str>, action: &str, machine: &str) -> Result<()> {
-    let expected = format!("confirm:{action}:{machine}");
-    match token {
-        Some(token) if token == expected => Ok(()),
-        Some(_) => Err(OuroError::Validation(
-            "confirmation token action or machine mismatch".to_string(),
-        )),
-        None => Err(OuroError::Validation(format!(
-            "dangerous {action} requires human-issued confirmation token"
-        ))),
-    }
-}
-
-fn consume_confirmation_if_needed(
+/// The ONLY confirmation path for dangerous commands: a single-use `tok_` token
+/// minted out-of-band by `ouro confirm create` and consumed from the store. There is
+/// deliberately no static/guessable fallback — a literal an agent can construct from
+/// public spec fields must never satisfy the gate (§2.2#3).
+fn consume_confirmation(
     paths: &ConfigPaths,
     token: Option<&str>,
     action: &str,
@@ -357,6 +462,11 @@ fn consume_confirmation_if_needed(
         Some(token) if token.starts_with("tok_") => {
             ConfirmationStore::consume(&paths.confirmations, token, action, machine)
         }
-        _ => validate_confirmation(token, action, machine),
+        Some(_) => Err(OuroError::Validation(format!(
+            "invalid confirmation token; issue one out-of-band with `ouro confirm create --action {action} --machine {machine}`"
+        ))),
+        None => Err(OuroError::Validation(format!(
+            "dangerous {action} requires a human-issued confirmation token (ouro confirm create)"
+        ))),
     }
 }

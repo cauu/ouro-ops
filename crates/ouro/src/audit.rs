@@ -71,6 +71,45 @@ impl AuditStore {
         Ok(invocation_id)
     }
 
+    /// Record a terminal event (`finish` or `crash`) for an existing invocation so
+    /// the audit trail can distinguish success from an aborted/crashed run.
+    pub fn record_terminal(
+        &self,
+        invocation_id: &str,
+        tool: &str,
+        machine: Option<&str>,
+        event: &str,
+        detail: &str,
+    ) -> Result<()> {
+        self.append(&AuditEvent {
+            id: Uuid::new_v4().to_string(),
+            invocation_id: invocation_id.to_string(),
+            event: event.to_string(),
+            tool: tool.to_string(),
+            machine: machine.map(str::to_string),
+            detail: detail.to_string(),
+            created_at: Utc::now(),
+        })
+    }
+
+    pub fn finish_invocation(&self, invocation_id: &str, tool: &str) -> Result<()> {
+        self.record_terminal(invocation_id, tool, None, "finish", "invocation finished")
+    }
+
+    pub fn record_crash(&self, invocation_id: &str, tool: &str, detail: &str) -> Result<()> {
+        self.record_terminal(invocation_id, tool, None, "crash", detail)
+    }
+
+    /// Whether a `start` event exists for the given invocation id. Used by the
+    /// audit-context gate to reject fabricated/forged invocation ids.
+    pub fn invocation_has_start(&self, invocation_id: &str) -> Result<bool> {
+        Ok(self.conn.query_row(
+            "select count(*) from audit_events where invocation_id = ?1 and event = 'start'",
+            params![invocation_id],
+            |row| row.get::<_, i64>(0),
+        )? > 0)
+    }
+
     pub fn count(&self) -> Result<u64> {
         Ok(self
             .conn
@@ -131,5 +170,21 @@ mod tests {
             .unwrap();
         assert!(!invocation.is_empty());
         assert_eq!(store.count().unwrap(), 1);
+    }
+
+    #[test]
+    fn records_finish_and_crash_terminal_events() {
+        let store = AuditStore::in_memory().unwrap();
+        let ok = store.begin_invocation("deploy/provision", Some("bp1")).unwrap();
+        store.finish_invocation(&ok, "deploy/provision").unwrap();
+        let crashed = store.begin_invocation("deploy/sync", Some("bp1")).unwrap();
+        store
+            .record_crash(&crashed, "deploy/sync", "child exited with signal")
+            .unwrap();
+        assert!(store.invocation_has_start(&ok).unwrap());
+        assert!(store.invocation_has_start(&crashed).unwrap());
+        assert!(!store.invocation_has_start("fabricated-id").unwrap());
+        // start + finish + start + crash
+        assert_eq!(store.count().unwrap(), 4);
     }
 }

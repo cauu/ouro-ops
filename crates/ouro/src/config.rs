@@ -12,6 +12,7 @@ pub struct ConfigPaths {
     pub staging_dir: PathBuf,
     pub audit_db: PathBuf,
     pub confirmations: PathBuf,
+    pub tool_run_secret: PathBuf,
     pub legacy_db: Option<PathBuf>,
 }
 
@@ -27,6 +28,7 @@ impl ConfigPaths {
             staging_dir: home.join("staging"),
             audit_db: home.join("audit.sqlite3"),
             confirmations: home.join("confirmations.json"),
+            tool_run_secret: home.join("tool-run.secret"),
             home,
             legacy_db,
         }

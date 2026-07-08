@@ -94,15 +94,16 @@ pub fn read_counter_state(path: &Path) -> Result<CounterState> {
     Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
 }
 
+/// Install an opcert (KES rotation). The out-of-band confirmation gate is enforced
+/// by the caller (`cli::consume_confirmation`); this function assumes confirmation
+/// has already been consumed and focuses on cert/counter validation + audit.
 pub fn push_opcert(
     spec: &PoolSpec,
     machine_id: &str,
     cert_path: &Path,
     counter_path: &Path,
-    confirm_token: Option<&str>,
     audit_store: &AuditStore,
 ) -> Result<KesPushReport> {
-    validate_confirm_token(confirm_token, "kes-push", machine_id)?;
     let machine = spec
         .machines
         .iter()
@@ -118,6 +119,7 @@ pub fn push_opcert(
     let counter = read_counter_state(counter_path)?;
     validate_opcert(machine_id, &cert, &counter)?;
     let audit_id = audit_store.begin_invocation("kes/push", Some(machine_id))?;
+    audit_store.finish_invocation(&audit_id, "kes/push")?;
     Ok(KesPushReport {
         machine: machine_id.to_string(),
         cert_path: cert_path.to_path_buf(),
@@ -125,19 +127,6 @@ pub fn push_opcert(
         installed_payload: vec!["node.cert".to_string()],
         audit_id,
     })
-}
-
-fn validate_confirm_token(token: Option<&str>, action: &str, machine: &str) -> Result<()> {
-    let expected = format!("confirm:{action}:{machine}");
-    match token {
-        Some(token) if token == expected => Ok(()),
-        Some(_) => Err(OuroError::Validation(
-            "confirmation token action or machine mismatch".to_string(),
-        )),
-        None => Err(OuroError::Validation(
-            "dangerous KES push requires human-issued confirmation token".to_string(),
-        )),
-    }
 }
 
 fn validate_opcert(machine: &str, cert: &OpCertMetadata, counter: &CounterState) -> Result<()> {
@@ -179,18 +168,19 @@ mod tests {
     use super::{push_opcert, read_counter_state};
 
     #[test]
-    fn rejects_kes_push_without_confirmation() {
+    fn accepts_valid_opcert_and_audits_finish() {
         let spec = PoolSpec::from_file(Path::new("examples/pool-spec.minimal.yaml")).unwrap();
         let audit = AuditStore::in_memory().unwrap();
-        let result = push_opcert(
+        let report = push_opcert(
             &spec,
             "bp1",
             Path::new("tests/fixtures/kes/node-cert-valid.json"),
             Path::new("tests/fixtures/kes/counter-state.json"),
-            None,
             &audit,
-        );
-        assert!(result.is_err());
+        )
+        .unwrap();
+        assert_eq!(report.installed_payload, vec!["node.cert".to_string()]);
+        assert!(audit.invocation_has_start(&report.audit_id).unwrap());
     }
 
     #[test]
@@ -202,7 +192,6 @@ mod tests {
             "bp1",
             Path::new("tests/fixtures/kes/node-cert-replay.json"),
             Path::new("tests/fixtures/kes/counter-state.json"),
-            Some("confirm:kes-push:bp1"),
             &audit,
         );
         assert!(result.is_err());

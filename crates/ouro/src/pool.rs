@@ -7,7 +7,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{audit::AuditStore, domain::PoolSpec, Result};
+use crate::{
+    audit::AuditStore,
+    domain::{MachineRole, PoolSpec},
+    OuroError, Result,
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RegisterTxReport {
@@ -46,6 +50,7 @@ pub fn build_register_tx(
         "witnesses": []
     });
     fs::write(&manifest_path, serde_json::to_string_pretty(&manifest)?)?;
+    audit_store.finish_invocation(&audit_id, "pool/register-tx")?;
     Ok(RegisterTxReport {
         tx_cbor_path,
         manifest_path,
@@ -54,6 +59,57 @@ pub fn build_register_tx(
         witnesses: Vec::new(),
         audit_id,
     })
+}
+
+/// Read-only pool overview — the structured-JSON replacement for the retired
+/// Delegators/staking UI (§2.4/§2.7). Pool parameters and relay endpoints come from
+/// the spec; point-in-time staking facts (active stake, delegators, saturation) are
+/// merged from an optional snapshot JSON (`--snapshot`, e.g. a Koios query result),
+/// so the command renders fully offline and network params stay consistent with the
+/// spec's declared network.
+pub fn overview(spec: &PoolSpec, snapshot_path: Option<&Path>) -> Result<serde_json::Value> {
+    let relays: Vec<_> = spec
+        .machines
+        .iter()
+        .filter(|machine| machine.role == MachineRole::Relay)
+        .map(|relay| {
+            serde_json::json!({
+                "id": relay.id,
+                "public_endpoint": relay.public_endpoint,
+            })
+        })
+        .collect();
+
+    let staking = match snapshot_path {
+        Some(path) => {
+            let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+            let snapshot_network = value.get("network").and_then(serde_json::Value::as_str);
+            if let Some(network) = snapshot_network {
+                if network != spec.pool.network.as_str() {
+                    return Err(OuroError::Validation(format!(
+                        "staking snapshot network {network} does not match spec network {}",
+                        spec.pool.network.as_str()
+                    )));
+                }
+            }
+            value
+        }
+        None => serde_json::json!({ "source": "spec-only", "note": "no live staking snapshot provided" }),
+    };
+
+    Ok(serde_json::json!({
+        "pool": {
+            "ticker": spec.pool.ticker,
+            "network": spec.pool.network.as_str(),
+            "network_magic": spec.pool.network_magic,
+            "pledge_lovelace": spec.pool.pledge_lovelace,
+            "margin": spec.pool.margin,
+            "cost_lovelace": spec.pool.cost_lovelace,
+            "metadata_url": spec.pool.metadata_url,
+        },
+        "relays": relays,
+        "staking": staking,
+    }))
 }
 
 fn stable_hash(value: &str) -> String {
@@ -69,6 +125,20 @@ mod tests {
     use crate::{audit::AuditStore, domain::PoolSpec};
 
     use super::build_register_tx;
+
+    #[test]
+    fn overview_is_readonly_and_network_consistent() {
+        let spec = PoolSpec::from_file(Path::new("examples/pool-spec.minimal.yaml")).unwrap();
+        let overview = super::overview(&spec, None).unwrap();
+        assert_eq!(overview["pool"]["ticker"], serde_json::json!(spec.pool.ticker));
+        assert_eq!(
+            overview["pool"]["network"],
+            serde_json::json!(spec.pool.network.as_str())
+        );
+        assert!(overview["relays"].as_array().unwrap().len() >= 1);
+        let text = serde_json::to_string(&overview).unwrap();
+        assert!(!text.contains("creds://"));
+    }
 
     #[test]
     fn register_tx_manifest_is_unsigned() {

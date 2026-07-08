@@ -6,6 +6,7 @@ use std::{
     hash::{Hash, Hasher},
     path::Path,
 };
+use uuid::Uuid;
 
 use crate::{OuroError, Result};
 
@@ -47,14 +48,10 @@ impl ConfirmationStore {
     ) -> Result<ConfirmationToken> {
         let mut store = Self::load(path)?;
         let expires_at = Utc::now() + ttl;
-        let token = format!(
-            "tok_{}",
-            stable_hash(&format!(
-                "{action}:{machine}:{}:{}",
-                expires_at.timestamp(),
-                store.tokens.len()
-            ))
-        );
+        // Token entropy comes from a CSPRNG (uuid v4 is backed by getrandom), NOT a
+        // hash of guessable inputs (action/machine/expiry/len) — otherwise an agent
+        // could enumerate candidates offline and forge a valid token.
+        let token = format!("tok_{}", Uuid::new_v4().simple());
         let entry = ConfirmationToken {
             token,
             action: action.to_string(),
@@ -110,8 +107,40 @@ pub fn parse_ttl(value: &str) -> Result<Duration> {
     }
 }
 
-pub fn readonly_invocation_token(audit_id: &str, tool: &str) -> String {
-    format!("ro_{}", stable_hash(&format!("{audit_id}:{tool}:readonly")))
+/// Load (or lazily create) the per-home signing secret used to bind an
+/// `ouro tool run` invocation to its audit context. The file is created `0600` so
+/// only the executing user can read it; a diagnostic principal without read access
+/// to it cannot forge a valid invocation token.
+pub fn load_or_create_secret(path: &Path) -> Result<String> {
+    if let Ok(existing) = fs::read_to_string(path) {
+        let trimmed = existing.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
+        }
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let secret = Uuid::new_v4().simple().to_string();
+    fs::write(path, &secret)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(path)?.permissions();
+        perms.set_mode(0o600);
+        fs::set_permissions(path, perms)?;
+    }
+    Ok(secret)
+}
+
+/// Signed token binding an audit invocation id to the local signing secret. It is
+/// injected into `ouro tool run` child scripts as `OURO_INVOCATION_TOKEN`; the
+/// scripts verify it (via `ouro tool verify-context`), so a fabricated
+/// `OURO_AUDIT_ID` env var alone cannot satisfy the L2 write gate. Bound to the
+/// audit id only (not the tool name) so an orchestrator batch that re-labels
+/// `OURO_TOOL_NAME` for sub-steps keeps a valid token.
+pub fn invocation_token(secret: &str, audit_id: &str) -> String {
+    format!("inv_{}", stable_hash(&format!("{secret}:{audit_id}")))
 }
 
 fn stable_hash(value: &str) -> String {

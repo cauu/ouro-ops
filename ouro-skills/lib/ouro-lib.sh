@@ -90,9 +90,23 @@ PY
   exit "$exit_class"
 }
 
+ouro_emit_unknown() {
+  # Exit class 40: state is UNKNOWN (e.g. verify could not determine changed state
+  # after a partial action). Callers must stop all writes and escalate to a human.
+  local code="${1:-unknown_state}"
+  ouro_emit_error 40 "$code" "${2:-state unknown; stop writes and escalate to a human}"
+}
+
 ouro_require_audit_context() {
-  if [[ -z "${OURO_AUDIT_ID:-}" || -z "${OURO_TOOL_NAME:-}" ]]; then
-    ouro_emit_error 10 "missing_audit_context" "write operation refused without OURO_AUDIT_ID/OURO_TOOL_NAME"
+  # Presence of the env vars alone is NOT sufficient — an agent could `export` them.
+  # The gate is only satisfied when a CLI-signed invocation token verifies against the
+  # audit context, which only `ouro tool run` can produce (§2.2#2).
+  if [[ -z "${OURO_AUDIT_ID:-}" || -z "${OURO_TOOL_NAME:-}" || -z "${OURO_INVOCATION_TOKEN:-}" ]]; then
+    ouro_emit_error 10 "missing_audit_context" "write operation refused; run via 'ouro tool run'"
+  fi
+  local bin="${OURO_BIN:-ouro}"
+  if ! "$bin" tool verify-context --audit-id "$OURO_AUDIT_ID" --token "$OURO_INVOCATION_TOKEN" >/dev/null 2>&1; then
+    ouro_emit_error 10 "invalid_audit_context" "invocation token failed verification; run via 'ouro tool run'"
   fi
 }
 

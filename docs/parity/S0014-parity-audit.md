@@ -8,7 +8,7 @@ Status: pass for v1 replacement gate
 | --- | --- | --- |
 | `commands/kes.rs` KES flow | `ouro kes generate`, `ouro kes push`, `ouro kes counter status` | `cargo test -q`; `ci/harness-e2e.sh`; TC-2/TC-3/TC-18 |
 | `commands/pool.rs` spec/config/register/status | `ouro spec validate`, `ouro config render/apply`, `ouro pool register-tx`, `ouro status --diff-spec` | TC-1/TC-13/TC-16/TC-17/TC-19 |
-| `commands/staking.rs` point-in-time pool view | `ouro pool register-tx` manifest and planned `ouro pool overview` read path | drop trend UI; keep point facts as CLI JSON |
+| `commands/staking.rs` point-in-time pool view | `ouro pool overview` read path (structured JSON; optional `--snapshot` for live staking facts) | drop trend UI; keep point facts as CLI JSON; executable parity in `tests/test_parity_audit.py` |
 | `keychain.rs` SSH fingerprint helper | `creds://` references plus redacted runner command shape | TC-13/TC-15 |
 | `db/` and `commands/machine.rs` audit/machine state | `AuditStore`, `pool-spec.yaml` machines, `ouro audit log` | TC-1/TC-4 |
 

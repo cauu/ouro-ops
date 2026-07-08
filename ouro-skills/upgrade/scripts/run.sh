@@ -16,17 +16,40 @@ fi
 printf '%s\n' "$OURO_AUDIT_ID" > "$LOCK"
 trap 'rm -f "$LOCK"' EXIT
 
-ORDER="$(python3 - "$SPEC" <<'PY'
+# Plan: relays first (BP-last), each line "id role"; first line is the relay total.
+mapfile -t PLAN < <(python3 - "$SPEC" <<'PY'
 import sys, yaml
 spec = yaml.safe_load(open(sys.argv[1]))
 relays = [m["id"] for m in spec["machines"] if m["role"] == "relay"]
 bp = [m["id"] for m in spec["machines"] if m["role"] == "bp"]
-print(" ".join(relays + bp))
+print(len(relays))
+for r in relays:
+    print(f"{r} relay")
+for b in bp:
+    print(f"{b} bp")
 PY
-)"
+)
+RELAY_TOTAL="${PLAN[0]}"
+# Minimum number of relays that must stay online at ALL times (§2.2#4 hard invariant:
+# "BP + at least one relay online"). This serial orchestrator takes exactly one machine
+# down at a time, so upgrading a relay leaves RELAY_TOTAL-1 relays online.
+QUORUM_MIN="${OURO_QUORUM_MIN_RELAYS:-1}"
 
 completed=()
-for machine in $ORDER; do
+for entry in "${PLAN[@]:1}"; do
+  machine="${entry%% *}"
+  role="${entry##* }"
+  if [[ "$role" == "relay" ]]; then
+    online_after=$((RELAY_TOTAL - 1))
+    if (( online_after < QUORUM_MIN )); then
+      ouro_emit_error 10 "relay_quorum_violation" "upgrading $machine would leave $online_after relay(s) online, below quorum $QUORUM_MIN; refuse"
+    fi
+  else
+    # BP is upgraded last, after every relay is verified back online.
+    if (( RELAY_TOTAL < QUORUM_MIN )); then
+      ouro_emit_error 10 "relay_quorum_violation" "cannot upgrade BP $machine with only $RELAY_TOTAL relay(s), below quorum $QUORUM_MIN; refuse"
+    fi
+  fi
   export OURO_MACHINE="$machine"
   export OURO_TOOL_NAME="upgrade/upgrade-one"
   if ! bash "$ROOT/ouro-skills/upgrade/scripts/upgrade-one.sh" >/tmp/ouro-upgrade-one.json; then

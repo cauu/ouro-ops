@@ -1,54 +1,40 @@
 #!/usr/bin/env python3
 import json
-import os
 import subprocess
-from pathlib import Path
 
 import jsonschema
 
+from _ctx import ROOT, tool_run
 
-ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ROOT / "schemas/tool-output.schema.json").read_text())
+HOME = "/tmp/ouro-runtime-home"
 
 
-def run(script, env, check=True):
-    result = subprocess.run(["bash", str(ROOT / script)], env=env, text=True, stdout=subprocess.PIPE, check=check)
+def run(tool, state, machine="bp1", check=True):
+    result = tool_run(
+        tool, machine=machine, env={"OURO_STATE_DIR": state}, home=HOME, check=check
+    )
     payload = json.loads(result.stdout)
     jsonschema.Draft202012Validator(SCHEMA).validate(payload)
     return result, payload
 
 
-def env(state, tool, machine="bp1"):
-    value = os.environ.copy()
-    value.update({
-        "OURO_AUDIT_ID": f"audit-{tool}",
-        "OURO_TOOL_NAME": tool,
-        "OURO_MACHINE": machine,
-        "OURO_STATE_DIR": state,
-    })
-    return value
-
-
 def main():
+    subprocess.run(["rm", "-rf", HOME], check=True)
     runtime_state = "/tmp/ouro-runtime-script-state"
     subprocess.run(["rm", "-rf", runtime_state], check=True)
-    runtime_env = env(runtime_state, "runtime/topology-apply")
-    first = run("ouro-skills/runtime/scripts/topology-apply.sh", runtime_env)[1]
-    second = run("ouro-skills/runtime/scripts/topology-apply.sh", runtime_env)[1]
+    first = run("runtime/topology-apply", runtime_state)[1]
+    second = run("runtime/topology-apply", runtime_state)[1]
     assert first["changed"] is True
     assert second["changed"] is False
-    runtime_env["OURO_TOOL_NAME"] = "runtime/verify"
-    assert run("ouro-skills/runtime/scripts/verify.sh", runtime_env)[1]["status"] == "ok"
+    assert run("runtime/verify", runtime_state)[1]["status"] == "ok"
 
     obs_state = "/tmp/ouro-observability-script-state"
     subprocess.run(["rm", "-rf", obs_state], check=True)
-    obs_env = env(obs_state, "observability/install-gateway", "gateway")
-    assert run("ouro-skills/observability/scripts/install-gateway.sh", obs_env)[1]["changed"] is True
-    obs_env["OURO_TOOL_NAME"] = "observability/verify"
-    assert run("ouro-skills/observability/scripts/verify.sh", obs_env)[1]["status"] == "ok"
-    obs_env["OURO_TOOL_NAME"] = "observability/rollback"
-    assert run("ouro-skills/observability/scripts/rollback.sh", obs_env)[1]["changed"] is True
-    failed = run("ouro-skills/observability/scripts/verify.sh", obs_env, check=False)
+    assert run("observability/install-gateway", obs_state, machine="gateway")[1]["changed"] is True
+    assert run("observability/verify", obs_state, machine="gateway")[1]["status"] == "ok"
+    assert run("observability/rollback", obs_state, machine="gateway")[1]["changed"] is True
+    failed = run("observability/verify", obs_state, machine="gateway", check=False)
     assert failed[0].returncode == 20
     print("runtime and observability scripts passed")
 
