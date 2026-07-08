@@ -1,0 +1,8 @@
+{
+  "cert_type": "opcert",
+  "machine": "bp1",
+  "kes_vkey_hash": "bp1-kes-vkey-hash",
+  "kes_period": 800,
+  "counter": 5,
+  "issuer_hash": "abcdef0123456789"
+}

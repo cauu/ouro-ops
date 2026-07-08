@@ -3,6 +3,7 @@ pub mod cli;
 pub mod config;
 pub mod domain;
 pub mod error;
+pub mod kes;
 pub mod migration;
 pub mod output;
 pub mod render;

@@ -5,7 +5,7 @@ use crate::{
     audit::AuditStore,
     config::ConfigPaths,
     domain::PoolSpec,
-    migration,
+    kes, migration,
     output::{self, ToolOutput},
     render,
     ssh::SshRunner,
@@ -36,12 +36,52 @@ pub fn run(args: Vec<String>) -> Result<()> {
         }
         "audit" => run_audit(&args[2..])?,
         "config" => run_config(&args[2..])?,
+        "kes" => run_kes(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
         "spec" => run_spec(&args[2..])?,
         "status" => run_status(&args[2..])?,
         other => return Err(OuroError::InvalidArgs(format!("unknown command {other}"))),
     }
     Ok(())
+}
+
+fn run_kes(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        Some("generate") => {
+            let spec_path = flag_value(args, "--spec")?;
+            let machine = flag_value(args, "--machine")?;
+            let out_dir = flag_value(args, "--out").unwrap_or(".ouro/staging/kes");
+            let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
+            let report = kes::generate_vkey(&spec, machine, &PathBuf::from(out_dir))?;
+            output::print_json(
+                &ToolOutput::ok("ouro.kes.generate", true).with_data(json!(report)),
+            )?;
+            Ok(())
+        }
+        Some("counter") if args.get(1).map(String::as_str) == Some("status") => {
+            let state = kes::read_counter_state(&PathBuf::from(flag_value(args, "--state")?))?;
+            output::print_json(
+                &ToolOutput::ok("ouro.kes.counter.status", false).with_data(json!(state)),
+            )?;
+            Ok(())
+        }
+        Some("push") => {
+            let spec_path = flag_value(args, "--spec")?;
+            let machine = flag_value(args, "--machine")?;
+            let cert = PathBuf::from(flag_value(args, "--cert")?);
+            let counter = PathBuf::from(flag_value(args, "--counter-state")?);
+            let token = optional_flag_value(args, "--confirm-token");
+            let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
+            let paths = ConfigPaths::discover();
+            let store = AuditStore::open(&paths.audit_db)?;
+            let report = kes::push_opcert(&spec, machine, &cert, &counter, token, &store)?;
+            output::print_json(&ToolOutput::ok("ouro.kes.push", true).with_data(json!(report)))?;
+            Ok(())
+        }
+        _ => Err(OuroError::InvalidArgs(
+            "expected kes generate|counter status|push".to_string(),
+        )),
+    }
 }
 
 fn run_status(args: &[String]) -> Result<()> {
@@ -176,4 +216,10 @@ fn flag_value<'a>(args: &'a [String], flag: &str) -> Result<&'a str> {
         .find(|pair| pair[0] == flag)
         .map(|pair| pair[1].as_str())
         .ok_or_else(|| OuroError::InvalidArgs(format!("missing {flag}")))
+}
+
+fn optional_flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    args.windows(2)
+        .find(|pair| pair[0] == flag)
+        .map(|pair| pair[1].as_str())
 }
