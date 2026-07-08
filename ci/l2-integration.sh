@@ -10,4 +10,5 @@ python3 tests/test_takeover_scripts.py
 python3 tests/test_script_pairing.py
 python3 tests/test_skill_docs.py
 python3 tests/test_security_negative.py
+python3 tests/test_parity_audit.py
 cargo test -q
