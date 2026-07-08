@@ -31,7 +31,7 @@ impl SshRunner {
                 "-p".to_string(),
                 target.port.to_string(),
                 "-i".to_string(),
-                target.key_ref.as_str().to_string(),
+                "<credential-ref>".to_string(),
                 format!("{}@{}", target.user, target.host),
                 "sudo".to_string(),
                 "-n".to_string(),
@@ -70,6 +70,8 @@ mod tests {
         );
         let joined = cmd.args.join(" ");
         assert!(joined.contains("sudo -n ouro tool run deploy/preflight"));
+        assert!(joined.contains("<credential-ref>"));
+        assert!(!joined.contains("creds://"));
         assert!(!joined.contains(" docker rm "));
         assert!(!joined.contains(" scp "));
         assert!(!joined.contains(" sudo rm "));

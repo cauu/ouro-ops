@@ -5,6 +5,7 @@ pub mod domain;
 pub mod error;
 pub mod migration;
 pub mod output;
+pub mod render;
 pub mod secrets;
 pub mod ssh;
 

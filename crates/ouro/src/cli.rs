@@ -7,6 +7,8 @@ use crate::{
     domain::PoolSpec,
     migration,
     output::{self, ToolOutput},
+    render,
+    ssh::SshRunner,
     OuroError, Result,
 };
 
@@ -32,6 +34,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
             )?;
         }
         "audit" => run_audit(&args[2..])?,
+        "config" => run_config(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
         "spec" => run_spec(&args[2..])?,
         other => return Err(OuroError::InvalidArgs(format!("unknown command {other}"))),
@@ -41,7 +44,61 @@ pub fn run(args: Vec<String>) -> Result<()> {
 
 fn print_help() {
     println!("ouro: deterministic Cardano stake pool operations CLI");
-    println!("commands: version, paths, contract, spec validate --spec <path>, audit init, legacy inspect --db <path>");
+    println!("commands: version, paths, contract, spec validate --spec <path>, config render/apply, audit init, legacy inspect --db <path>");
+}
+
+fn run_config(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        Some("render") => {
+            let spec_path = flag_value(args, "--spec")?;
+            let machine = flag_value(args, "--machine")?;
+            let output_root = flag_value(args, "--out").unwrap_or(".ouro/staging/render");
+            let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
+            let rendered = render::render_machine(&spec, machine, &PathBuf::from(output_root))?;
+            output::print_json(
+                &ToolOutput::ok("ouro.config.render", true).with_data(json!({
+                    "machine": rendered.machine,
+                    "role": rendered.role,
+                    "output_dir": rendered.output_dir,
+                    "files": rendered.files,
+                    "topology_mode": spec.topology_mode
+                })),
+            )?;
+            Ok(())
+        }
+        Some("apply") => {
+            let spec_path = flag_value(args, "--spec")?;
+            let machine_id = flag_value(args, "--machine")?;
+            let rendered_dir = flag_value(args, "--rendered-dir")?;
+            let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
+            let machine = spec
+                .machines
+                .iter()
+                .find(|candidate| candidate.id == machine_id)
+                .ok_or_else(|| OuroError::Validation(format!("unknown machine {machine_id}")))?;
+            let paths = ConfigPaths::discover();
+            let store = AuditStore::open(&paths.audit_db)?;
+            let audit_id = store.begin_invocation("config/apply", Some(machine_id))?;
+            let prepared = SshRunner::new(true).prepare_tool_run(
+                &machine.ssh,
+                "config/apply",
+                spec_path,
+                &audit_id,
+            );
+            output::print_json(&ToolOutput::ok("ouro.config.apply", true).with_data(json!({
+                "audit_id": audit_id,
+                "machine": machine_id,
+                "rendered_dir": rendered_dir,
+                "transport": "ouro-tool-run",
+                "prepared_command": prepared,
+                "dry_run": true
+            })))?;
+            Ok(())
+        }
+        _ => Err(OuroError::InvalidArgs(
+            "expected config render/apply".to_string(),
+        )),
+    }
 }
 
 fn run_spec(args: &[String]) -> Result<()> {
