@@ -232,6 +232,7 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
         "OURO_MITHRIL_DIGEST",
         "OURO_MITHRIL_CERT_CHAIN",
         "OURO_LEGACY_MANIFEST",
+        "OURO_CARDANO_ROOT",
     ];
     let mut cmd = Command::new("bash");
     cmd.env_clear();

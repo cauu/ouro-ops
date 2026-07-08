@@ -11,12 +11,14 @@ SCHEMA = json.loads((ROOT / "schemas/tool-output.schema.json").read_text())
 HOME = "/tmp/ouro-deploy-home"
 SPEC = str(ROOT / "examples/pool-spec.minimal.yaml")
 STATE_DIR = "/tmp/ouro-deploy-script-state"
+CARDANO_ROOT = "/tmp/ouro-deploy-cardano"
 
 
 def env_extra():
     return {
         "OURO_STATE_DIR": STATE_DIR,
         "OURO_STATUS_SNAPSHOT": str(ROOT / "tests/fixtures/deploy/verify-healthy.json"),
+        "OURO_CARDANO_ROOT": CARDANO_ROOT,
     }
 
 
@@ -30,13 +32,18 @@ def run_deploy(script, check=True):
 
 
 def main():
-    subprocess.run(["rm", "-rf", STATE_DIR, HOME], check=True)
+    subprocess.run(["rm", "-rf", STATE_DIR, HOME, CARDANO_ROOT], check=True)
     assert run_deploy("preflight")[1]["changed"] is False
 
+    # provision does a REAL idempotent action: creates the node-host dir layout and
+    # renders the node config; second run detects it and reports changed=false.
     first = run_deploy("provision")[1]
     second = run_deploy("provision")[1]
     assert first["changed"] is True
     assert second["changed"] is False
+    # Real observable side effect (not a marker):
+    assert Path(CARDANO_ROOT, "config", "bp1", "config.json").is_file()
+    assert Path(CARDANO_ROOT, "db").is_dir()
 
     assert run_deploy("sync")[1]["changed"] is True
     assert run_deploy("start")[1]["changed"] is True
