@@ -106,3 +106,23 @@ ouro_check_then_act() {
     ouro_emit_ok true "changed"
   fi
 }
+
+ouro_detect_package_manager() {
+  if command -v apt-get >/dev/null 2>&1; then
+    printf 'apt\n'
+  elif command -v dnf >/dev/null 2>&1; then
+    printf 'dnf\n'
+  else
+    ouro_emit_error 10 "package_manager_unsupported" "expected apt-get or dnf"
+  fi
+}
+
+ouro_detect_firewall() {
+  if command -v ufw >/dev/null 2>&1; then
+    printf 'ufw\n'
+  elif command -v firewall-cmd >/dev/null 2>&1; then
+    printf 'firewalld\n'
+  else
+    printf 'none\n'
+  fi
+}
