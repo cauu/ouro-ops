@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ouro-ops.local/schemas/tool-output.schema.json",
+  "title": "Ouro tool output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tool", "machine", "status", "changed", "checks", "duration_s", "audit_id"],
+  "properties": {
+    "tool": { "type": "string", "minLength": 1 },
+    "machine": { "type": ["string", "null"] },
+    "status": { "type": "string", "enum": ["ok", "error"] },
+    "changed": { "type": "boolean" },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "pass", "severity", "exit_class", "rollback_safe", "detail"],
+        "properties": {
+          "name": { "type": "string" },
+          "pass": { "type": "boolean" },
+          "severity": { "type": "string", "enum": ["info", "warning", "critical"] },
+          "exit_class": { "type": "integer", "enum": [0, 10, 20, 30, 40] },
+          "rollback_safe": { "type": "boolean" },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "duration_s": { "type": "number", "minimum": 0 },
+    "audit_id": { "type": ["string", "null"] },
+    "data": true,
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "detail", "hint"],
+      "properties": {
+        "code": { "type": "string" },
+        "detail": { "type": "string" },
+        "hint": { "type": "string" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "error" } }, "required": ["status"] },
+      "then": { "required": ["error"] }
+    }
+  ]
+}
