@@ -38,6 +38,11 @@
   | 密钥 `0400`、属主节点用户、无 sudo | **保留**，E2E-2 真跑 |
   | **日志泄漏** | 由 E2E-9 fingerprint/canary 扫描覆盖（非文件读取语义） |
 
+- **密钥落地约束（p1-4/p1-8 遵循）**：真实 KES/VRF/cold 材料仅 **runtime provision**（mount/exec），**禁止 COPY/bake
+  进镜像层**（不可 `down -v` 清除、易随 registry 泄漏）；镜像层只允许非密占位。
+- **E2E-2 双重断言**：`ouro-diag` 读密钥被拒**同时依赖**目录 `/opt/cardano/keys` 为 `0700`（阻断遍历）与文件为 `0400`；
+  E2E-2/p1-8 须**同时断言目录与文件权限**，防后续 item 把目录放宽为 `0755` 使 `find/ls` 可列举而弱化负向。
+
 ## D5 — 安装拓扑（p1-2 遵循）
 - `control` 与**每台目标机**都安装**同一 digest-pin 版本**的 `ouro` + `ouro-skills` + `schemas`；版本 skew 即 fail。
 - 安装机制（p1-2 定：build-in-image / 挂载 / release artifact 三选一）；`OURO_HOME` 于目标机，审计库随之在目标机。

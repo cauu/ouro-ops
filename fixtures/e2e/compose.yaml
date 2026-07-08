@@ -1,9 +1,11 @@
 # S0015 containerized E2E bed (p1-1 skeleton).
 # Topology (see docs/design/S0015-execution-topology.md): control drives ouro and
 # SSHes to bp1 / relay1 / relay2. Node model, credentials, sudoers, and cardano-node
-# are layered in by p1-2..p1-5 and p2-1. `name:` fixes the compose project so each run
-# is isolated and `docker compose down -v` reliably reaps everything (E2E-15).
-name: ouro-e2e
+# are layered in by p1-2..p1-5 and p2-1.
+# Project name defaults to `ouro-e2e` for predictable single-run teardown; set
+# OURO_E2E_PROJECT to a unique value for parallel/CI isolation. Per-run unique-project
+# isolation is finalized in p1-7 (a single fixed name is NOT per-run isolation).
+name: ${OURO_E2E_PROJECT:-ouro-e2e}
 
 services:
   control:
@@ -11,6 +13,7 @@ services:
       context: .
       dockerfile: control/Dockerfile
     hostname: control
+    init: true
     networks: [bed]
 
   bp1:

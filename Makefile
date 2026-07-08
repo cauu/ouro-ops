@@ -25,8 +25,11 @@ e2e: ## Run harness-style end-to-end flow
 status: ## Show concise git status
 	git status --short
 
-e2e-bed-up: ## Build + start the S0015 E2E container bed
-	cd fixtures/e2e && docker compose up -d --build
+# Absolute path to the E2E compose file, independent of the caller's CWD.
+E2E_COMPOSE := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))fixtures/e2e/compose.yaml)
+
+e2e-bed-up: ## Build + start the S0015 E2E container bed (waits for healthy)
+	docker compose -f "$(E2E_COMPOSE)" up -d --build --wait
 
 e2e-bed-down: ## Tear down the S0015 E2E bed (incl. volumes/networks)
-	cd fixtures/e2e && docker compose down -v --remove-orphans
+	docker compose -f "$(E2E_COMPOSE)" down -v --remove-orphans
