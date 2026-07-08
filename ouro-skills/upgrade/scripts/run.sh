@@ -16,24 +16,25 @@ fi
 printf '%s\n' "$OURO_AUDIT_ID" > "$LOCK"
 trap 'rm -f "$LOCK"' EXIT
 
-# Plan: relays first (BP-last), each line "id role"; first line is the relay total.
+# Plan: relays first (BP-last), each line "id role". First line is "<relay_total> <quorum_min>".
+# Quorum is a HUMAN-authored spec policy (spec.upgrade.min_online_relays, default 1), NOT an
+# environment knob — an agent invoking `ouro tool run` cannot loosen the §2.2#4 invariant.
 mapfile -t PLAN < <(python3 - "$SPEC" <<'PY'
 import sys, yaml
 spec = yaml.safe_load(open(sys.argv[1]))
 relays = [m["id"] for m in spec["machines"] if m["role"] == "relay"]
 bp = [m["id"] for m in spec["machines"] if m["role"] == "bp"]
-print(len(relays))
+quorum = int((spec.get("upgrade") or {}).get("min_online_relays", 1))
+print(f"{len(relays)} {quorum}")
 for r in relays:
     print(f"{r} relay")
 for b in bp:
     print(f"{b} bp")
 PY
 )
-RELAY_TOTAL="${PLAN[0]}"
-# Minimum number of relays that must stay online at ALL times (§2.2#4 hard invariant:
-# "BP + at least one relay online"). This serial orchestrator takes exactly one machine
-# down at a time, so upgrading a relay leaves RELAY_TOTAL-1 relays online.
-QUORUM_MIN="${OURO_QUORUM_MIN_RELAYS:-1}"
+read -r RELAY_TOTAL QUORUM_MIN <<< "${PLAN[0]}"
+# This serial orchestrator takes exactly one machine down at a time, so upgrading a relay
+# leaves RELAY_TOTAL-1 relays online; refuse if that would fall below the spec quorum.
 
 completed=()
 for entry in "${PLAN[@]:1}"; do

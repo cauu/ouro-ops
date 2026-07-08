@@ -163,8 +163,31 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| "ouro".to_string());
 
+    // env_clear + allowlist: the child script receives ONLY a controlled environment.
+    // This prevents an agent from injecting policy or test hooks (e.g. a quorum knob or
+    // a failure-injection flag) through the caller's environment — policy comes from the
+    // spec, not env (§2.2#4 / p5-2). Only inert runtime *inputs* are passed through.
+    const ENV_ALLOWLIST: &[&str] = &[
+        "PATH",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "TMPDIR",
+        "OURO_STATE_DIR",
+        "OURO_STATUS_SNAPSHOT",
+        "OURO_MITHRIL_DIGEST",
+        "OURO_MITHRIL_CERT_CHAIN",
+        "OURO_LEGACY_MANIFEST",
+    ];
     let mut cmd = Command::new("bash");
+    cmd.env_clear();
+    for key in ENV_ALLOWLIST {
+        if let Some(value) = std::env::var_os(key) {
+            cmd.env(key, value);
+        }
+    }
     cmd.arg(&script)
+        .env("OURO_HOME", &paths.home)
         .env("OURO_AUDIT_ID", &audit_id)
         .env("OURO_TOOL_NAME", &tool_name)
         .env("OURO_INVOCATION_TOKEN", &token)

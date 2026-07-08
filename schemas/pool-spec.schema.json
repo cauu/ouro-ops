@@ -132,6 +132,18 @@
           "then": { "required": ["mithril"] }
         }
       ]
+    },
+    "upgrade": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional upgrade orchestration policy. Human-authored in the spec; agents cannot supply it via environment (see §2.2#4 / p5-2).",
+      "properties": {
+        "min_online_relays": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minimum relays that must stay online at all times during a rolling upgrade. Default 1 (enforces 'BP + >=1 relay online'). Set 0 only to explicitly accept single-relay downtime."
+        }
+      }
     }
   },
   "$defs": {

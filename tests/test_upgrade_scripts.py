@@ -11,6 +11,7 @@ SCHEMA = json.loads((ROOT / "schemas/tool-output.schema.json").read_text())
 HOME = "/tmp/ouro-upgrade-home"
 TWO_RELAY = str(ROOT / "tests/fixtures/pool-spec/valid-two-relay.yaml")
 ONE_RELAY = str(ROOT / "examples/pool-spec.minimal.yaml")
+ONE_RELAY_DOWNTIME = str(ROOT / "tests/fixtures/pool-spec/valid-single-relay-downtime.yaml")
 
 
 def run(spec, state, extra=None, check=True):
@@ -45,9 +46,12 @@ def main():
     assert validate(lock_result.stdout)["error"]["code"] == "upgrade_lock_held"
 
     # Verify failure stops the batch before BP and rolls back the failed machine.
+    # Failure injection is via an allowlisted state marker (env hooks are stripped).
     failing = "/tmp/ouro-upgrade-script-failing"
     subprocess.run(["rm", "-rf", failing], check=True)
-    failed = run(TWO_RELAY, failing, extra={"OURO_FAIL_MACHINE": "relay1"}, check=False)
+    Path(failing).mkdir(parents=True)
+    Path(failing, "__test_inject_fail__relay1").write_text("")
+    failed = run(TWO_RELAY, failing, check=False)
     assert failed.returncode == 30
     assert validate(failed.stdout)["error"]["code"] == "upgrade_verify_failed"
     assert not Path(failing, "upgraded-bp1").exists()
@@ -62,10 +66,19 @@ def main():
     assert validate(quorum.stdout)["error"]["code"] == "relay_quorum_violation"
     assert not Path(single, "upgraded-relay1").exists()
 
-    # Operator can explicitly accept single-relay downtime via the quorum override.
+    # An agent CANNOT loosen the invariant via caller env: OURO_QUORUM_MIN_RELAYS is
+    # stripped by the tool-run env allowlist, so the single-relay upgrade still fails.
+    env_bypass = "/tmp/ouro-upgrade-script-envbypass"
+    subprocess.run(["rm", "-rf", env_bypass], check=True)
+    blocked = run(ONE_RELAY, env_bypass, extra={"OURO_QUORUM_MIN_RELAYS": "0"}, check=False)
+    assert blocked.returncode == 10, blocked.stdout
+    assert validate(blocked.stdout)["error"]["code"] == "relay_quorum_violation"
+
+    # The operator CAN accept single-relay downtime — but only via the human-authored
+    # spec policy (upgrade.min_online_relays: 0), not via environment.
     override = "/tmp/ouro-upgrade-script-override"
     subprocess.run(["rm", "-rf", override], check=True)
-    ok = validate(run(ONE_RELAY, override, extra={"OURO_QUORUM_MIN_RELAYS": "0"}).stdout)
+    ok = validate(run(ONE_RELAY_DOWNTIME, override).stdout)
     assert ok["data"]["completed"] == ["relay1", "bp1"]
     print("upgrade scripts passed")
 

@@ -25,10 +25,11 @@ SPEC=examples/pool-spec.minimal.yaml
 OURO_STATUS_SNAPSHOT=tests/fixtures/deploy/verify-healthy.json \
   "$OURO" tool run deploy/verify --spec "$SPEC" --machine bp1 >/tmp/ouro-harness-deploy-verify.json
 
-# Upgrade — single-relay demo topology, so the operator explicitly accepts the brief
-# relay downtime via the quorum override (a multi-relay pool would not need it).
-OURO_QUORUM_MIN_RELAYS=0 \
-  "$OURO" tool run upgrade/run --spec "$SPEC" >/tmp/ouro-harness-upgrade.json
+# Upgrade — single-relay demo topology whose spec explicitly declares
+# `upgrade.min_online_relays: 0` (operator-authored acceptance of brief downtime).
+# The quorum policy lives in the spec, not the environment (p5-2).
+"$OURO" tool run upgrade/run --spec tests/fixtures/pool-spec/valid-single-relay-downtime.yaml \
+  >/tmp/ouro-harness-upgrade.json
 
 # KES rotation with a real, out-of-band confirmation token.
 "$OURO" kes counter status --state tests/fixtures/kes/counter-state.json >/tmp/ouro-harness-kes-counter.json

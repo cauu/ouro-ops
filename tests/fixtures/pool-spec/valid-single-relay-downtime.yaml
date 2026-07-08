@@ -1,0 +1,37 @@
+spec_version: 1
+pool:
+  ticker: OURO
+  network: preprod
+  network_magic: 1
+  genesis_hashes:
+    shelley: "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35"
+  metadata_url: "https://pool.example.com/metadata.json"
+  pledge_lovelace: 100000000000
+  margin: 0.02
+  cost_lovelace: 340000000
+topology_mode: p2p
+node_version: "10.5.4"
+machines:
+  - id: bp1
+    role: bp
+    ssh:
+      host: 10.0.0.10
+      port: 22
+      user: ouro-exec
+      key_ref: "creds://bp1"
+  - id: relay1
+    role: relay
+    public_endpoint:
+      host: relay1.example.com
+      port: 3001
+    ssh:
+      host: 203.0.113.5
+      port: 22
+      user: ouro-exec
+      key_ref: "creds://relay1"
+sync:
+  mode: genesis
+# Human-authored policy: the operator explicitly accepts brief single-relay downtime
+# during rolling upgrades. Agents cannot set this via env — only the spec author can.
+upgrade:
+  min_online_relays: 0
