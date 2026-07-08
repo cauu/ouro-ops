@@ -32,11 +32,19 @@
 5. Run the node with the **pool** keys (`pools-keys/pool1/*`) — NOT the genesis-delegate keys, since
    in Praos/Conway only stake pools forge.
 
-## Caveats / constraints (feed into p2-1..p2-8 planning)
-- **Architecture: the node image is amd64-only** and runs under **qemu emulation on arm64** here.
-  It works but each node start is slow (~40-60 s) and forging is CPU-heavy. Real CI wants an
-  **amd64 runner** or an **arm64 node image** (e.g. blinklabs). This is an environment prerequisite
-  for the T2-real-node CI, not a product defect. Pin the node image digest as part of p2-1 (E2E-11).
+## Architecture / fidelity (RESOLVED — run native)
+- The official `intersectmbo` image is **amd64-only** → under **qemu on arm64** it works but is slow,
+  and emulation timing is NOT faithful (the node can miss slots). Emulation is fine for FUNCTIONAL /
+  crypto / security fidelity (same binary, bit-exact crypto, Linux-semantics isolation) but not for
+  timing-sensitive assertions.
+- **Resolution: use the arm64-NATIVE `ghcr.io/blinklabs-io/cardano-node:10.5.4` image** (multi-arch;
+  `cardano-cli 10.14.0.0 - linux-aarch64`). Verified: the SAME recipe forges natively with **no
+  emulation** (`uname: aarch64`), reaching `block:4` by slot 4 — healthier than the emulated run
+  (`block:3` by slot 5), i.e. the timing penalty is gone. `devnet-up.sh` now defaults to this image
+  (`PLATFORM=linux/arm64`); override `NODE_IMG`/`PLATFORM` for an amd64 CI runner.
+- **Consequence for p2 test design (still holds):** assert on STATE (tip block>0, forging enabled,
+  opcert installed, counter monotonic, sudoers denies), NOT on wall-clock rates/deadlines — so the
+  gate is robust whether run on arm64-native or an amd64 runner. Pin the node image digest in p2-1 (E2E-11).
 - **pool-spec schema gap**: `spec.network` is a fixed enum (mainnet/preprod/preview with fixed
   magics); an arbitrary devnet magic (42) has no representation. p2-1 either runs the devnet with
   **magic 1 (preprod)** — a private isolated network can reuse the magic harmlessly — or the schema
@@ -51,5 +59,6 @@
 
 ## Recommendation for p2-1
 Integrate `devnet-up.sh` as a `cardano-node` service/entrypoint in the bed (fresh systemStart on
-boot), on an amd64 runner or with an arm64 node image; then p2-2 wires `ouro status`/`deploy/verify`
-to query the real socket, replacing the injected snapshot.
+boot) using the **arm64-native blinklabs image** (no emulation → faithful timing on this host);
+then p2-2 wires `ouro status`/`deploy/verify` to query the real socket, replacing the injected
+snapshot. The amd64 path remains available via `NODE_IMG`/`PLATFORM` for amd64 CI runners.

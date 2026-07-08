@@ -8,15 +8,19 @@
 # the arch caveat). Idempotent-ish: regenerates genesis each call for a fresh systemStart.
 set -euo pipefail
 
-NODE_IMG="${NODE_IMG:-ghcr.io/intersectmbo/cardano-node:10.5.4}"
+# Default to the arm64-NATIVE blinklabs image so this runs without qemu on arm64 hosts
+# (faithful timing = results consistent with real hardware). Override NODE_IMG/PLATFORM
+# for an amd64 runner (e.g. NODE_IMG=ghcr.io/intersectmbo/cardano-node:10.5.4 PLATFORM=linux/amd64).
+NODE_IMG="${NODE_IMG:-ghcr.io/blinklabs-io/cardano-node:10.5.4}"
+PLATFORM="${DEVNET_PLATFORM:-linux/arm64}"
 DATA="${DEVNET_DATA:-/tmp/devnet}"
 MAGIC="${DEVNET_MAGIC:-42}"
 NAME="${DEVNET_NAME:-devnet-node}"
-cli(){ docker run --rm --platform linux/amd64 -v "$DATA":/d --entrypoint cardano-cli "$NODE_IMG" "$@" 2>/dev/null | tr -d '\r'; }
+cli(){ docker run --rm --platform "$PLATFORM" -v "$DATA":/d --entrypoint cardano-cli "$NODE_IMG" "$@" 2>/dev/null | tr -d '\r'; }
 
 rm -rf "$DATA"; mkdir -p "$DATA"
 echo "[devnet] generating genesis (1 genesis-key, 1 pool)…"
-docker run --rm --platform linux/amd64 -v "$DATA":/data --entrypoint cardano-cli "$NODE_IMG" \
+docker run --rm --platform "$PLATFORM" -v "$DATA":/data --entrypoint cardano-cli "$NODE_IMG" \
   conway genesis create-testnet-data --genesis-keys 1 --pools 1 --stake-delegators 1 --utxo-keys 1 \
   --total-supply 30000000000000 --delegated-supply 15000000000000 --testnet-magic "$MAGIC" --out-dir /data >/dev/null
 
@@ -56,7 +60,7 @@ PY
 
 echo "[devnet] starting node (forges with the POOL keys, not genesis-delegate)…"
 docker rm -f "$NAME" >/dev/null 2>&1 || true
-docker run -d --name "$NAME" --platform linux/amd64 -v "$DATA":/d --entrypoint cardano-node "$NODE_IMG" run \
+docker run -d --name "$NAME" --platform "$PLATFORM" -v "$DATA":/d --entrypoint cardano-node "$NODE_IMG" run \
   --config /d/config.json --topology /d/topology.json --database-path /d/db --socket-path /d/node.socket \
   --shelley-kes-key /d/pools-keys/pool1/kes.skey --shelley-vrf-key /d/pools-keys/pool1/vrf.skey \
   --shelley-operational-certificate /d/pools-keys/pool1/opcert.cert --port 3001 >/dev/null
@@ -64,7 +68,7 @@ docker run -d --name "$NAME" --platform linux/amd64 -v "$DATA":/d --entrypoint c
 echo "[devnet] waiting for the chain to advance (block height > 0)…"
 for i in $(seq 1 24); do
   sleep 5
-  tip=$(docker run --rm --platform linux/amd64 -v "$DATA":/d -e CARDANO_NODE_SOCKET_PATH=/d/node.socket \
+  tip=$(docker run --rm --platform "$PLATFORM" -v "$DATA":/d -e CARDANO_NODE_SOCKET_PATH=/d/node.socket \
         --entrypoint cardano-cli "$NODE_IMG" query tip --testnet-magic "$MAGIC" 2>/dev/null || true)
   blk=$(printf '%s' "$tip" | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",0))
