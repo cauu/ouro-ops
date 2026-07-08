@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use crate::{
     audit::AuditStore,
     config::ConfigPaths,
+    confirm::{self, ConfirmationStore},
     domain::PoolSpec,
     kes, migration,
     output::{self, ToolOutput},
@@ -35,6 +36,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
             )?;
         }
         "audit" => run_audit(&args[2..])?,
+        "confirm" => run_confirm(&args[2..])?,
         "config" => run_config(&args[2..])?,
         "kes" => run_kes(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
@@ -42,6 +44,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "rollback" => run_rollback(&args[2..])?,
         "spec" => run_spec(&args[2..])?,
         "status" => run_status(&args[2..])?,
+        "tool" => run_tool(&args[2..])?,
         other => return Err(OuroError::InvalidArgs(format!("unknown command {other}"))),
     }
     Ok(())
@@ -51,8 +54,8 @@ fn run_rollback(args: &[String]) -> Result<()> {
     let machine = flag_value(args, "--machine")?;
     let backup_id = flag_value(args, "--to")?;
     let token = optional_flag_value(args, "--confirm-token");
-    validate_confirmation(token, "rollback", machine)?;
     let paths = ConfigPaths::discover();
+    consume_confirmation_if_needed(&paths, token, "rollback", machine)?;
     let store = AuditStore::open(&paths.audit_db)?;
     let audit_id = store.begin_invocation("rollback", Some(machine))?;
     output::print_json(&ToolOutput::ok("ouro.rollback", true).with_data(json!({
@@ -63,6 +66,59 @@ fn run_rollback(args: &[String]) -> Result<()> {
         "execution": "planned-forward-change"
     })))?;
     Ok(())
+}
+
+fn run_confirm(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        Some("create") => {
+            let action = flag_value(args, "--action")?;
+            let machine = flag_value(args, "--machine")?;
+            let ttl = confirm::parse_ttl(flag_value(args, "--ttl").unwrap_or("60s"))?;
+            let paths = ConfigPaths::discover();
+            let token = ConfirmationStore::create(&paths.confirmations, action, machine, ttl)?;
+            output::print_json(
+                &ToolOutput::ok("ouro.confirm.create", true).with_data(json!({
+                    "token": token.token,
+                    "action": token.action,
+                    "machine": token.machine,
+                    "expires_at": token.expires_at,
+                    "single_use": true
+                })),
+            )?;
+            Ok(())
+        }
+        _ => Err(OuroError::InvalidArgs(
+            "expected confirm create --action <a> --machine <m>".to_string(),
+        )),
+    }
+}
+
+fn run_tool(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        Some("run") => {
+            let tool_name = args
+                .get(1)
+                .ok_or_else(|| OuroError::InvalidArgs("missing tool name".to_string()))?;
+            let spec_path = flag_value(args, "--spec")?;
+            let machine = optional_flag_value(args, "--machine");
+            let paths = ConfigPaths::discover();
+            let store = AuditStore::open(&paths.audit_db)?;
+            let audit_id = store.begin_invocation(tool_name, machine)?;
+            let readonly_token = confirm::readonly_invocation_token(&audit_id, tool_name);
+            output::print_json(&ToolOutput::ok("ouro.tool.run", false).with_data(json!({
+                "tool": tool_name,
+                "spec": spec_path,
+                "machine": machine,
+                "audit_id": audit_id,
+                "readonly_token": readonly_token,
+                "execution": "audit-context-created"
+            })))?;
+            Ok(())
+        }
+        _ => Err(OuroError::InvalidArgs(
+            "expected tool run <skill/script> --spec <path>".to_string(),
+        )),
+    }
 }
 
 fn run_pool(args: &[String]) -> Result<()> {
@@ -113,8 +169,10 @@ fn run_kes(args: &[String]) -> Result<()> {
             let token = optional_flag_value(args, "--confirm-token");
             let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
             let paths = ConfigPaths::discover();
+            consume_confirmation_if_needed(&paths, token, "kes-push", machine)?;
             let store = AuditStore::open(&paths.audit_db)?;
-            let report = kes::push_opcert(&spec, machine, &cert, &counter, token, &store)?;
+            let compat = format!("confirm:kes-push:{machine}");
+            let report = kes::push_opcert(&spec, machine, &cert, &counter, Some(&compat), &store)?;
             output::print_json(&ToolOutput::ok("ouro.kes.push", true).with_data(json!(report)))?;
             Ok(())
         }
@@ -286,5 +344,19 @@ fn validate_confirmation(token: Option<&str>, action: &str, machine: &str) -> Re
         None => Err(OuroError::Validation(format!(
             "dangerous {action} requires human-issued confirmation token"
         ))),
+    }
+}
+
+fn consume_confirmation_if_needed(
+    paths: &ConfigPaths,
+    token: Option<&str>,
+    action: &str,
+    machine: &str,
+) -> Result<()> {
+    match token {
+        Some(token) if token.starts_with("tok_") => {
+            ConfirmationStore::consume(&paths.confirmations, token, action, machine)
+        }
+        _ => validate_confirmation(token, action, machine),
     }
 }
