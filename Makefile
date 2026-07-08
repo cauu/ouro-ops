@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help fmt test check ci e2e status e2e-build-base e2e-bed-up e2e-bed-down e2e-provision e2e-t2 e2e-t2-node e2e-t2-kes e2e-t2-secrets e2e-t2-takeover e2e-t2-observability e2e-clean
+.PHONY: help fmt test check ci e2e status e2e-build-base e2e-bed-up e2e-bed-down e2e-provision e2e-t2 e2e-t2-node e2e-t2-kes e2e-t2-secrets e2e-t2-takeover e2e-t2-observability e2e-t2-upgrade e2e-clean
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -58,6 +58,9 @@ e2e-t2-takeover: e2e-build-base ## Run the T2 legacy-takeover E2E (p2-7: real ta
 
 e2e-t2-observability: e2e-build-base ## Run the T2 observability basic-auth E2E (p2-8: authed 200 / unauth 401 / no leak)
 	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-observability.sh"
+
+e2e-t2-upgrade: e2e-build-base ## Run the T2 rolling-upgrade E2E (p2-5: BP-last, quorum, lock, verify-stop)
+	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-upgrade.sh"
 
 e2e-clean: ## Remove ALL S0015 test artifacts (containers, our images, build cache, /tmp); preserves your pre-existing images
 	bash "$(REPO_ROOT)/fixtures/e2e/clean.sh"

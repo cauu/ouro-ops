@@ -1,0 +1,31 @@
+# S0015 E2E bed pool-spec: ssh.host = docker-compose service DNS names (bp1/relay1/relay2)
+# so control's dispatch reaches the real containers. sync.mode: genesis (devnet in p2-1).
+spec_version: 1
+pool:
+  ticker: OURO
+  network: preprod
+  network_magic: 1
+  genesis_hashes:
+    shelley: "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35"
+  metadata_url: "https://pool.example.com/metadata.json"
+  pledge_lovelace: 100000000000
+  margin: 0.02
+  cost_lovelace: 340000000
+topology_mode: p2p
+node_version: "10.5.4"
+machines:
+  - id: bp1
+    role: bp
+    ssh: { host: bp1, port: 22, user: ouro-exec, key_ref: "creds://bp1" }
+  - id: relay1
+    role: relay
+    public_endpoint: { host: relay1, port: 3001 }
+    ssh: { host: relay1, port: 22, user: ouro-exec, key_ref: "creds://relay1" }
+  - id: relay2
+    role: relay
+    public_endpoint: { host: relay2, port: 3001 }
+    ssh: { host: relay2, port: 22, user: ouro-exec, key_ref: "creds://relay2" }
+upgrade:
+  min_online_relays: 2
+sync:
+  mode: genesis
