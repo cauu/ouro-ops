@@ -16,10 +16,12 @@ services:
     init: true
     networks: [bed]
 
+  # bp1 runs a REAL forging cardano-node (p2-1) — hence a distinct image (blinklabs node
+  # base + the same pinned ouro). `up --wait` blocks on its healthcheck until it forges.
   bp1:
     build:
       context: .
-      dockerfile: node/Dockerfile
+      dockerfile: bp/Dockerfile
     hostname: bp1
     networks: [bed]
 
