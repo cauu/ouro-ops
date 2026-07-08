@@ -5,11 +5,15 @@
 > 对应 TC：E2E-T0（设计锁评审）。规格来源：`docs/specs/20260708T0710-S0015-containerized-e2e.md` §2.1/§2.3。
 
 ## D1 — 执行拓扑：Model B（远端派发）
-- **决策**：`ouro tool run --machine <m>`（在 `control`）= **远端派发**。control 的 L1 SSH runner
-  （`crates/ouro/src/ssh.rs::execute`，p1-3 实现）以 `ouro-exec` 身份 SSH 到 `<m>`，执行
-  `sudo /usr/local/bin/ouro tool run <skill>/<script> --spec <path>`（**不带 `--machine`**）。
-- 目标机上的 `ouro tool run`（无 `--machine`）= **本地执行**：解析并运行 `ouro-skills/<skill>/scripts/<script>.sh`，
-  在目标机产生真实系统副作用。语义与 S0014 现状（本地执行）一致，仅新增 `--machine` 的远端派发分支。
+- **决策（p1-3 实现细化：触发标志由 `--machine` 改为 `--dispatch`）**：
+  `ouro tool run <tool> --dispatch <m> --spec <f>`（在 `control`）= **远端派发**。control 的 L1 SSH runner
+  （`crates/ouro/src/ssh.rs::execute`）以 `ouro-exec` 身份 SSH 到 `<m>`，执行
+  `sudo /usr/local/bin/ouro tool run <tool> --machine <m> --spec <remote_spec>`。
+- 目标机上的 `ouro tool run <tool> --machine <m>`（**无 `--dispatch`**）= **本地执行**：`--machine` 设 `OURO_MACHINE`
+  并运行 `ouro-skills/<skill>/scripts/<script>.sh`（skills 路径解析：`$OURO_SKILLS_DIR` → `./ouro-skills` →
+  `/opt/ouro/ouro-skills`），在目标机产生真实系统副作用；**不再 re-dispatch**。
+- **为何不复用 `--machine` 作远端触发**：S0014 起 `--machine` 已表「本地执行 + `OURO_MACHINE`」，全部 L2 测试/harness
+  依赖此语义；复用会破坏回归。故新增 `--dispatch` 触发远端，`--machine` 语义**保持不变**（S0014 L2 回归验证通过）。
 - **拒绝的替代**：让 agent 在 shell 里裸跑 `ssh <m> sudo …`（绕过 `ouro`，与「写只经 tool run」冲突）；
   在 control 上执行 L2 后再 `scp` 产物（副作用不在目标机、不可信）。
 

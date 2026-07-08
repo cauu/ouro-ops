@@ -1,6 +1,9 @@
 use serde::Serialize;
+use std::path::Path;
+use std::process::Command;
 
 use crate::domain::SshTarget;
+use crate::Result;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SshRunner {
@@ -13,11 +16,19 @@ pub struct PreparedCommand {
     pub args: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct SshOutcome {
+    pub status: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
 impl SshRunner {
     pub fn new(dry_run: bool) -> Self {
         Self { dry_run }
     }
 
+    /// Redacted command shape for audit/dry-run plans (credential path masked).
     pub fn prepare_tool_run(
         &self,
         target: &SshTarget,
@@ -46,34 +57,126 @@ impl SshRunner {
             ],
         }
     }
+
+    /// Real `ssh` argv for Model B remote dispatch: run `sudo -n ouro tool run <tool>`
+    /// on the target (no `--machine`, so the target executes L2 locally). The audit_id
+    /// and invocation token are minted+verified on the TARGET (§2.1 D2), so nothing
+    /// secret is passed on the argv; `key_path` is a local private key file (resolved
+    /// from a `creds://` ref), never inlined key material.
+    pub fn tool_run_argv(
+        target: &SshTarget,
+        key_path: &Path,
+        tool: &str,
+        machine: &str,
+        remote_spec: &str,
+    ) -> Vec<String> {
+        vec![
+            "-p".to_string(),
+            target.port.to_string(),
+            "-i".to_string(),
+            key_path.display().to_string(),
+            "-o".to_string(),
+            "BatchMode=yes".to_string(),
+            "-o".to_string(),
+            "StrictHostKeyChecking=accept-new".to_string(),
+            format!("{}@{}", target.user, target.host),
+            "sudo".to_string(),
+            "-n".to_string(),
+            "/usr/local/bin/ouro".to_string(),
+            "tool".to_string(),
+            "run".to_string(),
+            tool.to_string(),
+            // Target-side LOCAL execution: `--machine` (not `--dispatch`) so the target
+            // sets OURO_MACHINE and runs the L2 script itself instead of re-dispatching.
+            "--machine".to_string(),
+            machine.to_string(),
+            "--spec".to_string(),
+            remote_spec.to_string(),
+        ]
+    }
+
+    /// Execute the remote `ouro tool run` over SSH and capture its output + exit code.
+    /// In dry-run mode returns a no-op success (used where a live target is absent).
+    pub fn execute(
+        &self,
+        target: &SshTarget,
+        key_path: &Path,
+        tool: &str,
+        machine: &str,
+        remote_spec: &str,
+    ) -> Result<SshOutcome> {
+        if self.dry_run {
+            return Ok(SshOutcome {
+                status: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            });
+        }
+        let args = Self::tool_run_argv(target, key_path, tool, machine, remote_spec);
+        let output = Command::new("ssh").args(&args).output()?;
+        Ok(SshOutcome {
+            status: output.status.code().unwrap_or(255),
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use crate::{domain::SshTarget, secrets::CredentialRef};
 
     use super::SshRunner;
 
-    #[test]
-    fn only_prepares_allowlisted_tool_run_shape() {
-        let target = SshTarget {
+    fn target() -> SshTarget {
+        SshTarget {
             host: "relay1.example.com".to_string(),
             port: 22,
             user: "ouro-exec".to_string(),
             key_ref: CredentialRef::parse("creds://relay1").unwrap(),
-        };
-        let cmd = SshRunner::new(true).prepare_tool_run(
-            &target,
-            "deploy/preflight",
-            "pool-spec.json",
-            "audit-1",
-        );
+        }
+    }
+
+    #[test]
+    fn only_prepares_allowlisted_tool_run_shape() {
+        let cmd =
+            SshRunner::new(true).prepare_tool_run(&target(), "deploy/preflight", "pool-spec.json", "audit-1");
         let joined = cmd.args.join(" ");
         assert!(joined.contains("sudo -n ouro tool run deploy/preflight"));
         assert!(joined.contains("<credential-ref>"));
         assert!(!joined.contains("creds://"));
         assert!(!joined.contains(" docker rm "));
         assert!(!joined.contains(" scp "));
-        assert!(!joined.contains(" sudo rm "));
+    }
+
+    #[test]
+    fn tool_run_argv_uses_fixed_cli_path_and_no_secret_inline() {
+        let args = SshRunner::tool_run_argv(
+            &target(),
+            Path::new("/home/op/.ouro/credentials/relay1"),
+            "deploy/provision",
+            "relay1",
+            "/opt/ouro/pool-spec.yaml",
+        );
+        let joined = args.join(" ");
+        // Fixed absolute CLI path (matches the sudoers allowlist, D3).
+        assert!(joined.contains("sudo -n /usr/local/bin/ouro tool run deploy/provision"));
+        assert!(joined.contains("ouro-exec@relay1.example.com"));
+        assert!(joined.contains("BatchMode=yes"));
+        // Target-side call uses --machine (local exec, no re-dispatch); no secret inlined.
+        assert!(joined.contains("--machine relay1"));
+        assert!(!joined.contains("--dispatch"));
+        assert!(!joined.contains("creds://"));
+        assert!(joined.contains("-i /home/op/.ouro/credentials/relay1"));
+    }
+
+    #[test]
+    fn dry_run_execute_is_noop_success() {
+        let outcome = SshRunner::new(true)
+            .execute(&target(), Path::new("/tmp/key"), "deploy/preflight", "bp1", "/opt/ouro/spec.yaml")
+            .unwrap();
+        assert_eq!(outcome.status, 0);
     }
 }

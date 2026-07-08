@@ -98,12 +98,29 @@ fn run_confirm(args: &[String]) -> Result<()> {
 
 fn run_tool(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {
+        // `--dispatch <m>` on control = Model B remote dispatch: SSH to m and run the
+        // tool there. Absent it, execute the L2 script locally (S0014 semantics).
+        Some("run") if optional_flag_value(args, "--dispatch").is_some() => run_tool_dispatch(args),
         Some("run") => run_tool_exec(args),
         Some("verify-context") => run_tool_verify_context(args),
         _ => Err(OuroError::InvalidArgs(
             "expected tool run <skill/script> --spec <path> | tool verify-context".to_string(),
         )),
     }
+}
+
+/// Root dir holding `ouro-skills/`. Tries `$OURO_SKILLS_DIR`, then a repo-relative
+/// `ouro-skills`, then the installed `/opt/ouro/ouro-skills` (the bed target layout).
+fn skills_root() -> PathBuf {
+    if let Some(dir) = std::env::var_os("OURO_SKILLS_DIR") {
+        return PathBuf::from(dir);
+    }
+    for candidate in ["ouro-skills", "/opt/ouro/ouro-skills"] {
+        if std::path::Path::new(candidate).is_dir() {
+            return PathBuf::from(candidate);
+        }
+    }
+    PathBuf::from("ouro-skills")
 }
 
 /// Resolve `<skill>/<script>` to an allowlisted L2 script path, rejecting traversal.
@@ -122,7 +139,7 @@ fn resolve_skill_script(tool_name: &str) -> Result<PathBuf> {
             "tool name must be <skill>/<script>: got {tool_name}"
         )));
     }
-    let path = PathBuf::from(format!("ouro-skills/{skill}/scripts/{script}.sh"));
+    let path = skills_root().join(format!("{skill}/scripts/{script}.sh"));
     if !path.is_file() {
         return Err(OuroError::Validation(format!(
             "no such tool script: {}",
@@ -130,6 +147,43 @@ fn resolve_skill_script(tool_name: &str) -> Result<PathBuf> {
         )));
     }
     Ok(path)
+}
+
+/// Model B remote dispatch (control side): resolve the target machine's SSH endpoint
+/// and credential from the spec, then run `sudo ouro tool run <tool> --machine <m>` on
+/// the target over SSH. Audit + token are minted/verified ON THE TARGET (§2.1 D2), so
+/// control mints nothing and passes no `--audit-id`; it relays the target's JSON + exit
+/// code. `--remote-spec` overrides the target-side spec path (default: same as --spec).
+fn run_tool_dispatch(args: &[String]) -> Result<()> {
+    let tool_name = args
+        .get(1)
+        .filter(|value| !value.starts_with("--"))
+        .ok_or_else(|| OuroError::InvalidArgs("missing tool name".to_string()))?
+        .clone();
+    let machine_id = flag_value(args, "--dispatch")?;
+    let spec_path = flag_value(args, "--spec")?;
+    let remote_spec = optional_flag_value(args, "--remote-spec").unwrap_or(spec_path);
+    let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
+    let machine = spec
+        .machines
+        .iter()
+        .find(|candidate| candidate.id == machine_id)
+        .ok_or_else(|| OuroError::Validation(format!("unknown machine {machine_id}")))?;
+    let paths = ConfigPaths::discover();
+    let key_path = machine.ssh.key_ref.resolve(&paths.credentials_dir);
+    let outcome = SshRunner::new(false).execute(
+        &machine.ssh,
+        &key_path,
+        &tool_name,
+        machine_id,
+        remote_spec,
+    )?;
+    std::io::stdout().write_all(outcome.stdout.as_bytes())?;
+    std::io::stdout().flush()?;
+    if !outcome.stderr.is_empty() {
+        std::io::stderr().write_all(outcome.stderr.as_bytes())?;
+    }
+    std::process::exit(outcome.status);
 }
 
 /// `ouro tool run` — the sole audited write entrypoint. It creates (or reuses via
