@@ -16,6 +16,11 @@ dc() { docker compose -f "$CF" "$@"; }
 cleanup() { dc down -v --remove-orphans >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
+# Falsifiability gate FIRST (no bed): prove the asserter flags every crafted invariant violation —
+# so a real run's "0 violations" means the checks work, not that they are vacuous.
+echo "[t3] falsifiability self-test (asserter must catch every crafted violation)"
+python3 "$HARNESS/selftest.py" || fail "asserter self-test failed — the invariant checks are not sound"
+
 echo "[bed] rebuild base + up (bp1 forging) + provision + push quorum2 spec"
 docker build -f fixtures/e2e/Dockerfile.base -t ouro-e2e-base:local . >/dev/null
 dc up -d --build --wait --wait-timeout 240 >/dev/null

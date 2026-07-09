@@ -33,6 +33,13 @@ scenarios:
     steps:
       - { tool: kes-rotation/rotate, dispatch: bp1, expect_exit: 0 }
 
+  # 2b) SUCCESSFUL rolling upgrade — exercises orchestration safety (#4) BP-last IN THE SUCCESS
+  #     path (every relay upgraded+verified in time BEFORE the BP), which the failure path cannot.
+  - name: upgrade-ok
+    goal: "Roll out an upgrade across all relays and then the block producer, in order."
+    steps:
+      - { tool: upgrade/rollout, spec: bed, expect_exit: 0 }
+
   # 3) Rolling upgrade with an injected relay verify failure — exercises failure discipline (#5):
   #    exit 30 MUST be followed by a */rollback before any further write, and orchestration
   #    safety (#4): BP-last (the BP is never reached after the relay stop).
