@@ -44,6 +44,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "legacy" => run_legacy(&args[2..])?,
         "pool" => run_pool(&args[2..])?,
         "rollback" => run_rollback(&args[2..])?,
+        "skill" => run_skill(&args[2..])?,
         "spec" => run_spec(&args[2..])?,
         "status" => run_status(&args[2..])?,
         "tool" => run_tool(&args[2..])?,
@@ -69,6 +70,50 @@ fn run_rollback(args: &[String]) -> Result<()> {
         "execution": "planned-forward-change"
     })))?;
     Ok(())
+}
+
+/// `ouro skill show <name>` / `ouro skill list` (S0016 p2-7).
+///
+/// `show` prints the skill's decision tree (its embedded, compiled-in `SKILL.md`) as raw
+/// markdown for the agent to consume. This is the AUTHORITATIVE decision source: it comes
+/// from the verified binary, never from the (untrusted) pasted prompt (R2 N3). A spoofed
+/// onboarding site cannot alter what the agent follows here.
+fn run_skill(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        Some("list") => {
+            output::print_json(&ToolOutput::ok("ouro.skill.list", false).with_data(json!({
+                "skills": crate::skills::skill_names(),
+                "embedded_digest": crate::skills::embedded_digest(),
+            })))?;
+            Ok(())
+        }
+        Some("show") => {
+            let name = args.get(1).map(String::as_str).ok_or_else(|| {
+                OuroError::InvalidArgs("expected skill show <name>".to_string())
+            })?;
+            // A skill name is a single [a-z0-9-] segment (same discipline as tool names).
+            if name.is_empty() || !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            {
+                return Err(OuroError::InvalidArgs(format!(
+                    "skill name must be a single [a-z0-9-] segment: {name}"
+                )));
+            }
+            match crate::skills::skill_doc(name) {
+                Some(doc) => {
+                    std::io::stdout().write_all(doc.as_bytes())?;
+                    std::io::stdout().flush()?;
+                    Ok(())
+                }
+                None => Err(OuroError::Validation(format!(
+                    "unknown skill {name}; available: {}",
+                    crate::skills::skill_names().join(", ")
+                ))),
+            }
+        }
+        _ => Err(OuroError::InvalidArgs(
+            "expected skill show <name> | skill list".to_string(),
+        )),
+    }
 }
 
 fn run_confirm(args: &[String]) -> Result<()> {

@@ -10,6 +10,7 @@ pub mod output;
 pub mod pool;
 pub mod render;
 pub mod secrets;
+pub mod skills;
 pub mod ssh;
 pub mod status;
 

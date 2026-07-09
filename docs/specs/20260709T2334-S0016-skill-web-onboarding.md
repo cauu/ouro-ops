@@ -234,8 +234,9 @@ agent 装 skill",又不给决策层留投毒面。
 - [ ] p2-5 引导文案:一次性 setup(①装本机 + ②S0017 init)vs 每次操作的区分
 - [ ] p2-6 release **bundle manifest**(二进制 digest/内嵌决策 hash/内嵌 skills hash/schema hash/
   `required_ouro`)+ `ouro` 启动 manifest 自校验(与自身 digest 一致才跑)
-- [ ] p2-7 `ouro skill show <op>`:打印**内嵌、已验签**的决策树(供 agent 消费),经 manifest 自校验;
-  agent 的决策层只从此取,不信 prompt 内联(评审 R2 N3)
+- [x] p2-7 `ouro skill show <op>`:打印**内嵌、已验签**的决策树(供 agent 消费),经 manifest 自校验;
+  agent 的决策层只从此取,不信 prompt 内联(评审 R2 N3)。落地:`build.rs` 编译期内嵌 + `skills.rs` +
+  `ouro skill show/list`(traversal 拒绝)。manifest 自校验见 p2-6。
 
 ### p3 — 版本兼容与审计
 - [x] p3-1 skill 真源 machine-readable 版本头(`SKILL.md` front matter `skill_version` + `requires_ouro >=`)
@@ -331,6 +332,9 @@ agent 装 skill",又不给决策层留投毒面。
 ## 6. Validation Evidence (append-only)
 - p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
   均带 YAML front matter(skill_version 整数 + requires_ouro semver);现有决策树/红线校验无回归。
+- p2-7 | stack: rust | command: cargo test skills:: + ./target/debug/ouro skill show/list | result: pass |
+  note: build.rs 编译期内嵌 6 skill 决策树 + 机制脚本;`skill show <name>` 打印内嵌 SKILL.md(决策源=
+  已验签二进制,非 prompt);`skill list` 输出 embedded_digest;`../etc`/未知 skill 被拒。4 skills 单测通过。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
