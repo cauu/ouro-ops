@@ -255,9 +255,9 @@ agent 装 skill",又不给决策层留投毒面。
 ### p4 — 安全加固(web/prompt/dispatch 面;在 S0015 契约上扩展)
 - [x] p4-1 spec 字段注入校验(`PoolSpec::validate`:machine.id/ssh.host/endpoint.host=[a-z0-9-.:]、
   ticker=[A-Z0-9]、metadata_url=clean http(s);承接 S0015 shell 注入回归)。真实 spec 全过、注入被拒。
-- [ ] p4-2 人工确认显示 ground-truth(凡 `changed=true` 写操作:扩展 confirm + 展示 `ssh.rs` 将执行
+- [x] p4-2 人工确认显示 ground-truth(凡 `changed=true` 写操作:扩展 confirm + 展示 `ssh.rs` 将执行
   的真实 argv,不回显 prompt 自述);通用化前威胁模型标注 planned
-- [ ] p4-3 威胁模型 / 适用边界文档化(「保护什么/不保护什么」表 + #2 旁路 + #4 云可见性 + bootstrap
+- [x] p4-3 威胁模型 / 适用边界文档化(「保护什么/不保护什么」表 + #2 旁路 + #4 云可见性 + bootstrap
   供应链;残留风险的知情接受)
 - [ ] p4-4(可选加固轨)受限 agent-run 硬命令面:仅允许 `ouro` 子命令、无 shell/网络/凭据旁路 +
   对抗性绕过测试(把云 agent 便利模式升级为"安全路径")
@@ -357,6 +357,10 @@ agent 装 skill",又不给决策层留投毒面。
   console error、发起 0 网络请求;表单实时生成 pool-spec.yaml(经 ouro spec validate=ok,存 examples/
   pool-spec.generated-default.yaml)+ 薄 prompt(指针 `ouro skill show`,不内联决策树);复制前弹出拓扑
   披露确认(p1-6/TC-3b,截图已验)。静态门测试守 CSP/无外链/无决策树内联/披露存在。
+- p4-2/4-3 | stack: rust/doc | command: ouro confirm preview + docs/S0016-threat-model.md | result: pass |
+  note: `confirm preview --tool --dispatch --spec` 打印将执行的**真实** ssh+wrapper argv(shell-quoted)
+  且不执行=ground-truth;威胁模型文档含保护什么/不保护什么表 + #2/#3/#4 + bootstrap 供应链 + 适用边界
+  (何时应保持手动)。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。

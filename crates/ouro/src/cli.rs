@@ -183,8 +183,45 @@ fn run_confirm(args: &[String]) -> Result<()> {
             )?;
             Ok(())
         }
+        // `ouro confirm preview --tool <t> --dispatch <m> --spec <f>` (S0016 p4-2).
+        // GROUND-TRUTH confirmation: prints the EXACT command that would run on the target
+        // (the resolved ssh + sudo wrapper argv), WITHOUT executing. A human/agent approves
+        // the real action — not the prompt's narrative of it.
+        Some("preview") => {
+            let tool_name = flag_value(args, "--tool")?;
+            validate_tool_name(tool_name)?;
+            let machine_id = flag_value(args, "--dispatch")?;
+            let spec_path = flag_value(args, "--spec")?;
+            let remote_spec = optional_flag_value(args, "--remote-spec").unwrap_or(spec_path);
+            let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
+            let machine = spec
+                .machines
+                .iter()
+                .find(|m| m.id == machine_id)
+                .ok_or_else(|| OuroError::Validation(format!("unknown machine {machine_id}")))?;
+            let paths = ConfigPaths::discover();
+            let key_path = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
+            let argv = SshRunner::tool_run_argv(
+                &machine.ssh,
+                &key_path,
+                tool_name,
+                machine_id,
+                remote_spec,
+            );
+            let command = std::iter::once("ssh".to_string())
+                .chain(argv)
+                .collect::<Vec<_>>()
+                .join(" ");
+            output::print_json(&ToolOutput::ok("ouro.confirm.preview", false).with_data(json!({
+                "tool": tool_name,
+                "machine": machine_id,
+                "ssh_command": command,
+                "note": "ground-truth: this exact command runs on the target if you approve",
+            })))?;
+            Ok(())
+        }
         _ => Err(OuroError::InvalidArgs(
-            "expected confirm create --action <a> --machine <m>".to_string(),
+            "expected confirm create --action <a> --machine <m> | confirm preview --tool <t> --dispatch <m> --spec <f>".to_string(),
         )),
     }
 }
