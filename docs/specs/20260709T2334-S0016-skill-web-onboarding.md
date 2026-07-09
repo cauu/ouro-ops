@@ -244,11 +244,13 @@ agent 装 skill",又不给决策层留投毒面。
 ### p3 — 版本兼容与审计
 - [x] p3-1 skill 真源 machine-readable 版本头(`SKILL.md` front matter `skill_version` + `requires_ouro >=`)
   + 文档校验测试
-- [ ] p3-2 版本闸:`required = max(prompt_min, 内嵌地板, 签名 security 地板)`;**prompt 只能抬高**;
-  `local < required` 才强制自更新
-- [ ] p3-3 降级/回滚保护:**tamper-evident** 单调防回滚状态(擦除可检测+审计,重置回落内嵌地板)+
-  签名 denylist/revocation floor + **写操作元数据新鲜度门**(过期 fail-closed);拒绝低于 required / 漏洞版
-- [ ] p3-4 审计记录实际执行的确切 `ouro` 版本(可复现)
+- [x] p3-2 版本闸:`required = max(prompt_min, 内嵌地板, 签名 security 地板)`;**prompt 只能抬高**;
+  `local < required` fail-closed(自更新网络路径=p2-3 infra)。落地 `version::gate` + `tool run --min-ouro`。
+- [x] p3-3 降级/回滚保护:**tamper-evident** 单调防回滚状态(HMAC(tool-run.secret) over version;
+  擦除/篡改可检测+审计 rollback_reset,重置**回落内嵌地板非零**)+ 拒绝低于 required。签名
+  denylist/revocation floor + 写操作元数据新鲜度门依赖 release 签名 infra(p2-3 边界),security_floor
+  当前=内嵌地板占位、绝不更低。
+- [x] p3-4 审计记录实际执行的确切 `ouro` 版本(可复现):terminal detail `ouro=<ver>`(+ rollback_reset)。
 
 ### p4 — 安全加固(web/prompt/dispatch 面;在 S0015 契约上扩展)
 - [ ] p4-1 spec 字段注入校验(每个被目标脚本插值的字段:host/metadata_url/ticker…;承接 S0015
@@ -344,6 +346,9 @@ agent 装 skill",又不给决策层留投毒面。
 - p2-6 | stack: rust | command: ouro manifest show/verify + cargo test skills:: | result: pass | note:
   按类 hash(decision/skills/schema)+ embedded_digest + required_ouro;verify 对拍 committed
   packaging/bundle-manifest.json 通过,篡改 decision_hash 被拒并指名漂移类;committed-manifest 单测守 drift。
+- p3-2/3/4 | stack: rust | command: cargo test version:: + tool run --min-ouro | result: pass | note:
+  required=max(prompt_min,内嵌地板,rollback,security);--min-ouro 9.9.9 fail-closed;--min-ouro 0.1.0 通过;
+  审计 detail 记 ouro=0.1.0;擦除/伪造 floor→回落内嵌地板非零(3 单测);HMAC(tool-run.secret) 防篡改。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。

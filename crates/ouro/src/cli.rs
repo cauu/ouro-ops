@@ -340,9 +340,23 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
     let spec_path = optional_flag_value(args, "--spec");
     let machine = optional_flag_value(args, "--machine");
     let provided_audit = optional_flag_value(args, "--audit-id");
+    // The (untrusted) min_ouro_version a pasted prompt may carry — it can only RAISE the
+    // requirement, never lower it (S0016 p3-2 / R2 P0-2).
+    let min_ouro = optional_flag_value(args, "--min-ouro");
     let (script, temp_base) = resolve_skill_script(&tool_name)?;
 
     let paths = ConfigPaths::discover();
+    // Version gate BEFORE any execution (p3-2/p3-3): required = max(prompt, embedded,
+    // monotonic anti-rollback, security floor). Fails closed if the binary is below it.
+    let gate = match crate::version::gate(&paths.home, min_ouro) {
+        Ok(g) => g,
+        Err(e) => {
+            if let Some(base) = &temp_base {
+                let _ = std::fs::remove_dir_all(base);
+            }
+            return Err(e);
+        }
+    };
     let store = AuditStore::open(&paths.audit_db)?;
     // Reuse a caller-supplied audit id (e.g. an orchestrator's) when it refers to a
     // real invocation; otherwise begin a fresh one.
@@ -404,14 +418,14 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
 
     match output.status.code() {
         Some(code) => {
-            store.record_terminal(
-                &audit_id,
-                &tool_name,
-                machine,
-                "finish",
-                Some(code as i64),
-                &format!("exit_{code}"),
-            )?;
+            // p3-4: record the ACTUAL executing ouro version (and a monotonic-floor reset,
+            // if the anti-rollback state had to be re-established) for reproducibility.
+            let detail = format!(
+                "exit_{code} ouro={}{}",
+                crate::version::fmt(crate::version::current()),
+                if gate.rollback_reset { " rollback_reset=1" } else { "" },
+            );
+            store.record_terminal(&audit_id, &tool_name, machine, "finish", Some(code as i64), &detail)?;
             std::process::exit(code);
         }
         None => {
