@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- S0016 p1 — pure static, client-only generator. CSP blocks ALL network: nothing leaves the
+     browser (default-src 'none'). Topology entered here is NOT uploaded (Constraints/TC-3). -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; connect-src 'none'" />
+<title>ouro · pool operation generator</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#0b1524; --muted:#5b6675; --line:#e4e8ee;
+    --cardano:#0033ad; --cardano-ink:#00246e; --ok:#177245; --warn:#8a5a00; --danger:#8a1f1f;
+    --radius:10px; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{color-scheme:light}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  header{padding:28px 24px 8px;max-width:960px;margin:0 auto}
+  header h1{font-size:20px;margin:0;font-weight:600;letter-spacing:-.01em}
+  header p{color:var(--muted);margin:6px 0 0;max-width:64ch}
+  main{max-width:960px;margin:0 auto;padding:16px 24px 64px;display:grid;gap:16px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px 20px}
+  .panel h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 14px;font-weight:600}
+  label{display:block;font-size:13px;color:var(--muted);margin:0 0 4px}
+  input,select,textarea{width:100%;font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);
+    border-radius:8px;padding:8px 10px}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--cardano);outline-offset:1px;border-color:var(--cardano)}
+  .grid{display:grid;gap:12px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:1fr 1fr 1fr}
+  @media (max-width:640px){.g2,.g3{grid-template-columns:1fr}}
+  .machine{border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px;background:#fbfcfd}
+  .machine .row{display:grid;grid-template-columns:120px 1fr 1fr 90px auto;gap:8px;align-items:end}
+  @media (max-width:640px){.machine .row{grid-template-columns:1fr 1fr}}
+  button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:#fff;padding:8px 14px;color:var(--ink)}
+  button:hover{border-color:var(--cardano)}
+  button.primary{background:var(--cardano);border-color:var(--cardano);color:#fff;font-weight:500}
+  button.primary:hover{background:var(--cardano-ink)}
+  button.ghost{color:var(--muted)}
+  .rm{color:var(--danger);border-color:transparent;background:transparent;padding:8px}
+  .out{font-family:var(--mono);font-size:12.5px;white-space:pre;overflow-x:auto;background:#0b1524;color:#dfe7f2;
+    border-radius:8px;padding:14px;min-height:60px;border:1px solid #0b1524}
+  .out.light{background:#fbfcfd;color:var(--ink);border:1px solid var(--line);white-space:pre-wrap}
+  .bar{display:flex;gap:8px;align-items:center;margin:0 0 10px;flex-wrap:wrap}
+  .bar h2{margin:0}
+  .spacer{flex:1}
+  .disclose{border:1px solid var(--warn);background:#fff8ec;border-radius:8px;padding:10px 12px;color:var(--warn);font-size:13px;margin:0 0 10px}
+  .err{color:var(--danger);font-size:13px;margin:8px 0 0;white-space:pre-wrap}
+  .hint{color:var(--muted);font-size:12px;margin:4px 0 0}
+  .tag{display:inline-block;font-size:11px;color:var(--cardano-ink);background:#eaf0fb;border-radius:20px;padding:2px 8px}
+  dialog{border:1px solid var(--line);border-radius:12px;padding:0;max-width:520px;width:calc(100% - 32px)}
+  dialog::backdrop{background:rgba(11,21,36,.35)}
+  .dlg{padding:20px}
+  .dlg h3{margin:0 0 8px;font-size:16px}
+  .dlg p{margin:0 0 12px;color:var(--muted);font-size:13.5px}
+  .dlg .fields{font-family:var(--mono);font-size:12px;background:#fbfcfd;border:1px solid var(--line);border-radius:8px;padding:10px;margin:0 0 14px;max-height:160px;overflow:auto}
+  .dlg .actions{display:flex;gap:8px;justify-content:flex-end}
+  a{color:var(--cardano)}
+  @media (prefers-reduced-motion:no-preference){button,input,select{transition:border-color .12s,background .12s}}
+</style>
+</head>
+<body>
+<header>
+  <h1>ouro · pool operation generator</h1>
+  <p>Fill in your pool topology below. Everything is generated <strong>locally in your browser</strong> —
+     nothing is uploaded. You get a <code>pool-spec.yaml</code> and a short prompt to hand to your agent.
+     The agent reads the authoritative procedure from your verified <code>ouro</code> binary
+     (<code>ouro skill show</code>), not from this page.</p>
+</header>
+
+<main>
+  <section class="panel" aria-labelledby="pool-h">
+    <h2 id="pool-h">Pool</h2>
+    <div class="grid g3">
+      <div><label for="ticker">Ticker (3–5, A–Z 0–9)</label><input id="ticker" value="OURO" maxlength="5" /></div>
+      <div><label for="network">Network</label>
+        <select id="network">
+          <option value="preprod" data-magic="1">preprod</option>
+          <option value="preview" data-magic="2">preview</option>
+          <option value="mainnet" data-magic="764824073">mainnet</option>
+        </select>
+      </div>
+      <div><label for="magic">Network magic</label><input id="magic" value="1" inputmode="numeric" /></div>
+    </div>
+    <div class="grid g2" style="margin-top:12px">
+      <div><label for="meta">Metadata URL (http/https)</label><input id="meta" value="https://pool.example.com/metadata.json" /></div>
+      <div><label for="nodever">Node version</label><input id="nodever" value="10.5.4" /></div>
+    </div>
+    <div class="grid g3" style="margin-top:12px">
+      <div><label for="pledge">Pledge (lovelace)</label><input id="pledge" value="100000000000" inputmode="numeric" /></div>
+      <div><label for="margin">Margin (0–1)</label><input id="margin" value="0.02" /></div>
+      <div><label for="cost">Fixed cost (lovelace)</label><input id="cost" value="340000000" inputmode="numeric" /></div>
+    </div>
+    <div class="grid g2" style="margin-top:12px">
+      <div><label for="genesis">Shelley genesis hash</label><input id="genesis" value="1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35" /></div>
+      <div><label for="sync">Sync mode</label>
+        <select id="sync"><option value="genesis">genesis</option><option value="mithril">mithril</option></select>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="mach-h">
+    <div class="bar"><h2 id="mach-h">Machines (1 BP + N relays)</h2><span class="spacer"></span>
+      <button type="button" id="add-relay">+ relay</button></div>
+    <div id="machines"></div>
+    <div class="grid g2">
+      <div><label for="quorum">min_online_relays (upgrade quorum)</label><input id="quorum" value="1" inputmode="numeric" /></div>
+    </div>
+    <p class="hint">SSH user is always <code>ouro-exec</code> (target-side confinement, S0015). Hosts must be DNS/IP only.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="op-h">
+    <h2 id="op-h">Operation</h2>
+    <div class="grid g2">
+      <div><label for="op">What do you want the agent to do?</label>
+        <select id="op">
+          <option value="deploy">deploy — bring up / converge the pool</option>
+          <option value="upgrade">upgrade — rolling node upgrade (relays first, BP last)</option>
+          <option value="kes-rotation">kes-rotation — rotate the KES key</option>
+          <option value="runtime">runtime — restart / apply topology</option>
+          <option value="observability">observability — telemetry gateway</option>
+          <option value="troubleshooting">troubleshooting — read-only diagnosis</option>
+        </select>
+      </div>
+      <div><label for="minouro">min_ouro_version (advisory, only raises)</label><input id="minouro" value="0.1.0" /></div>
+    </div>
+    <p class="hint">The manifest digest below is optional; paste it from <code>ouro manifest show</code> to pin the exact bundle.</p>
+    <div style="margin-top:8px"><label for="digest">bundle manifest embedded_digest (optional)</label><input id="digest" placeholder="(leave blank to skip)" /></div>
+  </section>
+
+  <section class="panel">
+    <div class="bar"><h2>pool-spec.yaml</h2><span class="spacer"></span>
+      <button type="button" id="dl-spec">Download</button>
+      <button type="button" class="primary" id="copy-spec">Copy</button></div>
+    <div id="err" class="err" hidden></div>
+    <pre class="out light" id="spec-out" aria-live="polite"></pre>
+  </section>
+
+  <section class="panel">
+    <div class="bar"><h2>Prompt for your agent</h2><span class="spacer"></span>
+      <button type="button" class="primary" id="copy-prompt">Copy prompt</button></div>
+    <div class="disclose" role="note">⚠ This prompt contains your node hostnames/IPs. Copying it sends that
+      topology to whatever agent you paste it into (e.g. a cloud service) and its logs. It never leaves this page on its own.</div>
+    <pre class="out" id="prompt-out" aria-live="polite"></pre>
+  </section>
+
+  <section class="panel">
+    <h2>One-time setup (do this once)</h2>
+    <pre class="out light" id="bootstrap-out"></pre>
+    <p class="hint">Verify the signing fingerprint on the official site before trusting the binary. Provisioning your
+      target machines (<code>ouro init</code>) is delivered separately (S0017).</p>
+  </section>
+</main>
+
+<dialog id="disclose-dlg">
+  <form method="dialog" class="dlg">
+    <h3>Send topology to your agent?</h3>
+    <p>Copying this prompt will place the following fields on your clipboard, to be sent to whichever agent you paste into:</p>
+    <div class="fields" id="disclose-fields"></div>
+    <div class="actions">
+      <button value="cancel" class="ghost">Cancel</button>
+      <button value="ok" class="primary" id="disclose-ok">Copy anyway</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+// ---- helpers (no external libs; YAML is emitted by hand from validated fields) ----
+const $ = (id) => document.getElementById(id);
+const RE = {
+  ticker: /^[A-Z0-9]{3,5}$/,
+  host: /^[A-Za-z0-9.\-:]{1,253}$/,
+  seg: /^[a-z0-9-]+$/,
+  url: /^https?:\/\/[^\s`$;|&"'\\<>(){}]{1,193}$/,
+  hex: /^[0-9a-f]{40,}$/,
+  num: /^\d+$/,
+};
+let relayN = 2;
+
+function machineRow(id, role, host, port, removable) {
+  const el = document.createElement("div");
+  el.className = "machine";
+  el.innerHTML = `<div class="row">
+    <div><label>id</label><input class="m-id" value="${id}" ${role === "bp" ? "" : ""}/></div>
+    <div><label>role</label><input class="m-role" value="${role}" readonly /></div>
+    <div><label>host</label><input class="m-host" value="${host}" /></div>
+    <div><label>node port</label><input class="m-port" value="${port}" inputmode="numeric" /></div>
+    <div>${removable ? '<button type="button" class="rm" aria-label="remove relay">✕</button>' : '<span class="tag">BP</span>'}</div>
+  </div>`;
+  if (removable) el.querySelector(".rm").addEventListener("click", () => { el.remove(); render(); });
+  el.querySelectorAll("input").forEach((i) => i.addEventListener("input", render));
+  return el;
+}
+
+function seedMachines() {
+  const m = $("machines");
+  m.appendChild(machineRow("bp1", "bp", "bp1", "3001", false));
+  m.appendChild(machineRow("relay1", "relay", "relay1", "3001", true));
+  m.appendChild(machineRow("relay2", "relay", "relay2", "3001", true));
+}
+
+$("add-relay").addEventListener("click", () => {
+  relayN += 1;
+  $("machines").appendChild(machineRow("relay" + relayN, "relay", "relay" + relayN, "3001", true));
+  render();
+});
+
+$("network").addEventListener("change", (e) => {
+  const opt = e.target.selectedOptions[0];
+  $("magic").value = opt.dataset.magic;
+  render();
+});
+
+function collect() {
+  const errs = [];
+  const ticker = $("ticker").value.trim();
+  if (!RE.ticker.test(ticker)) errs.push("ticker must be 3–5 chars of A–Z 0–9");
+  const meta = $("meta").value.trim();
+  if (!RE.url.test(meta)) errs.push("metadata URL must be a clean http(s) URL");
+  const genesis = $("genesis").value.trim();
+  if (!RE.hex.test(genesis)) errs.push("shelley genesis hash must be lowercase hex");
+  for (const k of ["magic", "pledge", "cost"]) if (!RE.num.test($(k).value.trim())) errs.push(k + " must be numeric");
+  const margin = parseFloat($("margin").value);
+  if (!(margin >= 0 && margin <= 1)) errs.push("margin must be between 0 and 1");
+
+  const machines = [];
+  const ids = new Set();
+  document.querySelectorAll(".machine").forEach((row) => {
+    const id = row.querySelector(".m-id").value.trim();
+    const role = row.querySelector(".m-role").value.trim();
+    const host = row.querySelector(".m-host").value.trim();
+    const port = row.querySelector(".m-port").value.trim();
+    if (!RE.seg.test(id)) errs.push(`machine id "${id}" must be [a-z0-9-]`);
+    if (ids.has(id)) errs.push(`duplicate machine id "${id}"`); ids.add(id);
+    if (!RE.host.test(host)) errs.push(`ssh host "${host}" must be DNS/IP only`);
+    if (!RE.num.test(port)) errs.push(`port for "${id}" must be numeric`);
+    machines.push({ id, role, host, port });
+  });
+  const bp = machines.filter((m) => m.role === "bp");
+  const relays = machines.filter((m) => m.role === "relay");
+  if (bp.length !== 1) errs.push("exactly one BP is required");
+  if (relays.length < 1) errs.push("at least one relay is required");
+  const quorum = $("quorum").value.trim();
+  if (!RE.num.test(quorum)) errs.push("min_online_relays must be numeric");
+  else if (parseInt(quorum, 10) > relays.length) errs.push("min_online_relays exceeds relay count");
+
+  return { errs, ticker, meta, genesis, machines, bp: bp[0], relays, quorum,
+    magic: $("magic").value.trim(), network: $("network").value, nodever: $("nodever").value.trim(),
+    pledge: $("pledge").value.trim(), margin: $("margin").value.trim(), cost: $("cost").value.trim(),
+    sync: $("sync").value, op: $("op").value, minouro: $("minouro").value.trim(), digest: $("digest").value.trim() };
+}
+
+function yaml(d) {
+  const L = [];
+  L.push("# Generated by the ouro onboarding generator (client-side; nothing uploaded).");
+  L.push("spec_version: 1");
+  L.push("pool:");
+  L.push(`  ticker: ${d.ticker}`);
+  L.push(`  network: ${d.network}`);
+  L.push(`  network_magic: ${d.magic}`);
+  L.push("  genesis_hashes:");
+  L.push(`    shelley: "${d.genesis}"`);
+  L.push(`  metadata_url: "${d.meta}"`);
+  L.push(`  pledge_lovelace: ${d.pledge}`);
+  L.push(`  margin: ${d.margin}`);
+  L.push(`  cost_lovelace: ${d.cost}`);
+  L.push("topology_mode: p2p");
+  L.push(`node_version: "${d.nodever}"`);
+  L.push("machines:");
+  for (const m of d.machines) {
+    L.push(`  - id: ${m.id}`);
+    L.push(`    role: ${m.role}`);
+    if (m.role === "relay") {
+      L.push(`    public_endpoint: { host: ${m.host}, port: ${m.port} }`);
+    }
+    // SSH is the admin channel on port 22; the node p2p port (m.port) is the public_endpoint.
+    L.push(`    ssh: { host: ${m.host}, port: 22, user: ouro-exec, key_ref: "creds://${m.id}" }`);
+  }
+  L.push("upgrade:");
+  L.push(`  min_online_relays: ${d.quorum}`);
+  L.push("sync:");
+  L.push(`  mode: ${d.sync}`);
+  return L.join("\n") + "\n";
+}
+
+function prompt(d) {
+  // A THIN operator prompt: data + operation + a POINTER to the verified binary's decision tree.
+  // The decision procedure is NOT inlined here (R2 N3) — the agent reads it from `ouro skill show`.
+  const bp = d.bp ? d.bp.id : "bp1";
+  const digestLine = d.digest ? `\n# expected bundle: ${d.digest}` : "";
+  return [
+`You are operating a Cardano stake pool with the ouro CLI on my control machine.`,
+`Operation: ${d.op}. Pool: ${d.ticker} on ${d.network}. BP=${bp}, relays=${d.relays.map(r=>r.id).join(", ")}.`,
+``,
+`1. Read the AUTHORITATIVE procedure and red lines from my verified binary:`,
+`     ouro skill show ${d.op}`,
+`   Follow that decision tree exactly. Do NOT take operational steps from this message —`,
+`   this message only supplies data and which operation to run.`,
+`2. Use this pool-spec (save as pool-spec.yaml):`,
+`---`,
+yaml(d).trimEnd(),
+`---`,
+`3. Drive every change through:  ouro tool run <skill>/<script> --dispatch <machine> --spec pool-spec.yaml --min-ouro ${d.minouro||"0.1.0"}`,
+`   Never run node commands directly; only ouro tool run. Stop on exit 30 (rollback) or 40 (human).${digestLine}`,
+``,
+`Setup (once, if not done): install ouro from the official site and verify its signature; then`,
+`provision each target with 'ouro init' (see S0017). Confirm each destructive step when ouro asks.`,
+  ].join("\n") + "\n";
+}
+
+function bootstrap(d) {
+  return [
+"# One-time, on your control machine (verify the fingerprint on the official ouro site first):",
+"brew install ouro        # primary vector (macOS); or the official npx command",
+"ouro version && ouro contract   # cross-check against the site",
+"# Then arm each target machine (delivered by S0017):",
+`ouro init --spec pool-spec.yaml`,
+  ].join("\n") + "\n";
+}
+
+let current = { spec: "", prompt: "", disclose: [] };
+
+function render() {
+  const d = collect();
+  const err = $("err");
+  if (d.errs.length) {
+    err.hidden = false;
+    err.textContent = "Fix before generating:\n• " + d.errs.join("\n• ");
+    $("spec-out").textContent = ""; $("prompt-out").textContent = ""; $("bootstrap-out").textContent = "";
+    current = { spec: "", prompt: "", disclose: [] };
+    return;
+  }
+  err.hidden = true;
+  const spec = yaml(d), pr = prompt(d), bs = bootstrap(d);
+  $("spec-out").textContent = spec;
+  $("prompt-out").textContent = pr;
+  $("bootstrap-out").textContent = bs;
+  current = { spec, prompt: pr,
+    disclose: d.machines.map((m) => `${m.id} (${m.role}) host=${m.host}:${m.port}`) };
+}
+
+async function clip(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+}
+
+$("copy-spec").addEventListener("click", () => current.spec && clip(current.spec));
+$("dl-spec").addEventListener("click", () => {
+  if (!current.spec) return;
+  const a = document.createElement("a");
+  a.href = "data:application/x-yaml;charset=utf-8," + encodeURIComponent(current.spec);
+  a.download = "pool-spec.yaml"; a.click();
+});
+
+// p1-6 / TC-3b: copying the prompt discloses the topology fields and requires explicit confirm.
+$("copy-prompt").addEventListener("click", () => {
+  if (!current.prompt) return;
+  $("disclose-fields").textContent = current.disclose.join("\n") + "\n(+ ticker, metadata URL, genesis hash)";
+  const dlg = $("disclose-dlg");
+  dlg.returnValue = "";
+  dlg.showModal();
+  dlg.addEventListener("close", function once() {
+    dlg.removeEventListener("close", once);
+    if (dlg.returnValue === "ok") clip(current.prompt);
+  });
+});
+
+// live re-render on any input
+document.querySelectorAll("input,select").forEach((el) => el.addEventListener("input", render));
+seedMachines();
+render();
+</script>
+</body>
+</html>

@@ -210,15 +210,15 @@ agent 装 skill",又不给决策层留投毒面。
 > 草案:四条 track。item 粒度在激活前可继续细化。
 
 ### p1 — 表单 → spec/prompt 生成器(静态网站)
-- [ ] p1-1 站点骨架 + 视觉基线(light-only、Cardano 调色板、Apple 极简、a11y 基线);**构建策略
+- [x] p1-1 站点骨架 + 视觉基线(light-only、Cardano 调色板、Apple 极简、a11y 基线);**构建策略
   (R2 N11 落盘)= 单个自包含 HTML、零构建、可离线打开**(最契合纯客户端可审计)
-- [ ] p1-2 表单模型与客户端校验(完整映射 `pool-spec.schema.json` 必填字段 + 安全默认)
-- [ ] p1-3 `pool-spec.yaml` 本地生成 + 下载/复制,通过 `ouro spec validate`
-- [ ] p1-4 薄操作 prompt 生成(数据/spec 引用 + 操作 + `ouro skill show <op>` 指针 + **manifest digest**
+- [x] p1-2 表单模型与客户端校验(完整映射 `pool-spec.schema.json` 必填字段 + 安全默认)
+- [x] p1-3 `pool-spec.yaml` 本地生成 + 下载/复制,通过 `ouro spec validate`
+- [x] p1-4 薄操作 prompt 生成(数据/spec 引用 + 操作 + `ouro skill show <op>` 指针 + **manifest digest**
   + `min_ouro_version`;**不内联决策树**,评审 R2 N3)
-- [ ] p1-5 构建期绑定 bundle manifest(操作清单 + schema 版本 + manifest digest);**不派生/不内联决策
+- [x] p1-5 构建期绑定 bundle manifest(操作清单 + schema 版本 + manifest digest);**不派生/不内联决策
   文本**(决策树运行时由 `ouro skill show` 供给)
-- [ ] p1-6 复制前强制披露 UI:"复制即把拓扑发送给你的 agent 提供商"(#4)
+- [x] p1-6 复制前强制披露 UI:"复制即把拓扑发送给你的 agent 提供商"(#4)
 
 ### p2 — 自更新单二进制分发
 - [x] p2-1 `ouro` 打包为单静态二进制 + **编译期内嵌** skill 决策/机制资产(build.rs + `include_bytes!`);
@@ -352,6 +352,11 @@ agent 装 skill",又不给决策层留投毒面。
 - p4-1 | stack: rust | command: cargo test (33 passed) + ouro spec validate | result: pass | note:
   `relay1; rm -rf /`/`$(curl evil)`/backtick metadata_url/file://、含空格的 machine id、非 alnum ticker 均被拒;
   bed/quorum2/minimal 三份真实 spec 仍 ok(无误报)。
+- p1 (p1-1..p1-6) | stack: web/python | command: tests/test_web_generator.py + 真浏览器验证 | result: pass |
+  note: 单个自包含 HTML(零构建),CSP default-src/connect-src 'none' 阻断一切出站;真浏览器渲染无
+  console error、发起 0 网络请求;表单实时生成 pool-spec.yaml(经 ouro spec validate=ok,存 examples/
+  pool-spec.generated-default.yaml)+ 薄 prompt(指针 `ouro skill show`,不内联决策树);复制前弹出拓扑
+  披露确认(p1-6/TC-3b,截图已验)。静态门测试守 CSP/无外链/无决策树内联/披露存在。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
