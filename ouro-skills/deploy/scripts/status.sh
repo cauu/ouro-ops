@@ -37,21 +37,37 @@ GENESIS_HASH="$(cardano-cli hash genesis-file --genesis "$GENESIS" 2>/dev/null |
 python3 - "$MACHINE" "$MAGIC" "$GENESIS_HASH" "${OURO_AUDIT_ID:-}" "$TIP1" "$TIP2" <<'PY'
 import json, sys
 mid, magic, gh, audit_id, t1_raw, t2_raw = sys.argv[1:7]
-t1 = json.loads(t1_raw); t2 = json.loads(t2_raw) if t2_raw.strip() else t1
+t1 = json.loads(t1_raw)
+# Robust second-sample parse: a garbage/partial second `query tip` must NOT crash the collector
+# with a traceback — fall back to t1 (slot_advancing then reports no advance).
+try:
+    t2 = json.loads(t2_raw) if t2_raw.strip() else t1
+except Exception:
+    t2 = t1
 checks = []
 def add(name, ok, sev="critical", ec=30, detail=""):
     checks.append({"name": name, "pass": bool(ok),
                    "severity": "info" if ok else sev, "exit_class": 0 if ok else ec,
                    "rollback_safe": True, "detail": detail or ("pass" if ok else "fail")})
 
-block, slot, era = t1.get("block", 0), t1.get("slot", 0), t1.get("era", "")
+block, slot, era = t1.get("block", -1), t1.get("slot", -1), t1.get("era", "")
 b2, s2 = t2.get("block", block), t2.get("slot", slot)
+# sync as a numeric percentage, not an exact "100.00" string.
+try:
+    sync = float(t1.get("syncProgress", "nan"))
+except Exception:
+    sync = float("nan")
 add(f"{mid}.tip_block_positive", block > 0, detail=f"block={block}")
 add(f"{mid}.era_conway", era == "Conway", detail=f"era={era}")
-add(f"{mid}.sync_100", str(t1.get("syncProgress")) == "100.00", "warning", 20, detail=f"sync={t1.get('syncProgress')}")
-add(f"{mid}.network_magic", int(magic) >= 0, detail=f"magic={magic} (query succeeded => node is on this magic)")
-add(f"{mid}.genesis_consistent", len(gh) == 64 and all(c in "0123456789abcdef" for c in gh),
-    detail=f"shelley genesis hash={gh[:16]}… (node loaded this genesis)")
+add(f"{mid}.sync_100", sync >= 99.99, "warning", 20, detail=f"sync={t1.get('syncProgress')}")
+# network_magic: a wrong magic makes `query tip` fail at the script's entry (node_query_failed),
+# so REACHING here with a real tip (era present) is the proof the node answered on the spec magic
+# — assert on that real result, not the tautological `int(magic) >= 0`.
+add(f"{mid}.network_magic_answered", era != "" and block >= 0, detail=f"node returned a tip on magic {magic}")
+# Honest name: this proves the shelley genesis file is present + hashable on the node host, NOT
+# ledger-level consistency. E2E cross-checks it against the node's config ShelleyGenesisHash.
+add(f"{mid}.genesis_hash_readable", len(gh) == 64 and all(c in "0123456789abcdef" for c in gh),
+    detail=f"shelley genesis hash={gh[:16]}…")
 add(f"{mid}.slot_advancing", (b2 > block) or (s2 > slot), "warning", 20,
     detail=f"slot {slot}->{s2} block {block}->{b2}")
 

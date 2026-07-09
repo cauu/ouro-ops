@@ -59,9 +59,9 @@ if dc exec -T bp1 bash -lc 'CARDANO_NODE_SOCKET_PATH=/opt/devnet/node.socket car
 fi
 pass "wrong-network: query tip --testnet-magic 42 fails (magic guard is real)"
 
-echo "[status] genesis self-consistency — reported hash matches the node's own genesis file"
-node_gh=$(dc exec -T bp1 bash -lc 'cardano-cli hash genesis-file --genesis /opt/devnet/shelley-genesis.json' | tr -d '\r\n')
-[ "$node_gh" = "$gh" ] || fail "collector genesis $gh != node genesis $node_gh"
-pass "genesis self-consistent: collector hash == node's shelley genesis hash"
+echo "[status] genesis — collector hash matches the NODE CONFIG's ShelleyGenesisHash (not a re-hash)"
+cfg_gh=$(dc exec -T bp1 python3 -c 'import json;print(json.load(open("/opt/devnet/config.json"))["ShelleyGenesisHash"])' | tr -d '\r\n')
+[ "$cfg_gh" = "$gh" ] || fail "collector genesis $gh != node config ShelleyGenesisHash $cfg_gh"
+pass "genesis: collector hash == node config ShelleyGenesisHash (node is configured with this genesis)"
 
 echo "p2-2 node-status E2E: ALL PASSED"

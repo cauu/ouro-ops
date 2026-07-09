@@ -33,6 +33,7 @@ kes_counter() {
 c0=$(kes_counter); pass "initial on-disk opcert counter = $c0"
 
 echo "[kes] rotation #1 — dispatch kes-rotation/rotate to bp1 (real opcert issuance + restart)"
+pid_before=$(dc exec -T bp1 bash -lc "pgrep -f 'cardano-node run' | head -1" | tr -d '\r')
 out1=$(ctl ouro tool run kes-rotation/rotate --dispatch bp1 --spec "$SPEC")
 echo "$out1" | jqpy "d['status']" | grep -qx ok || fail "rotate #1 not ok: $out1"
 ca=$(echo "$out1" | jqpy "d['data']['counter_after']")
@@ -41,7 +42,10 @@ blk=$(echo "$out1" | jqpy "d['data']['tip_block_after']")
 [ "$ca" -eq $((cb + 1)) ] 2>/dev/null || fail "counter not incremented by 1 ($cb -> $ca)"
 [ "$blk" -gt 0 ] 2>/dev/null || fail "node not forging after rotation (block=$blk)"
 echo "$out1" | jqpy "all(c['pass'] for c in d['checks'])" | grep -qx True || fail "rotate #1 checks not all pass: $out1"
-pass "rotation #1: opcert counter $cb -> $ca, node forging (block=$blk), all checks pass"
+# Prove a genuine restart onto the new opcert: the node PID must have changed.
+pid_after=$(dc exec -T bp1 bash -lc "pgrep -f 'cardano-node run' | head -1" | tr -d '\r')
+[ -n "$pid_after" ] && [ "$pid_after" != "$pid_before" ] || fail "bp1 node PID unchanged ($pid_before->$pid_after) — not really restarted onto new opcert"
+pass "rotation #1: opcert counter $cb -> $ca, node restarted (pid $pid_before->$pid_after) + forging (block=$blk)"
 
 # Ground-truth from the node's OWN kes-period-info (independent of the script's report).
 c1=$(kes_counter)

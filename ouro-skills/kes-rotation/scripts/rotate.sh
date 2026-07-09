@@ -37,6 +37,16 @@ ondisk_counter() {
     | python3 -c 'import json,sys; s=sys.stdin.read(); i=s.find("{"); print(json.loads(s[i:]).get("qKesOnDiskOperationalCertificateNumber",-1) if i>=0 else -1)' 2>/dev/null || echo -1
 }
 BEFORE=$(ondisk_counter "$POOL/opcert.cert")
+# The pre-rotation ground-truth read MUST succeed, else `after == before+1` could false-pass
+# (e.g. BEFORE=-1, AFTER=0 → 0 == -1+1). Also snapshot the pre-restart PID + block so the
+# post-restart check proves a genuine restart + NEW forging (not a stale db replay).
+[ "${BEFORE:--1}" -ge 0 ] 2>/dev/null || ouro_emit_error 30 "kes_precheck_failed" "could not read on-disk opcert counter before rotation"
+PRE_PID="$(pgrep -f 'cardano-node run' | head -1 || true)"
+PRE_BLOCK="$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
+  | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("block",-1))
+except: print(-1)' 2>/dev/null || echo -1)"
+[ "${PRE_BLOCK:--1}" -ge 0 ] 2>/dev/null || ouro_emit_error 30 "kes_precheck_failed" "could not read tip before rotation"
 
 echo "[kes] issuing new opcert (period=$PERIOD, prior on-disk counter=$BEFORE)" >&2
 cardano-cli node key-gen-KES --verification-key-file "$POOL/kes.vkey.new" --signing-key-file "$POOL/kes.skey.new" >/dev/null
@@ -65,17 +75,23 @@ setsid cardano-node run \
   --shelley-operational-certificate "$POOL/opcert.cert" --port 3001 \
   >/var/log/cardano-node.log 2>&1 < /dev/null &
 
-# Ground-truth: wait for the restarted node to forge again with the new opcert.
+# Ground-truth: the node must be a NEW process (restarted) AND forge PAST the pre-restart block
+# with the new opcert. `block > PRE_BLOCK` (not `> 0`) rejects a node that merely replays the
+# preserved db without producing a new block (e.g. a bad opcert that starts but cannot forge).
+NEW_PID="$(pgrep -f 'cardano-node run' | head -1 || true)"
+if [ -n "$PRE_PID" ] && [ "$NEW_PID" = "$PRE_PID" ]; then
+  ouro_emit_error 30 "node_did_not_restart" "node PID unchanged ($NEW_PID) after opcert rotation"
+fi
 FORGED=0
 for _ in $(seq 1 40); do
   sleep 3
   BLK=$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
         | python3 -c 'import json,sys
-try: print(json.load(sys.stdin).get("block",0))
-except: print(0)' 2>/dev/null || echo 0)
-  [ "${BLK:-0}" -gt 0 ] 2>/dev/null && { FORGED=1; break; }
+try: print(json.load(sys.stdin).get("block",-1))
+except: print(-1)' 2>/dev/null || echo -1)
+  [ "${BLK:--1}" -gt "${PRE_BLOCK:--1}" ] 2>/dev/null && { FORGED=1; break; }
 done
-[ "$FORGED" = 1 ] || ouro_emit_error 30 "node_did_not_resume_forging" "node did not forge after opcert rotation"
+[ "$FORGED" = 1 ] || ouro_emit_error 30 "node_did_not_resume_forging" "node did not forge past block $PRE_BLOCK after opcert rotation"
 
 AFTER=$(ondisk_counter "$POOL/opcert.cert")
 

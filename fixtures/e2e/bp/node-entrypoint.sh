@@ -12,7 +12,12 @@ SOCK=/opt/devnet/node.socket
 MAGIC="${DEVNET_MAGIC:-1}"           # preprod magic (schema-valid; see p2-0 decision)
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
 
-if [ ! -f "$DEVNET/config.json" ]; then
+# Regenerate a fresh devnet on EVERY container boot (fresh systemStart => always forges). The
+# old code generated genesis once but wiped the db on every boot, so a container RESTART reused
+# a stale systemStart with an empty db -> the p2-0 cold-start (NoLedgerView, never forges). A
+# throwaway devnet has no cross-restart chain to preserve, so a fresh chain per boot is correct.
+# (In-place NODE restarts by the L2 scripts preserve the db and do NOT touch genesis.)
+if true; then
   echo "[bp1] generating fresh forging devnet (magic=$MAGIC)…"
   rm -rf "$DEVNET"; mkdir -p "$DEVNET"
   cardano-cli conway genesis create-testnet-data --genesis-keys 1 --pools 1 \

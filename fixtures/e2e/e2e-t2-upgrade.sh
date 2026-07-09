@@ -36,6 +36,8 @@ docker cp fixtures/e2e/pool-spec.bed-quorum2.yaml "$(dc ps -q control)":"$SPEC_Q
 # ---- A. happy path: BP-last order + per-machine delta + bp1 restart keeps forging ----
 echo "[A] rollout (control dispatches relays-first, BP-last, real node restart on bp1)"
 reset_state
+pid_before=$(dc exec -T bp1 bash -lc "pgrep -f 'cardano-node run' | head -1" | tr -d '\r')
+blk_before=$(dc exec -T bp1 bash -lc 'CARDANO_NODE_SOCKET_PATH=/opt/devnet/node.socket cardano-cli query tip --testnet-magic 1 2>/dev/null' | jqpy "d.get('block',0)")
 outA=$(ctl ouro tool run upgrade/rollout --spec "$SPEC")
 echo "$outA" | jqpy "d['status']" | grep -qx ok || fail "rollout not ok: $outA"
 order=$(echo "$outA" | jqpy "','.join(d['data']['order'])")
@@ -43,9 +45,13 @@ order=$(echo "$outA" | jqpy "','.join(d['data']['order'])")
 pass "A: rollout order = $order (relays first, BP last)"
 for m in relay1 relay2 bp1; do upgraded "$m" || fail "no upgrade state delta on $m"; done
 pass "A: per-machine real state delta present on relay1, relay2, bp1"
+# Prove the bp1 node GENUINELY restarted (PID changed) and forged PAST the pre-rollout block —
+# not just that some node reports block>0 from the preserved db.
+pid_after=$(dc exec -T bp1 bash -lc "pgrep -f 'cardano-node run' | head -1" | tr -d '\r')
+[ -n "$pid_after" ] && [ "$pid_after" != "$pid_before" ] || fail "bp1 node PID unchanged ($pid_before->$pid_after) — not really restarted"
 blk=$(dc exec -T bp1 bash -lc 'CARDANO_NODE_SOCKET_PATH=/opt/devnet/node.socket cardano-cli query tip --testnet-magic 1 2>/dev/null' | jqpy "d.get('block',0)")
-[ "$blk" -gt 0 ] 2>/dev/null || fail "bp1 not forging after rolling restart (block=$blk)"
-pass "A: bp1 node really restarted and is still forging (block=$blk)"
+[ "$blk" -gt "$blk_before" ] 2>/dev/null || fail "bp1 tip did not advance past $blk_before after restart (block=$blk)"
+pass "A: bp1 node truly restarted (pid $pid_before->$pid_after) and forged past $blk_before (block=$blk)"
 
 # ---- B. quorum: min_online_relays=2 must be refused before touching any target ----
 echo "[B] quorum: rollout with min_online_relays=2 must exit 10"

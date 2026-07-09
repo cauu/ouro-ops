@@ -25,8 +25,13 @@ docker build -f fixtures/e2e/Dockerfile.base -t ouro-e2e-base:local . >/dev/null
 dc up -d --build --wait --wait-timeout 240 >/dev/null
 bash fixtures/e2e/provision.sh >/dev/null
 # Real flow that handles secrets: status collection + a KES rotation (touches KES/cold keys).
+# The flow MUST actually succeed — a 0-hit scan over a flow that never ran is meaningless.
 ctl ouro tool run deploy/status      --dispatch bp1 --spec "$SPEC" > "$WORK/transcript.status.json" 2>&1 || true
 ctl ouro tool run kes-rotation/rotate --dispatch bp1 --spec "$SPEC" > "$WORK/transcript.kes.json"    2>&1 || true
+for t in status kes; do
+  grep -q '"status":"ok"' "$WORK/transcript.$t.json" || fail "real flow ($t) did not return status=ok — 0-hit scan would be meaningless: $(head -c200 "$WORK/transcript.$t.json")"
+done
+pass "real flow ran (deploy/status + kes-rotation/rotate both status=ok, so secrets were actually handled)"
 
 echo "[scan] derive MULTI-FORM fingerprints from live secrets on bp1"
 dc exec -T bp1 python3 - <<'PY' > "$WORK/fingerprints.live"
@@ -52,14 +57,20 @@ grep -E '^canary-(plaintext|sha256):' tests/fixtures/secrets/fingerprints.txt | 
 NFP=$(wc -l < "$WORK/fingerprints.live" | tr -d ' ')
 pass "derived $NFP fingerprints (live secret forms + canary)"
 
-echo "[scan] assemble the run corpus (audit + logs + transcript + set -x trace)"
+echo "[scan] assemble the run corpus (audit + ALL machine logs + state/temp dirs + set -x traces)"
 {
   ctl ouro audit log --limit 50 2>/dev/null
-  dc exec -T bp1 ouro audit log --limit 50 2>/dev/null
-  dc exec -T bp1 bash -lc 'cat /var/log/*.log 2>/dev/null; journalctl 2>/dev/null | tail -200 || true'
   cat "$WORK"/transcript.*.json
-  # a set -x trace of a real dispatch (would expose secrets if scripts echoed them)
+  # audit + logs + on-disk state/temp artifacts on EVERY machine (leak could land there too).
+  for m in control bp1 relay1 relay2; do
+    dc exec -T "$m" ouro audit log --limit 50 2>/dev/null || true
+    dc exec -T "$m" bash -lc 'cat /var/log/*.log 2>/dev/null; cat /tmp/ouro-*/* 2>/dev/null; journalctl 2>/dev/null | tail -200 || true' 2>/dev/null || true
+  done
+  # a set -x trace of a real dispatch (control side)…
   ctl bash -xc 'ouro tool run deploy/status --dispatch bp1 --spec '"$SPEC" 2>&1 || true
+  # …and a TARGET-side set -x trace of the key-handling lib path on bp1 (would surface a secret
+  # value if the emit/redact helpers echoed it under xtrace).
+  dc exec -T bp1 bash -xc 'set -x; source /opt/ouro/ouro-skills/lib/ouro-lib.sh; OURO_TOOL_NAME=t OURO_MACHINE=bp1 OURO_AUDIT_ID=trace ouro_emit_ok false "trace probe"' 2>&1 || true
 } > "$WORK/corpus.txt" 2>&1
 CORPUS_BYTES=$(wc -c < "$WORK/corpus.txt" | tr -d ' ')
 pass "corpus assembled ($CORPUS_BYTES bytes)"

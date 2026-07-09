@@ -36,12 +36,30 @@ PYEOF
   else
     OURO_TEL_AUTH_FILE="$AUTH_FILE" setsid python3 /opt/ouro/telemetry-gateway.py "$PORT" \
       >/var/log/telemetry-gateway.log 2>&1 < /dev/null &
+    up=0
     for _ in $(seq 1 20); do
-      python3 -c "import socket;socket.create_connection(('127.0.0.1',$PORT),1).close()" 2>/dev/null && break
+      if python3 -c "import socket;socket.create_connection(('127.0.0.1',$PORT),1).close()" 2>/dev/null; then up=1; break; fi
       sleep 0.5
     done
+    # Do NOT report success on a gateway that never bound (port in use / python crash) — the
+    # old code wrote the marker + ok regardless of whether it was listening.
+    [ "$up" = 1 ] || ouro_emit_error 30 "gateway_not_listening" "telemetry gateway failed to bind 127.0.0.1:$PORT"
+    # Prove basic-auth actually enforces (authed 200 / unauth 401) before claiming success.
+    if ! python3 - "$AUTH_FILE" "$PORT" <<'PYEOF'
+import sys, base64, urllib.request, urllib.error
+cred = open(sys.argv[1]).read().strip(); port = sys.argv[2]
+def code(auth):
+    r = urllib.request.Request(f"http://127.0.0.1:{port}/metrics")
+    if auth: r.add_header("Authorization", "Basic " + base64.b64encode(cred.encode()).decode())
+    try: return urllib.request.urlopen(r, timeout=3).status
+    except urllib.error.HTTPError as e: return e.code
+sys.exit(0 if (code(True) == 200 and code(False) == 401) else 1)
+PYEOF
+    then
+      ouro_emit_error 30 "gateway_auth_broken" "gateway is listening but basic-auth is not enforced (authed!=200 or unauth!=401)"
+    fi
     mkdir -p "$STATE_DIR"; printf '%s\n' "$AUTH_REF" > "$MARKER"
-    ouro_emit_ok true "telemetry basic-auth gateway installed on :$PORT"
+    ouro_emit_ok true "telemetry basic-auth gateway installed + auth-verified on :$PORT"
   fi
 else
   # Marker mode (deterministic unit tests): no provisioned credential present.

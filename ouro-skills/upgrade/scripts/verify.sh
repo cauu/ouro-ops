@@ -15,22 +15,46 @@ fi
 
 DEVNET="${OURO_DEVNET_DIR:-/opt/devnet}"
 SOCK="$DEVNET/node.socket"
-if [ -S "$SOCK" ] || pgrep -f 'cardano-node run' >/dev/null 2>&1; then
-  # REAL node host (p2-5): the upgraded node must resume forging before the next machine.
+SPEC="${OURO_SPEC:-}"
+ROLE=""; MAGIC=1
+if [ -n "$SPEC" ]; then
+  read -r ROLE MAGIC < <(python3 - "$SPEC" "$MACHINE" <<'PY'
+import yaml,sys
+s=yaml.safe_load(open(sys.argv[1])); mid=sys.argv[2]
+role=next((m["role"] for m in s["machines"] if m["id"]==mid),"")
+print(role or "-", s["pool"]["network_magic"])
+PY
+) || true
+fi
+
+# Real node host if a node is running/socketed, OR role=bp on a node-provisioned host
+# ($DEVNET/config.json exists — absent on the dev host so unit tests stay in marker mode). On
+# such a role=bp host a missing socket/process is a FAILURE, never a marker pass (that is how a
+# dead BP slipped through before).
+if [ -S "$SOCK" ] || pgrep -f 'cardano-node run' >/dev/null 2>&1 || { [ "$ROLE" = "bp" ] && [ -f "$DEVNET/config.json" ]; }; then
   export CARDANO_NODE_SOCKET_PATH="$SOCK"
+  PRE_PID="$(cat "$STATE_DIR/pre-pid-$MACHINE" 2>/dev/null || echo "")"
+  PRE_BLOCK="$(cat "$STATE_DIR/pre-block-$MACHINE" 2>/dev/null || echo -1)"
+  # Ground-truth: the node must be a NEW process (restarted) AND forge PAST the pre-restart
+  # block. `block > PRE_BLOCK` (not `> 0`) rejects a node that merely replays the preserved db.
+  NEW_PID="$(pgrep -f 'cardano-node run' | head -1 || true)"
+  [ -n "$NEW_PID" ] || ouro_emit_error 30 "upgrade_verify_failed" "no running node on $MACHINE after upgrade"
+  if [ -n "$PRE_PID" ] && [ "$NEW_PID" = "$PRE_PID" ]; then
+    ouro_emit_error 30 "upgrade_verify_failed" "node PID unchanged ($NEW_PID) — restart did not happen on $MACHINE"
+  fi
   found=0
   for _ in $(seq 1 40); do
-    blk=$(cardano-cli query tip --testnet-magic "${OURO_NETWORK_MAGIC:-1}" 2>/dev/null \
+    blk=$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
           | python3 -c 'import json,sys
-try: print(json.load(sys.stdin).get("block",0))
-except: print(0)' 2>/dev/null || echo 0)
-    if [ "${blk:-0}" -gt 0 ] 2>/dev/null; then found=1; break; fi
+try: print(json.load(sys.stdin).get("block",-1))
+except: print(-1)' 2>/dev/null || echo -1)
+    if [ "${blk:--1}" -gt "${PRE_BLOCK:--1}" ] 2>/dev/null; then found=1; break; fi
     sleep 3
   done
   if [ "$found" = 1 ]; then
-    ouro_emit_ok false "upgraded node verified forging (block=$blk)"
+    ouro_emit_ok false "upgraded node verified: restarted (pid $PRE_PID->$NEW_PID) + forging past $PRE_BLOCK (block=$blk)"
   else
-    ouro_emit_error 30 "upgrade_verify_failed" "node did not resume forging after upgrade on $MACHINE"
+    ouro_emit_error 30 "upgrade_verify_failed" "node did not forge past pre-upgrade block $PRE_BLOCK on $MACHINE"
   fi
 else
   ouro_emit_ok false "upgrade verification passed"
