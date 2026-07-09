@@ -50,3 +50,5 @@ src-tauri/WixTools/
 .claude
 .cursor
 .agents
+code_review
+tmp
