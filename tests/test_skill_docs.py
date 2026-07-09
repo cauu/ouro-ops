@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 from pathlib import Path
 
 
@@ -21,9 +22,31 @@ REQUIRED_RED_LINES = [
 ]
 
 
+_FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
+
+
+def _front_matter(text):
+    """S0016 p3-1 — parse the leading YAML front matter into a dict (simple key: value)."""
+    m = _FRONT_MATTER.match(text)
+    assert m, "SKILL.md must open with YAML front matter (--- ... ---)"
+    meta = {}
+    for line in m.group(1).splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        key, _, value = line.partition(":")
+        meta[key.strip()] = value.strip().strip('"').strip("'")
+    return meta
+
+
 def main():
     for path in SKILLS:
         text = path.read_text()
+        # S0016 p3-1: machine-readable version header (feeds embedded floor p3-2 + manifest p2-6).
+        meta = _front_matter(text)
+        assert str(meta.get("skill_version", "")).isdigit(), \
+            f"{path} front matter needs integer skill_version, got {meta.get('skill_version')!r}"
+        assert re.match(r"^(>=|>|=|\^|~)?\d+\.\d+\.\d+", meta.get("requires_ouro", "")), \
+            f"{path} front matter needs semver requires_ouro, got {meta.get('requires_ouro')!r}"
         assert "Decision Tree" in text
         assert "Stop Conditions" in text
         assert "Red Lines" in text

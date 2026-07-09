@@ -1,3 +1,7 @@
+---
+skill_version: 1
+requires_ouro: ">=0.1.0"
+---
 # Troubleshooting Skill
 
 ## Purpose

@@ -238,7 +238,7 @@ agent 装 skill",又不给决策层留投毒面。
   agent 的决策层只从此取,不信 prompt 内联(评审 R2 N3)
 
 ### p3 — 版本兼容与审计
-- [ ] p3-1 skill 真源 machine-readable 版本头(`SKILL.md` front matter `skill_version` + `requires_ouro >=`)
+- [x] p3-1 skill 真源 machine-readable 版本头(`SKILL.md` front matter `skill_version` + `requires_ouro >=`)
   + 文档校验测试
 - [ ] p3-2 版本闸:`required = max(prompt_min, 内嵌地板, 签名 security 地板)`;**prompt 只能抬高**;
   `local < required` 才强制自更新
@@ -329,7 +329,8 @@ agent 装 skill",又不给决策层留投毒面。
   · 未修:N5-N8 P2、N9-N11 余项——随实现期处理或后续 append。
 
 ## 6. Validation Evidence (append-only)
-- (待执行)
+- p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
+  均带 YAML front matter(skill_version 整数 + requires_ouro semver);现有决策树/红线校验无回归。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
