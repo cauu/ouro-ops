@@ -285,6 +285,7 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
                 &tool_name,
                 machine,
                 "finish",
+                Some(code as i64),
                 &format!("exit_{code}"),
             )?;
             std::process::exit(code);

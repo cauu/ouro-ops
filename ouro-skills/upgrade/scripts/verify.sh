@@ -12,6 +12,11 @@ STATE_DIR="${OURO_STATE_DIR:-/tmp/ouro-upgrade-state}"
 if [[ -f "$STATE_DIR/__test_inject_fail__$MACHINE" ]]; then
   ouro_emit_error 30 "upgrade_verify_failed" "verification failed for $MACHINE"
 fi
+# Test-only unknown-state injection (exit 40) via an allowlisted marker — drives the T3
+# failure-discipline invariant (exit 40 => stop ALL writes).
+if [[ -f "$STATE_DIR/__test_inject_unknown__$MACHINE" ]]; then
+  ouro_emit_error 40 "upgrade_state_unknown" "node state unknown for $MACHINE; stop all writes and escalate"
+fi
 
 DEVNET="${OURO_DEVNET_DIR:-/opt/devnet}"
 SOCK="$DEVNET/node.socket"
