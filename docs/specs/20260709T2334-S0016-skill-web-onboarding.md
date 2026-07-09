@@ -221,10 +221,11 @@ agent 装 skill",又不给决策层留投毒面。
 - [ ] p1-6 复制前强制披露 UI:"复制即把拓扑发送给你的 agent 提供商"(#4)
 
 ### p2 — 自更新单二进制分发
-- [ ] p2-1 `ouro` 打包为单静态二进制 + **编译期内嵌** skill 决策/机制资产(`include_dir!`);
-  **执行策略(R2 N2 落盘)**:每次 `tool run` 把内嵌脚本落到 per-run `0700` 临时目录 → 对内嵌
-  manifest hash 校验 → 执行 → 清理;脚本仍是 bash(不做 bash→Rust 大改),故"无外部脚本拉取"成立
-  (脚本来自二进制内部,非磁盘/网络),执行期依赖(bash/cardano-cli/python3)如实声明
+- [x] p2-1 `ouro` 打包为单静态二进制 + **编译期内嵌** skill 决策/机制资产(build.rs + `include_bytes!`);
+  **执行策略(R2 N2 落盘)**:磁盘缺失时(安装态二进制)每次 `tool run` 把内嵌脚本落到 per-run `0700`
+  临时 `ouro-skills/` 布局 → 执行 → **自清理**;脚本仍是 bash(不做 bash→Rust 大改),故"无外部脚本拉取"
+  成立(脚本来自二进制内部,非磁盘/网络),执行期依赖(bash/cardano-cli/python3)如实声明。磁盘/dev/bed
+  仍走 `skills_root()`(OURO_SKILLS_DIR 可覆盖),行为不变。
 - [ ] p2-2 签名 release channel + 验签(cosign/minisign);叠加透明日志 / 可复现构建
 - [ ] p2-3 `ouro self-update`:验签 + **单调防回滚** + 签名元数据时效/吊销 + "每 X 小时查一次"缓存 +
   离线 fallback(离线包内嵌可离线核验签名材料,同等验签+denylist+max(floor))
@@ -335,6 +336,9 @@ agent 装 skill",又不给决策层留投毒面。
 - p2-7 | stack: rust | command: cargo test skills:: + ./target/debug/ouro skill show/list | result: pass |
   note: build.rs 编译期内嵌 6 skill 决策树 + 机制脚本;`skill show <name>` 打印内嵌 SKILL.md(决策源=
   已验签二进制,非 prompt);`skill list` 输出 embedded_digest;`../etc`/未知 skill 被拒。4 skills 单测通过。
+- p2-1 | stack: rust | command: cargo test (27 passed) + 内嵌模式 tool run 对拍 | result: pass | note:
+  OURO_SKILLS_DIR 缺失→内嵌提取到 per-run 0700 `ouro-skills/` 布局并执行,输出与磁盘态**逐字节一致**
+  (deploy/status 同样 node_query_failed/exit30);运行后 0 残留临时目录(自清理);unknown tool 仍被拒。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。

@@ -190,17 +190,43 @@ fn validate_tool_name(tool_name: &str) -> Result<()> {
 }
 
 /// Resolve `<skill>/<script>` to an allowlisted L2 script path, rejecting traversal.
-fn resolve_skill_script(tool_name: &str) -> Result<PathBuf> {
+///
+/// Resolution order (S0016 p2-1):
+///   1. On-disk `skills_root()` — used in dev / the E2E bed / tests, or via `OURO_SKILLS_DIR`.
+///   2. The compile-time-embedded copy — the installed single binary carries no on-disk
+///      skills, so the script is materialized into a per-run `0700` temp dir under
+///      `ouro-skills/…` (so the scripts' `$ROOT/ouro-skills/lib/...` sourcing still resolves),
+///      run from there, and removed afterwards. Nothing is fetched from disk or network.
+///
+/// Returns the script path plus an optional temp base dir the caller MUST remove after use.
+fn resolve_skill_script(tool_name: &str) -> Result<(PathBuf, Option<PathBuf>)> {
     validate_tool_name(tool_name)?;
     let (skill, script) = tool_name.split_once('/').expect("validated tool name");
-    let path = skills_root().join(format!("{skill}/scripts/{script}.sh"));
-    if !path.is_file() {
+    let disk = skills_root().join(format!("{skill}/scripts/{script}.sh"));
+    if disk.is_file() {
+        return Ok((disk, None));
+    }
+    // Installed-binary path: extract the embedded skill's shell assets to a fresh temp base.
+    if crate::skills::script(skill, script).is_none() {
         return Err(OuroError::Validation(format!(
-            "no such tool script: {}",
-            path.display()
+            "no such tool script: {}/scripts/{}.sh (neither on disk nor embedded)",
+            skill, script
         )));
     }
-    Ok(path)
+    let base = std::env::temp_dir().join(format!("ouro-run-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&base)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700));
+    }
+    crate::skills::extract_shell_assets(skill, &base.join("ouro-skills"))?;
+    let path = base
+        .join("ouro-skills")
+        .join(skill)
+        .join("scripts")
+        .join(format!("{script}.sh"));
+    Ok((path, Some(base)))
 }
 
 /// Model B remote dispatch (control side): resolve the target machine's SSH endpoint
@@ -266,7 +292,7 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
     let spec_path = optional_flag_value(args, "--spec");
     let machine = optional_flag_value(args, "--machine");
     let provided_audit = optional_flag_value(args, "--audit-id");
-    let script = resolve_skill_script(&tool_name)?;
+    let (script, temp_base) = resolve_skill_script(&tool_name)?;
 
     let paths = ConfigPaths::discover();
     let store = AuditStore::open(&paths.audit_db)?;
@@ -319,6 +345,11 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
         cmd.env("OURO_MACHINE", machine);
     }
     let output = cmd.output()?;
+    // Self-clean the per-run extraction (p2-1): operations leave no accumulated scripts.
+    // Done before the exit()s below (which skip destructors). Disk/dev runs have no temp.
+    if let Some(base) = &temp_base {
+        let _ = std::fs::remove_dir_all(base);
+    }
     // Forward the child's stdout (the single-line JSON contract) to our caller.
     std::io::stdout().write_all(&output.stdout)?;
     std::io::stdout().flush()?;
@@ -613,5 +644,41 @@ fn consume_confirmation(
         None => Err(OuroError::Validation(format!(
             "dangerous {action} requires a human-issued confirmation token (ouro confirm create)"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests_embedded_resolution {
+    use super::*;
+
+    // S0016 p2-1: when no on-disk skill exists (installed single binary), the tool script is
+    // materialized from the compiled-in copy into a per-run temp base, with the ouro-skills/
+    // layout preserved so the script's `$ROOT/ouro-skills/lib/...` sourcing still resolves.
+    #[test]
+    fn embedded_fallback_materializes_runnable_layout() {
+        // Force a disk miss (nonexistent OURO_SKILLS_DIR) so resolution takes the embedded path.
+        std::env::set_var("OURO_SKILLS_DIR", "/nonexistent-ouro-skills-xyz");
+        let (script, temp_base) =
+            resolve_skill_script("deploy/status").expect("resolve embedded deploy/status");
+        std::env::remove_var("OURO_SKILLS_DIR");
+
+        let base = temp_base.expect("embedded path returns a temp base to clean");
+        assert!(script.is_file(), "extracted script exists: {}", script.display());
+        // The shared lib must sit where the script expects it (ROOT/ouro-skills/lib).
+        assert!(base.join("ouro-skills/lib/ouro-lib.sh").is_file());
+        // Extracted bytes must equal the embedded source (no drift on materialization).
+        let on_disk = std::fs::read(&script).unwrap();
+        let embedded = crate::skills::script("deploy", "status").unwrap();
+        assert_eq!(on_disk, embedded);
+
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn unknown_tool_rejected_even_when_absent_on_disk() {
+        std::env::set_var("OURO_SKILLS_DIR", "/nonexistent-ouro-skills-xyz");
+        let err = resolve_skill_script("deploy/does-not-exist");
+        std::env::remove_var("OURO_SKILLS_DIR");
+        assert!(err.is_err(), "absent-everywhere tool must error, not fabricate");
     }
 }
