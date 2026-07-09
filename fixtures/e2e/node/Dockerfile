@@ -15,8 +15,8 @@ FROM ouro-e2e-base:local
 
 # python3 (+ yaml) is required by the L2 scripts: ouro-lib.sh emits JSON via python3 and
 # several scripts parse pool-spec.yaml. bash/coreutils come from the base.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends openssh-server sudo python3 python3-yaml \
+RUN apt-get -o Acquire::Retries=3 update \
+ && apt-get -o Acquire::Retries=3 install -y --no-install-recommends openssh-server sudo python3 python3-yaml \
  && rm -rf /var/lib/apt/lists/* \
  && rm -f /etc/ssh/ssh_host_* \
  && mkdir -p /run/sshd \

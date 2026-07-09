@@ -5,8 +5,8 @@ FROM ouro-e2e-base:local
 
 # python3 (+ yaml) is required by control-side orchestrators (upgrade/rollout parses the
 # spec to plan the relays-first/BP-last order + quorum) and to emit their JSON output.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends openssh-client python3 python3-yaml \
+RUN apt-get -o Acquire::Retries=3 update \
+ && apt-get -o Acquire::Retries=3 install -y --no-install-recommends openssh-client python3 python3-yaml \
  && rm -rf /var/lib/apt/lists/*
 
 CMD ["sleep", "infinity"]

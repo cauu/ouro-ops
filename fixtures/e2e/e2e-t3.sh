@@ -22,10 +22,12 @@ echo "[t3] falsifiability self-test (asserter must catch every crafted violation
 python3 "$HARNESS/selftest.py" || fail "asserter self-test failed — the invariant checks are not sound"
 
 echo "[bed] rebuild base + up (bp1 forging) + provision + push quorum2 spec"
-docker build -f fixtures/e2e/Dockerfile.base -t ouro-e2e-base:local . >/dev/null
-dc up -d --build --wait --wait-timeout 240 >/dev/null
+docker build -f fixtures/e2e/Dockerfile.base -t ouro-e2e-base:local . >/dev/null || fail "base image build failed"
+dc up -d --build --wait --wait-timeout 240 >/dev/null || fail "bed did not come up (image build or healthcheck failure — not an invariant violation)"
 bash fixtures/e2e/provision.sh >/dev/null
 docker cp fixtures/e2e/pool-spec.bed-quorum2.yaml "$(dc ps -q control)":/opt/ouro/pool-spec-q2.yaml >/dev/null
+# Provision the telemetry basic-auth credential on relay1 (for the observability scenario).
+dc exec -T relay1 bash -c "umask 077; printf 'ourotel:%s' 's3cr3t-telemetry-pw-DO-NOT-LEAK' > /opt/ouro/telemetry-auth"
 
 reset_state() {
   for m in control bp1 relay1 relay2; do

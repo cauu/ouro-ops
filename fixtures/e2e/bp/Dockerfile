@@ -16,8 +16,8 @@ COPY --from=ouro /opt/ouro /opt/ouro
 
 # sshd + sudo + python3 (L2 scripts emit JSON via python3 / parse the spec). Principals +
 # 0400 placeholder key dir mirror node/Dockerfile so the security posture is identical.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends openssh-server sudo python3 python3-yaml inotify-tools \
+RUN apt-get -o Acquire::Retries=3 update \
+ && apt-get -o Acquire::Retries=3 install -y --no-install-recommends openssh-server sudo python3 python3-yaml inotify-tools \
  && rm -rf /var/lib/apt/lists/* \
  && rm -f /etc/ssh/ssh_host_* \
  && mkdir -p /run/sshd \
