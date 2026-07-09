@@ -42,6 +42,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "config" => run_config(&args[2..])?,
         "kes" => run_kes(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
+        "manifest" => run_manifest(&args[2..])?,
         "pool" => run_pool(&args[2..])?,
         "rollback" => run_rollback(&args[2..])?,
         "skill" => run_skill(&args[2..])?,
@@ -112,6 +113,53 @@ fn run_skill(args: &[String]) -> Result<()> {
         }
         _ => Err(OuroError::InvalidArgs(
             "expected skill show <name> | skill list".to_string(),
+        )),
+    }
+}
+
+/// `ouro manifest show | verify --against <file>` (S0016 p2-6).
+///
+/// `show` prints the bare bundle manifest derived from the binary's embedded assets (commit
+/// it as `packaging/bundle-manifest.json`). `verify` proves the running binary's embedded
+/// decision/mechanism/schema content matches a signed/committed manifest — the drift &
+/// tamper gate (TC-4/TC-13). A per-class mismatch names exactly which layer drifted.
+fn run_manifest(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        Some("show") => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&crate::skills::bundle_manifest())
+                    .expect("manifest serializes")
+            );
+            Ok(())
+        }
+        Some("verify") => {
+            let path = flag_value(args, "--against")?;
+            let expected: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(path)?).map_err(|e| {
+                    OuroError::Validation(format!("manifest {path} is not valid JSON: {e}"))
+                })?;
+            let actual = crate::skills::bundle_manifest();
+            let mut drift = Vec::new();
+            for key in ["decision_hash", "skills_hash", "schema_hash", "embedded_digest"] {
+                if expected.get(key) != actual.get(key) {
+                    drift.push(key);
+                }
+            }
+            if drift.is_empty() {
+                output::print_json(&ToolOutput::ok("ouro.manifest.verify", false).with_data(
+                    json!({ "verified": true, "embedded_digest": actual.get("embedded_digest") }),
+                ))?;
+                Ok(())
+            } else {
+                Err(OuroError::Validation(format!(
+                    "bundle manifest drift in: {} — embedded assets differ from the signed manifest",
+                    drift.join(", ")
+                )))
+            }
+        }
+        _ => Err(OuroError::InvalidArgs(
+            "expected manifest show | manifest verify --against <file>".to_string(),
         )),
     }
 }

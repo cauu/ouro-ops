@@ -42,6 +42,15 @@ fn main() {
     let mut files = Vec::new();
     collect(&skills_root, &skills_root, &mut files);
 
+    // Also embed the pool-spec JSON schema (lives at repo-root schemas/, outside ouro-skills/)
+    // so the bundle manifest's schema_hash is meaningful and the binary can self-describe the
+    // spec contract it validates against (rel keys keep their `schemas/` prefix).
+    let schemas_root = manifest_dir.join("schemas");
+    if schemas_root.is_dir() {
+        println!("cargo:rerun-if-changed=schemas");
+        collect(&schemas_root, &manifest_dir, &mut files);
+    }
+
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let dest = out_dir.join("embedded_skills.rs");
     let mut f = fs::File::create(&dest).expect("create embedded_skills.rs");

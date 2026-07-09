@@ -233,8 +233,10 @@ agent 装 skill",又不给决策层留投毒面。
   **预期签名身份 pin 进仓库控制的 artifact**(Homebrew formula + `packaging/SIGNING_IDENTITY`),安装
   命令**自动**验证(不靠用户手工比指纹);官网只展示同一身份供交叉核对;防 typosquat/假包/key 替换
 - [ ] p2-5 引导文案:一次性 setup(①装本机 + ②S0017 init)vs 每次操作的区分
-- [ ] p2-6 release **bundle manifest**(二进制 digest/内嵌决策 hash/内嵌 skills hash/schema hash/
-  `required_ouro`)+ `ouro` 启动 manifest 自校验(与自身 digest 一致才跑)
+- [x] p2-6 release **bundle manifest**(ouro_version/内嵌决策 hash/内嵌 skills hash/schema hash/
+  embedded_digest/`required_ouro`)+ `ouro manifest show|verify --against`;committed
+  `packaging/bundle-manifest.json` + 单测 drift 守卫(改 skill/schema 未重生 manifest → CI red)。
+  (完整"启动即校验签名 manifest"依赖 release 签名基础设施,见 p2-2/p2-3 infra 边界;本地 verify 门已就绪)
 - [x] p2-7 `ouro skill show <op>`:打印**内嵌、已验签**的决策树(供 agent 消费),经 manifest 自校验;
   agent 的决策层只从此取,不信 prompt 内联(评审 R2 N3)。落地:`build.rs` 编译期内嵌 + `skills.rs` +
   `ouro skill show/list`(traversal 拒绝)。manifest 自校验见 p2-6。
@@ -339,6 +341,9 @@ agent 装 skill",又不给决策层留投毒面。
 - p2-1 | stack: rust | command: cargo test (27 passed) + 内嵌模式 tool run 对拍 | result: pass | note:
   OURO_SKILLS_DIR 缺失→内嵌提取到 per-run 0700 `ouro-skills/` 布局并执行,输出与磁盘态**逐字节一致**
   (deploy/status 同样 node_query_failed/exit30);运行后 0 残留临时目录(自清理);unknown tool 仍被拒。
+- p2-6 | stack: rust | command: ouro manifest show/verify + cargo test skills:: | result: pass | note:
+  按类 hash(decision/skills/schema)+ embedded_digest + required_ouro;verify 对拍 committed
+  packaging/bundle-manifest.json 通过,篡改 decision_hash 被拒并指名漂移类;committed-manifest 单测守 drift。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
