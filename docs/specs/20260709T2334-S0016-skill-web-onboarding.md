@@ -329,6 +329,11 @@ agent 装 skill",又不给决策层留投毒面。
   **生成的 prompt/YAML/命令保持英文**(面向 agent 与 CLI 的机器接口,不随 UI 语言变化)。
 - [x] p1-restyle-fix14 nav 精简(用户 review):右上角只保留语言切换,撤掉 Setup/Operate 链接与
   黑色 CTA(步骤面板就在首屏,导航跳转冗余)。
+- [x] p1-i18n-fix1 三语文案 native 化重写(用户 review:直译腔明显):不再逐句对译,按母语
+  表达重写全部 zh-Hans/zh-Hant/ja 文案——重排语序、口语化措辞(如 h1「质押池运维,交给 AI
+  agent。」、trust「纯静态页面…唯一的联网动作」、按钮「下一步/上一步」)、区域用词分化
+  (繁中:執行檔/閘道/連接埠/稽核;日文:体言止め、まかせる 等自然表达);术语(prompt/agent/
+  relay/BP/KES/genesis/mithril)保留英文。
 ## 4. Test and Acceptance Criteria
 - TC-1 生成的 `pool-spec.yaml` 通过 `ouro-ops spec validate`(含 1 BP + N relay,N≥2;覆盖
   mainnet/preprod/preview、genesis vs Mithril、缺失/非法必填字段的 fixture)。
@@ -461,6 +466,9 @@ agent 装 skill",又不给决策层留投毒面。
   错误;静态安全门 pass(无新增出站,字典全内联)。
 
 - 2026-07-10 p1-restyle-fix14 completed: nav 仅剩语言切换器;静态门 pass。
+
+- 2026-07-10 p1-i18n-fix1 completed: 三语字典整体重写为 native 文案;真浏览器验证简中渲染 + 语言
+  记忆恢复,0 console 错误;静态门 pass。
 
 ## 6. Validation Evidence (append-only)
 - p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
@@ -603,6 +611,9 @@ agent 装 skill",又不给决策层留投毒面。
 
 - TC-3/TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome (3 languages) | result: pass | note:
   p1-i18n 唯一 fetch 不变;html[lang] 正确切换;prompt 输出保持英文(机器接口)
+
+- TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
+  p1-i18n-fix1 文案重写不涉及任何机制/出站变化
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
