@@ -321,6 +321,16 @@ agent 装 skill",又不给决策层留投毒面。
   · **#8 TC-2 非确定** → 脚本化 prompt driver 主路径 + bed/production 分轨 + S0017 前置。
   未修:P2/P3 单 agent 项(#11 ground-truth 通用化、#12 字段映射已并入 p1-2、#13 版本头已并入 p3-1、
   #15/#16/#17 措辞)——作为后续 append 或实现期处理。
+- 2026-07-10 **实现推进完成(待验收)**:激活后逐 item 交付并按 item 提交——
+  p1-1..p1-6(静态网站,真浏览器验证 0 出站/0 console error/拓扑披露)、p2-1(编译期内嵌+解压验签自清理)、
+  p2-6(bundle manifest + verify + drift 守卫)、p2-7(`ouro skill show` 决策源=已验签二进制)、
+  p2-2/4/5(SIGNING_IDENTITY/homebrew/install.sh 自动验签 + RELEASE.md)、p3-1(SKILL.md 版本头)、
+  p3-2/3/4(version gate `max(...)` 只能抬高 + tamper-evident 单调防回滚 + 审计记版本)、
+  p4-1(spec 字段注入校验)、p4-2(`confirm preview` ground-truth argv)、p4-3(威胁模型文档)。
+  **有意保持未完成**:p2-3 `[~]`(--check+设计已交付,网络拉取+验签+原地替换=release infra,见
+  packaging/RELEASE.md);p4-4 `[ ]`(可选加固轨,威胁模型已标为通往'安全路径'的前提,本期不做)。
+  测试:cargo 33 passed;python(skill_docs/deploy_scripts/web_generator/dep_convergence)全 pass。
+  **等待用户验收后再 close**(用户指示)。
 - 2026-07-09 **多 agent 评审 R2**(验证 R1 闭合;claude COMMENT / codex+cursor REQUEST_CHANGES):
   两条 P0 原洞实质闭合;#3/#5/#7 机制门闭合;新翻出 4 条 P1(N1-N4)。用户选 (a):修 N1+N3、
   N2/N4 决策落盘。修订:
