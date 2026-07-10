@@ -420,6 +420,11 @@ agent 装 skill",又不给决策层留投毒面。
   prompt——根因:非 deploy prompt 引用机器 **id**(host 来自已有 spec,不在 prompt)。修:非 deploy **隐藏
   host 字段**(避免死输入)、host 校验只在 deploy 生效;非 deploy 由 id 驱动。所有非 deploy 命令统一修复。
   JS 实测:deploy host 改动进 spec;upgrade 隐藏 host、改 relay id→prompt Fleet 行随之更新、无误报。
+- p1-fix9 | stack: web | command: 真浏览器 JS 断言 | result: pass | note: 用户选定工作流="每次重新生成完整
+  spec"。**退回 p1-fix5/fix8**(复用已有 spec/藏 host):**host 回归所有操作**、每个操作都生成并显示完整
+  pool-spec.yaml(含真实 host)。经济参数仍只 deploy 显示,非 deploy 在 spec 里用**带注释占位**;upgrade
+  目标版本(实时 11.0.1)写入生成的 spec,prompt 改为"保存本页 spec 再跑"。JS 实测:upgrade host 可见+改
+  IP 进 spec、spec 显示、占位注释在、node_version=目标版。(p1-fix5"两种模式"作废,归并为单一模式。)
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
