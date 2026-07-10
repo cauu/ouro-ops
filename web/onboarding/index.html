@@ -131,8 +131,15 @@
   .band-head h2{font-size:clamp(28px,3.4vw,40px);font-weight:700;letter-spacing:-.02em;line-height:1.1;margin:14px 0 0}
   .band-head p{margin:14px 0 0;font-size:15.5px;line-height:1.6;color:var(--body)}
 
-  /* hero action row: slim install pill (step 1) + primary CTA (step 2) on ONE line */
-  .go-row{display:flex;align-items:center;gap:14px;margin-top:28px;flex-wrap:wrap}
+  /* hero steps: a small vertical stepper — 1 set up once, 2 operate. Order reads top-down. */
+  .steps{list-style:none;margin:30px 0 0;padding:0;display:flex;flex-direction:column;gap:16px}
+  .step{display:flex;align-items:center;gap:14px;position:relative;flex-wrap:wrap}
+  .step-dot{flex:none;width:26px;height:26px;border-radius:50%;background:var(--sea);color:#fff;
+    display:grid;place-items:center;font:600 13px/1 var(--font);font-variant-numeric:tabular-nums}
+  .step + .step::before{content:"";position:absolute;left:12.5px;top:-17px;width:1.5px;height:18px;
+    background:rgba(72,139,225,.4)}
+  .step-label{flex:none;width:128px;font:600 14px/1.3 var(--font);color:var(--body-strong)}
+  @media (max-width:640px){.step-label{width:auto}}
   .install-bar{display:flex;align-items:center;gap:10px;height:48px;max-width:100%;overflow-x:auto;
     background:var(--surface-dark);border-radius:var(--r-md);padding:0 7px 0 9px;
     box-shadow:0 8px 24px rgba(34,72,134,.22),inset 0 1px 0 rgba(255,255,255,.12)}
@@ -358,18 +365,26 @@
     <p class="lede">Pick an operation, fill a short form, and hand <strong>one atomic prompt</strong> to your
       AI agent — procedures and writes stay inside your <strong>verified <code>ouro-ops</code> binary</strong>.
       Everything here is generated locally.</p>
-    <!-- one action row: install pill (step 1) → pick an operation (step 2) -->
-    <div class="go-row" id="setup">
-      <div class="install-bar">
-        <div class="os-tabs" role="tablist" aria-label="operating system">
-          <button type="button" class="os-tab active" data-os="mac">macOS</button>
-          <button type="button" class="os-tab" data-os="linux">Linux</button>
+    <!-- the two-step path, in order: 1 set up once → 2 operate -->
+    <ol class="steps" id="setup">
+      <li class="step">
+        <span class="step-dot">1</span>
+        <span class="step-label">Set up once</span>
+        <div class="install-bar">
+          <div class="os-tabs" role="tablist" aria-label="operating system">
+            <button type="button" class="os-tab active" data-os="mac">macOS</button>
+            <button type="button" class="os-tab" data-os="linux">Linux</button>
+          </div>
+          <code id="setup-out">brew install ouro/tap/ouro</code>
+          <button type="button" class="btn btn-oncolor" id="copy-setup">Copy</button>
         </div>
-        <code id="setup-out">brew install ouro/tap/ouro</code>
-        <button type="button" class="btn btn-oncolor" id="copy-setup">Copy</button>
-      </div>
-      <a class="btn btn-primary" href="#operate">Pick an operation →</a>
-    </div>
+      </li>
+      <li class="step">
+        <span class="step-dot">2</span>
+        <span class="step-label">Operate any time</span>
+        <a class="btn btn-primary" href="#operate">Pick an operation →</a>
+      </li>
+    </ol>
     <p class="hint go-hint">Install once, signature-verified — then cross-check <code>ouro-ops contract</code> against
       this site and arm each target with <code>ouro-ops init</code> (S0017).</p>
   </div>
