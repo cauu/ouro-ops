@@ -42,12 +42,14 @@
   code{font-family:var(--mono);font-size:.92em}
   .tnum{font-variant-numeric:tabular-nums}
   [hidden]{display:none !important}
+  /* ONE container width everywhere — no column mismatch between bands */
+  .wrap{max-width:1120px;margin:0 auto;padding-left:24px;padding-right:24px}
 
   /* ============ glass nav ============ */
   .nav{position:sticky;top:0;z-index:50;background:rgba(249,248,246,.6);
     -webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);
     border-bottom:1px solid rgba(23,32,38,.06)}
-  .nav-in{max-width:1120px;margin:0 auto;height:64px;padding:0 24px;display:flex;align-items:center;gap:12px}
+  .nav-in{height:64px;display:flex;align-items:center;gap:12px}
   .mark{display:flex;align-items:center;gap:10px;text-decoration:none}
   .mark svg{display:block}
   .mark b{font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
@@ -82,9 +84,9 @@
   .orbit{position:absolute;right:-120px;top:-40px;width:420px;height:420px;border-radius:50%;
     border:1px dashed rgba(72,139,225,.28);pointer-events:none;z-index:0}
   .orbit::after{content:"";position:absolute;inset:64px;border-radius:50%;border:1px dashed rgba(72,139,225,.18)}
-  .hero-in{position:relative;z-index:1;max-width:1120px;margin:0 auto;padding:88px 24px 56px}
+  .hero-in{position:relative;z-index:1;padding-top:88px;padding-bottom:56px}
   .kicker{font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);
-    display:inline-flex;align-items:center;gap:8px}
+    display:inline-flex;align-items:center;gap:8px;margin:0}
   .kicker i{width:8px;height:8px;border-radius:50%;background:var(--sea);display:inline-block}
   .hero h1{font-size:clamp(38px,5.4vw,64px);font-weight:700;line-height:1.04;letter-spacing:-.03em;
     margin:18px 0 0;max-width:16ch;text-wrap:balance}
@@ -111,8 +113,7 @@
   .btn-icon:hover{color:var(--orange);background:rgba(229,105,46,.08)}
 
   /* ============ trust strip ============ */
-  .trust{max-width:1120px;margin:0 auto;padding:8px 24px 0;position:relative;z-index:1;
-    display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .trust{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding-top:8px}
   .trust-card{background:#fff;border-radius:var(--r-lg);padding:20px;box-shadow:var(--sh-card);
     display:flex;gap:14px;align-items:flex-start;
     transition:transform .3s var(--ease),box-shadow .3s var(--ease)}
@@ -125,16 +126,38 @@
   .t-mint{background:var(--mint);color:var(--body-strong)} .t-lemon{background:var(--lemon);color:var(--body-strong)}
   .t-incana{background:var(--incana)} .t-grass{background:var(--grass)}
 
-  /* ============ generator column ============ */
-  main{max-width:920px;margin:0 auto;padding:56px 24px 0;display:grid;gap:20px}
-  .card{background:#fff;border-radius:var(--r-lg);padding:26px;box-shadow:var(--sh-card)}
-  .card-head{display:flex;align-items:center;gap:12px;margin:0 0 18px}
-  .card-head .n{flex:none;width:28px;height:28px;border-radius:8px;display:grid;place-items:center;
-    font:600 13px/1 var(--font);color:#fff;font-variant-numeric:tabular-nums}
-  .card-head h2{font-size:18px;font-weight:600;letter-spacing:-.01em}
-  .card-head .spacer{flex:1}
-  .hint{color:var(--muted);font-size:12.5px;margin:6px 0 0;line-height:1.5}
+  /* ============ editorial sections ============ */
+  section.band{padding-top:96px}
+  .band-head{max-width:60ch}
+  .band-head h2{font-size:clamp(28px,3.4vw,40px);font-weight:700;letter-spacing:-.02em;line-height:1.1;margin:14px 0 0}
+  .band-head p{margin:14px 0 0;font-size:15.5px;line-height:1.6;color:var(--body)}
 
+  /* setup card */
+  .setup-card{margin-top:28px;background:#fff;border-radius:var(--r-lg);box-shadow:var(--sh-card);
+    display:grid;grid-template-columns:5fr 7fr;overflow:hidden}
+  .setup-copy{padding:28px}
+  .setup-copy h3{font-size:17px;font-weight:600;margin:0 0 10px}
+  .setup-copy ol{margin:0;padding-left:18px;display:grid;gap:8px;font-size:14px;line-height:1.55;color:var(--body)}
+  .setup-copy .hint{margin-top:14px}
+  .out-light{font-family:var(--mono);font-size:12.5px;line-height:1.7;white-space:pre-wrap;margin:0;
+    background:var(--canvas);color:var(--body-strong);border-left:1px solid var(--hairline-soft);
+    padding:24px;overflow-x:auto;display:flex;align-items:center}
+
+  /* operation grid */
+  .ops{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px}
+  .op-card{display:flex;gap:14px;align-items:flex-start;text-align:left;padding:20px;
+    border:0;border-radius:var(--r-lg);cursor:pointer;background:#fff;box-shadow:var(--sh-card);
+    font:inherit;color:inherit;
+    transition:transform .3s var(--ease),box-shadow .3s var(--ease)}
+  .op-card:hover{transform:translateY(-4px) scale(1.01);box-shadow:var(--sh-card-hover)}
+  .op-card:active{transform:scale(.98)}
+  .op-card b{display:block;font-size:15px;font-weight:600;color:var(--ink);line-height:1.3}
+  .op-card small{display:block;font-size:13px;color:var(--muted);line-height:1.45;margin-top:3px}
+  .op-card .go{margin-left:auto;align-self:center;color:var(--muted-soft);flex:none;
+    transition:transform .2s var(--ease),color .2s var(--ease)}
+  .op-card:hover .go{transform:translateX(3px);color:var(--ink)}
+
+  /* ============ form controls ============ */
   label{display:block;font-size:13px;font-weight:500;color:var(--muted);margin:0 0 6px}
   input,select{width:100%;font:15px/1.4 var(--font);color:var(--ink);background:#fff;
     border:1px solid var(--hairline);border-radius:var(--r-md);padding:0 14px;height:44px;
@@ -148,23 +171,7 @@
   .grid{display:grid;gap:14px}
   .g2{grid-template-columns:1fr 1fr}
   @media (max-width:640px){.g2{grid-template-columns:1fr}}
-
-  /* operation cards */
-  .ops{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  @media (max-width:860px){.ops{grid-template-columns:repeat(2,1fr)}}
-  @media (max-width:560px){.ops{grid-template-columns:1fr}}
-  .op-card{position:relative;display:flex;gap:12px;align-items:flex-start;padding:14px;
-    border:1px solid var(--hairline);border-radius:var(--r-md);cursor:pointer;background:#fff;
-    transition:border-color .2s var(--ease),box-shadow .2s var(--ease),background .2s var(--ease),transform .2s var(--ease)}
-  .op-card:hover{border-color:#b9bbc4;transform:translateY(-1px);box-shadow:var(--sh-soft)}
-  .op-card input{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
-  .op-card .tile{width:34px;height:34px}
-  .op-card .tile svg{width:17px;height:17px}
-  .op-card b{display:block;font-size:14px;font-weight:600;color:var(--ink);line-height:1.3}
-  .op-card small{display:block;font-size:12px;color:var(--muted);line-height:1.4;margin-top:2px}
-  .op-card:has(input:checked){border-color:var(--sea);background:rgba(72,139,225,.05);
-    box-shadow:0 0 0 3px rgba(72,139,225,.14)}
-  .op-card:has(input:focus-visible){outline:3px solid var(--sea);outline-offset:3px}
+  .hint{color:var(--muted);font-size:12.5px;margin:6px 0 0;line-height:1.5}
 
   /* segmented control */
   .seg{display:inline-flex;background:var(--surface-soft);border-radius:9999px;padding:3px;gap:2px}
@@ -204,17 +211,14 @@
   .term-title{margin-left:6px;font:500 12px/1 var(--mono);color:rgba(255,255,255,.55);letter-spacing:.02em}
   .term-bar .spacer{flex:1}
   .term pre{margin:0;padding:18px;font:12.5px/1.6 var(--mono);color:#d7e0ea;white-space:pre;
-    overflow-x:auto;min-height:120px;max-height:520px;overflow-y:auto}
+    overflow-x:auto;min-height:100px;max-height:340px;overflow-y:auto}
   .term pre:empty::after{content:"— complete the fields above to generate the prompt —";color:rgba(255,255,255,.35)}
-  .out-light{font-family:var(--mono);font-size:12.5px;line-height:1.6;white-space:pre-wrap;
-    background:var(--canvas);color:var(--body-strong);border:1px solid var(--hairline-soft);
-    border-radius:var(--r-md);padding:16px;overflow-x:auto}
   .live{display:inline-flex;align-items:center;margin-right:7px}
   .live i{width:8px;height:8px;border-radius:50%;background:var(--grass);animation:pulse-dot 1.6s ease-in-out infinite}
   @keyframes pulse-dot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.55}}
 
   /* ============ footer band ============ */
-  .cta-band{max-width:1120px;margin:88px auto -72px;padding:0 24px;position:relative;z-index:2}
+  .cta-band{margin:96px auto -72px;position:relative;z-index:2}
   .cta-band-in{position:relative;overflow:hidden;background:var(--incana);color:#fff;border-radius:var(--r-xl);
     padding:44px 40px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;
     box-shadow:0 18px 44px rgba(19,88,93,.26),inset 0 1px 0 rgba(255,255,255,.14)}
@@ -223,16 +227,34 @@
   .cta-band h2{color:#fff;font-size:clamp(24px,3vw,32px);font-weight:700;letter-spacing:-.02em;line-height:1.15}
   .cta-band p{margin:8px 0 0;color:rgba(255,255,255,.75);font-size:14.5px;max-width:52ch}
   .cta-band .spacer{flex:1}
-  footer{background:var(--surface-soft);padding:140px 24px 56px;margin-top:0}
-  .foot-in{max-width:1120px;margin:0 auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  footer{background:var(--surface-soft);padding:140px 0 56px}
+  .foot-in{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
   .foot-in p{margin:0;font-size:14px;color:var(--body)}
   .foot-in .spacer{flex:1}
   .foot-in small{color:var(--muted-soft);font-size:13px}
 
-  /* ============ dialog ============ */
-  dialog{border:0;border-radius:20px;padding:0;max-width:540px;width:calc(100% - 32px);
+  /* ============ dialogs ============ */
+  dialog{border:0;border-radius:20px;padding:0;
     box-shadow:0 1px 2px rgba(23,32,38,.05),0 18px 48px rgba(23,32,38,.22)}
-  dialog::backdrop{background:rgba(23,32,38,.4)}
+  dialog::backdrop{background:rgba(23,32,38,.42)}
+  /* operation modal — the 3-step flow: pick op → fill → copy */
+  .op-modal{width:min(860px,calc(100% - 32px));max-height:min(88vh,900px)}
+  .om{display:flex;flex-direction:column;max-height:inherit}
+  .om-head{display:flex;align-items:center;gap:14px;padding:20px 24px;border-bottom:1px solid var(--hairline-soft)}
+  .om-head .tile{width:40px;height:40px}
+  .om-head h3{font-size:19px;font-weight:600;letter-spacing:-.01em}
+  .om-head p{margin:2px 0 0;font-size:13px;color:var(--muted);line-height:1.4}
+  .om-head .x{margin-left:auto;flex:none;width:36px;height:36px;border:0;border-radius:10px;cursor:pointer;
+    background:transparent;color:var(--muted);display:grid;place-items:center;
+    transition:background .18s var(--ease),color .18s var(--ease)}
+  .om-head .x:hover{background:rgba(23,32,38,.06);color:var(--ink)}
+  .om-body{padding:22px 24px 24px;overflow-y:auto}
+  .om-sec{font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted-soft);
+    margin:26px 0 12px;display:flex;align-items:center;gap:10px}
+  .om-sec::after{content:"";flex:1;height:1px;background:var(--hairline-soft)}
+  .om-sec:first-child{margin-top:0}
+  /* disclosure confirm (stacks on top of the op modal) */
+  .dlg-sm{max-width:540px;width:calc(100% - 32px)}
   .dlg{padding:26px}
   .dlg h3{font-size:18px;font-weight:600;letter-spacing:-.01em;margin:0 0 8px}
   .dlg p{margin:0 0 14px;color:var(--muted);font-size:13.5px;line-height:1.55}
@@ -247,11 +269,16 @@
 
   @media (max-width:860px){
     .trust{grid-template-columns:1fr}
+    .ops{grid-template-columns:1fr}
+    .setup-card{grid-template-columns:1fr}
+    .out-light{border-left:0;border-top:1px solid var(--hairline-soft)}
     .orbit{display:none}
     .hero-aura{filter:blur(36px)}
-    .hero-in{padding:64px 24px 40px}
+    .hero-in{padding-top:64px;padding-bottom:40px}
     .nav-links a:not(.nav-cta){display:none}
+    section.band{padding-top:64px}
   }
+  @media (min-width:861px) and (max-width:1024px){.ops{grid-template-columns:repeat(2,1fr)}}
   @media (prefers-reduced-motion:reduce){
     *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
     .js .reveal{opacity:1;transform:none}
@@ -261,7 +288,7 @@
 <body>
 
 <header class="nav">
-  <div class="nav-in">
+  <div class="nav-in wrap">
     <a class="mark" href="#top" aria-label="Ouro Ops home">
       <!-- concentric dotted rings — a quiet nod to the Cardano orbital mark -->
       <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
@@ -272,9 +299,9 @@
       <b>Ouro&nbsp;Ops</b><span>Cardano SPO</span>
     </a>
     <nav class="nav-links" aria-label="page">
-      <a href="#generator">Generator</a>
       <a href="#setup">Setup</a>
-      <a class="nav-cta" href="#generator">Generate a prompt</a>
+      <a href="#operate">Operate</a>
+      <a class="nav-cta" href="#operate">Pick an operation</a>
     </nav>
   </div>
 </header>
@@ -282,22 +309,22 @@
 <section class="hero" id="top">
   <div class="hero-aura" aria-hidden="true"></div>
   <div class="hero-grain" aria-hidden="true"></div>
-  <div class="hero-in">
+  <div class="hero-in wrap">
     <div class="orbit" aria-hidden="true"></div>
     <p class="kicker"><i></i>Cardano stake pool operations</p>
     <h1>Delegate the ops, <em>not your keys</em>.</h1>
-    <p class="lede">Pick an operation, copy <strong>one atomic prompt</strong>, and hand it to your AI agent.
-      The agent takes its procedure from your <strong>verified <code>ouro-ops</code> binary</strong> — never from
-      this page — and every write passes through an audited, confirmable mechanism.
-      The form below runs entirely in your browser: nothing is uploaded.</p>
+    <p class="lede">Set up once, then operate by prompt: pick an operation, fill a short form, and hand
+      <strong>one atomic prompt</strong> to your AI agent. The agent takes its procedure from your
+      <strong>verified <code>ouro-ops</code> binary</strong> — never from this page — and every write passes
+      through an audited, confirmable mechanism. Everything here runs locally in your browser: nothing is uploaded.</p>
     <div class="cta-row">
-      <a class="btn btn-primary" href="#generator">Generate a prompt</a>
-      <a class="btn btn-ghost" href="#setup">One-time setup</a>
+      <a class="btn btn-primary" href="#setup">Set up once</a>
+      <a class="btn btn-ghost" href="#operate">Pick an operation</a>
     </div>
   </div>
 </section>
 
-<section class="trust" aria-label="security model">
+<section class="trust wrap" aria-label="security model">
   <div class="trust-card reveal">
     <div class="tile t-sea" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V6z"/></svg>
@@ -321,112 +348,66 @@
   </div>
 </section>
 
-<main id="generator">
-  <!-- STEP 1 — operation drives the form -->
-  <section class="card reveal" aria-labelledby="op-h">
-    <div class="card-head"><span class="n t-sea">1</span><h2 id="op-h">What do you want to do?</h2></div>
-    <div class="ops" role="radiogroup" aria-labelledby="op-h">
-      <label class="op-card"><input type="radio" name="op" value="deploy" checked />
-        <span class="tile t-sea" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="M6.5 9.5 12 4l5.5 5.5"/><path d="M4 20h16"/></svg></span>
-        <span><b>deploy</b><small>Bring up / converge the pool</small></span></label>
-      <label class="op-card"><input type="radio" name="op" value="upgrade" />
-        <span class="tile t-sky" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11a9 9 0 1 0-1.2 5.6"/><path d="M21 5v6h-6"/></svg></span>
-        <span><b>upgrade</b><small>Rolling node upgrade, relays first</small></span></label>
-      <label class="op-card"><input type="radio" name="op" value="kes-rotation" />
-        <span class="tile t-lavender" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9"/><path d="m17 6 3 3"/></svg></span>
-        <span><b>kes-rotation</b><small>Rotate the KES key on the BP</small></span></label>
-      <label class="op-card"><input type="radio" name="op" value="runtime" />
-        <span class="tile t-mint" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m10 9 5 3-5 3z"/></svg></span>
-        <span><b>runtime</b><small>Restart / apply topology</small></span></label>
-      <label class="op-card"><input type="radio" name="op" value="observability" />
-        <span class="tile t-lemon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
-        <span><b>observability</b><small>Telemetry gateway</small></span></label>
-      <label class="op-card"><input type="radio" name="op" value="troubleshooting" />
-        <span class="tile t-incana" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.5-4.5"/></svg></span>
-        <span><b>troubleshooting</b><small>Read-only diagnosis</small></span></label>
+<!-- STEP 1 — setup comes FIRST: it is the trust anchor everything else relies on -->
+<section class="band wrap" id="setup">
+  <div class="band-head reveal">
+    <p class="kicker"><i style="background:var(--lavender)"></i>Step 1 · once per control machine</p>
+    <h2>Set up once.</h2>
+    <p>Install the self-updating <code>ouro-ops</code> binary on the machine you operate from, and verify
+      its signature — this is the trust anchor every later operation relies on.</p>
+  </div>
+  <div class="setup-card reveal">
+    <div class="setup-copy">
+      <h3>Install &amp; verify</h3>
+      <ol>
+        <li>Install from the <strong>official site's single vector</strong> — nowhere else.</li>
+        <li><strong>Verify the signing fingerprint</strong> shown on the official site before trusting the binary.</li>
+        <li>Cross-check <code>ouro-ops version</code> and <code>ouro-ops contract</code> against the site.</li>
+        <li>Arm each target machine with <code>ouro-ops init</code> (delivered separately, S0017).</li>
+      </ol>
+      <p class="hint">After this, the binary keeps itself current from the signed release channel — you never re-install.</p>
     </div>
-    <p class="hint" id="op-hint"></p>
-  </section>
-
-  <!-- STEP 2 — the common spine: network + machines (every operation) -->
-  <section class="card reveal" aria-labelledby="fleet-h">
-    <div class="card-head"><span class="n t-sky">2</span><h2 id="fleet-h">Your fleet</h2></div>
-    <div class="grid g2">
-      <div><label id="net-label">Network</label>
-        <div class="seg" role="radiogroup" aria-labelledby="net-label">
-          <label><input type="radio" name="network" value="mainnet" checked /><span>mainnet</span></label>
-          <label><input type="radio" name="network" value="preprod" /><span>preprod</span></label>
-          <label><input type="radio" name="network" value="preview" /><span>preview</span></label>
-        </div>
-      </div>
-      <div id="f-ticker"><label for="ticker">Ticker (3–5, A–Z 0–9)</label><input id="ticker" value="OURO" maxlength="5" autocomplete="off" spellcheck="false" /></div>
-    </div>
-
-    <div class="fleet-bar"><h3>Machines (1 BP + N relays)</h3><span class="spacer"></span>
-      <button type="button" class="btn btn-ghost btn-sm" id="add-relay">+ Add relay</button></div>
-    <div id="machines"></div>
-    <p class="hint" id="mach-hint"></p>
-  </section>
-
-  <!-- STEP 3 — operation-specific fields (shown per the field×operation matrix) -->
-  <section class="card reveal" id="op-fields" aria-labelledby="opf-h">
-    <div class="card-head"><span class="n t-lavender">3</span><h2 id="opf-h">For this operation</h2></div>
-    <div class="grid g2">
-      <div id="f-nodever" data-need><label for="nodever">Node version</label>
-        <select id="nodever">
-          <option value="10.5.4" selected>10.5.4</option>
-          <option value="10.4.1">10.4.1</option>
-          <option value="10.3.1">10.3.1</option>
-          <option value="10.2.1">10.2.1</option>
-        </select>
-        <p class="hint"><span class="live" id="ver-live" hidden><i></i></span><span id="ver-status">Checking latest…</span>
-          <a id="relnotes" target="_blank" rel="noopener noreferrer">Release notes ↗</a> — review what's in it before upgrading.</p>
-      </div>
-      <div id="f-sync" data-need hidden><label id="sync-label">Sync mode</label>
-        <div class="seg" role="radiogroup" aria-labelledby="sync-label">
-          <label><input type="radio" name="sync" value="genesis" checked /><span>genesis</span></label>
-          <label><input type="radio" name="sync" value="mithril" /><span>mithril (fast)</span></label>
-        </div>
-        <p class="hint">genesis replays from chain start; mithril bootstraps from a certified snapshot.</p>
-      </div>
-    </div>
-    <p class="hint" id="opf-empty" hidden>This operation needs nothing beyond your fleet above.</p>
-
-    <div id="f-registration" hidden>
-      <label style="margin-top:16px;color:var(--ink);font-weight:600;font-size:14px">Pool parameters (your pool's real on-chain values)</label>
-      <div class="grid g2" style="margin-top:10px">
-        <div><label for="meta">Metadata URL (http/https)</label><input id="meta" value="https://pool.example.com/metadata.json" spellcheck="false" /></div>
-        <div><label for="pledge">Pledge (₳)</label><input id="pledge" value="100000" inputmode="numeric" class="tnum" /><p class="hint tnum" id="pledge-h"></p></div>
-        <div><label for="margin">Margin (%)</label><input id="margin" value="2" inputmode="decimal" class="tnum" /></div>
-        <div><label for="cost">Fixed cost (₳)</label><input id="cost" value="340" inputmode="numeric" class="tnum" /><p class="hint tnum" id="cost-h"></p></div>
-      </div>
-      <p class="hint">These are your pool's real economics — replace the example values with your actual ones.</p>
-    </div>
-  </section>
-
-  <!-- Output — ONE self-contained prompt (the full pool-spec is inlined; nothing to save separately) -->
-  <section class="card reveal" aria-labelledby="out-h">
-    <div class="card-head"><span class="n t-incana">4</span><h2 id="out-h">Copy the prompt → paste into your agent</h2></div>
-    <div id="err" class="note note-err" hidden></div>
-    <div class="note note-warn" role="note">⚠ This prompt contains your full pool config (hostnames/IPs). Copying it sends
-      that to whatever agent you paste it into (e.g. a cloud service) and its logs. It never leaves this page on its own.</div>
-    <div class="term">
-      <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
-        <span class="term-title" id="term-title">prompt · deploy</span><span class="spacer"></span>
-        <button type="button" class="btn btn-oncolor" id="copy-prompt">Copy prompt</button></div>
-      <pre id="prompt-out" aria-live="polite"></pre>
-    </div>
-  </section>
-
-  <section class="card reveal" id="setup" aria-labelledby="setup-h">
-    <div class="card-head"><span class="n" style="background:var(--surface-card);color:var(--body-strong)">⚙</span><h2 id="setup-h">One-time setup</h2></div>
     <pre class="out-light" id="bootstrap-out"></pre>
-    <p class="hint">Verify the signing fingerprint on the official site before trusting the binary.
-      Provisioning your targets (<code>ouro-ops init</code>) is delivered separately (S0017).</p>
-  </section>
-</main>
+  </div>
+</section>
 
-<div class="cta-band reveal">
+<!-- STEP 2 — pick an operation; the form opens in a modal -->
+<section class="band wrap" id="operate">
+  <div class="band-head reveal">
+    <p class="kicker"><i></i>Step 2 · any time you operate</p>
+    <h2>Pick an operation.</h2>
+    <p>The form asks only for what that operation needs, generates everything locally, and gives you
+      one prompt to paste into your agent.</p>
+  </div>
+  <div class="ops reveal" id="ops">
+    <button type="button" class="op-card" data-op="deploy">
+      <span class="tile t-sea" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="M6.5 9.5 12 4l5.5 5.5"/><path d="M4 20h16"/></svg></span>
+      <span><b>deploy</b><small>Bring up / converge the pool</small></span>
+      <span class="go" aria-hidden="true">→</span></button>
+    <button type="button" class="op-card" data-op="upgrade">
+      <span class="tile t-sky" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11a9 9 0 1 0-1.2 5.6"/><path d="M21 5v6h-6"/></svg></span>
+      <span><b>upgrade</b><small>Rolling node upgrade, relays first</small></span>
+      <span class="go" aria-hidden="true">→</span></button>
+    <button type="button" class="op-card" data-op="kes-rotation">
+      <span class="tile t-lavender" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9"/><path d="m17 6 3 3"/></svg></span>
+      <span><b>kes-rotation</b><small>Rotate the KES key on the BP</small></span>
+      <span class="go" aria-hidden="true">→</span></button>
+    <button type="button" class="op-card" data-op="runtime">
+      <span class="tile t-mint" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m10 9 5 3-5 3z"/></svg></span>
+      <span><b>runtime</b><small>Restart / apply topology</small></span>
+      <span class="go" aria-hidden="true">→</span></button>
+    <button type="button" class="op-card" data-op="observability">
+      <span class="tile t-lemon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
+      <span><b>observability</b><small>Telemetry gateway</small></span>
+      <span class="go" aria-hidden="true">→</span></button>
+    <button type="button" class="op-card" data-op="troubleshooting">
+      <span class="tile t-incana" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.5-4.5"/></svg></span>
+      <span><b>troubleshooting</b><small>Read-only diagnosis</small></span>
+      <span class="go" aria-hidden="true">→</span></button>
+  </div>
+</section>
+
+<div class="cta-band wrap reveal">
   <div class="cta-band-in">
     <div><h2>Open source, end to end.</h2>
       <p>The CLI, the skills it embeds, and this generator are all in the open — audit the mechanism instead of trusting the prompt.</p></div>
@@ -436,14 +417,87 @@
 </div>
 
 <footer>
-  <div class="foot-in">
+  <div class="foot-in wrap">
     <p><strong>Ouro Ops</strong> — open-source tooling for Cardano stake pool operators.</p>
     <span class="spacer"></span>
     <small>Runs locally in your browser · light on ceremony, strict on mechanism</small>
   </div>
 </footer>
 
-<dialog id="disclose-dlg">
+<!-- The operation modal: step 2 (fill) + step 3 (copy) of the flow -->
+<dialog id="op-modal" class="op-modal" aria-labelledby="om-title">
+  <div class="om">
+    <div class="om-head">
+      <span class="tile" id="om-tile" aria-hidden="true"></span>
+      <div><h3 id="om-title">deploy</h3><p id="op-hint"></p></div>
+      <button type="button" class="x" id="om-close" aria-label="close">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l10 10M13 3 3 13"/></svg></button>
+    </div>
+    <div class="om-body">
+      <p class="om-sec">Your fleet</p>
+      <div class="grid g2">
+        <div><label id="net-label">Network</label>
+          <div class="seg" role="radiogroup" aria-labelledby="net-label">
+            <label><input type="radio" name="network" value="mainnet" checked /><span>mainnet</span></label>
+            <label><input type="radio" name="network" value="preprod" /><span>preprod</span></label>
+            <label><input type="radio" name="network" value="preview" /><span>preview</span></label>
+          </div>
+        </div>
+        <div id="f-ticker"><label for="ticker">Ticker (3–5, A–Z 0–9)</label><input id="ticker" value="OURO" maxlength="5" autocomplete="off" spellcheck="false" /></div>
+      </div>
+      <div class="fleet-bar"><h3>Machines (1 BP + N relays)</h3><span class="spacer"></span>
+        <button type="button" class="btn btn-ghost btn-sm" id="add-relay">+ Add relay</button></div>
+      <div id="machines"></div>
+      <p class="hint" id="mach-hint"></p>
+
+      <div id="op-fields">
+        <p class="om-sec">For this operation</p>
+        <div class="grid g2">
+          <div id="f-nodever" data-need><label for="nodever">Node version</label>
+            <select id="nodever">
+              <option value="10.5.4" selected>10.5.4</option>
+              <option value="10.4.1">10.4.1</option>
+              <option value="10.3.1">10.3.1</option>
+              <option value="10.2.1">10.2.1</option>
+            </select>
+            <p class="hint"><span class="live" id="ver-live" hidden><i></i></span><span id="ver-status">Checking latest…</span>
+              <a id="relnotes" target="_blank" rel="noopener noreferrer">Release notes ↗</a> — review what's in it before upgrading.</p>
+          </div>
+          <div id="f-sync" data-need hidden><label id="sync-label">Sync mode</label>
+            <div class="seg" role="radiogroup" aria-labelledby="sync-label">
+              <label><input type="radio" name="sync" value="genesis" checked /><span>genesis</span></label>
+              <label><input type="radio" name="sync" value="mithril" /><span>mithril (fast)</span></label>
+            </div>
+            <p class="hint">genesis replays from chain start; mithril bootstraps from a certified snapshot.</p>
+          </div>
+        </div>
+        <div id="f-registration" hidden>
+          <label style="margin-top:16px;color:var(--ink);font-weight:600;font-size:14px">Pool parameters (your pool's real on-chain values)</label>
+          <div class="grid g2" style="margin-top:10px">
+            <div><label for="meta">Metadata URL (http/https)</label><input id="meta" value="https://pool.example.com/metadata.json" spellcheck="false" /></div>
+            <div><label for="pledge">Pledge (₳)</label><input id="pledge" value="100000" inputmode="numeric" class="tnum" /><p class="hint tnum" id="pledge-h"></p></div>
+            <div><label for="margin">Margin (%)</label><input id="margin" value="2" inputmode="decimal" class="tnum" /></div>
+            <div><label for="cost">Fixed cost (₳)</label><input id="cost" value="340" inputmode="numeric" class="tnum" /><p class="hint tnum" id="cost-h"></p></div>
+          </div>
+          <p class="hint">These are your pool's real economics — replace the example values with your actual ones.</p>
+        </div>
+      </div>
+
+      <p class="om-sec">Copy the prompt → paste into your agent</p>
+      <div id="err" class="note note-err" hidden></div>
+      <div class="note note-warn" role="note">⚠ This prompt contains your full pool config (hostnames/IPs). Copying it sends
+        that to whatever agent you paste it into (e.g. a cloud service) and its logs. It never leaves this page on its own.</div>
+      <div class="term">
+        <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="term-title" id="term-title">prompt · deploy</span><span class="spacer"></span>
+          <button type="button" class="btn btn-oncolor" id="copy-prompt">Copy prompt</button></div>
+        <pre id="prompt-out" aria-live="polite"></pre>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="disclose-dlg" class="dlg-sm">
   <form method="dialog" class="dlg">
     <h3>Send topology to your agent?</h3>
     <p>Copying this prompt puts the following on your clipboard, to be sent to whichever agent you paste into:</p>
@@ -478,6 +532,7 @@ const OP = {
   troubleshooting: { need:[], hint:"Read-only diagnosis — no writes, no secret access." },
 };
 
+let currentOp = "deploy";
 const radioVal = (name) => document.querySelector(`input[name="${name}"]:checked`).value;
 
 let relayN = 2;
@@ -502,20 +557,22 @@ function seedMachines() {
 $("add-relay").addEventListener("click", () => { relayN++; $("machines").appendChild(machineRow("relay"+relayN,"relay","relay"+relayN,true)); render(); });
 
 function applyOperation() {
-  const op = radioVal("op"), cfg = OP[op];
+  const op = currentOp, cfg = OP[op];
+  $("om-title").textContent = op;
   $("op-hint").textContent = cfg.hint;
   for (const f of ["nodever","sync"]) $("f-"+f).hidden = !cfg.need.includes(f);
   $("f-registration").hidden = !cfg.registration;
   // Ticker is pool-identity — only deploy/registration reads it; hide it for the other ops.
   $("f-ticker").hidden = op !== "deploy";
-  $("opf-empty").hidden = cfg.need.length > 0;
+  // Hide the whole "for this operation" block when the op needs nothing beyond the fleet.
+  $("op-fields").hidden = cfg.need.length === 0 && !cfg.registration;
   $("term-title").textContent = "prompt · " + op;
   $("mach-hint").textContent = "SSH user is always ouro-exec and the SSH port is 22 (S0015). Only the host is yours to fill.";
 }
 // network_magic is derived from the network in collect() (NET table) — nothing to render.
 
 function collect() {
-  const errs = [], op = radioVal("op"), cfg = OP[op];
+  const errs = [], op = currentOp, cfg = OP[op];
   // Ticker is only collected/validated for deploy; other ops carry a placeholder (unused by them).
   const ticker = op === "deploy" ? $("ticker").value.trim() : "POOL";
   if (op === "deploy" && !RE.ticker.test(ticker)) errs.push("ticker must be 3–5 chars of A–Z 0–9");
@@ -632,13 +689,13 @@ function render() {
   const d = collect(), err = $("err");
   if (d.errs.length) {
     err.hidden=false; err.textContent="Fix before generating:\n• "+d.errs.join("\n• ");
-    $("prompt-out").textContent=""; $("bootstrap-out").textContent=bootstrap();
+    $("prompt-out").textContent="";
     current={prompt:"",disclose:[]}; return;
   }
   err.hidden=true;
   // One self-contained prompt with the full pool-spec inlined — the only thing to copy.
   const pr = prompt(d);
-  $("prompt-out").textContent = pr; $("bootstrap-out").textContent = bootstrap();
+  $("prompt-out").textContent = pr;
   current={ prompt:pr, disclose:d.machines.map(m=>`${m.id} (${m.role}) host=${m.host}`) };
 }
 async function clip(text){ try{ await navigator.clipboard.writeText(text);}catch{ const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove(); } }
@@ -650,9 +707,24 @@ $("copy-prompt").addEventListener("click",()=>{ if(!current.prompt)return;
       const b=$("copy-prompt"), t=b.textContent; b.textContent="Copied ✓";
       setTimeout(()=>{ b.textContent=t; },1600); } }); });
 
+// The 3-step flow: click an operation card → the modal opens with only that op's fields.
+const opModal = $("op-modal");
+document.querySelectorAll(".op-card").forEach((btn)=>btn.addEventListener("click",()=>{
+  currentOp = btn.dataset.op;
+  const tile = btn.querySelector(".tile");
+  $("om-tile").className = tile.className; // reuse the card's color
+  $("om-tile").innerHTML = tile.innerHTML;
+  render();
+  opModal.showModal();
+  opModal.querySelector(".om-body").scrollTop = 0; // always open at the top of the form
+}));
+$("om-close").addEventListener("click",()=>opModal.close());
+opModal.addEventListener("click",(e)=>{ if(e.target===opModal) opModal.close(); }); // click backdrop to close
+
 document.querySelectorAll("input,select").forEach(el=>el.addEventListener("input",render));
 document.querySelectorAll('input[type="radio"]').forEach(el=>el.addEventListener("change",render));
 seedMachines(); render();
+$("bootstrap-out").textContent = bootstrap();
 
 // Scroll reveal — JS-gated (content is always visible without JS); reduced-motion handled in CSS.
 (function(){

@@ -276,6 +276,10 @@ agent 装 skill",又不给决策层留投毒面。
   (incana 同色影)输出区、reveal 入场 + reduced-motion 降级;**功能与安全门不变**(CSP/单一
   fetch/`skill show` 指针/披露弹窗/校验逻辑全保留)。
 
+- [x] p1-restyle-fix1 首页信息架构调整(用户 review):①统一 1120px 容器,消除信任卡与表单列
+  宽度不一致造成的"缩进";②setup 前置为 Step 1 编辑带(安装/验签四步 + 命令卡);③操作表单整体
+  移入 modal——三步流:点操作卡 → 弹窗填表(fleet + 操作字段)→ 复制 prompt(披露弹窗叠层于
+  modal 之上);modal 打开重置滚动、backdrop/Esc 关闭。安全门不变。
 ## 4. Test and Acceptance Criteria
 - TC-1 生成的 `pool-spec.yaml` 通过 `ouro-ops spec validate`(含 1 BP + N relay,N≥2;覆盖
   mainnet/preprod/preview、genesis vs Mithril、缺失/非法必填字段的 fixture)。
@@ -364,6 +368,10 @@ agent 装 skill",又不给决策层留投毒面。
   (token 化调色/字体/圆角/间距、glass nav、aura+grain、双层阴影、op 卡片、segmented control、
   终端式 prompt 窗口、CTA band、reveal 动效);JS 生成逻辑仅适配控件形态(radio 取值),collect/
   yaml/prompt/bootstrap/NET/OP/RE 与披露流程逐字保留。静态安全门与真浏览器验证均通过。
+
+- 2026-07-10 p1-restyle-fix1 completed: 按用户三点反馈重构信息架构(对齐/为 modal 流/setup 前置)。
+  验证:静态门 pass;真浏览器——deploy modal 全字段 + live 11.0.1、披露弹窗正确叠层列出机器清单、
+  kes-rotation modal 收敛为 fleet-only 且打开即顶部、0 console 错误。
 
 ## 6. Validation Evidence (append-only)
 - p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
@@ -465,6 +473,9 @@ agent 装 skill",又不给决策层留投毒面。
   troubleshooting 空 step3 + 终端标题跟随);披露弹窗列出机器拓扑后才可复制
 - TC-11 | stack: ui | command: manual reduced-motion/a11y spot check | result: pass | note: reveal JS-gated、
   prefers-reduced-motion 全量降级、radiogroup/aria-label 保留、focus-visible 3px 焦点环
+
+- TC-3/TC-3b | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
+  p1-restyle-fix1 modal 化后 CSP/单 fetch/skill-show/tool-run/披露门全过;披露 dialog 叠层于操作 modal 之上生效
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
