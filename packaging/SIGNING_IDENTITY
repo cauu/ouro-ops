@@ -1,0 +1,24 @@
+# S0016 p2-4 — the pinned signing identity for the `ouro` release channel.
+#
+# This file is repo-controlled so the install command can verify a downloaded binary
+# AUTOMATICALLY against a fixed identity, instead of a human eyeballing a fingerprint that a
+# spoofed site could also fake (R2 N4). The official site displays the SAME identity for an
+# independent cross-check (≥2 channels: this repo + Homebrew core + the transparency log).
+#
+# Format: one field per line. Values below are PLACEHOLDERS — a real release wires the actual
+# hardware-held signing identity (the private key is NEVER in this repo).
+
+# Sigstore/cosign keyless identity (OIDC subject + issuer) expected on every release signature:
+cosign_identity = release@ouro.example        # PLACEHOLDER
+cosign_issuer   = https://token.actions.githubusercontent.com  # GitHub Actions OIDC (PLACEHOLDER)
+
+# minisign public key for the offline-verifiable fallback (embedded into offline bundles too):
+minisign_pubkey = RWQPLACEHOLDERPLACEHOLDERPLACEHOLDERPLACEHOLDERPLACEHOLDER   # PLACEHOLDER
+
+# Rekor transparency-log URL a rogue signature would be publicly detectable in:
+rekor_url = https://rekor.sigstore.dev
+
+# The ONLY official first-install vectors (anything else is not us — typosquat defense):
+official_brew_tap = ouro/tap
+official_npm_pkg  = @ouro/cli
+official_site     = https://ouro.example/install

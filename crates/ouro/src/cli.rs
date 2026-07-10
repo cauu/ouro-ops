@@ -45,12 +45,53 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "manifest" => run_manifest(&args[2..])?,
         "pool" => run_pool(&args[2..])?,
         "rollback" => run_rollback(&args[2..])?,
+        "self-update" => run_self_update(&args[2..])?,
         "skill" => run_skill(&args[2..])?,
         "spec" => run_spec(&args[2..])?,
         "status" => run_status(&args[2..])?,
         "tool" => run_tool(&args[2..])?,
         other => return Err(OuroError::InvalidArgs(format!("unknown command {other}"))),
     }
+    Ok(())
+}
+
+/// `ouro self-update --check [--against <signed-metadata.json>]` (S0016 p2-3).
+///
+/// Reports the running version and the built-in required floor. With `--against`, compares
+/// to a (signed at release) metadata file and reports whether an update is warranted, WITHOUT
+/// downgrading below the current version (monotonic). The actual network fetch + signature
+/// verification + in-place swap are RELEASE INFRASTRUCTURE (signing key, transparency log,
+/// stable channel) documented in `packaging/RELEASE.md` — deliberately not runnable in-repo,
+/// so this never pretends to have applied an unverified update.
+fn run_self_update(args: &[String]) -> Result<()> {
+    if args.first().map(String::as_str) != Some("--check") {
+        return Err(OuroError::InvalidArgs(
+            "self-update supports --check [--against <file>]; network apply is release infra (packaging/RELEASE.md)".to_string(),
+        ));
+    }
+    let current = crate::version::fmt(crate::version::current());
+    let embedded_floor = crate::skills::required_ouro();
+    let mut update_available = false;
+    let mut latest = current.clone();
+    if let Some(path) = optional_flag_value(args, "--against") {
+        let meta: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)
+            .map_err(|e| OuroError::Validation(format!("metadata {path} not JSON: {e}")))?;
+        if let Some(v) = meta.get("latest_version").and_then(|v| v.as_str()) {
+            latest = v.to_string();
+            if let (Some(c), Some(l)) =
+                (crate::skills::parse_floor(&current), crate::skills::parse_floor(v))
+            {
+                update_available = l > c; // never downgrade: only flag when strictly newer
+            }
+        }
+    }
+    output::print_json(&ToolOutput::ok("ouro.self-update.check", false).with_data(json!({
+        "current": current,
+        "embedded_required_floor": embedded_floor,
+        "latest_seen": latest,
+        "update_available": update_available,
+        "apply": "release infra: verify signature + transparency log, then swap (packaging/RELEASE.md)",
+    })))?;
     Ok(())
 }
 

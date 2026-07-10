@@ -226,13 +226,13 @@ agent 装 skill",又不给决策层留投毒面。
   临时 `ouro-skills/` 布局 → 执行 → **自清理**;脚本仍是 bash(不做 bash→Rust 大改),故"无外部脚本拉取"
   成立(脚本来自二进制内部,非磁盘/网络),执行期依赖(bash/cardano-cli/python3)如实声明。磁盘/dev/bed
   仍走 `skills_root()`(OURO_SKILLS_DIR 可覆盖),行为不变。
-- [ ] p2-2 签名 release channel + 验签(cosign/minisign);叠加透明日志 / 可复现构建
-- [ ] p2-3 `ouro self-update`:验签 + **单调防回滚** + 签名元数据时效/吊销 + "每 X 小时查一次"缓存 +
-  离线 fallback(离线包内嵌可离线核验签名材料,同等验签+denylist+max(floor))
-- [ ] p2-4 首次 bootstrap(R2 N4/N9 落盘):**主向量 = Homebrew**(mac-first),npx 为次/后续 item;
-  **预期签名身份 pin 进仓库控制的 artifact**(Homebrew formula + `packaging/SIGNING_IDENTITY`),安装
-  命令**自动**验证(不靠用户手工比指纹);官网只展示同一身份供交叉核对;防 typosquat/假包/key 替换
-- [ ] p2-5 引导文案:一次性 setup(①装本机 + ②S0017 init)vs 每次操作的区分
+- [x] p2-2 验签逻辑 + 打包(homebrew formula post_install cosign verify、install.sh 对 pinned identity 验签、
+  可复现构建/透明日志设计见 RELEASE.md)。**真实签名密钥/发布 = infra**(不在 repo)
+- [~] p2-3 `ouro self-update --check [--against <meta>]`(报告版本/内嵌地板、严格不降级)+ 单调防回滚
+  (version.rs)+ 离线/时效/denylist 设计(RELEASE.md)。**网络拉取+验签+原地替换 = release infra**,不在 repo
+- [x] p2-4 首次 bootstrap(R2 N4/N9):主向量 Homebrew(`packaging/homebrew/ouro.rb`)+ `packaging/install.sh`
+  对 **`packaging/SIGNING_IDENTITY`** pinned identity 自动验签(不靠手工比指纹);官方向量单一化,防 typosquat/假包/key 替换
+- [x] p2-5 引导文案:`packaging/RELEASE.md`(发布/签名/自更新/离线 + in-repo vs infra 边界);网站 bootstrap 区块区分一次性 setup(①装本机 + ②S0017 init)vs 每次操作
 - [x] p2-6 release **bundle manifest**(ouro_version/内嵌决策 hash/内嵌 skills hash/schema hash/
   embedded_digest/`required_ouro`)+ `ouro manifest show|verify --against`;committed
   `packaging/bundle-manifest.json` + 单测 drift 守卫(改 skill/schema 未重生 manifest → CI red)。
@@ -361,6 +361,10 @@ agent 装 skill",又不给决策层留投毒面。
   note: `confirm preview --tool --dispatch --spec` 打印将执行的**真实** ssh+wrapper argv(shell-quoted)
   且不执行=ground-truth;威胁模型文档含保护什么/不保护什么表 + #2/#3/#4 + bootstrap 供应链 + 适用边界
   (何时应保持手动)。
+- p2-2/3/4/5 | stack: rust/packaging | command: ouro self-update --check + packaging/* | result: pass |
+  note: self-update --check 报 current=0.1.0/floor>=0.1.0;--against 更新版→update_available,旧版→不降级;
+  packaging/{SIGNING_IDENTITY,homebrew/ouro.rb,install.sh(cosign verify),RELEASE.md}。真实签名密钥/发布/
+  网络 apply = infra(RELEASE.md 明列),不在 repo。33 tests 无回归。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
