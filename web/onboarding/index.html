@@ -111,16 +111,17 @@
     color:var(--muted);border-radius:10px}
   .btn-icon:hover{color:var(--orange);background:rgba(229,105,46,.08)}
 
-  /* ============ trust list (rides beside the operate header) ============ */
+  /* ============ trust cards (between hero and the step panels) ============ */
   .step-panel .ops{margin-top:24px}
-  .trust-strip{margin-top:64px}
-  .trust-strip .trust-list{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin:0}
-  @media (max-width:860px){.trust-strip .trust-list{grid-template-columns:1fr;gap:16px}}
-  .trust-list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:14px}
-  .trust-list li{display:flex;gap:12px;align-items:flex-start;font-size:13.5px;line-height:1.5;color:var(--muted)}
-  .trust-list li b{color:var(--body-strong);font-weight:600}
-  .trust-list .tile{width:30px;height:30px;border-radius:9px}
-  .trust-list .tile svg{width:15px;height:15px}
+  .trust{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;
+    padding-top:8px;padding-bottom:28px}
+  @media (max-width:860px){.trust{grid-template-columns:1fr}}
+  .trust-card{background:#fff;border-radius:var(--r-lg);padding:20px;box-shadow:var(--sh-card);
+    display:flex;gap:14px;align-items:flex-start;
+    transition:transform .3s var(--ease),box-shadow .3s var(--ease)}
+  .trust-card:hover{transform:translateY(-4px) scale(1.01);box-shadow:var(--sh-card-hover)}
+  .trust-card h3{font-size:15px;font-weight:600;line-height:1.35}
+  .trust-card p{margin:4px 0 0;font-size:13.5px;line-height:1.5;color:var(--muted)}
   .tile{flex:none;width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:#fff}
   .tile svg{width:19px;height:19px}
   .t-sea{background:var(--sea)} .t-sky{background:var(--sky)} .t-lavender{background:var(--lavender)}
@@ -374,6 +375,30 @@
   </div>
 </section>
 
+<section class="trust wrap" aria-label="security model">
+  <div class="trust-card reveal">
+    <div class="tile t-sea" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V6z"/></svg>
+    </div>
+    <div><h3>Zero upload</h3>
+      <p>Generated locally on a CSP-locked static page — the only network call is a read-only version check.</p></div>
+  </div>
+  <div class="trust-card reveal">
+    <div class="tile t-lavender" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8"/></svg>
+    </div>
+    <div><h3>Verified procedures</h3>
+      <p>The agent reads its steps from <code>ouro-ops skill show</code> — embedded in the signed binary.</p></div>
+  </div>
+  <div class="trust-card reveal">
+    <div class="tile t-mint" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+    </div>
+    <div><h3>Gated writes</h3>
+      <p>Every change runs through audited <code>ouro-ops tool run</code>, with human confirmation.</p></div>
+  </div>
+</section>
+
 <!-- The two steps, as two ADJACENT bounded panels: ① set up once, ② pick an operation. -->
 <div class="steps-wrap wrap">
   <section class="step-panel reveal" id="setup" aria-labelledby="s1-h">
@@ -436,23 +461,6 @@
 </div>
 
 
-<!-- The security model, as a quiet 3-up strip AFTER the two steps — supporting, not interrupting -->
-<section class="trust-strip wrap reveal" aria-label="security model">
-  <ul class="trust-list" aria-label="security model">
-      <li>
-        <span class="tile t-sea" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V6z"/></svg></span>
-        <span><b>Zero upload</b> — generated locally; the only network call is a read-only version check.</span>
-      </li>
-      <li>
-        <span class="tile t-lavender" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8"/></svg></span>
-        <span><b>Verified procedures</b> — the agent reads steps from <code>ouro-ops skill show</code>, embedded in the signed binary.</span>
-      </li>
-      <li>
-        <span class="tile t-mint" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
-        <span><b>Gated writes</b> — every change runs through audited <code>ouro-ops tool run</code>, with human confirmation.</span>
-      </li>
-    </ul>
-</section>
 <div class="cta-band wrap reveal">
   <div class="cta-band-in">
     <div><h2>Open source, end to end.</h2>
