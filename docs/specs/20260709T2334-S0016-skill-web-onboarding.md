@@ -307,6 +307,11 @@ agent 装 skill",又不给决策层留投毒面。
   撤销独立信任卡横带,三条安全点**精简为单行列表**并入 operate 区标题右侧(标题左 60ch、
   trust-list 右 400px 两栏);操作卡直接紧随 hero,"② Pick an operation" 点击即达;内容不丢、
   少一整个横带。
+- [x] p1-restyle-fix9 步骤区域化重排(用户 review:step1/step2 要各有明显区域且紧挨,不能
+  step1→介绍→step2):hero 只留标题/文案/Get started;下方改为**两块相邻的 surface-soft 大圆角
+  面板**——面板① Set up once(序号圆 + 安装 pill + 交叉核对提示),面板② Pick an operation
+  (序号圆 + 说明 + trust-list 侧栏 + 6 操作卡);撤 hero 内嵌 stepper,步骤顺序由相邻面板 1→2
+  直接表达。
 ## 4. Test and Acceptance Criteria
 - TC-1 生成的 `pool-spec.yaml` 通过 `ouro-ops spec validate`(含 1 BP + N relay,N≥2;覆盖
   mainnet/preprod/preview、genesis vs Mithril、缺失/非法必填字段的 fixture)。
@@ -419,6 +424,9 @@ agent 装 skill",又不给决策层留投毒面。
 
 - 2026-07-10 p1-restyle-fix8 completed: 信任内容并入 operate 头部右栏,操作卡上移一个横带。
   验证:静态门 pass;真浏览器渲染正常(reveal 动画后全量可见)、0 console 错误。
+
+- 2026-07-10 p1-restyle-fix9 completed: 两步改为相邻面板布局。验证:静态门 pass;真浏览器两面板
+  相邻渲染、白卡在 soft 面板上对比清晰、os 切换/copy/modal 入口不受影响。
 
 ## 6. Validation Evidence (append-only)
 - p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
@@ -544,6 +552,9 @@ agent 装 skill",又不给决策层留投毒面。
 
 - TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
   p1-restyle-fix8 trust 内容语义保留(ul + aria-label),960px 以下退化为单栏
+
+- TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
+  p1-restyle-fix9 面板为 section+aria-labelledby,步骤语义清晰;#setup/#operate 锚点保留
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。

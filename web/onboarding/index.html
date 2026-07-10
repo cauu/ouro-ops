@@ -112,8 +112,9 @@
   .btn-icon:hover{color:var(--orange);background:rgba(229,105,46,.08)}
 
   /* ============ trust list (rides beside the operate header) ============ */
-  .operate-head{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:40px;align-items:start}
-  @media (max-width:960px){.operate-head{grid-template-columns:1fr;gap:24px}}
+  .operate-head{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:36px;align-items:start}
+  @media (max-width:960px){.operate-head{grid-template-columns:1fr;gap:22px}}
+  .step-panel .ops{margin-top:24px}
   .trust-list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:14px}
   .trust-list li{display:flex;gap:12px;align-items:flex-start;font-size:13.5px;line-height:1.5;color:var(--muted)}
   .trust-list li b{color:var(--body-strong);font-weight:600}
@@ -131,15 +132,17 @@
   .band-head h2{font-size:clamp(28px,3.4vw,40px);font-weight:700;letter-spacing:-.02em;line-height:1.1;margin:14px 0 0}
   .band-head p{margin:14px 0 0;font-size:15.5px;line-height:1.6;color:var(--body)}
 
-  /* hero steps: a small vertical stepper — 1 set up once, 2 operate. Order reads top-down. */
-  .steps{list-style:none;margin:30px 0 0;padding:0;display:flex;flex-direction:column;gap:16px}
-  .step{display:flex;align-items:center;gap:14px;position:relative;flex-wrap:wrap}
-  .step-dot{flex:none;width:26px;height:26px;border-radius:50%;background:var(--sea);color:#fff;
-    display:grid;place-items:center;font:600 13px/1 var(--font);font-variant-numeric:tabular-nums}
-  .step + .step::before{content:"";position:absolute;left:12.5px;top:-17px;width:1.5px;height:18px;
-    background:rgba(72,139,225,.4)}
-  .step-label{flex:none;width:128px;font:600 14px/1.3 var(--font);color:var(--body-strong)}
-  @media (max-width:640px){.step-label{width:auto}}
+  /* two ADJACENT step panels: each step gets its own bounded region, back to back */
+  .steps-wrap{display:flex;flex-direction:column;gap:20px;margin-top:4px;position:relative;z-index:1}
+  .step-panel{background:var(--surface-soft);border-radius:var(--r-xl);padding:30px 34px}
+  .step-dot{flex:none;width:30px;height:30px;border-radius:50%;background:var(--sea);color:#fff;
+    display:grid;place-items:center;font:600 14px/1 var(--font);font-variant-numeric:tabular-nums}
+  .panel-head{display:flex;align-items:flex-start;gap:16px}
+  .panel-head h2{font-size:24px;font-weight:700;letter-spacing:-.02em;line-height:1.25;margin-top:2px}
+  .panel-head .sub{margin:6px 0 0;font-size:14px;line-height:1.55;color:var(--muted);max-width:56ch}
+  .setup-row{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:18px 0 0;padding-left:46px}
+  .setup-row .hint{margin:0;max-width:44ch}
+  @media (max-width:640px){.setup-row{padding-left:0}}
   .install-bar{display:flex;align-items:center;gap:10px;height:48px;max-width:100%;overflow-x:auto;
     background:var(--surface-dark);border-radius:var(--r-md);padding:0 7px 0 9px;
     box-shadow:0 8px 24px rgba(34,72,134,.22),inset 0 1px 0 rgba(255,255,255,.12)}
@@ -364,42 +367,47 @@
     <p class="lede">Pick an operation, fill a short form, and hand <strong>one atomic prompt</strong> to your
       AI agent — procedures and writes stay inside your <strong>verified <code>ouro-ops</code> binary</strong>.
       Everything here is generated locally.</p>
-    <!-- the two-step path, in order: 1 set up once → 2 operate -->
-    <ol class="steps" id="setup">
-      <li class="step">
-        <span class="step-dot">1</span>
-        <span class="step-label">Set up once</span>
-        <div class="install-bar">
-          <div class="os-tabs" role="tablist" aria-label="operating system">
-            <button type="button" class="os-tab active" data-os="mac">macOS</button>
-            <button type="button" class="os-tab" data-os="linux">Linux</button>
-          </div>
-          <code id="setup-out">brew install ouro/tap/ouro</code>
-          <button type="button" class="btn btn-oncolor" id="copy-setup">Copy</button>
-        </div>
-      </li>
-      <li class="step">
-        <span class="step-dot">2</span>
-        <span class="step-label">Operate any time</span>
-        <a class="btn btn-primary" href="#operate">Pick an operation →</a>
-      </li>
-    </ol>
-    <p class="hint go-hint">Install once, signature-verified — then cross-check <code>ouro-ops contract</code> against
-      this site and arm each target with <code>ouro-ops init</code> (S0017).</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#setup">Get started ↓</a>
+    </div>
   </div>
 </section>
 
-<!-- STEP 2 — pick an operation; the form opens in a modal (step 1 = the hero setup terminal).
-     The security model rides along as a compact list beside the header — no separate band in the way. -->
-<section class="band wrap" id="operate">
-  <div class="operate-head">
-    <div class="band-head reveal">
-      <p class="kicker"><i></i>Step 2 · any time you operate</p>
-      <h2>Pick an operation.</h2>
-      <p>The form asks only for what that operation needs, generates everything locally, and gives you
-        one prompt to paste into your agent.</p>
+<!-- The two steps, as two ADJACENT bounded panels: ① set up once, ② pick an operation. -->
+<div class="steps-wrap wrap">
+  <section class="step-panel reveal" id="setup" aria-labelledby="s1-h">
+    <div class="panel-head">
+      <span class="step-dot">1</span>
+      <div>
+        <h2 id="s1-h">Set up once</h2>
+        <p class="sub">Install the signature-verified CLI on your control machine.</p>
+      </div>
     </div>
-    <ul class="trust-list reveal" aria-label="security model">
+    <div class="setup-row">
+      <div class="install-bar">
+        <div class="os-tabs" role="tablist" aria-label="operating system">
+          <button type="button" class="os-tab active" data-os="mac">macOS</button>
+          <button type="button" class="os-tab" data-os="linux">Linux</button>
+        </div>
+        <code id="setup-out">brew install ouro/tap/ouro</code>
+        <button type="button" class="btn btn-oncolor" id="copy-setup">Copy</button>
+      </div>
+      <p class="hint">Cross-check <code>ouro-ops contract</code> against this site ·
+        arm each target with <code>ouro-ops init</code> (S0017).</p>
+    </div>
+  </section>
+
+  <section class="step-panel reveal" id="operate" aria-labelledby="s2-h">
+    <div class="operate-head">
+      <div class="panel-head">
+        <span class="step-dot">2</span>
+        <div>
+          <h2 id="s2-h">Pick an operation</h2>
+          <p class="sub">The form asks only for what that operation needs, generates everything locally,
+            and gives you one prompt to paste into your agent.</p>
+        </div>
+      </div>
+      <ul class="trust-list" aria-label="security model">
       <li>
         <span class="tile t-sea" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V6z"/></svg></span>
         <span><b>Zero upload</b> — generated locally; the only network call is a read-only version check.</span>
@@ -439,8 +447,9 @@
       <span class="tile t-incana" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.5-4.5"/></svg></span>
       <span><b>troubleshooting</b><small>Read-only diagnosis</small></span>
       <span class="go" aria-hidden="true">→</span></button>
-  </div>
-</section>
+    </div>
+  </section>
+</div>
 
 <div class="cta-band wrap reveal">
   <div class="cta-band-in">
