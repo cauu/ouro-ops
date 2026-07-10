@@ -93,7 +93,7 @@
   <!-- STEP 2 — the common spine: network + machines (every operation) -->
   <section class="panel" aria-labelledby="fleet-h">
     <h2 id="fleet-h"><span class="step">2</span>Your fleet</h2>
-    <div class="grid g3">
+    <div class="grid g2">
       <div><label for="network">Network</label>
         <select id="network">
           <option value="mainnet" selected>mainnet</option>
@@ -102,7 +102,6 @@
         </select>
       </div>
       <div id="f-ticker"><label for="ticker">Ticker (3–5, A–Z 0–9)</label><input id="ticker" value="OURO" maxlength="5" /></div>
-      <div><label for="magic">Network magic <span style="font-weight:400">(auto)</span></label><input id="magic" readonly /></div>
     </div>
 
     <div class="bar" style="margin-top:16px"><h2 style="margin:0">Machines (1 BP + N relays)</h2><span class="spacer"></span>
@@ -223,7 +222,7 @@ function applyOperation() {
   $("opf-empty").hidden = cfg.need.length > 0;
   $("mach-hint").textContent = "SSH user is always ouro-exec and the SSH port is 22 (S0015). Only the host is yours to fill.";
 }
-function applyNetwork() { $("magic").value = NET[$("network").value].magic; }
+// network_magic is derived from the network in collect() (NET table) — nothing to render.
 
 function collect() {
   const errs = [], op = $("op").value, cfg = OP[op];
@@ -334,7 +333,7 @@ function bootstrap() {
 
 let current = { spec:"", prompt:"", disclose:[] };
 function render() {
-  applyOperation(); applyNetwork();
+  applyOperation();
   // Release-notes deep link for the selected node version (the live source of truth for what's
   // in it — the page itself is zero-network, so this link is how you confirm the current release).
   $("relnotes").href = "https://github.com/IntersectMBO/cardano-node/releases/tag/" + $("nodever").value;

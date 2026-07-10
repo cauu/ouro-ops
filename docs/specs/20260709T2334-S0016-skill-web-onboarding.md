@@ -434,6 +434,9 @@ agent 装 skill",又不给决策层留投毒面。
   upgrade=network+machines+node版本、kes=network+machines(其余真需要)。生成 spec 把 ticker 并入
   'placeholders — not used by <op>' 注释组;实测:kes/upgrade 字段可见性正确、内联 spec ticker:POOL 带注释、
   该 spec 通过 ouro spec validate。
+- p1-fix12 | stack: web | command: 真浏览器 JS 断言 | result: pass | note: Network magic 纯派生、用户不需看,
+  从表单彻底移除(内部 collect 仍从常量表 net.magic 取,写入生成 spec)。fleet 段现仅 Network(+Ticker 仅
+  deploy)。实测:magic 字段消失、切 preprod 后内联 spec network_magic:1 正确派生、无 console error。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
