@@ -425,6 +425,10 @@ agent 装 skill",又不给决策层留投毒面。
   pool-spec.yaml(含真实 host)。经济参数仍只 deploy 显示,非 deploy 在 spec 里用**带注释占位**;upgrade
   目标版本(实时 11.0.1)写入生成的 spec,prompt 改为"保存本页 spec 再跑"。JS 实测:upgrade host 可见+改
   IP 进 spec、spec 显示、占位注释在、node_version=目标版。(p1-fix5"两种模式"作废,归并为单一模式。)
+- p1-fix10 | stack: web | command: 真浏览器 JS 断言 | result: pass | note: 去掉独立 pool-spec.yaml 面板;
+  配置**内联进 prompt**——每个操作=一个自包含原子 prompt(复制一次扔给 AI 即可,无需存文件/额外上下文)。
+  内联 spec 含真实 host、目标 node_version(实时)、非 deploy 经济参数带注释占位。JS 实测:spec 面板消失、
+  prompt 含 spec_version/machines/10.0.0.9/node_version 11.0.1/占位注释/op 命令,单一 prompt 46 行。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。

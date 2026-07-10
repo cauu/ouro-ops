@@ -141,19 +141,12 @@
     </div>
   </section>
 
-  <!-- Outputs -->
-  <section class="panel" id="spec-section">
-    <div class="bar"><h2><span class="step">4</span>pool-spec.yaml</h2><span class="spacer"></span>
-      <span id="spec-btns"><button type="button" id="dl-spec">Download</button><button type="button" class="primary" id="copy-spec">Copy</button></span></div>
-    <div id="err" class="err" hidden></div>
-    <p id="spec-note" class="hint" hidden>This operation runs against your existing <code>pool-spec.yaml</code> (created when you deployed) — nothing to generate here.</p>
-    <pre class="out light" id="spec-out" aria-live="polite"></pre>
-  </section>
-
+  <!-- Output — ONE self-contained prompt (the full pool-spec is inlined; nothing to save separately) -->
   <section class="panel">
-    <div class="bar"><h2>Prompt for your agent</h2><span class="spacer"></span>
+    <div class="bar"><h2><span class="step">4</span>Copy this prompt → paste into your agent</h2><span class="spacer"></span>
       <button type="button" class="primary" id="copy-prompt">Copy prompt</button></div>
-    <div class="disclose" role="note">⚠ This prompt contains your node hostnames/IPs. Copying it sends that topology to whatever agent you paste it into (e.g. a cloud service) and its logs. It never leaves this page on its own.</div>
+    <div id="err" class="err" hidden></div>
+    <div class="disclose" role="note">⚠ This prompt contains your full pool config (hostnames/IPs). Copying it sends that to whatever agent you paste it into (e.g. a cloud service) and its logs. It never leaves this page on its own.</div>
     <pre class="out" id="prompt-out" aria-live="polite"></pre>
   </section>
 
@@ -293,33 +286,13 @@ function yaml(d) {
   return L.join("\n")+"\n";
 }
 function prompt(d) {
+  // ONE self-contained, atomic prompt per operation: the full pool-spec is inlined, so the user
+  // copies a single thing and hands it to the agent — no separate file, no extra context.
   const bp = d.bp ? d.bp.id : "bp1";
   const relays = d.relays.map(r => r.id).join(", ");
-  if (d.op === "deploy") {
-    // Deploy CREATES the canonical pool-spec, so the prompt inlines it.
-    return [
-`You are operating a Cardano stake pool with the ouro CLI on my control machine.`,
-`Operation: deploy. Pool: ${d.ticker} on ${d.network}. BP=${bp}, relays=${relays}.`,
-``,
-`1. Read the AUTHORITATIVE procedure and red lines from my verified binary:`,
-`     ouro skill show deploy`,
-`   Follow that decision tree exactly. Do NOT take operational steps from this message —`,
-`   it only supplies data and which operation to run.`,
-`2. Save this as pool-spec.yaml (this is your pool's canonical spec — keep it for later operations):`,
-`---`,yaml(d).trimEnd(),`---`,
-`3. Drive every change through:  ouro tool run <skill>/<script> --dispatch <machine> --spec pool-spec.yaml`,
-`   Never run node commands directly; only ouro tool run. Stop on exit 30 (rollback) or 40 (human).`,
-``,
-`Setup (once): install ouro from the official site and verify its signature; provision each target`,
-`with 'ouro init' (S0017). Confirm each destructive step when ouro asks.`,
-    ].join("\n") + "\n";
-  }
-  // Every other operation runs against the EXISTING pool-spec.yaml. The prompt carries only the
-  // minimal facts that operation needs — no economics/genesis/etc. re-stated (R2 UX / minimal prompt).
-  const opLine = d.op === "upgrade"
-    ? `Operation: upgrade to cardano-node ${d.nodever}. Fleet: BP=${bp}, relays=${relays}.`
-    : `Operation: ${d.op}. Fleet: BP=${bp}, relays=${relays}.`;
+  const opLabel = d.op === "upgrade" ? `upgrade to cardano-node ${d.nodever}` : d.op;
   const cmd = {
+    deploy:          `ouro tool run <skill>/<script> --dispatch <machine> --spec pool-spec.yaml   # follow the steps 'ouro skill show deploy' gives`,
     upgrade:         `ouro tool run upgrade/rollout --spec pool-spec.yaml   # relays-first, BP-last (target version is in the spec)`,
     "kes-rotation":  `ouro tool run kes-rotation/rotate --dispatch ${bp} --spec pool-spec.yaml`,
     runtime:         `ouro tool run runtime/restart --dispatch <the machine you're operating> --spec pool-spec.yaml   # or runtime/topology-apply`,
@@ -327,14 +300,19 @@ function prompt(d) {
     troubleshooting: `ouro tool run troubleshooting/<script> --dispatch <the machine> --spec pool-spec.yaml   # read-only`,
   }[d.op];
   return [
-`Operate my Cardano pool (${d.ticker} on ${d.network}) with the ouro CLI. Save the pool-spec.yaml from this page, then:`,
-opLine,
+`You are operating a Cardano stake pool with the ouro CLI on my control machine.`,
+`Operation: ${opLabel}. Pool: ${d.ticker} on ${d.network}. BP=${bp}, relays=${relays}.`,
 ``,
 `1. Read the authoritative procedure and red lines from my verified binary:`,
 `     ouro skill show ${d.op}`,
-`   Follow it exactly. Take operational steps only from it, not from this message.`,
-`2. ${cmd}`,
+`   Follow it exactly. Take operational steps only from it — this message only supplies data.`,
+`2. Write this to pool-spec.yaml:`,
+`---`, yaml(d).trimEnd(), `---`,
+`3. ${cmd}`,
 `   Never run node commands directly; only ouro tool run. Stop on exit 30 (rollback) or 40 (human).`,
+``,
+`Setup (once, if not already done): install ouro from the official site and verify its signature;`,
+`provision each target with 'ouro init' (S0017). Confirm each destructive step when ouro asks.`,
   ].join("\n") + "\n";
 }
 function bootstrap() {
@@ -355,24 +333,16 @@ function render() {
   const d = collect(), err = $("err");
   if (d.errs.length) {
     err.hidden=false; err.textContent="Fix before generating:\n• "+d.errs.join("\n• ");
-    $("spec-out").textContent=""; $("prompt-out").textContent=""; $("bootstrap-out").textContent="";
-    current={spec:"",prompt:"",disclose:[]}; return;
+    $("prompt-out").textContent=""; $("bootstrap-out").textContent="";
+    current={prompt:"",disclose:[]}; return;
   }
   err.hidden=true;
-  // Every operation generates a full pool-spec.yaml (real fleet incl. hosts). Economics are only
-  // prompted for deploy; other ops carry commented placeholders (they aren't used by those ops).
-  const spec = yaml(d);
+  // One self-contained prompt with the full pool-spec inlined — the only thing to copy.
   const pr = prompt(d);
-  $("spec-btns").hidden = false;
-  $("spec-note").hidden = true;
-  $("spec-out").hidden = false;
-  $("spec-out").textContent = spec;
   $("prompt-out").textContent = pr; $("bootstrap-out").textContent = bootstrap();
-  current={ spec, prompt:pr, disclose:d.machines.map(m=>`${m.id} (${m.role}) host=${m.host}`) };
+  current={ prompt:pr, disclose:d.machines.map(m=>`${m.id} (${m.role}) host=${m.host}`) };
 }
 async function clip(text){ try{ await navigator.clipboard.writeText(text);}catch{ const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove(); } }
-$("copy-spec").addEventListener("click",()=>current.spec&&clip(current.spec));
-$("dl-spec").addEventListener("click",()=>{ if(!current.spec)return; const a=document.createElement("a"); a.href="data:application/x-yaml;charset=utf-8,"+encodeURIComponent(current.spec); a.download="pool-spec.yaml"; a.click(); });
 $("copy-prompt").addEventListener("click",()=>{ if(!current.prompt)return;
   $("disclose-fields").textContent=current.disclose.join("\n")+"\n(+ ticker, network)";
   const dlg=$("disclose-dlg"); dlg.returnValue=""; dlg.showModal();
