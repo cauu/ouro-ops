@@ -38,6 +38,8 @@
   .op-pick{font-size:16px;padding:12px}
   .machine{border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px;background:#fbfcfd}
   .machine .row{display:grid;grid-template-columns:110px 80px 1fr auto;gap:8px;align-items:end}
+  body.hide-hosts .machine .row{grid-template-columns:130px 90px auto}
+  body.hide-hosts .m-host-wrap{display:none}
   @media (max-width:620px){.machine .row{grid-template-columns:1fr 1fr}}
   button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:#fff;padding:8px 14px;color:var(--ink)}
   button:hover{border-color:var(--cardano)}
@@ -108,7 +110,7 @@
     <div class="bar" style="margin-top:16px"><h2 style="margin:0">Machines (1 BP + N relays)</h2><span class="spacer"></span>
       <button type="button" id="add-relay">+ relay</button></div>
     <div id="machines"></div>
-    <p class="hint">SSH user is always <code>ouro-exec</code> and the SSH port is 22 (target-side confinement, S0015). Only the host is yours to fill.</p>
+    <p class="hint" id="mach-hint"></p>
   </section>
 
   <!-- STEP 3 — operation-specific fields (shown per the field×operation matrix) -->
@@ -206,7 +208,7 @@ function machineRow(id, role, host, removable) {
   el.innerHTML = `<div class="row">
     <div><label>id</label><input class="m-id" value="${id}" /></div>
     <div><label>role</label><input class="m-role" value="${role}" readonly /></div>
-    <div><label>host</label><input class="m-host" value="${host}" /></div>
+    <div class="m-host-wrap"><label>host</label><input class="m-host" value="${host}" /></div>
     <div>${removable ? '<button type="button" class="rm" aria-label="remove relay">✕</button>' : '<span class="hint">BP</span>'}</div>
   </div>`;
   if (removable) el.querySelector(".rm").addEventListener("click", () => { el.remove(); render(); });
@@ -226,6 +228,14 @@ function applyOperation() {
   for (const f of ["nodever","sync"]) $("f-"+f).hidden = !cfg.need.includes(f);
   $("f-registration").hidden = !cfg.registration;
   $("opf-empty").hidden = cfg.need.length > 0;
+  // Hosts only matter for deploy (they go into the generated spec). Every other op reuses the
+  // existing pool-spec.yaml, so its host is already there — hide the field so nothing shown is
+  // a dead input, and drive commands by machine id (which IS what those prompts use).
+  const isDeploy = op === "deploy";
+  document.body.classList.toggle("hide-hosts", !isDeploy);
+  $("mach-hint").textContent = isDeploy
+    ? "SSH user is always ouro-exec and the SSH port is 22 (S0015). Only the host is yours to fill."
+    : "IDs must match your pool-spec.yaml — that's how the commands target the right machines. Hosts come from your existing spec.";
 }
 function applyNetwork() { $("magic").value = NET[$("network").value].magic; }
 
@@ -242,7 +252,8 @@ function collect() {
       host=row.querySelector(".m-host").value.trim(), port="3001"; // node p2p port is the standard 3001
     if (!RE.seg.test(id)) errs.push(`machine id "${id}" must be [a-z0-9-]`);
     if (ids.has(id)) errs.push(`duplicate machine id "${id}"`); ids.add(id);
-    if (!RE.host.test(host)) errs.push(`host "${host}" must be DNS/IP only`);
+    // Host is only used (and shown) for deploy, where it goes into the generated spec.
+    if (op === "deploy" && !RE.host.test(host)) errs.push(`host "${host}" must be DNS/IP only`);
     machines.push({ id, role, host, port });
   });
   const bp = machines.filter(m=>m.role==="bp"), relays = machines.filter(m=>m.role==="relay");

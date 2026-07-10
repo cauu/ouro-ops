@@ -416,6 +416,10 @@ agent 装 skill",又不给决策层留投毒面。
   放开 CSP `connect-src` 到**唯一** host `api.github.com`,加载时 GET cardano-node releases/latest(URL 固定、
   无用户数据),实测拉到真最新 **11.0.1**、relnotes 深链跟随;网络面板确认**仅 1 条 github 请求、0 CSP 违规**;
   失败回退烤入列表。更新 Constraints/TC-3/威胁模型 + 静态门断言 fetch 唯一且 URL 固定不含用户数据。
+- p1-fix8 | stack: web | command: 真浏览器 JS 断言 | result: pass | note: 用户发现非 deploy 改 host 不反映到
+  prompt——根因:非 deploy prompt 引用机器 **id**(host 来自已有 spec,不在 prompt)。修:非 deploy **隐藏
+  host 字段**(避免死输入)、host 校验只在 deploy 生效;非 deploy 由 id 驱动。所有非 deploy 命令统一修复。
+  JS 实测:deploy host 改动进 spec;upgrade 隐藏 host、改 relay id→prompt Fleet 行随之更新、无误报。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
