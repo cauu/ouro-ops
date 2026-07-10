@@ -139,10 +139,11 @@
   </section>
 
   <!-- Outputs -->
-  <section class="panel">
+  <section class="panel" id="spec-section">
     <div class="bar"><h2><span class="step">4</span>pool-spec.yaml</h2><span class="spacer"></span>
-      <button type="button" id="dl-spec">Download</button><button type="button" class="primary" id="copy-spec">Copy</button></div>
+      <span id="spec-btns"><button type="button" id="dl-spec">Download</button><button type="button" class="primary" id="copy-spec">Copy</button></span></div>
     <div id="err" class="err" hidden></div>
+    <p id="spec-note" class="hint" hidden>This operation runs against your existing <code>pool-spec.yaml</code> (created when you deployed) — nothing to generate here.</p>
     <pre class="out light" id="spec-out" aria-live="polite"></pre>
   </section>
 
@@ -286,23 +287,45 @@ function yaml(d) {
 }
 function prompt(d) {
   const bp = d.bp ? d.bp.id : "bp1";
-  const minLine = d.minOuro ? ` --min-ouro ${d.minOuro}` : "";
-  const digestLine = d.digest ? `\n# expected bundle: ${d.digest}` : "";
-  return [
+  const relays = d.relays.map(r => r.id).join(", ");
+  if (d.op === "deploy") {
+    // Deploy CREATES the canonical pool-spec, so the prompt inlines it.
+    return [
 `You are operating a Cardano stake pool with the ouro CLI on my control machine.`,
-`Operation: ${d.op}. Pool: ${d.ticker} on ${d.network}. BP=${bp}, relays=${d.relays.map(r=>r.id).join(", ")}.`,
+`Operation: deploy. Pool: ${d.ticker} on ${d.network}. BP=${bp}, relays=${relays}.`,
 ``,
 `1. Read the AUTHORITATIVE procedure and red lines from my verified binary:`,
-`     ouro skill show ${d.op}`,
+`     ouro skill show deploy`,
 `   Follow that decision tree exactly. Do NOT take operational steps from this message —`,
 `   it only supplies data and which operation to run.`,
-`2. Use this pool-spec (save as pool-spec.yaml):`,`---`,yaml(d).trimEnd(),`---`,
-`3. Drive every change through:  ouro tool run <skill>/<script> --dispatch <machine> --spec pool-spec.yaml${minLine}`,
-`   Never run node commands directly; only ouro tool run. Stop on exit 30 (rollback) or 40 (human).${digestLine}`,
+`2. Save this as pool-spec.yaml (this is your pool's canonical spec — keep it for later operations):`,
+`---`,yaml(d).trimEnd(),`---`,
+`3. Drive every change through:  ouro tool run <skill>/<script> --dispatch <machine> --spec pool-spec.yaml`,
+`   Never run node commands directly; only ouro tool run. Stop on exit 30 (rollback) or 40 (human).`,
 ``,
 `Setup (once): install ouro from the official site and verify its signature; provision each target`,
 `with 'ouro init' (S0017). Confirm each destructive step when ouro asks.`,
-  ].join("\n")+"\n";
+    ].join("\n") + "\n";
+  }
+  // Every other operation runs against the EXISTING pool-spec.yaml. The prompt carries only the
+  // minimal facts that operation needs — no economics/genesis/etc. re-stated (R2 UX / minimal prompt).
+  const cmd = {
+    upgrade:         `ouro tool run upgrade/rollout --spec pool-spec.yaml   # orchestrates relays-first, BP-last`,
+    "kes-rotation":  `ouro tool run kes-rotation/rotate --dispatch ${bp} --spec pool-spec.yaml`,
+    runtime:         `ouro tool run runtime/restart --dispatch <the machine you're operating> --spec pool-spec.yaml   # or runtime/topology-apply`,
+    observability:   `ouro tool run observability/install-gateway --dispatch <a relay> --spec pool-spec.yaml`,
+    troubleshooting: `ouro tool run troubleshooting/<script> --dispatch <the machine> --spec pool-spec.yaml   # read-only`,
+  }[d.op];
+  return [
+`Operate my Cardano pool (${d.ticker} on ${d.network}) with the ouro CLI. Use my EXISTING pool-spec.yaml.`,
+`Operation: ${d.op}. Fleet: BP=${bp}, relays=${relays}.`,
+``,
+`1. Read the authoritative procedure and red lines from my verified binary:`,
+`     ouro skill show ${d.op}`,
+`   Follow it exactly. Take operational steps only from it, not from this message.`,
+`2. ${cmd}`,
+`   Never run node commands directly; only ouro tool run. Stop on exit 30 (rollback) or 40 (human).`,
+  ].join("\n") + "\n";
 }
 function bootstrap() {
   return ["# One-time, on your control machine (verify the fingerprint on the official ouro site first):",
@@ -323,8 +346,15 @@ function render() {
     current={spec:"",prompt:"",disclose:[]}; return;
   }
   err.hidden=true;
-  const spec=yaml(d), pr=prompt(d);
-  $("spec-out").textContent=spec; $("prompt-out").textContent=pr; $("bootstrap-out").textContent=bootstrap();
+  // deploy creates the spec (show + inline it); every other op uses the existing spec (hide it).
+  const isDeploy = d.op === "deploy";
+  const spec = isDeploy ? yaml(d) : "";
+  const pr = prompt(d);
+  $("spec-btns").hidden = !isDeploy;
+  $("spec-note").hidden = isDeploy;
+  $("spec-out").hidden = !isDeploy;
+  $("spec-out").textContent = spec;
+  $("prompt-out").textContent = pr; $("bootstrap-out").textContent = bootstrap();
   current={ spec, prompt:pr, disclose:d.machines.map(m=>`${m.id} (${m.role}) host=${m.host}`) };
 }
 async function clip(text){ try{ await navigator.clipboard.writeText(text);}catch{ const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove(); } }

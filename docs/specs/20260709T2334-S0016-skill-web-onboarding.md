@@ -398,6 +398,11 @@ agent 装 skill",又不给决策层留投毒面。
 - p1-fix4 | stack: web | command: 真浏览器复审(upgrade) | result: pass | note: 按用户定案,upgrade 两字段
   全自动、不再让用户选:node version 一律用最新(latest);min_online_relays 派生规则=relay 数==1→0、>1→1。
   upgrade 第 3 段变为"无需额外字段"。移除 quorum 输入/校验/userset。生成 spec 仍 ok,无 console error。
+- p1-fix5 | stack: web | command: 真浏览器验证(upgrade, JS 断言) | result: pass | note: prompt/输出随操作收敛为
+  **两种模式**——deploy 生成规范 pool-spec 并内联;**非 deploy 引用你已有的 pool-spec.yaml**,不再输出 spec
+  (显示"用已有 spec"提示、隐藏 Copy/Download),prompt 收敛为最小(操作+机队+`ouro skill show`指针+该操作
+  的单条命令,**不内联任何 spec/经济参数**)。JS 断言:upgrade 下 nodever/sync/registration 全隐、spec-out
+  隐藏+note 显示、prompt=最小模板。彻底消除"预填假默认参数"。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
