@@ -130,15 +130,16 @@
     </div>
     <p class="hint" id="opf-empty" hidden>This operation needs nothing beyond your fleet above.</p>
 
-    <details id="f-registration" hidden>
-      <summary>Pool registration details (only needed to register/update the pool on-chain)</summary>
-      <div class="grid g2" style="margin-top:12px">
+    <div id="f-registration" hidden>
+      <label style="margin-top:8px;color:var(--ink);font-weight:500">Pool parameters (your pool's real on-chain values)</label>
+      <div class="grid g2" style="margin-top:8px">
         <div><label for="meta">Metadata URL (http/https)</label><input id="meta" value="https://pool.example.com/metadata.json" /></div>
         <div><label for="pledge">Pledge (ADA)</label><input id="pledge" value="100000" inputmode="numeric" /><p class="hint" id="pledge-h"></p></div>
         <div><label for="margin">Margin (%)</label><input id="margin" value="2" inputmode="decimal" /></div>
         <div><label for="cost">Fixed cost (ADA)</label><input id="cost" value="340" inputmode="numeric" /><p class="hint" id="cost-h"></p></div>
       </div>
-    </details>
+      <p class="hint">These are your pool's real economics — replace the example values with your actual ones.</p>
+    </div>
   </section>
 
   <!-- Advanced — collapsed, rarely touched -->
@@ -147,18 +148,6 @@
       <summary>Advanced</summary>
       <div style="margin-top:12px">
         <label><input type="checkbox" id="show-ports" style="width:auto;margin-right:6px" />Edit node ports (default 3001)</label>
-      </div>
-      <div class="grid g2" style="margin-top:12px">
-        <div>
-          <label for="tooling">Pin exact tooling (optional) — paste <code>ouro manifest show</code></label>
-          <textarea id="tooling" rows="3" placeholder='{ "required_ouro": ">=0.1.0", "embedded_digest": "…" }'></textarea>
-          <p class="hint" id="tooling-h">Leave blank to let your binary's built-in floor govern (safe). Pasting pins min_ouro_version + bundle digest.</p>
-        </div>
-        <div>
-          <label>Network constants (auto from network)</label>
-          <input id="genesis" />
-          <p class="warn-inline" id="genesis-h"></p>
-        </div>
       </div>
     </details>
   </section>
@@ -202,10 +191,12 @@ const RE = { ticker:/^[A-Z0-9]{3,5}$/, host:/^[A-Za-z0-9.\-:]{1,253}$/, seg:/^[a
 
 // Network constants — magic is fully derived; genesis is a per-network constant. mainnet is the
 // known value; preprod/preview ship a clearly-marked placeholder to be verified (we don't guess).
+// Per-network constants (authoritative, from the official cardano network config.json).
+// Fully derived and hidden — the user never sees or types the genesis hash / magic.
 const NET = {
-  mainnet: { magic:"764824073", genesis:"1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35", verify:false },
-  preprod: { magic:"1",         genesis:"0".repeat(56), verify:true },
-  preview: { magic:"2",         genesis:"0".repeat(56), verify:true },
+  mainnet: { magic:"764824073", genesis:"1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81" },
+  preprod: { magic:"1",         genesis:"162d29c4e1cf6b8a84f2d692e67a3ac6bc7851bc3e6e4afe64d15778bed8bd86" },
+  preview: { magic:"2",         genesis:"363498d1024f84bb39d3fa9593ce391483cb40d479b87233f868d6e57c3a400d" },
 };
 
 // Field × operation matrix: which extra fields each operation needs (R2 UX / p1-7).
@@ -248,21 +239,14 @@ function applyOperation() {
   $("f-registration").hidden = !cfg.registration;
   $("opf-empty").hidden = cfg.need.length > 0;
 }
-function applyNetwork() {
-  const n = NET[$("network").value];
-  $("magic").value = n.magic;
-  if ($("genesis").dataset.net !== $("network").value) { $("genesis").value = n.genesis; $("genesis").dataset.net = $("network").value; }
-  $("genesis-h").textContent = n.verify ? "⚠ placeholder — replace with the real "+$("network").value+" shelley genesis hash (see Advanced)." : "mainnet shelley genesis hash (auto).";
-}
+function applyNetwork() { $("magic").value = NET[$("network").value].magic; }
 
 function collect() {
   const errs = [], op = $("op").value, cfg = OP[op];
   const ticker = $("ticker").value.trim();
   if (!RE.ticker.test(ticker)) errs.push("ticker must be 3–5 chars of A–Z 0–9");
   const net = NET[$("network").value];
-  const genesis = $("genesis").value.trim();
-  if (!RE.hex.test(genesis)) errs.push("shelley genesis hash must be lowercase hex");
-  else if (net.verify && /^0+$/.test(genesis)) errs.push("set the real "+$("network").value+" shelley genesis hash (Advanced → network constants)");
+  const genesis = net.genesis; // network constant — derived, never user-entered
 
   const machines = [], ids = new Set();
   document.querySelectorAll(".machine").forEach((row) => {
@@ -293,13 +277,9 @@ function collect() {
     if (!RE.num.test(costAda)) errs.push("fixed cost must be a whole number of ADA");
     const mp=parseFloat(marginPct); if(!(mp>=0&&mp<=100)) errs.push("margin % must be between 0 and 100"); }
 
-  // Tooling pin (optional advanced paste)
-  let minOuro="", digest="";
-  const raw = $("tooling").value.trim();
-  if (raw) { try { const t=JSON.parse(raw);
-      if (typeof t.required_ouro==="string") minOuro = t.required_ouro.replace(/[^\d.]/g,"");
-      if (typeof t.embedded_digest==="string") digest = t.embedded_digest; }
-    catch { errs.push("tooling paste is not valid JSON (paste `ouro manifest show` output)"); } }
+  // Tooling pin removed from the UI (confusing tool-metadata); the binary's embedded floor
+  // governs the minimum version safely, so min_ouro/digest are simply omitted from the prompt.
+  const minOuro = "", digest = "";
 
   const nodever = cfg.need.includes("nodever") ? $("nodever").value : "10.5.4";
   const sync = cfg.need.includes("sync") ? $("sync").value : "genesis";

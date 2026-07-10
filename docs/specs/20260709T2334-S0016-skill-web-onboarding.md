@@ -385,6 +385,10 @@ agent 装 skill",又不给决策层留投毒面。
   network→魔数只读派生(mainnet 764824073)+ 创世哈希(mainnet 真值/preprod/preview 占位+校验门);
   node版本下拉、margin=%、pledge/cost=ADA 换算、min_ouro/digest 进阶粘 manifest 自动解析;经济参数隐藏
   时用中性默认补全 → 生成 spec 仍 `ouro spec validate`=ok;真浏览器 0 console error、0 网络请求、拓扑披露正常。
+- p1-fix1 | stack: web | command: 真浏览器复审(deploy) | result: pass | note: 按用户逐操作复审反馈——
+  ①deploy 经济参数(metadata/pledge/margin/cost)由折叠默认改为**必填可见**(不再藏/不再造假);
+  ②删除 Advanced 的"Pin exact tooling"(工具元数据,难懂,内嵌地板已兜底);③创世哈希取官方三网络
+  真值(mainnet/preprod/preview,64 hex)并**彻底隐藏**,魔数只读派生,用户不再面对网络常量。生成 spec 仍 ok。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
