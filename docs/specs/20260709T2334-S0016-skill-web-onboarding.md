@@ -392,6 +392,9 @@ agent 装 skill",又不给决策层留投毒面。
 - p1-fix2 | stack: web | command: 真浏览器复审 | result: pass | note: 删除 Advanced 整节——node 端口硬编码
   3001(同 ssh 22),极少数非标端口用户直接改生成的 YAML;表单收敛为"选操作→网络/机队→操作字段→输出",
   再无进阶疑惑项。静态门 pass、无 console error、无悬空引用。
+- p1-fix3 | stack: web | command: 真浏览器复审(upgrade) | result: pass | note: min_online_relays 默认写死 1
+  对**单 relay 会触发 rollout exit 10 拒绝**(升唯一 relay→在线 0<quorum1)。改为默认=max(0,relays−1)
+  动态跟随 + 校验 quorum>relays−1 直接报错(说明会 exit 10、单 relay 用 0)+ hint 解释;用户手改后不覆盖。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。

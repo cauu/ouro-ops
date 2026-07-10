@@ -121,8 +121,8 @@
           <option value="10.2.1">10.2.1</option>
         </select>
       </div>
-      <div id="f-quorum" data-need hidden><label for="quorum">min_online_relays (upgrade quorum)</label>
-        <input id="quorum" value="1" inputmode="numeric" /><p class="hint">How many relays must stay up while upgrading. Default keeps all but one online.</p></div>
+      <div id="f-quorum" data-need hidden><label for="quorum">min_online_relays (relays kept up during the upgrade)</label>
+        <input id="quorum" inputmode="numeric" /><p class="hint" id="quorum-h"></p></div>
       <div id="f-sync" data-need hidden><label for="sync">Sync mode</label>
         <select id="sync"><option value="genesis">genesis (from chain genesis)</option><option value="mithril">mithril (fast bootstrap)</option></select></div>
     </div>
@@ -248,11 +248,13 @@ function collect() {
   if (relays.length<1) errs.push("at least one relay is required");
 
   // Operation-specific
-  let quorum = "1";
+  // Rolling upgrade takes one relay down at a time, so at most (relays-1) stay online. A quorum
+  // above that can NEVER be satisfied → rollout refuses (exit 10). With 1 relay the answer is 0.
+  const maxQuorum = Math.max(0, relays.length - 1);
+  let quorum = String(maxQuorum);
   if (cfg.need.includes("quorum")) { quorum = $("quorum").value.trim();
-    if (!RE.num.test(quorum)) errs.push("min_online_relays must be numeric");
-    else if (parseInt(quorum,10) > relays.length) errs.push("min_online_relays exceeds relay count"); }
-  else { quorum = String(Math.max(1, relays.length - 1)); } // neutral default when not shown
+    if (!RE.num.test(quorum)) errs.push("min_online_relays must be a whole number");
+    else if (parseInt(quorum,10) > maxQuorum) errs.push(`min_online_relays must be ≤ ${maxQuorum} (relays−1); otherwise the rolling upgrade can never take a relay down (rollout refuses, exit 10). With 1 relay, use 0.`); } // neutral default when not shown
 
   // Economics: only meaningful for registration; otherwise schema-valid neutral defaults.
   let meta="https://pool.example.com/metadata.json", pledgeAda="100000", marginPct="2", costAda="340";
@@ -318,6 +320,12 @@ function bootstrap() {
 let current = { spec:"", prompt:"", disclose:[] };
 function render() {
   applyOperation(); applyNetwork();
+  // Smart quorum default = relays-1 (max that a one-at-a-time rolling upgrade can keep online),
+  // unless the user has set it themselves. 1 relay → 0. Keeps single-relay upgrades unblocked.
+  const relayCount = [...document.querySelectorAll(".m-role")].filter(r => r.value.trim() === "relay").length;
+  const maxQ = Math.max(0, relayCount - 1);
+  if (!$("quorum").dataset.userset) $("quorum").value = String(maxQ);
+  $("quorum-h").textContent = `Relays kept online while each one upgrades (one at a time). Max is ${maxQ} (relays−1). With 1 relay this is 0 — it's briefly offline during its own upgrade.`;
   $("pledge-h").textContent = "= "+((parseInt($("pledge").value||"0",10))*1e6).toLocaleString()+" lovelace";
   $("cost-h").textContent = "= "+((parseInt($("cost").value||"0",10))*1e6).toLocaleString()+" lovelace";
   const d = collect(), err = $("err");
@@ -341,6 +349,7 @@ $("copy-prompt").addEventListener("click",()=>{ if(!current.prompt)return;
 
 document.querySelectorAll("input,select,textarea").forEach(el=>el.addEventListener("input",render));
 $("op").addEventListener("change",render); $("network").addEventListener("change",render);
+$("quorum").addEventListener("input",()=>{ $("quorum").dataset.userset="1"; });
 seedMachines(); render();
 </script>
 </body>
