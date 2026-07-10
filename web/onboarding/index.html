@@ -37,8 +37,6 @@
   .machine{border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px;background:#fbfcfd}
   .machine .row{display:grid;grid-template-columns:110px 80px 1fr auto;gap:8px;align-items:end}
   @media (max-width:620px){.machine .row{grid-template-columns:1fr 1fr}}
-  .adv-port{grid-column:1/-1;display:none}
-  body.show-ports .adv-port{display:block}
   button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:#fff;padding:8px 14px;color:var(--ink)}
   button:hover{border-color:var(--cardano)}
   button.primary{background:var(--cardano);border-color:var(--cardano);color:#fff;font-weight:500}
@@ -142,16 +140,6 @@
     </div>
   </section>
 
-  <!-- Advanced — collapsed, rarely touched -->
-  <section class="panel">
-    <details>
-      <summary>Advanced</summary>
-      <div style="margin-top:12px">
-        <label><input type="checkbox" id="show-ports" style="width:auto;margin-right:6px" />Edit node ports (default 3001)</label>
-      </div>
-    </details>
-  </section>
-
   <!-- Outputs -->
   <section class="panel">
     <div class="bar"><h2><span class="step">4</span>pool-spec.yaml</h2><span class="spacer"></span>
@@ -218,7 +206,6 @@ function machineRow(id, role, host, removable) {
     <div><label>role</label><input class="m-role" value="${role}" readonly /></div>
     <div><label>host</label><input class="m-host" value="${host}" /></div>
     <div>${removable ? '<button type="button" class="rm" aria-label="remove relay">✕</button>' : '<span class="hint">BP</span>'}</div>
-    <div class="adv-port"><label>node port</label><input class="m-port" value="3001" inputmode="numeric" /></div>
   </div>`;
   if (removable) el.querySelector(".rm").addEventListener("click", () => { el.remove(); render(); });
   el.querySelectorAll("input").forEach((i) => i.addEventListener("input", render));
@@ -230,7 +217,6 @@ function seedMachines() {
   $("machines").appendChild(machineRow("relay2", "relay", "relay2", true));
 }
 $("add-relay").addEventListener("click", () => { relayN++; $("machines").appendChild(machineRow("relay"+relayN,"relay","relay"+relayN,true)); render(); });
-$("show-ports").addEventListener("change", (e)=>{ document.body.classList.toggle("show-ports", e.target.checked); });
 
 function applyOperation() {
   const op = $("op").value, cfg = OP[op];
@@ -251,11 +237,10 @@ function collect() {
   const machines = [], ids = new Set();
   document.querySelectorAll(".machine").forEach((row) => {
     const id=row.querySelector(".m-id").value.trim(), role=row.querySelector(".m-role").value.trim(),
-      host=row.querySelector(".m-host").value.trim(), port=(row.querySelector(".m-port").value.trim()||"3001");
+      host=row.querySelector(".m-host").value.trim(), port="3001"; // node p2p port is the standard 3001
     if (!RE.seg.test(id)) errs.push(`machine id "${id}" must be [a-z0-9-]`);
     if (ids.has(id)) errs.push(`duplicate machine id "${id}"`); ids.add(id);
     if (!RE.host.test(host)) errs.push(`host "${host}" must be DNS/IP only`);
-    if (!RE.num.test(port)) errs.push(`node port for "${id}" must be numeric`);
     machines.push({ id, role, host, port });
   });
   const bp = machines.filter(m=>m.role==="bp"), relays = machines.filter(m=>m.role==="relay");

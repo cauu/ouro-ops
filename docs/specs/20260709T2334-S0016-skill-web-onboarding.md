@@ -389,6 +389,9 @@ agent 装 skill",又不给决策层留投毒面。
   ①deploy 经济参数(metadata/pledge/margin/cost)由折叠默认改为**必填可见**(不再藏/不再造假);
   ②删除 Advanced 的"Pin exact tooling"(工具元数据,难懂,内嵌地板已兜底);③创世哈希取官方三网络
   真值(mainnet/preprod/preview,64 hex)并**彻底隐藏**,魔数只读派生,用户不再面对网络常量。生成 spec 仍 ok。
+- p1-fix2 | stack: web | command: 真浏览器复审 | result: pass | note: 删除 Advanced 整节——node 端口硬编码
+  3001(同 ssh 22),极少数非标端口用户直接改生成的 YAML;表单收敛为"选操作→网络/机队→操作字段→输出",
+  再无进阶疑惑项。静态门 pass、无 console error、无悬空引用。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
