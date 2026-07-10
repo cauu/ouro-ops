@@ -403,6 +403,11 @@ agent 装 skill",又不给决策层留投毒面。
   (显示"用已有 spec"提示、隐藏 Copy/Download),prompt 收敛为最小(操作+机队+`ouro skill show`指针+该操作
   的单条命令,**不内联任何 spec/经济参数**)。JS 断言:upgrade 下 nodever/sync/registration 全隐、spec-out
   隐藏+note 显示、prompt=最小模板。彻底消除"预填假默认参数"。
+- p1-fix6 | stack: web | command: 真浏览器验证(upgrade, JS 断言) | result: pass | note: upgrade 显示**目标
+  node 版本**(可见,默认最新)+ **release notes 深链**(随所选版本指向 cardano-node releases/tag/<v>,
+  供用户确认更新内容);prompt 含"upgrade to cardano-node <v>"+"Set node_version:<v> in pool-spec.yaml then
+  rollout"。诚实说明:版本号是站点构建期烤入(非页面内实时——CSP 零网络),链接=实时真源;真·页面内实时
+  拉取需放开一个只读 GET(待用户拍板)。JS 断言 relnotes href/prompt 目标版本均正确。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。

@@ -115,11 +115,12 @@
     <div class="grid g2">
       <div id="f-nodever" data-need><label for="nodever">Node version</label>
         <select id="nodever">
-          <option value="10.5.4" selected>10.5.4 (latest recommended)</option>
+          <option value="10.5.4" selected>10.5.4 (latest as of this page)</option>
           <option value="10.4.1">10.4.1</option>
           <option value="10.3.1">10.3.1</option>
           <option value="10.2.1">10.2.1</option>
         </select>
+        <p class="hint">Baked into this page (not live). <a id="relnotes" target="_blank" rel="noopener noreferrer">Release notes ↗</a> — confirm the current release and review what's in it before upgrading.</p>
       </div>
       <div id="f-sync" data-need hidden><label for="sync">Sync mode</label>
         <select id="sync"><option value="genesis">genesis (from chain genesis)</option><option value="mithril">mithril (fast bootstrap)</option></select></div>
@@ -189,7 +190,7 @@ const NET = {
 // Field × operation matrix: which extra fields each operation needs (R2 UX / p1-7).
 const OP = {
   deploy:          { need:["nodever","sync"], registration:true, hint:"Brings up and converges every node; relays get their peer topology, the BP forges." },
-  upgrade:         { need:[], hint:"Rolling upgrade to the latest node version: relays first, BP last, verify between each. Quorum is derived from your relay count." },
+  upgrade:         { need:["nodever"], hint:"Rolling upgrade to a target node version: relays first, BP last, verify between each. Quorum is derived from your relay count." },
   "kes-rotation":  { need:[], hint:"Rotates the KES key on the block producer and confirms it resumes forging." },
   runtime:         { need:[], hint:"Restart a node or apply relay topology, preserving the db." },
   observability:   { need:[], hint:"Install the authenticated telemetry gateway on a relay." },
@@ -309,8 +310,11 @@ function prompt(d) {
   }
   // Every other operation runs against the EXISTING pool-spec.yaml. The prompt carries only the
   // minimal facts that operation needs — no economics/genesis/etc. re-stated (R2 UX / minimal prompt).
+  const opLine = d.op === "upgrade"
+    ? `Operation: upgrade to cardano-node ${d.nodever}. Fleet: BP=${bp}, relays=${relays}.`
+    : `Operation: ${d.op}. Fleet: BP=${bp}, relays=${relays}.`;
   const cmd = {
-    upgrade:         `ouro tool run upgrade/rollout --spec pool-spec.yaml   # orchestrates relays-first, BP-last`,
+    upgrade:         `Set node_version: "${d.nodever}" in your pool-spec.yaml, then:\n     ouro tool run upgrade/rollout --spec pool-spec.yaml   # relays-first, BP-last`,
     "kes-rotation":  `ouro tool run kes-rotation/rotate --dispatch ${bp} --spec pool-spec.yaml`,
     runtime:         `ouro tool run runtime/restart --dispatch <the machine you're operating> --spec pool-spec.yaml   # or runtime/topology-apply`,
     observability:   `ouro tool run observability/install-gateway --dispatch <a relay> --spec pool-spec.yaml`,
@@ -318,7 +322,7 @@ function prompt(d) {
   }[d.op];
   return [
 `Operate my Cardano pool (${d.ticker} on ${d.network}) with the ouro CLI. Use my EXISTING pool-spec.yaml.`,
-`Operation: ${d.op}. Fleet: BP=${bp}, relays=${relays}.`,
+opLine,
 ``,
 `1. Read the authoritative procedure and red lines from my verified binary:`,
 `     ouro skill show ${d.op}`,
@@ -337,6 +341,9 @@ function bootstrap() {
 let current = { spec:"", prompt:"", disclose:[] };
 function render() {
   applyOperation(); applyNetwork();
+  // Release-notes deep link for the selected node version (the live source of truth for what's
+  // in it — the page itself is zero-network, so this link is how you confirm the current release).
+  $("relnotes").href = "https://github.com/IntersectMBO/cardano-node/releases/tag/" + $("nodever").value;
   $("pledge-h").textContent = "= "+((parseInt($("pledge").value||"0",10))*1e6).toLocaleString()+" lovelace";
   $("cost-h").textContent = "= "+((parseInt($("cost").value||"0",10))*1e6).toLocaleString()+" lovelace";
   const d = collect(), err = $("err");
