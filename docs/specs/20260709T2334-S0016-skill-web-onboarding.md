@@ -280,6 +280,12 @@ agent 装 skill",又不给决策层留投毒面。
   宽度不一致造成的"缩进";②setup 前置为 Step 1 编辑带(安装/验签四步 + 命令卡);③操作表单整体
   移入 modal——三步流:点操作卡 → 弹窗填表(fleet + 操作字段)→ 复制 prompt(披露弹窗叠层于
   modal 之上);modal 打开重置滚动、backdrop/Esc 关闭。安全门不变。
+- [x] p1-restyle-fix2 视觉主色强化 + modal 两步向导(用户 review):①hero aura 改为 sea 主导
+  (sea .42 主光 + sky/mint 次光、撤 lemon);②hero 新增自绘 SVG「3D 轨道球」(sea/sky 渐变球体 +
+  前后分层椭圆轨道 + 卫星点,原创致意 Cardano 轨道几何,非官方 logo);③sea 比重提升:CTA band
+  incana→sea、终端/on-color 按钮同色系阴影转 sea、setup kicker 统一 sea;④modal 拆两步:
+  Step 1 Configure(fleet+操作字段+校验)→ Continue(校验不过留在本步并滚到错误)→ Step 2
+  Copy(披露提示+终端+Back/Copy),顶部步骤胶囊指示,切步重置滚动。安全门不变。
 ## 4. Test and Acceptance Criteria
 - TC-1 生成的 `pool-spec.yaml` 通过 `ouro-ops spec validate`(含 1 BP + N relay,N≥2;覆盖
   mainnet/preprod/preview、genesis vs Mithril、缺失/非法必填字段的 fixture)。
@@ -372,6 +378,10 @@ agent 装 skill",又不给决策层留投毒面。
 - 2026-07-10 p1-restyle-fix1 completed: 按用户三点反馈重构信息架构(对齐/为 modal 流/setup 前置)。
   验证:静态门 pass;真浏览器——deploy modal 全字段 + live 11.0.1、披露弹窗正确叠层列出机器清单、
   kes-rotation modal 收敛为 fleet-only 且打开即顶部、0 console 错误。
+
+- 2026-07-10 p1-restyle-fix2 completed: sea 主色强化 + hero 3D 轨道球 + modal 两步向导。验证:静态门
+  pass;真浏览器——orb 渲染正常且不压文案、Step1→Continue→Step2 切换正确(胶囊高亮跟随)、披露弹窗
+  叠层于 Step2 之上、Back 返回、0 console 错误。
 
 ## 6. Validation Evidence (append-only)
 - p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
@@ -476,6 +486,9 @@ agent 装 skill",又不给决策层留投毒面。
 
 - TC-3/TC-3b | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
   p1-restyle-fix1 modal 化后 CSP/单 fetch/skill-show/tool-run/披露门全过;披露 dialog 叠层于操作 modal 之上生效
+
+- TC-3/TC-3b/TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
+  p1-restyle-fix2 两步向导后所有静态安全门不变;Step2 才可复制且披露确认仍强制;SVG orb 为内联资源(零出站)
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。

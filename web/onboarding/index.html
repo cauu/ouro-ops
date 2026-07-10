@@ -64,10 +64,10 @@
   .hero{position:relative;overflow:visible}
   .hero-aura{position:absolute;inset:-130px 0 -40px;pointer-events:none;z-index:0;
     background:
-      radial-gradient(620px 460px at 70% 32%, rgba(85,202,232,.38), transparent 70%),
-      radial-gradient(540px 400px at 26% 14%, rgba(189,145,201,.20), transparent 70%),
-      radial-gradient(480px 360px at 54% 80%, rgba(142,197,209,.30), transparent 72%),
-      radial-gradient(340px 280px at 88% 70%, rgba(238,201,99,.16), transparent 70%);
+      radial-gradient(680px 500px at 72% 30%, rgba(72,139,225,.42), transparent 70%),
+      radial-gradient(560px 420px at 24% 12%, rgba(85,202,232,.26), transparent 70%),
+      radial-gradient(500px 380px at 52% 82%, rgba(142,197,209,.28), transparent 72%),
+      radial-gradient(360px 300px at 90% 66%, rgba(189,145,201,.14), transparent 70%);
     filter:blur(48px);
     -webkit-mask-image:linear-gradient(180deg,#000 62%,transparent 100%);
     mask-image:linear-gradient(180deg,#000 62%,transparent 100%);
@@ -80,10 +80,9 @@
     0%{transform:translate3d(0,0,0) scale(1)}
     50%{transform:translate3d(6%,-4%,0) scale(1.12)}
     100%{transform:translate3d(-5%,3%,0) scale(1.04)}}
-  /* one quiet Cardano nod: a static dotted orbit behind the headline */
-  .orbit{position:absolute;right:-120px;top:-40px;width:420px;height:420px;border-radius:50%;
-    border:1px dashed rgba(72,139,225,.28);pointer-events:none;z-index:0}
-  .orbit::after{content:"";position:absolute;inset:64px;border-radius:50%;border:1px dashed rgba(72,139,225,.18)}
+  /* the Cardano nod: a large sea-toned 3D orbital mark floating in the hero */
+  .hero-orb{position:absolute;right:-70px;top:-40px;width:560px;height:560px;pointer-events:none;z-index:0}
+  @media (min-width:861px) and (max-width:1200px){.hero-orb{width:430px;right:-110px;top:20px}}
   .hero-in{position:relative;z-index:1;padding-top:88px;padding-bottom:56px}
   .kicker{font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);
     display:inline-flex;align-items:center;gap:8px;margin:0}
@@ -105,8 +104,8 @@
   .btn-ghost{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(23,32,38,.05),0 4px 14px rgba(23,32,38,.07)}
   .btn-ghost:hover{transform:translateY(-1px);box-shadow:0 3px 6px rgba(23,32,38,.05),0 8px 22px rgba(23,32,38,.10)}
   .btn-oncolor{background:#fff;color:var(--ink);height:34px;padding:0 14px;font-size:13px;
-    box-shadow:0 2px 8px rgba(4,42,46,.24)}
-  .btn-oncolor:hover{transform:translateY(-1px);box-shadow:0 5px 16px rgba(4,42,46,.30)}
+    box-shadow:0 2px 8px rgba(20,58,120,.26)}
+  .btn-oncolor:hover{transform:translateY(-1px);box-shadow:0 5px 16px rgba(20,58,120,.32)}
   .btn-sm{height:36px;padding:0 14px;font-size:13px}
   .btn-icon{width:36px;height:36px;padding:0;justify-content:center;background:transparent;box-shadow:none;
     color:var(--muted);border-radius:10px}
@@ -204,7 +203,7 @@
 
   /* ============ terminal (the one dark anchor) ============ */
   .term{background:var(--surface-dark);border-radius:var(--r-lg);overflow:hidden;
-    box-shadow:0 18px 44px rgba(19,88,93,.26),inset 0 1px 0 rgba(255,255,255,.14)}
+    box-shadow:0 18px 44px rgba(34,72,134,.28),inset 0 1px 0 rgba(255,255,255,.14)}
   .term-bar{display:flex;align-items:center;gap:8px;padding:12px 14px;background:rgba(255,255,255,.04);
     border-bottom:1px solid rgba(255,255,255,.08)}
   .dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.22)}
@@ -219,11 +218,11 @@
 
   /* ============ footer band ============ */
   .cta-band{margin:96px auto -72px;position:relative;z-index:2}
-  .cta-band-in{position:relative;overflow:hidden;background:var(--incana);color:#fff;border-radius:var(--r-xl);
+  .cta-band-in{position:relative;overflow:hidden;background:var(--sea);color:#fff;border-radius:var(--r-xl);
     padding:44px 40px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;
-    box-shadow:0 18px 44px rgba(19,88,93,.26),inset 0 1px 0 rgba(255,255,255,.14)}
+    box-shadow:0 18px 44px rgba(46,101,183,.32),inset 0 1px 0 rgba(255,255,255,.22)}
   .cta-band-in::after{content:"";position:absolute;right:-70px;top:-70px;width:220px;height:220px;
-    border-radius:50%;background:rgba(255,255,255,.07)}
+    border-radius:50%;background:rgba(255,255,255,.12)}
   .cta-band h2{color:#fff;font-size:clamp(24px,3vw,32px);font-weight:700;letter-spacing:-.02em;line-height:1.15}
   .cta-band p{margin:8px 0 0;color:rgba(255,255,255,.75);font-size:14.5px;max-width:52ch}
   .cta-band .spacer{flex:1}
@@ -253,6 +252,19 @@
     margin:26px 0 12px;display:flex;align-items:center;gap:10px}
   .om-sec::after{content:"";flex:1;height:1px;background:var(--hairline-soft)}
   .om-sec:first-child{margin-top:0}
+  /* two-step wizard inside the modal: 1 configure → 2 copy */
+  .om-steps{display:flex;align-items:center;gap:10px;padding:12px 24px;border-bottom:1px solid var(--hairline-soft)}
+  .step-pill{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--muted);
+    background:var(--surface-soft);border-radius:9999px;padding:5px 14px 5px 5px;
+    transition:background .2s var(--ease),color .2s var(--ease)}
+  .step-pill i{width:22px;height:22px;border-radius:50%;background:#fff;color:var(--muted);display:grid;place-items:center;
+    font:600 12px/1 var(--font);font-style:normal;transition:background .2s var(--ease),color .2s var(--ease)}
+  .step-pill.active{background:rgba(72,139,225,.12);color:var(--body-strong)}
+  .step-pill.active i{background:var(--sea);color:#fff}
+  .step-arrow{color:var(--muted-soft);font-size:13px}
+  .om-foot{display:flex;align-items:center;gap:10px;padding:14px 24px;border-top:1px solid var(--hairline-soft)}
+  .om-foot .spacer{flex:1}
+  #om-step1 .note-err{margin:18px 0 0}
   /* disclosure confirm (stacks on top of the op modal) */
   .dlg-sm{max-width:540px;width:calc(100% - 32px)}
   .dlg{padding:26px}
@@ -272,7 +284,7 @@
     .ops{grid-template-columns:1fr}
     .setup-card{grid-template-columns:1fr}
     .out-light{border-left:0;border-top:1px solid var(--hairline-soft)}
-    .orbit{display:none}
+    .hero-orb{display:none}
     .hero-aura{filter:blur(36px)}
     .hero-in{padding-top:64px;padding-bottom:40px}
     .nav-links a:not(.nav-cta){display:none}
@@ -310,7 +322,51 @@
   <div class="hero-aura" aria-hidden="true"></div>
   <div class="hero-grain" aria-hidden="true"></div>
   <div class="hero-in wrap">
-    <div class="orbit" aria-hidden="true"></div>
+    <!-- 3D orbital mark, drawn in sea/sky — an original nod to Cardano's orbital geometry -->
+    <svg class="hero-orb" viewBox="0 0 560 560" aria-hidden="true">
+      <defs>
+        <radialGradient id="orbSph" cx="36%" cy="30%" r="75%">
+          <stop offset="0%" stop-color="#dceafe"/>
+          <stop offset="32%" stop-color="#8fbcf3"/>
+          <stop offset="68%" stop-color="#488be1"/>
+          <stop offset="100%" stop-color="#2b5cb4"/>
+        </radialGradient>
+        <linearGradient id="orbRing" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#55cae8"/>
+          <stop offset="100%" stop-color="#488be1"/>
+        </linearGradient>
+        <filter id="orbGlow" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="34"/>
+        </filter>
+        <filter id="orbSoft" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="16"/>
+        </filter>
+        <clipPath id="orbFront"><rect x="0" y="288" width="560" height="272"/></clipPath>
+      </defs>
+      <!-- ambient sea glow under the sphere -->
+      <circle cx="280" cy="296" r="150" fill="#488be1" opacity=".26" filter="url(#orbGlow)"/>
+      <!-- orbits behind the sphere -->
+      <g fill="none" stroke-linecap="round">
+        <ellipse cx="280" cy="280" rx="238" ry="86" transform="rotate(-14 280 280)" stroke="url(#orbRing)" stroke-width="1.5" opacity=".35"/>
+        <ellipse cx="280" cy="280" rx="204" ry="62" transform="rotate(-14 280 280)" stroke="#488be1" stroke-width="1.2" stroke-dasharray="2 10" opacity=".45"/>
+        <ellipse cx="280" cy="280" rx="252" ry="120" transform="rotate(18 280 280)" stroke="#55cae8" stroke-width="1.2" opacity=".3"/>
+      </g>
+      <!-- the sphere -->
+      <circle cx="280" cy="280" r="118" fill="url(#orbSph)"/>
+      <ellipse cx="240" cy="224" rx="60" ry="38" fill="#ffffff" opacity=".38" filter="url(#orbSoft)"/>
+      <!-- front halves of the orbits pass in front of the sphere -->
+      <g fill="none" stroke-linecap="round" clip-path="url(#orbFront)">
+        <ellipse cx="280" cy="280" rx="238" ry="86" transform="rotate(-14 280 280)" stroke="url(#orbRing)" stroke-width="2" opacity=".75"/>
+        <ellipse cx="280" cy="280" rx="204" ry="62" transform="rotate(-14 280 280)" stroke="#488be1" stroke-width="1.4" stroke-dasharray="2 10" opacity=".7"/>
+        <ellipse cx="280" cy="280" rx="252" ry="120" transform="rotate(18 280 280)" stroke="#55cae8" stroke-width="1.6" opacity=".55"/>
+      </g>
+      <!-- satellites, all in the sea family -->
+      <circle cx="62" cy="330" r="9" fill="#488be1"/>
+      <circle cx="500" cy="228" r="6" fill="#55cae8"/>
+      <circle cx="452" cy="392" r="7" fill="#8ec5d1"/>
+      <circle cx="140" cy="176" r="4.5" fill="#55cae8" opacity=".8"/>
+      <circle cx="352" cy="118" r="5" fill="#488be1" opacity=".7"/>
+    </svg>
     <p class="kicker"><i></i>Cardano stake pool operations</p>
     <h1>Delegate the ops, <em>not your keys</em>.</h1>
     <p class="lede">Set up once, then operate by prompt: pick an operation, fill a short form, and hand
@@ -351,7 +407,7 @@
 <!-- STEP 1 — setup comes FIRST: it is the trust anchor everything else relies on -->
 <section class="band wrap" id="setup">
   <div class="band-head reveal">
-    <p class="kicker"><i style="background:var(--lavender)"></i>Step 1 · once per control machine</p>
+    <p class="kicker"><i></i>Step 1 · once per control machine</p>
     <h2>Set up once.</h2>
     <p>Install the self-updating <code>ouro-ops</code> binary on the machine you operate from, and verify
       its signature — this is the trust anchor every later operation relies on.</p>
@@ -433,7 +489,13 @@
       <button type="button" class="x" id="om-close" aria-label="close">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l10 10M13 3 3 13"/></svg></button>
     </div>
+    <div class="om-steps">
+      <span class="step-pill active" id="sp-1"><i>1</i>Configure</span>
+      <span class="step-arrow" aria-hidden="true">→</span>
+      <span class="step-pill" id="sp-2"><i>2</i>Copy the prompt</span>
+    </div>
     <div class="om-body">
+      <div id="om-step1">
       <p class="om-sec">Your fleet</p>
       <div class="grid g2">
         <div><label id="net-label">Network</label>
@@ -483,16 +545,24 @@
         </div>
       </div>
 
-      <p class="om-sec">Copy the prompt → paste into your agent</p>
       <div id="err" class="note note-err" hidden></div>
-      <div class="note note-warn" role="note">⚠ This prompt contains your full pool config (hostnames/IPs). Copying it sends
-        that to whatever agent you paste it into (e.g. a cloud service) and its logs. It never leaves this page on its own.</div>
-      <div class="term">
-        <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
-          <span class="term-title" id="term-title">prompt · deploy</span><span class="spacer"></span>
-          <button type="button" class="btn btn-oncolor" id="copy-prompt">Copy prompt</button></div>
-        <pre id="prompt-out" aria-live="polite"></pre>
       </div>
+
+      <div id="om-step2" hidden>
+        <div class="note note-warn" role="note">⚠ This prompt contains your full pool config (hostnames/IPs). Copying it sends
+          that to whatever agent you paste it into (e.g. a cloud service) and its logs. It never leaves this page on its own.</div>
+        <div class="term">
+          <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="term-title" id="term-title">prompt · deploy</span></div>
+          <pre id="prompt-out" aria-live="polite"></pre>
+        </div>
+      </div>
+    </div>
+    <div class="om-foot">
+      <button type="button" class="btn btn-ghost btn-sm" id="om-back" hidden>← Back</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn-primary" id="om-next">Continue →</button>
+      <button type="button" class="btn btn-primary" id="copy-prompt" hidden>Copy prompt</button>
     </div>
   </div>
 </dialog>
@@ -715,9 +785,19 @@ document.querySelectorAll(".op-card").forEach((btn)=>btn.addEventListener("click
   $("om-tile").className = tile.className; // reuse the card's color
   $("om-tile").innerHTML = tile.innerHTML;
   render();
+  goStep(1); // always start at Configure, scrolled to the top
   opModal.showModal();
-  opModal.querySelector(".om-body").scrollTop = 0; // always open at the top of the form
 }));
+// Two-step wizard: 1 Configure → 2 Copy. Step 2 is reachable only with a valid form.
+function goStep(n){
+  $("om-step1").hidden = n !== 1; $("om-step2").hidden = n !== 2;
+  $("sp-1").classList.toggle("active", n === 1); $("sp-2").classList.toggle("active", n === 2);
+  $("om-back").hidden = n === 1; $("om-next").hidden = n === 2; $("copy-prompt").hidden = n === 1;
+  opModal.querySelector(".om-body").scrollTop = 0;
+}
+$("om-next").addEventListener("click",()=>{ render();
+  if (current.prompt) goStep(2); else $("err").scrollIntoView({ block:"nearest" }); });
+$("om-back").addEventListener("click",()=>goStep(1));
 $("om-close").addEventListener("click",()=>opModal.close());
 opModal.addEventListener("click",(e)=>{ if(e.target===opModal) opModal.close(); }); // click backdrop to close
 
