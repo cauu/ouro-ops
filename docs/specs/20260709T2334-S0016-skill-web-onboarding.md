@@ -219,6 +219,11 @@ agent 装 skill",又不给决策层留投毒面。
 - [x] p1-5 构建期绑定 bundle manifest(操作清单 + schema 版本 + manifest digest);**不派生/不内联决策
   文本**(决策树运行时由 `ouro skill show` 供给)
 - [x] p1-6 复制前强制披露 UI:"复制即把拓扑发送给你的 agent 提供商"(#4)
+- [x] p1-7 表单可用性重构(交付后改进):**操作优先**——先选操作,再按"字段×操作依赖矩阵"只显示该操作
+  需要的字段(deploy→node版本+sync;upgrade→node版本+quorum;kes/runtime/observability/troubleshooting→
+  仅机队);network→**派生**魔数(只读)+ 创世哈希(mainnet 真值/其余占位+校验提示);node版本→下拉;
+  经济参数仅注册需要→现有 6 操作隐藏并用中性默认补全 schema;`min_ouro_version`/digest→进阶粘贴
+  `ouro manifest show` 自动解析;margin→%、pledge/cost→ADA 换算。生成器仍产 schema-valid spec。
 
 ### p2 — 自更新单二进制分发
 - [x] p2-1 `ouro` 打包为单静态二进制 + **编译期内嵌** skill 决策/机制资产(build.rs + `include_bytes!`);
@@ -375,6 +380,11 @@ agent 装 skill",又不给决策层留投毒面。
   note: self-update --check 报 current=0.1.0/floor>=0.1.0;--against 更新版→update_available,旧版→不降级;
   packaging/{SIGNING_IDENTITY,homebrew/ouro.rb,install.sh(cosign verify),RELEASE.md}。真实签名密钥/发布/
   网络 apply = infra(RELEASE.md 明列),不在 repo。33 tests 无回归。
+- p1-7 | stack: web | command: tests/test_web_generator.py + 真浏览器验证 | result: pass | note:
+  操作优先三步(选操作→机队→操作专属字段);deploy 视图仅显示 node版本+sync(经济参数折叠),quorum 隐藏;
+  network→魔数只读派生(mainnet 764824073)+ 创世哈希(mainnet 真值/preprod/preview 占位+校验门);
+  node版本下拉、margin=%、pledge/cost=ADA 换算、min_ouro/digest 进阶粘 manifest 自动解析;经济参数隐藏
+  时用中性默认补全 → 生成 spec 仍 `ouro spec validate`=ok;真浏览器 0 console error、0 网络请求、拓扑披露正常。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
