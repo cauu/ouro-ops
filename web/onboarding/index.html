@@ -131,16 +131,16 @@
   .band-head h2{font-size:clamp(28px,3.4vw,40px);font-weight:700;letter-spacing:-.02em;line-height:1.1;margin:14px 0 0}
   .band-head p{margin:14px 0 0;font-size:15.5px;line-height:1.6;color:var(--body)}
 
-  /* setup card */
-  .setup-card{margin-top:28px;background:#fff;border-radius:var(--r-lg);box-shadow:var(--sh-card);
-    display:grid;grid-template-columns:5fr 7fr;overflow:hidden}
-  .setup-copy{padding:28px}
-  .setup-copy h3{font-size:17px;font-weight:600;margin:0 0 10px}
-  .setup-copy ol{margin:0;padding-left:18px;display:grid;gap:8px;font-size:14px;line-height:1.55;color:var(--body)}
-  .setup-copy .hint{margin-top:14px}
-  .out-light{font-family:var(--mono);font-size:12.5px;line-height:1.7;white-space:pre-wrap;margin:0;
-    background:var(--canvas);color:var(--body-strong);border-left:1px solid var(--hairline-soft);
-    padding:24px;overflow-x:auto;display:flex;align-items:center}
+  /* hero setup terminal — step 1, compact, one copy-paste command */
+  .setup-mini{margin-top:32px;max-width:660px}
+  .setup-mini .kicker{margin:0 0 10px}
+  .setup-mini .hint{margin-top:9px;max-width:60ch}
+  .term-mini pre{min-height:0;padding:14px 16px}
+  .os-tabs{display:inline-flex;gap:2px;margin-left:8px;background:rgba(255,255,255,.08);border-radius:8px;padding:2px}
+  .os-tab{font:600 12px/1 var(--font);color:rgba(255,255,255,.55);background:transparent;border:0;border-radius:6px;
+    padding:5px 10px;cursor:pointer;transition:color .18s var(--ease),background .18s var(--ease)}
+  .os-tab:hover{color:#fff}
+  .os-tab.active{background:rgba(255,255,255,.16);color:#fff}
 
   /* operation grid */
   .ops{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px}
@@ -282,8 +282,6 @@
   @media (max-width:860px){
     .trust{grid-template-columns:1fr}
     .ops{grid-template-columns:1fr}
-    .setup-card{grid-template-columns:1fr}
-    .out-light{border-left:0;border-top:1px solid var(--hairline-soft)}
     .hero-orb{display:none}
     .hero-aura{filter:blur(36px)}
     .hero-in{padding-top:64px;padding-bottom:40px}
@@ -360,8 +358,26 @@
       <strong>verified <code>ouro-ops</code> binary</strong> — never from this page — and every write passes
       through an audited, confirmable mechanism. Everything here runs locally in your browser: nothing is uploaded.</p>
     <div class="cta-row">
-      <a class="btn btn-primary" href="#setup">Set up once</a>
-      <a class="btn btn-ghost" href="#operate">Pick an operation</a>
+      <a class="btn btn-primary" href="#operate">Pick an operation</a>
+    </div>
+    <!-- Step 1 lives right in the hero: one copy-paste command and the trust anchor is set -->
+    <div class="setup-mini" id="setup">
+      <p class="kicker"><i></i>Step 1 · set up once</p>
+      <div class="term term-mini">
+        <div class="term-bar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <div class="os-tabs" role="tablist" aria-label="operating system">
+            <button type="button" class="os-tab active" data-os="mac">macOS</button>
+            <button type="button" class="os-tab" data-os="linux">Linux</button>
+          </div>
+          <span class="spacer"></span>
+          <button type="button" class="btn btn-oncolor" id="copy-setup">Copy</button>
+        </div>
+        <pre id="setup-out">brew install ouro/tap/ouro             # signed, verified on install
+ouro-ops version &amp;&amp; ouro-ops contract  # cross-check against this site</pre>
+      </div>
+      <p class="hint">Verify the printed signing fingerprint against this site on first install — the binary keeps
+        itself current afterwards. Arm each target machine with <code>ouro-ops init</code> (S0017).</p>
     </div>
   </div>
 </section>
@@ -390,30 +406,7 @@
   </div>
 </section>
 
-<!-- STEP 1 — setup comes FIRST: it is the trust anchor everything else relies on -->
-<section class="band wrap" id="setup">
-  <div class="band-head reveal">
-    <p class="kicker"><i></i>Step 1 · once per control machine</p>
-    <h2>Set up once.</h2>
-    <p>Install the self-updating <code>ouro-ops</code> binary on the machine you operate from, and verify
-      its signature — this is the trust anchor every later operation relies on.</p>
-  </div>
-  <div class="setup-card reveal">
-    <div class="setup-copy">
-      <h3>Install &amp; verify</h3>
-      <ol>
-        <li>Install from the <strong>official site's single vector</strong> — nowhere else.</li>
-        <li><strong>Verify the signing fingerprint</strong> shown on the official site before trusting the binary.</li>
-        <li>Cross-check <code>ouro-ops version</code> and <code>ouro-ops contract</code> against the site.</li>
-        <li>Arm each target machine with <code>ouro-ops init</code> (delivered separately, S0017).</li>
-      </ol>
-      <p class="hint">After this, the binary keeps itself current from the signed release channel — you never re-install.</p>
-    </div>
-    <pre class="out-light" id="bootstrap-out"></pre>
-  </div>
-</section>
-
-<!-- STEP 2 — pick an operation; the form opens in a modal -->
+<!-- STEP 2 — pick an operation; the form opens in a modal (step 1 = the hero setup terminal) -->
 <section class="band wrap" id="operate">
   <div class="band-head reveal">
     <p class="kicker"><i></i>Step 2 · any time you operate</p>
@@ -727,12 +720,15 @@ function prompt(d) {
 `provision each target with 'ouro-ops init' (S0017). Confirm each destructive step when ouro asks.`,
   ].join("\n") + "\n";
 }
-function bootstrap() {
-  return ["# One-time, on your control machine (verify the fingerprint on the official ouro site first):",
-    "brew install ouro/tap/ouro     # primary (macOS); or the official npx command",
-    "ouro-ops version && ouro-ops contract  # cross-check against the site",
-    "ouro-ops init --spec pool-spec.yaml  # arm each target (S0017)"].join("\n")+"\n";
-}
+// One-time setup, per OS (hero terminal). mac = signed Homebrew tap; linux = the official
+// install script, which verifies the binary against the PINNED signing identity before trusting it.
+const SETUP = {
+  mac:   "brew install ouro/tap/ouro             # signed, verified on install\n" +
+         "ouro-ops version && ouro-ops contract  # cross-check against this site",
+  linux: "curl -fsSL https://ouro.example/install.sh | sh   # downloads + verifies signature\n" +
+         "ouro-ops version && ouro-ops contract             # cross-check against this site",
+};
+let setupOs = "mac";
 
 let current = { spec:"", prompt:"", disclose:[] };
 function render() {
@@ -787,10 +783,19 @@ $("om-back").addEventListener("click",()=>goStep(1));
 $("om-close").addEventListener("click",()=>opModal.close());
 opModal.addEventListener("click",(e)=>{ if(e.target===opModal) opModal.close(); }); // click backdrop to close
 
+// Hero setup terminal: OS toggle + one-click copy (no user data involved — no disclosure needed).
+document.querySelectorAll(".os-tab").forEach((b)=>b.addEventListener("click",()=>{
+  setupOs = b.dataset.os;
+  document.querySelectorAll(".os-tab").forEach((x)=>x.classList.toggle("active", x === b));
+  $("setup-out").textContent = SETUP[setupOs];
+}));
+$("copy-setup").addEventListener("click",async()=>{ await clip(SETUP[setupOs]);
+  const b=$("copy-setup"), t=b.textContent; b.textContent="Copied ✓";
+  setTimeout(()=>{ b.textContent=t; },1600); });
+
 document.querySelectorAll("input,select").forEach(el=>el.addEventListener("input",render));
 document.querySelectorAll('input[type="radio"]').forEach(el=>el.addEventListener("change",render));
 seedMachines(); render();
-$("bootstrap-out").textContent = bootstrap();
 
 // Scroll reveal — JS-gated (content is always visible without JS); reduced-motion handled in CSS.
 (function(){

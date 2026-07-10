@@ -290,6 +290,10 @@ agent 装 skill",又不给决策层留投毒面。
   采用 simple-icons 的 Cardano 官方几何(CC0,构建期取回、**内嵌** path,页面零出站),
   以 sea 调色板做 3D 渲染——径向渐变受光 + 左上高光层 + 同色系软投影 + 环境辉光
   (defs path + 多层 <use>,单一几何真源)。
+- [x] p1-restyle-fix4 setup 收进 hero(用户 review):独立 setup 编辑带撤除,改为 hero 内紧凑
+  黑底终端(Step 1 kicker + macOS/Linux tab 切换 + 一键 Copy,无需披露——命令不含用户数据);
+  mac=brew tap、linux=官方 install.sh(ouro.example 占位,与 packaging 验签逻辑一致);无 JS 时
+  默认显示 mac 命令(pre 内静态文本)。hero CTA 收敛为单个 "Pick an operation"。
 ## 4. Test and Acceptance Criteria
 - TC-1 生成的 `pool-spec.yaml` 通过 `ouro-ops spec validate`(含 1 BP + N relay,N≥2;覆盖
   mainnet/preprod/preview、genesis vs Mithril、缺失/非法必填字段的 fixture)。
@@ -389,6 +393,9 @@ agent 装 skill",又不给决策层留投毒面。
 
 - 2026-07-10 p1-restyle-fix3 completed: hero 换为官方 Cardano mark(simple-icons CC0 path 内嵌)+
   sea 3D 渲染。验证:静态门 pass(无外链资源,SVG 全内联);真浏览器渲染正常、不压 hero 文案。
+
+- 2026-07-10 p1-restyle-fix4 completed: setup 前移进 hero 终端(双 OS tab + copy)。验证:静态门 pass;
+  真浏览器——tab 切换 mac/linux 命令正确、Copy→"Copied ✓" 反馈、0 console 错误;operate 区衔接正常。
 
 ## 6. Validation Evidence (append-only)
 - p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
@@ -499,6 +506,9 @@ agent 装 skill",又不给决策层留投毒面。
 
 - TC-3/TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
   p1-restyle-fix3 真 Cardano logo 为内嵌 path(CC0),零新增出站;hero 视觉核验通过
+
+- TC-3/TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
+  p1-restyle-fix4 hero 终端为纯静态文本 + 剪贴板写入,零新增出站;唯一 fetch 不变
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
