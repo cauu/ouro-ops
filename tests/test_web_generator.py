@@ -19,17 +19,21 @@ HTML = (ROOT / "web/onboarding/index.html").read_text(encoding="utf-8")
 def main() -> int:
     fails = []
 
-    # TC-3: CSP blocks the network.
-    if "default-src 'none'" not in HTML or "connect-src 'none'" not in HTML:
-        fails.append("CSP must contain default-src 'none' and connect-src 'none'")
+    # TC-3 (p1-fix7): default-src stays 'none'; connect-src is locked to ONE host
+    # (api.github.com) for the read-only latest-version fetch — the page can reach nowhere else.
+    if "default-src 'none'" not in HTML:
+        fails.append("CSP must keep default-src 'none'")
+    if "connect-src https://api.github.com" not in HTML:
+        fails.append("CSP connect-src must be locked to https://api.github.com")
+    if re.search(r"connect-src[^;\"]*(\*|'self'|https://(?!api\.github\.com))", HTML):
+        fails.append("CSP connect-src must not be broadened beyond api.github.com")
 
-    # No external resource loads or network APIs.
+    # No external resource loads or unbounded network APIs.
     banned = [
         (r"<script[^>]+src=", "external <script src>"),
         (r"<link[^>]+href=", "external <link href>"),
         (r"@import", "css @import"),
         (r"url\(\s*https?:", "external css url()"),
-        (r"\bfetch\s*\(", "fetch()"),
         (r"XMLHttpRequest", "XMLHttpRequest"),
         (r"WebSocket", "WebSocket"),
         (r"EventSource", "EventSource"),
@@ -38,6 +42,17 @@ def main() -> int:
     for pat, name in banned:
         if re.search(pat, HTML):
             fails.append(f"page must not use {name}")
+
+    # The ONLY fetch is the fixed, no-user-data version check to the cardano-node releases API.
+    fetches = re.findall(r"fetch\((.*?)\)", HTML, re.DOTALL)
+    if len(fetches) != 1:
+        fails.append(f"expected exactly one fetch() (the version check); found {len(fetches)}")
+    else:
+        arg = fetches[0]
+        if "api.github.com/repos/IntersectMBO/cardano-node/releases" not in arg:
+            fails.append("the only fetch() must target the cardano-node releases API")
+        if "`" in arg or "${" in arg:
+            fails.append("the fetch() URL must be a fixed constant (no user data interpolated)")
 
     # R2 N3: the prompt directs the agent to the verified binary, and does NOT inline the
     # decision tree (no 'Decision Tree'/'Red Lines' procedure text baked into the page/prompt).

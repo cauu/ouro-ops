@@ -94,9 +94,12 @@ agent 装 skill",又不给决策层留投毒面。
    与"每次操作"。
 
 ### Constraints
-- **纯静态、纯客户端(边界精确化)**:网站**表单阶段无任何出站请求**、拓扑不经网站上传,生成全在
-  浏览器本地。**但**"零上传"仅限网站阶段——用户**粘 prompt 到云 agent** 即把拓扑交给 agent 提供商,
-  这不在"零上传"范围内(见威胁模型 #4)。
+- **纯静态、纯客户端(边界精确化;p1-fix7 更新)**:生成全在浏览器本地,**拓扑 / pool 数据一个字节都不
+  上传**;页面**唯一**出站是加载时对 `api.github.com` 的**一次只读 GET**(查 cardano-node 最新版本,URL
+  固定、不含任何用户数据),CSP `connect-src` 锁死该单一 host,页面到不了别处;GitHub 不可达时回退到
+  烤入版本列表(near-offline 可用)。**但**"不上传"仅限网站侧——用户**粘 prompt 到云 agent** 仍把拓扑
+  交给 agent 提供商(见威胁模型 #4)。副作用:该 GET 让 GitHub 看到"有人打开了本页"(IP/时间),不含
+  任何用户/pool 数据。
 - **安全仍靠机制,但边界要诚实**:网站是配置/引导前端,不是执行替代品;机制保护 `ouro` 路径,
   **不保护控制机整体**(见「保护什么/不保护什么」)。版本校验是纵深防御,不是唯一防线。
 - **self-update 严格验签 + 单调防回滚(红线)**:二进制能改自己,验签一旦松即后门。必须:严格验签 +
@@ -274,8 +277,9 @@ agent 装 skill",又不给决策层留投毒面。
   `tests/e2e/agent-harness/run-scenarios.py` 模式,输入=生成的 prompt 文本)断言 deploy/upgrade 的
   **精确 `ouro tool run` 命令 trace**(含 `--dispatch`/`--spec`/顺序/stop 规则);真 agent 降 nightly。
   **执行**正确性以 S0017 delivered 为前提(bed 轨 vs production 轨分开)。
-- TC-3 网站**阶段**零出站:自动化(Playwright `page.route` 断言无外域 + 拦截 fetch/XHR/beacon/ws/
-  form)+ CSP `default-src 'self'`/`connect-src 'none'` 单测,从本地 file 打开亦通过。
+- TC-3(p1-fix7)出站面最小化:CSP `default-src 'none'` + `connect-src` 锁死 `api.github.com` 单一 host;
+  页面**唯一**出站是固定 URL、无用户数据的只读版本查询(真浏览器实测=1 条 github 请求、0 CSP 违规);
+  无外链/XHR/ws/beacon;拓扑/pool 数据永不出站(静态门 `test_web_generator.py` 断言 fetch 唯一且 URL 固定)。
 - TC-3b 拓扑披露:复制 prompt 前 UI 强制展示"发送给 agent 提供商"确认 + prompt 字段披露清单;
   最小化模式下敏感字段可被排除。
 - TC-4 **真源↔二进制一致**:决策真源 `SKILL.md` + 机制真源 `scripts/*.sh` + schema,经 bundle manifest
@@ -408,6 +412,10 @@ agent 装 skill",又不给决策层留投毒面。
   供用户确认更新内容);prompt 含"upgrade to cardano-node <v>"+"Set node_version:<v> in pool-spec.yaml then
   rollout"。诚实说明:版本号是站点构建期烤入(非页面内实时——CSP 零网络),链接=实时真源;真·页面内实时
   拉取需放开一个只读 GET(待用户拍板)。JS 断言 relnotes href/prompt 目标版本均正确。
+- p1-fix7 | stack: web | command: 真浏览器实测(fetch + 网络面板) | result: pass | note: 用户拍板要真·实时——
+  放开 CSP `connect-src` 到**唯一** host `api.github.com`,加载时 GET cardano-node releases/latest(URL 固定、
+  无用户数据),实测拉到真最新 **11.0.1**、relnotes 深链跟随;网络面板确认**仅 1 条 github 请求、0 CSP 违规**;
+  失败回退烤入列表。更新 Constraints/TC-3/威胁模型 + 静态门断言 fetch 唯一且 URL 固定不含用户数据。
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。

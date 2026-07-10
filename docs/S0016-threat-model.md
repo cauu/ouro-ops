@@ -45,6 +45,11 @@ checkable — not chosen by the prompt.
   fleet-reaching credentials → the highest-value target. Mitigation: hardware-backed keys
   (Secure Enclave / hardware token) so key material cannot be exfiltrated even if the host
   is compromised.
+- **Website version fetch (read-only, no user data).** The generator makes exactly one outbound
+  request — a fixed-URL `GET https://api.github.com/…/cardano-node/releases/latest` to show the
+  current node version. CSP `connect-src` is locked to `api.github.com` so the page can reach
+  nowhere else. It carries NO topology / pool data; the only leak is that GitHub sees a page load
+  (IP/time). Fails safe to a baked version list when GitHub is unreachable.
 - **#4 Topology to the agent provider.** The pasted prompt contains hostnames/IPs/roles;
   the agent provider (and its logs/retention) sees them. The website's "nothing uploaded"
   claim is scoped to the website only. Mitigation: copy-time disclosure (the page requires
