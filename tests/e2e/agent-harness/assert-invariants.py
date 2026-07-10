@@ -59,7 +59,7 @@ def main():
                 V.append(f"[#1 write-authority] {s['scenario']}/{s['tool']} write audit_id={aid} has no `start` (unaudited)")
     # (b) GROUND-TRUTH: every observed write to an ouro-managed path (inotify journal, on bp1) must
     #     fall inside an open tool-run window on bp1 — a write outside any window is a ROGUE write
-    #     (outside `ouro tool run`), which is exactly what §2.2#1 forbids.
+    #     (outside `ouro-ops tool run`), which is exactly what §2.2#1 forbids.
     bp_windows = []
     by_inv_bp = {}
     for e in events:

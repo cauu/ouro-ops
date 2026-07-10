@@ -14,7 +14,7 @@ SKILLS = [
 ]
 FORBIDDEN = [" ssh ", " scp ", " docker ", " bash ", "sudo ", "rsync "]
 REQUIRED_RED_LINES = [
-    "ouro tool run",
+    "ouro-ops tool run",
     "no secret directory access",
     "cold, KES secret, or VRF",
     "exit 30",

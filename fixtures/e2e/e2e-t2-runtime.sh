@@ -25,20 +25,20 @@ bash fixtures/e2e/provision.sh >/dev/null
 
 echo "[rt] restart — real node process rotation"
 p0=$(node_pid)
-out=$(ctl ouro tool run runtime/restart --dispatch bp1 --spec "$SPEC")
+out=$(ctl ouro-ops tool run runtime/restart --dispatch bp1 --spec "$SPEC")
 echo "$out" | jqpy "d['changed']" | grep -qx True || fail "restart not changed=true: $out"
 sleep 6; p1=$(node_pid)
 [ -n "$p1" ] && [ "$p1" != "$p0" ] || fail "node PID unchanged ($p0 -> $p1) — not really restarted"
 pass "restart: node PID rotated $p0 -> $p1 (genuine restart)"
 
 echo "[rt] verify — node forging after restart"
-ctl ouro tool run runtime/verify --dispatch bp1 --spec "$SPEC" | jqpy "d['status']" | grep -qx ok \
+ctl ouro-ops tool run runtime/verify --dispatch bp1 --spec "$SPEC" | jqpy "d['status']" | grep -qx ok \
   || fail "runtime verify not ok after restart"
 pass "verify: node forging (tip advancing)"
 
 echo "[rt] topology-apply — render relay peers into node topology + restart"
 p2=$(node_pid)
-outt=$(ctl ouro tool run runtime/topology-apply --dispatch bp1 --spec "$SPEC")
+outt=$(ctl ouro-ops tool run runtime/topology-apply --dispatch bp1 --spec "$SPEC")
 echo "$outt" | jqpy "d['changed']" | grep -qx True || fail "topology-apply not changed=true: $outt"
 dc exec -T bp1 bash -lc 'python3 -c "import json;p=json.load(open(\"/opt/devnet/topology.json\"))[\"Producers\"];print([x[\"addr\"] for x in p])"' \
   | grep -q relay1 || fail "topology.json does not contain the relay peers"
@@ -46,12 +46,12 @@ sleep 6; p3=$(node_pid); [ "$p3" != "$p2" ] || fail "topology-apply did not rest
 pass "topology-apply: relay peers written to topology.json + node restarted ($p2 -> $p3)"
 
 echo "[rt] topology-apply idempotent — second run changed=false"
-ctl ouro tool run runtime/topology-apply --dispatch bp1 --spec "$SPEC" | jqpy "d['changed']" | grep -qx False \
+ctl ouro-ops tool run runtime/topology-apply --dispatch bp1 --spec "$SPEC" | jqpy "d['changed']" | grep -qx False \
   || fail "second topology-apply not changed=false"
 pass "topology-apply idempotent (changed=false)"
 
 echo "[rt] verify — node still forging after topology-apply"
-ctl ouro tool run runtime/verify --dispatch bp1 --spec "$SPEC" | jqpy "d['status']" | grep -qx ok \
+ctl ouro-ops tool run runtime/verify --dispatch bp1 --spec "$SPEC" | jqpy "d['status']" | grep -qx ok \
   || fail "runtime verify not ok after topology-apply"
 pass "verify: node forging after topology-apply"
 

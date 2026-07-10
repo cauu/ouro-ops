@@ -20,5 +20,5 @@ rekor_url = https://rekor.sigstore.dev
 
 # The ONLY official first-install vectors (anything else is not us — typosquat defense):
 official_brew_tap = ouro/tap
-official_npm_pkg  = @ouro/cli
+official_npm_pkg  = @ouro/ops
 official_site     = https://ouro.example/install

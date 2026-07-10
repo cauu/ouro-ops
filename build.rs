@@ -1,7 +1,7 @@
 // S0016 p2-1 — compile-time embedding of ouro-skills/ into the binary.
 // Walks ouro-skills/ and generates $OUT_DIR/embedded_skills.rs holding a static slice of
 // (relative-path, &[u8]) via include_bytes!. The installed single binary therefore carries
-// its own decision docs (SKILL.md, p2-7 `ouro skill show`) and mechanism scripts
+// its own decision docs (SKILL.md, p2-7 `ouro-ops skill show`) and mechanism scripts
 // (scripts/*.sh, lib/*.sh) — no external fetch, no on-disk skills required at runtime.
 use std::fs;
 use std::io::Write;

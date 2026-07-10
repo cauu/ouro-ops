@@ -26,23 +26,23 @@ esac
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 echo "Downloading ouro ${VERSION} (${TARGET})..."
-curl -fsSL "${BASE}/ouro-${TARGET}"      -o "$TMP/ouro"
-curl -fsSL "${BASE}/ouro-${TARGET}.sig"  -o "$TMP/ouro.sig"
-curl -fsSL "${BASE}/ouro-${TARGET}.pem"  -o "$TMP/ouro.pem"
+curl -fsSL "${BASE}/ouro-ops-${TARGET}"      -o "$TMP/ouro-ops"
+curl -fsSL "${BASE}/ouro-ops-${TARGET}.sig"  -o "$TMP/ouro-ops.sig"
+curl -fsSL "${BASE}/ouro-ops-${TARGET}.pem"  -o "$TMP/ouro-ops.pem"
 
 # Verify against the PINNED identity (fail closed if cosign is absent — do not trust unverified).
 if ! command -v cosign >/dev/null 2>&1; then
-  echo "cosign is required to verify the release signature. Install cosign and retry, or use 'brew install ouro/tap/ouro'." >&2
+  echo "cosign is required to verify the release signature. Install cosign and retry, or use 'brew install ouro/tap/ouro-ops'." >&2
   exit 1
 fi
 echo "Verifying signature against pinned identity ${COSIGN_IDENTITY}..."
 cosign verify-blob \
-  --certificate "$TMP/ouro.pem" \
-  --signature "$TMP/ouro.sig" \
+  --certificate "$TMP/ouro-ops.pem" \
+  --signature "$TMP/ouro-ops.sig" \
   --certificate-identity "$COSIGN_IDENTITY" \
   --certificate-oidc-issuer "$COSIGN_ISSUER" \
-  "$TMP/ouro"
+  "$TMP/ouro-ops"
 
-install -m 0755 "$TMP/ouro" "${OURO_BIN_DIR:-/usr/local/bin}/ouro"
-echo "Installed. Cross-check now:  ouro version && ouro contract"
+install -m 0755 "$TMP/ouro-ops" "${OURO_BIN_DIR:-/usr/local/bin}/ouro-ops"
+echo "Installed. Cross-check now:  ouro-ops version && ouro-ops contract"
 echo "(compare the output against the values shown on the official site.)"

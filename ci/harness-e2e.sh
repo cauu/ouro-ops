@@ -8,7 +8,7 @@ export OURO_HOME=/tmp/ouro-harness-home
 export OURO_STATE_DIR=/tmp/ouro-harness-state
 rm -rf "$OURO_HOME" "$OURO_STATE_DIR" /tmp/ouro-harness-*
 
-# Build once so `ouro tool run` and the in-script `ouro tool verify-context`
+# Build once so `ouro-ops tool run` and the in-script `ouro-ops tool verify-context`
 # callback resolve to the same binary.
 cargo build -q
 OURO="$ROOT/target/debug/ouro"
@@ -16,7 +16,7 @@ SPEC=examples/pool-spec.minimal.yaml
 
 "$OURO" spec validate --spec "$SPEC" >/tmp/ouro-harness-spec.json
 
-# Deploy flow — every write goes through the audited `ouro tool run` entrypoint
+# Deploy flow — every write goes through the audited `ouro-ops tool run` entrypoint
 # (no bare `bash script.sh`; the L2 gate now requires a CLI-signed audit context).
 "$OURO" tool run deploy/preflight --spec "$SPEC" --machine bp1 >/tmp/ouro-harness-deploy-preflight.json
 "$OURO" tool run deploy/provision --spec "$SPEC" --machine bp1 >/tmp/ouro-harness-deploy-provision.json

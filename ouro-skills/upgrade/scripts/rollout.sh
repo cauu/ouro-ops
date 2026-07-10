@@ -57,12 +57,12 @@ for entry in "${PLAN[@]:1}"; do
       "cannot upgrade BP $machine with $RELAY_TOTAL relay(s), below quorum $QUORUM_MIN; refuse"
   fi
   # REAL per-machine step: dispatch upgrade-one, then verify, to the target itself.
-  if ! ouro tool run upgrade/upgrade-one --dispatch "$machine" --spec "$SPEC" >/tmp/ouro-rollout-one.json 2>&1; then
-    ouro tool run upgrade/rollback --dispatch "$machine" --spec "$SPEC" >/tmp/ouro-rollout-rb.json 2>&1 || true
+  if ! ouro-ops tool run upgrade/upgrade-one --dispatch "$machine" --spec "$SPEC" >/tmp/ouro-rollout-one.json 2>&1; then
+    ouro-ops tool run upgrade/rollback --dispatch "$machine" --spec "$SPEC" >/tmp/ouro-rollout-rb.json 2>&1 || true
     ouro_emit_error 30 "upgrade_one_failed" "upgrade-one failed for $machine; rolled back and stopped"
   fi
-  if ! ouro tool run upgrade/verify --dispatch "$machine" --spec "$SPEC" >/tmp/ouro-rollout-verify.json 2>&1; then
-    ouro tool run upgrade/rollback --dispatch "$machine" --spec "$SPEC" >/tmp/ouro-rollout-rb.json 2>&1 || true
+  if ! ouro-ops tool run upgrade/verify --dispatch "$machine" --spec "$SPEC" >/tmp/ouro-rollout-verify.json 2>&1; then
+    ouro-ops tool run upgrade/rollback --dispatch "$machine" --spec "$SPEC" >/tmp/ouro-rollout-rb.json 2>&1 || true
     ouro_emit_error 30 "upgrade_verify_failed" "verify failed for $machine; rolled back and STOPPED (BP not reached)"
   fi
   completed+=("$machine")

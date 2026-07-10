@@ -10,8 +10,8 @@
 A static website turns a form into a `pool-spec.yaml` + a **thin prompt** (data +
 which operation + a pointer). The operator pastes the prompt into their agent
 (Claude/Codex). The agent reads the **authoritative procedure from the verified local
-`ouro` binary** (`ouro skill show <op>`) — not from the prompt — and drives every change
-through `ouro tool run`, which enforces the S0015 mechanism (audit gate, sudoers-confined
+`ouro` binary** (`ouro-ops skill show <op>`) — not from the prompt — and drives every change
+through `ouro-ops tool run`, which enforces the S0015 mechanism (audit gate, sudoers-confined
 target wrapper, key isolation, exit-code discipline).
 
 ## Central invariant
@@ -25,9 +25,9 @@ checkable — not chosen by the prompt.
 
 | Dimension | Protected by | Verdict |
 |---|---|---|
-| `ouro tool run` path — write authority, key isolation, target-side execution | Mechanism (wrapper/sudoers/audit, S0015) | ✅ Mechanism-enforced; a malicious prompt cannot exceed it |
+| `ouro-ops tool run` path — write authority, key isolation, target-side execution | Mechanism (wrapper/sudoers/audit, S0015) | ✅ Mechanism-enforced; a malicious prompt cannot exceed it |
 | `ouro` binary + skill **code** source | Fixed identity + integrity verification (not prompt-chosen) | ✅ See distribution red lines |
-| **Decision-layer integrity** (the procedure the agent follows) | Verified binary via `ouro skill show`; never the prompt | ✅ A spoofed site cannot poison it (R2 N3) |
+| **Decision-layer integrity** (the procedure the agent follows) | Verified binary via `ouro-ops skill show`; never the prompt | ✅ A spoofed site cannot poison it (R2 N3) |
 | Version floor (no downgrade via a low prompt value) | `required = max(prompt, embedded, monotonic-rollback, security)` | ✅ Prompt can only raise; tamper-evident floor |
 | **Control machine itself** (agent acting *outside* `ouro`) | **Nothing** | ⚠️ = trust in the agent runtime; **weaker than manual SSH** |
 | **Topology confidentiality** | Website does not upload; pasting sends it to the agent provider | ⚠️ Disclosed at copy time; not confidential once pasted |

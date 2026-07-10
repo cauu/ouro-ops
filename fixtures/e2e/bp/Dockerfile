@@ -40,7 +40,7 @@ RUN printf '%s\n' \
       > /etc/ssh/sshd_config.d/10-ouro-e2e.conf
 
 # sudoers confines ouro-exec to the root-owned tool-run wrapper (identical to node/Dockerfile).
-RUN printf '#!/bin/sh\nexec /usr/local/bin/ouro tool run "$@"\n' > /usr/local/sbin/ouro-tool-run \
+RUN printf '#!/bin/sh\nexec /usr/local/bin/ouro-ops tool run "$@"\n' > /usr/local/sbin/ouro-tool-run \
  && chmod 0755 /usr/local/sbin/ouro-tool-run \
  && printf '%s\n%s\n' \
       'Defaults:ouro-exec env_reset, secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \

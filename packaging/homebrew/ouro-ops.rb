@@ -4,24 +4,24 @@
 # on download. `post_install` additionally verifies the release signature against the pinned
 # signing identity (packaging/SIGNING_IDENTITY) BEFORE the binary is trusted — so first-install
 # does not rely on a human eyeballing a fingerprint (R2 N4). URL/sha are release-filled.
-class Ouro < Formula
+class OuroOps < Formula
   desc "Deterministic Cardano stake pool operations CLI"
   homepage "https://ouro.example"
   version "0.1.0"
 
   on_macos do
     on_arm do
-      url "https://github.com/ouro/ouro/releases/download/v0.1.0/ouro-aarch64-apple-darwin.tar.gz"
+      url "https://github.com/ouro/ouro/releases/download/v0.1.0/ouro-ops-aarch64-apple-darwin.tar.gz"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000" # release-filled
     end
     on_intel do
-      url "https://github.com/ouro/ouro/releases/download/v0.1.0/ouro-x86_64-apple-darwin.tar.gz"
+      url "https://github.com/ouro/ouro/releases/download/v0.1.0/ouro-ops-x86_64-apple-darwin.tar.gz"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000" # release-filled
     end
   end
 
   def install
-    bin.install "ouro"
+    bin.install "ouro-ops"
   end
 
   # Verify the release signature against the pinned identity before trusting the binary.
@@ -30,12 +30,12 @@ class Ouro < Formula
     system "cosign", "verify-blob",
            "--certificate-identity", "release@ouro.example",
            "--certificate-oidc-issuer", "https://token.actions.githubusercontent.com",
-           "--signature", "#{bin}/ouro.sig", "#{bin}/ouro"
+           "--signature", "#{bin}/ouro-ops.sig", "#{bin}/ouro-ops"
   end
 
   test do
-    assert_match "0.1.0", shell_output("#{bin}/ouro version")
+    assert_match "0.1.0", shell_output("#{bin}/ouro-ops version")
     # The binary must self-verify its embedded skill bundle matches the signed manifest.
-    system "#{bin}/ouro", "manifest", "show"
+    system "#{bin}/ouro-ops", "manifest", "show"
   end
 end

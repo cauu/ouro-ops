@@ -13,7 +13,7 @@ SPEC="${OURO_SPEC:-}"
 
 # Role from the SPEC, not runtime pgrep — a role=bp host with a DEAD node must still take the
 # REAL path (a dead node cannot be silently treated as a relay and marker-passed). Magic also
-# from the spec (OURO_NETWORK_MAGIC is not in the ouro tool run env allowlist).
+# from the spec (OURO_NETWORK_MAGIC is not in the ouro-ops tool run env allowlist).
 ROLE=""; MAGIC=1
 if [ -n "$SPEC" ]; then
   read -r ROLE MAGIC < <(python3 - "$SPEC" "$MACHINE" <<'PY'

@@ -4,7 +4,7 @@
 Enforces the security-relevant invariants that make the page trustworthy:
   * TC-3: strict CSP that blocks ALL network (default-src 'none' + connect-src 'none');
   * no external resource loads / fetch / XHR / websockets (pure client, nothing uploaded);
-  * R2 N3: the prompt points the agent at `ouro skill show` and does NOT inline a decision tree;
+  * R2 N3: the prompt points the agent at `ouro-ops skill show` and does NOT inline a decision tree;
   * p1-6 / TC-3b: a copy-time topology disclosure exists.
 Run: python3 tests/test_web_generator.py
 """
@@ -56,8 +56,8 @@ def main() -> int:
 
     # R2 N3: the prompt directs the agent to the verified binary, and does NOT inline the
     # decision tree (no 'Decision Tree'/'Red Lines' procedure text baked into the page/prompt).
-    if "ouro skill show" not in HTML:
-        fails.append("prompt must point the agent at `ouro skill show` (R2 N3)")
+    if "ouro-ops skill show" not in HTML:
+        fails.append("prompt must point the agent at `ouro-ops skill show` (R2 N3)")
     if "Decision Tree" in HTML or "Red Lines" in HTML:
         fails.append("page must NOT inline a skill decision tree (R2 N3)")
 
@@ -65,9 +65,9 @@ def main() -> int:
     if "disclose" not in HTML or "topology" not in HTML.lower():
         fails.append("page must disclose topology exposure before copying the prompt")
 
-    # The prompt must instruct writes only via `ouro tool run` (mechanism, not raw node cmds).
-    if "ouro tool run" not in HTML:
-        fails.append("prompt must drive changes through `ouro tool run`")
+    # The prompt must instruct writes only via `ouro-ops tool run` (mechanism, not raw node cmds).
+    if "ouro-ops tool run" not in HTML:
+        fails.append("prompt must drive changes through `ouro-ops tool run`")
 
     if fails:
         for f in fails:

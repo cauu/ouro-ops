@@ -1,9 +1,9 @@
-"""Shared test helper: drive L2 skill scripts through the audited `ouro tool run`
+"""Shared test helper: drive L2 skill scripts through the audited `ouro-ops tool run`
 entrypoint so they run inside a genuine, CLI-signed audit context.
 
 After S0014's audit-gate hardening, an L2 script only writes when a valid signed
 invocation token verifies against the audit DB — a bare `export OURO_AUDIT_ID=...`
-no longer satisfies the gate. Tests must therefore go through `ouro tool run`.
+no longer satisfies the gate. Tests must therefore go through `ouro-ops tool run`.
 """
 import functools
 import os
@@ -20,7 +20,7 @@ def ouro_bin():
 
 
 def tool_run(tool, *, spec=None, machine=None, env=None, home=None, check=True):
-    """Run `ouro tool run <tool>`; returns the CompletedProcess whose stdout is the
+    """Run `ouro-ops tool run <tool>`; returns the CompletedProcess whose stdout is the
     executed script's single-line JSON and whose returncode is the script's exit code."""
     cmd = [ouro_bin(), "tool", "run", tool]
     if spec is not None:

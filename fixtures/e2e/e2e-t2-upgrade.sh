@@ -38,7 +38,7 @@ echo "[A] rollout (control dispatches relays-first, BP-last, real node restart o
 reset_state
 pid_before=$(dc exec -T bp1 bash -lc "pgrep -f 'cardano-node run' | head -1" | tr -d '\r')
 blk_before=$(dc exec -T bp1 bash -lc 'CARDANO_NODE_SOCKET_PATH=/opt/devnet/node.socket cardano-cli query tip --testnet-magic 1 2>/dev/null' | jqpy "d.get('block',0)")
-outA=$(ctl ouro tool run upgrade/rollout --spec "$SPEC")
+outA=$(ctl ouro-ops tool run upgrade/rollout --spec "$SPEC")
 echo "$outA" | jqpy "d['status']" | grep -qx ok || fail "rollout not ok: $outA"
 order=$(echo "$outA" | jqpy "','.join(d['data']['order'])")
 [ "$order" = "relay1,relay2,bp1" ] || fail "not BP-last order (got: $order)"
@@ -55,7 +55,7 @@ pass "A: bp1 node truly restarted (pid $pid_before->$pid_after) and forged past 
 
 # ---- B. quorum: min_online_relays=2 must be refused before touching any target ----
 echo "[B] quorum: rollout with min_online_relays=2 must exit 10"
-if ctl ouro tool run upgrade/rollout --spec "$SPEC_Q2" >/tmp/upg-q2.json 2>&1; then
+if ctl ouro-ops tool run upgrade/rollout --spec "$SPEC_Q2" >/tmp/upg-q2.json 2>&1; then
   fail "quorum-2 rollout unexpectedly succeeded"
 fi
 grep -q "relay_quorum_violation" /tmp/upg-q2.json || fail "quorum rollout failed for wrong reason: $(cat /tmp/upg-q2.json)"
@@ -64,7 +64,7 @@ pass "B: quorum violation refused (exit 10 relay_quorum_violation)"
 # ---- C. lock: a concurrent rollout is refused ----
 echo "[C] lock: hold the rollout lock, then a second rollout must exit 10"
 ctl bash -c 'mkdir -p /tmp/ouro-rollout-state/rollout.lock.d && printf other-owner > /tmp/ouro-rollout-state/rollout.lock.d/owner'
-if ctl ouro tool run upgrade/rollout --spec "$SPEC" >/tmp/upg-lock.json 2>&1; then
+if ctl ouro-ops tool run upgrade/rollout --spec "$SPEC" >/tmp/upg-lock.json 2>&1; then
   fail "rollout under a held lock unexpectedly succeeded"
 fi
 grep -q "rollout_lock_held" /tmp/upg-lock.json || fail "locked rollout failed for wrong reason: $(cat /tmp/upg-lock.json)"
@@ -75,7 +75,7 @@ pass "C: concurrent rollout refused (exit 10 rollout_lock_held)"
 echo "[D] verify-fail on relay2 => STOP before BP"
 reset_state
 dc exec -T relay2 bash -c 'mkdir -p /tmp/ouro-upgrade-state && touch /tmp/ouro-upgrade-state/__test_inject_fail__relay2'
-if ctl ouro tool run upgrade/rollout --spec "$SPEC" >/tmp/upg-fail.json 2>&1; then
+if ctl ouro-ops tool run upgrade/rollout --spec "$SPEC" >/tmp/upg-fail.json 2>&1; then
   fail "rollout with injected relay2 failure unexpectedly succeeded"
 fi
 grep -q "upgrade_verify_failed" /tmp/upg-fail.json || fail "stop reason wrong: $(cat /tmp/upg-fail.json)"

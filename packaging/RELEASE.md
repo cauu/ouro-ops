@@ -16,7 +16,7 @@ defeats first-install typosquat / fake-package / bootstrap-key substitution (R2 
 ## Release process (per version)
 
 1. **Reproducible build** of the single static `ouro` binary (skills embedded, p2-1).
-   `ouro manifest show` is captured and committed as `packaging/bundle-manifest.json`; a CI
+   `ouro-ops manifest show` is captured and committed as `packaging/bundle-manifest.json`; a CI
    test (`skills::committed_manifest_matches_embedded`) fails the build on any drift.
 2. **Sign** the binary + the bundle manifest with the hardware-held key (cosign keyless +
    minisign for the offline fallback). *(INFRA: signing key.)*
@@ -29,11 +29,11 @@ defeats first-install typosquat / fake-package / bootstrap-key substitution (R2 
 
 Primary: `brew install ouro/tap/ouro` (macOS). Secondary: `npx @ouro/cli@<pinned>`. Both
 verify the signature against the pinned identity before trusting the binary. After install,
-`ouro version` + `ouro contract` are cross-checked against the official site.
+`ouro-ops version` + `ouro-ops contract` are cross-checked against the official site.
 
 ## Self-update (steady state)
 
-`ouro self-update --check [--against <signed-metadata>]` (implemented) reports the running
+`ouro-ops self-update --check [--against <signed-metadata>]` (implemented) reports the running
 version, the built-in required floor, and — given release metadata — whether a strictly newer
 version exists (it never flags a downgrade).
 
@@ -49,14 +49,14 @@ The apply path (INFRA-gated) MUST, before swapping the binary:
 ## Offline fallback
 
 Near-offline BPs: a signed offline bundle carries its own minisign public key / Sigstore
-bundle so it is verifiable WITHOUT the network; `ouro install --offline <bundle>` (INFRA)
+bundle so it is verifiable WITHOUT the network; `ouro-ops install --offline <bundle>` (INFRA)
 runs the SAME verify + denylist + `max(floor)` checks. Never skip verification because the
 network is unavailable.
 
 ## What is runnable in-repo today
 
-- `ouro manifest show|verify` — bundle integrity, drift/tamper gate (p2-6).
-- `ouro self-update --check` — version/floor reporting, no unverified apply (p2-3, partial).
+- `ouro-ops manifest show|verify` — bundle integrity, drift/tamper gate (p2-6).
+- `ouro-ops self-update --check` — version/floor reporting, no unverified apply (p2-3, partial).
 - `version.rs` gate + tamper-evident monotonic anti-rollback (p3-2/3, R2 N1/P0-2).
 - `packaging/` — SIGNING_IDENTITY, Homebrew formula, install.sh (verification logic).
 

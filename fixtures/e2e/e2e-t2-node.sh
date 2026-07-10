@@ -31,7 +31,7 @@ dc up -d --build --wait --wait-timeout 240 >/dev/null
 bash fixtures/e2e/provision.sh >/dev/null
 
 echo "[status] dispatch #1 — real cardano-cli query tip on bp1"
-out1=$(ctl ouro tool run deploy/status --dispatch bp1 --spec "$SPEC")
+out1=$(ctl ouro-ops tool run deploy/status --dispatch bp1 --spec "$SPEC")
 echo "$out1" | jqpy "d['status']" | grep -qx ok || fail "deploy/status not ok: $out1"
 b1=$(echo "$out1" | jqpy "d['data']['tip']['block']")
 era=$(echo "$out1" | jqpy "d['data']['era']")
@@ -48,7 +48,7 @@ pass "status #1 REAL tip: block=$b1 era=$era magic=$mag genesis=${gh:0:12}… ad
 
 echo "[status] dispatch #2 — block height MONOTONIC increase (proves live, not a fixture)"
 sleep 6
-out2=$(ctl ouro tool run deploy/status --dispatch bp1 --spec "$SPEC")
+out2=$(ctl ouro-ops tool run deploy/status --dispatch bp1 --spec "$SPEC")
 b2=$(echo "$out2" | jqpy "d['data']['tip']['block']")
 [ "$b2" -gt "$b1" ] 2>/dev/null || fail "block not monotonic increasing ($b1 -> $b2)"
 pass "status #2 block advanced $b1 -> $b2 across dispatches (live chain, not injected)"

@@ -8,7 +8,7 @@ requires_ouro: ">=0.1.0"
 Install and verify the Prometheus/Grafana gateway path for relay telemetry.
 
 ## Decision Tree
-- Validate spec with `ouro spec validate`.
+- Validate spec with `ouro-ops spec validate`.
 - Install gateway with `observability/install-gateway`.
 - Verify with `observability/verify`.
 - If install partially changes state and verify fails, use `observability/rollback`.
@@ -21,7 +21,7 @@ Install and verify the Prometheus/Grafana gateway path for relay telemetry.
 - Relay telemetry credentials are referenced only by `creds://`.
 - Do not print basic-auth values.
 - Do not replace Grafana/Prometheus with an in-app monitoring surface.
-- Writes only through `ouro tool run`.
+- Writes only through `ouro-ops tool run`.
 - L3 diagnostics are read-only and have no secret directory access.
 - No cold, KES secret, or VRF material enters context or output.
 - Every change step is followed by verify.

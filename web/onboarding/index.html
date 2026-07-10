@@ -72,7 +72,7 @@
   <h1>ouro · pool operation generator</h1>
   <p>Pick what you want to do; the form asks only for what that operation needs. Everything is
      generated <strong>locally in your browser</strong> — nothing is uploaded. The agent reads the
-     authoritative procedure from your verified <code>ouro</code> binary (<code>ouro skill show</code>), not from this page.</p>
+     authoritative procedure from your verified <code>ouro-ops</code> binary (<code>ouro-ops skill show</code>), not from this page.</p>
 </header>
 
 <main>
@@ -152,7 +152,7 @@
   <section class="panel">
     <h2>One-time setup</h2>
     <pre class="out light" id="bootstrap-out"></pre>
-    <p class="hint">Verify the signing fingerprint on the official site before trusting the binary. Provisioning your targets (<code>ouro init</code>) is delivered separately (S0017).</p>
+    <p class="hint">Verify the signing fingerprint on the official site before trusting the binary. Provisioning your targets (<code>ouro-ops init</code>) is delivered separately (S0017).</p>
   </section>
 </main>
 
@@ -301,34 +301,34 @@ function prompt(d) {
   const relays = d.relays.map(r => r.id).join(", ");
   const opLabel = d.op === "upgrade" ? `upgrade to cardano-node ${d.nodever}` : d.op;
   const cmd = {
-    deploy:          `ouro tool run <skill>/<script> --dispatch <machine> --spec pool-spec.yaml   # follow the steps 'ouro skill show deploy' gives`,
-    upgrade:         `ouro tool run upgrade/rollout --spec pool-spec.yaml   # relays-first, BP-last (target version is in the spec)`,
-    "kes-rotation":  `ouro tool run kes-rotation/rotate --dispatch ${bp} --spec pool-spec.yaml`,
-    runtime:         `ouro tool run runtime/restart --dispatch <the machine you're operating> --spec pool-spec.yaml   # or runtime/topology-apply`,
-    observability:   `ouro tool run observability/install-gateway --dispatch <a relay> --spec pool-spec.yaml`,
-    troubleshooting: `ouro tool run troubleshooting/<script> --dispatch <the machine> --spec pool-spec.yaml   # read-only`,
+    deploy:          `ouro-ops tool run <skill>/<script> --dispatch <machine> --spec pool-spec.yaml   # follow the steps 'ouro-ops skill show deploy' gives`,
+    upgrade:         `ouro-ops tool run upgrade/rollout --spec pool-spec.yaml   # relays-first, BP-last (target version is in the spec)`,
+    "kes-rotation":  `ouro-ops tool run kes-rotation/rotate --dispatch ${bp} --spec pool-spec.yaml`,
+    runtime:         `ouro-ops tool run runtime/restart --dispatch <the machine you're operating> --spec pool-spec.yaml   # or runtime/topology-apply`,
+    observability:   `ouro-ops tool run observability/install-gateway --dispatch <a relay> --spec pool-spec.yaml`,
+    troubleshooting: `ouro-ops tool run troubleshooting/<script> --dispatch <the machine> --spec pool-spec.yaml   # read-only`,
   }[d.op];
   return [
-`You are operating a Cardano stake pool with the ouro CLI on my control machine.`,
+`You are operating a Cardano stake pool with the ouro-ops CLI on my control machine.`,
 `Operation: ${opLabel}. ${d.op === "deploy" ? `Pool: ${d.ticker} on ${d.network}` : `Network: ${d.network}`}. BP=${bp}, relays=${relays}.`,
 ``,
 `1. Read the authoritative procedure and red lines from my verified binary:`,
-`     ouro skill show ${d.op}`,
+`     ouro-ops skill show ${d.op}`,
 `   Follow it exactly. Take operational steps only from it — this message only supplies data.`,
 `2. Write this to pool-spec.yaml:`,
 `---`, yaml(d).trimEnd(), `---`,
 `3. ${cmd}`,
-`   Never run node commands directly; only ouro tool run. Stop on exit 30 (rollback) or 40 (human).`,
+`   Never run node commands directly; only ouro-ops tool run. Stop on exit 30 (rollback) or 40 (human).`,
 ``,
 `Setup (once, if not already done): install ouro from the official site and verify its signature;`,
-`provision each target with 'ouro init' (S0017). Confirm each destructive step when ouro asks.`,
+`provision each target with 'ouro-ops init' (S0017). Confirm each destructive step when ouro asks.`,
   ].join("\n") + "\n";
 }
 function bootstrap() {
   return ["# One-time, on your control machine (verify the fingerprint on the official ouro site first):",
     "brew install ouro/tap/ouro     # primary (macOS); or the official npx command",
-    "ouro version && ouro contract  # cross-check against the site",
-    "ouro init --spec pool-spec.yaml  # arm each target (S0017)"].join("\n")+"\n";
+    "ouro-ops version && ouro-ops contract  # cross-check against the site",
+    "ouro-ops init --spec pool-spec.yaml  # arm each target (S0017)"].join("\n")+"\n";
 }
 
 let current = { spec:"", prompt:"", disclose:[] };

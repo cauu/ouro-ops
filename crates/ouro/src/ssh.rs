@@ -54,7 +54,7 @@ impl SshRunner {
                 format!("{}@{}", target.user, target.host),
                 "sudo".to_string(),
                 "-n".to_string(),
-                "ouro".to_string(),
+                "ouro-ops".to_string(),
                 "tool".to_string(),
                 "run".to_string(),
                 tool.to_string(),
@@ -66,7 +66,7 @@ impl SshRunner {
         }
     }
 
-    /// Real `ssh` argv for Model B remote dispatch: run `sudo -n ouro tool run <tool>`
+    /// Real `ssh` argv for Model B remote dispatch: run `sudo -n ouro-ops tool run <tool>`
     /// on the target (no `--machine`, so the target executes L2 locally). The audit_id
     /// and invocation token are minted+verified on the TARGET (§2.1 D2), so nothing
     /// secret is passed on the argv; `key_path` is a local private key file (resolved
@@ -94,7 +94,7 @@ impl SshRunner {
             "sudo".to_string(),
             "-n".to_string(),
             // Fixed root-owned wrapper (sudoers allowlist, D3): it only runs
-            // `ouro tool run "$@"`, so ouro-exec cannot invoke other ouro subcommands.
+            // `ouro-ops tool run "$@"`, so ouro-exec cannot invoke other ouro subcommands.
             "/usr/local/sbin/ouro-tool-run".to_string(),
             // Every dynamic field is shell-quoted: ssh reassembles these into a remote
             // shell command, so an unquoted `<tool>`/`<remote_spec>` would allow injection.
@@ -108,7 +108,7 @@ impl SshRunner {
         ]
     }
 
-    /// Execute the remote `ouro tool run` over SSH and capture its output + exit code.
+    /// Execute the remote `ouro-ops tool run` over SSH and capture its output + exit code.
     /// In dry-run mode returns a no-op success (used where a live target is absent).
     pub fn execute(
         &self,
@@ -157,7 +157,7 @@ mod tests {
         let cmd =
             SshRunner::new(true).prepare_tool_run(&target(), "deploy/preflight", "pool-spec.json", "audit-1");
         let joined = cmd.args.join(" ");
-        assert!(joined.contains("sudo -n ouro tool run deploy/preflight"));
+        assert!(joined.contains("sudo -n ouro-ops tool run deploy/preflight"));
         assert!(joined.contains("<credential-ref>"));
         assert!(!joined.contains("creds://"));
         assert!(!joined.contains(" docker rm "));

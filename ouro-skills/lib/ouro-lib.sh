@@ -83,7 +83,7 @@ print(json.dumps({
   "error": {
     "code": code,
     "detail": detail,
-    "hint": "rerun through ouro tool run with an audit context",
+    "hint": "rerun through ouro-ops tool run with an audit context",
   }
 }, separators=(",", ":")))
 PY
@@ -100,13 +100,13 @@ ouro_emit_unknown() {
 ouro_require_audit_context() {
   # Presence of the env vars alone is NOT sufficient — an agent could `export` them.
   # The gate is only satisfied when a CLI-signed invocation token verifies against the
-  # audit context, which only `ouro tool run` can produce (§2.2#2).
+  # audit context, which only `ouro-ops tool run` can produce (§2.2#2).
   if [[ -z "${OURO_AUDIT_ID:-}" || -z "${OURO_TOOL_NAME:-}" || -z "${OURO_INVOCATION_TOKEN:-}" ]]; then
-    ouro_emit_error 10 "missing_audit_context" "write operation refused; run via 'ouro tool run'"
+    ouro_emit_error 10 "missing_audit_context" "write operation refused; run via 'ouro-ops tool run'"
   fi
-  local bin="${OURO_BIN:-ouro}"
+  local bin="${OURO_BIN:-ouro-ops}"
   if ! "$bin" tool verify-context --audit-id "$OURO_AUDIT_ID" --token "$OURO_INVOCATION_TOKEN" >/dev/null 2>&1; then
-    ouro_emit_error 10 "invalid_audit_context" "invocation token failed verification; run via 'ouro tool run'"
+    ouro_emit_error 10 "invalid_audit_context" "invocation token failed verification; run via 'ouro-ops tool run'"
   fi
 }
 

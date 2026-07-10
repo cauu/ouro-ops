@@ -8,8 +8,8 @@ requires_ouro: ">=0.1.0"
 Apply runtime topology/config changes and verify the node returns healthy.
 
 ## Decision Tree
-- Validate spec with `ouro spec validate`.
-- Render config with `ouro config render`.
+- Validate spec with `ouro-ops spec validate`.
+- Render config with `ouro-ops config render`.
 - Apply topology with `runtime/topology-apply`.
 - Restart only with `runtime/restart`.
 - Verify with `runtime/verify`.
@@ -20,7 +20,7 @@ Apply runtime topology/config changes and verify the node returns healthy.
 
 ## Red Lines
 - No direct file copy or container mutation outside tool entrypoints.
-- Writes only through `ouro tool run`.
+- Writes only through `ouro-ops tool run`.
 - L3 diagnostics are read-only and have no secret directory access.
 - No secret paths in output.
 - No cold, KES secret, or VRF material enters context or output.

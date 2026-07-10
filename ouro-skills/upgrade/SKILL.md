@@ -8,7 +8,7 @@ requires_ouro: ">=0.1.0"
 Upgrade pool machines while preserving availability.
 
 ## Decision Tree
-- Validate spec with `ouro spec validate`.
+- Validate spec with `ouro-ops spec validate`.
 - Execute cross-machine upgrade only with `upgrade/run`.
 - Let the orchestrator enforce machine lock, relay order, BP-last, verify-before-next, and rollback-stop.
 
@@ -20,7 +20,7 @@ Upgrade pool machines while preserving availability.
 ## Red Lines
 - Do not implement cross-machine loops in the skill.
 - Do not bypass `upgrade/run`.
-- Do not run writes outside `ouro tool run`.
+- Do not run writes outside `ouro-ops tool run`.
 - Keep BP plus at least one relay available.
 - L3 diagnostics are read-only and have no secret directory access.
 - No cold, KES secret, or VRF material enters context or output.

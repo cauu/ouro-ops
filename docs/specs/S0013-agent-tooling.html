@@ -160,7 +160,7 @@
     <span class="what">BP / Relay，节点跑容器，主机侧要求收敛为「容器运行时 + SSH 可达」</span>
   </div>
 </div>
-<p class="note">Ansible、Python sidecar、Tauri/React 整体移除。原 Jinja2 模板迁入 <code>ouro config render</code>；原 playbook 逻辑按下述三层重新归位。</p>
+<p class="note">Ansible、Python sidecar、Tauri/React 整体移除。原 Jinja2 模板迁入 <code>ouro-ops config render</code>；原 playbook 逻辑按下述三层重新归位。</p>
 
 <h2><span class="no">2</span>拆分依据：危险度 × 已知度</h2>
 <p>每个操作按两个维度归类：<strong>做错的代价</strong>（危险度）和<strong>能否预先写成代码</strong>（已知度）。这决定它属于哪一层、以什么形式暴露给 agent。</p>
@@ -192,14 +192,14 @@
 <table>
   <thead><tr><th>命令</th><th>作用</th><th>门控</th></tr></thead>
   <tbody>
-    <tr><td><code>ouro spec validate</code></td><td>静态校验 <code>pool-spec.yaml</code>（角色、端点、版本合法性）</td><td>只读</td></tr>
-    <tr><td><code>ouro config render --machine &lt;m&gt;</code></td><td>由 spec 确定性生成 node config / topology（替代 Jinja2 模板）</td><td>只产出文件</td></tr>
-    <tr><td><code>ouro status --machine &lt;m&gt;</code></td><td>结构化运行状态：tip、slot lag、peers、KES 剩余期数（JSON）</td><td>只读</td></tr>
-    <tr><td><code>ouro kes generate</code></td><td>生成新 KES 密钥对 + opcert（cold counter 在离线机递增）</td><td><span class="pill gate">确认 + 审计</span></td></tr>
-    <tr><td><code>ouro kes push --machine bp</code></td><td>推送热钥三件套到 BP 并滚动重启</td><td><span class="pill gate">确认 + 审计</span></td></tr>
-    <tr><td><code>ouro pool register-tx</code></td><td>构造注册 / 更新交易（<strong>未签名</strong>，签名永远离线）</td><td><span class="pill gate">审计</span></td></tr>
-    <tr><td><code>ouro rollback --machine &lt;m&gt; --to &lt;backup-id&gt;</code></td><td>回滚到指定备份点</td><td><span class="pill gate">确认 + 审计</span></td></tr>
-    <tr><td><code>ouro audit log</code></td><td>查询 append-only 审计日志（每次 L1/L2 调用自动落库，无论谁调的）</td><td>只读</td></tr>
+    <tr><td><code>ouro-ops spec validate</code></td><td>静态校验 <code>pool-spec.yaml</code>（角色、端点、版本合法性）</td><td>只读</td></tr>
+    <tr><td><code>ouro-ops config render --machine &lt;m&gt;</code></td><td>由 spec 确定性生成 node config / topology（替代 Jinja2 模板）</td><td>只产出文件</td></tr>
+    <tr><td><code>ouro-ops status --machine &lt;m&gt;</code></td><td>结构化运行状态：tip、slot lag、peers、KES 剩余期数（JSON）</td><td>只读</td></tr>
+    <tr><td><code>ouro-ops kes generate</code></td><td>生成新 KES 密钥对 + opcert（cold counter 在离线机递增）</td><td><span class="pill gate">确认 + 审计</span></td></tr>
+    <tr><td><code>ouro-ops kes push --machine bp</code></td><td>推送热钥三件套到 BP 并滚动重启</td><td><span class="pill gate">确认 + 审计</span></td></tr>
+    <tr><td><code>ouro-ops pool register-tx</code></td><td>构造注册 / 更新交易（<strong>未签名</strong>，签名永远离线）</td><td><span class="pill gate">审计</span></td></tr>
+    <tr><td><code>ouro-ops rollback --machine &lt;m&gt; --to &lt;backup-id&gt;</code></td><td>回滚到指定备份点</td><td><span class="pill gate">确认 + 审计</span></td></tr>
+    <tr><td><code>ouro-ops audit log</code></td><td>查询 append-only 审计日志（每次 L1/L2 调用自动落库，无论谁调的）</td><td>只读</td></tr>
   </tbody>
 </table>
 <p class="note">复用现有 <code>src-tauri/src/commands/</code> 中 kes.rs、pool.rs 的 Rust 逻辑，剥离 Tauri 依赖抽为独立二进制。</p>
@@ -221,7 +221,7 @@
 ├── observability/
 │   └── scripts/            # install-gateway / verify / rollback
 ├── kes-rotation/
-│   └── SKILL.md            # 无脚本：纯粹编排 ouro kes 命令序列
+│   └── SKILL.md            # 无脚本：纯粹编排 ouro-ops kes 命令序列
 └── troubleshooting/
     └── SKILL.md            # 唯一以 prompt 为主的 skill，限定 L3 只读</code></pre>
 <p>判断标准：<strong>SKILL.md 里一旦出现具体命令序列，就该下沉为脚本。</strong>脚本可在 CI 里对容器矩阵（Ubuntu / Debian / Rocky）做集成测试——prompt 测不了，脚本测得了，这是确定性的来源。</p>
@@ -264,7 +264,7 @@
   <tbody>
     <tr><td rowspan="5"><strong>每台机器</strong></td>
         <td>节点容器运行且稳定</td><td>运行中，且启动后 10 分钟内重启次数 = 0</td></tr>
-    <tr><td>版本与 spec 一致</td><td><code>ouro status</code> 上报版本 == <code>spec.node_version</code></td></tr>
+    <tr><td>版本与 spec 一致</td><td><code>ouro-ops status</code> 上报版本 == <code>spec.node_version</code></td></tr>
     <tr><td>同步完成</td><td>本机 tip 与网络 tip 差 &lt; 60s，且 slot 持续推进</td></tr>
     <tr><td>metrics 可达</td><td><code>:12798/metrics</code> 返回 200 且含 node 指标</td></tr>
     <tr><td>时钟同步</td><td>chrony offset &lt; 50ms（slot 计算依赖时钟）</td></tr>
@@ -284,7 +284,7 @@
 
 <h2><span class="no">7</span>SKILL.md 的角色：调度，不是操作</h2>
 <p>以最复杂的 upgrade 为例，SKILL.md 的全部内容就是这样一棵决策树：</p>
-<pre><code>1. ouro spec validate → 每台机器跑 preflight.sh，任一 exit 10 → 修复后重跑
+<pre><code>1. ouro-ops spec validate → 每台机器跑 preflight.sh，任一 exit 10 → 修复后重跑
 2. 逐台执行，relay 在前、BP 最后，每台：
      backup.sh → upgrade-one.sh → verify.sh
    verify 通过才允许下一台（原 Ansible serial:1 语义，一句话表达）

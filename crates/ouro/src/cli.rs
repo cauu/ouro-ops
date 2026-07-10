@@ -23,7 +23,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "--version" | "version" => {
             output::print_json(&ToolOutput::ok("ouro.version", false).with_data(json!({
                 "version": env!("CARGO_PKG_VERSION"),
-                "binary": "ouro",
+                "binary": "ouro-ops",
                 "runtime": "standalone-rust"
             })))?;
         }
@@ -55,7 +55,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
     Ok(())
 }
 
-/// `ouro self-update --check [--against <signed-metadata.json>]` (S0016 p2-3).
+/// `ouro-ops self-update --check [--against <signed-metadata.json>]` (S0016 p2-3).
 ///
 /// Reports the running version and the built-in required floor. With `--against`, compares
 /// to a (signed at release) metadata file and reports whether an update is warranted, WITHOUT
@@ -114,7 +114,7 @@ fn run_rollback(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// `ouro skill show <name>` / `ouro skill list` (S0016 p2-7).
+/// `ouro-ops skill show <name>` / `ouro-ops skill list` (S0016 p2-7).
 ///
 /// `show` prints the skill's decision tree (its embedded, compiled-in `SKILL.md`) as raw
 /// markdown for the agent to consume. This is the AUTHORITATIVE decision source: it comes
@@ -158,7 +158,7 @@ fn run_skill(args: &[String]) -> Result<()> {
     }
 }
 
-/// `ouro manifest show | verify --against <file>` (S0016 p2-6).
+/// `ouro-ops manifest show | verify --against <file>` (S0016 p2-6).
 ///
 /// `show` prints the bare bundle manifest derived from the binary's embedded assets (commit
 /// it as `packaging/bundle-manifest.json`). `verify` proves the running binary's embedded
@@ -224,7 +224,7 @@ fn run_confirm(args: &[String]) -> Result<()> {
             )?;
             Ok(())
         }
-        // `ouro confirm preview --tool <t> --dispatch <m> --spec <f>` (S0016 p4-2).
+        // `ouro-ops confirm preview --tool <t> --dispatch <m> --spec <f>` (S0016 p4-2).
         // GROUND-TRUTH confirmation: prints the EXACT command that would run on the target
         // (the resolved ssh + sudo wrapper argv), WITHOUT executing. A human/agent approves
         // the real action — not the prompt's narrative of it.
@@ -356,7 +356,7 @@ fn resolve_skill_script(tool_name: &str) -> Result<(PathBuf, Option<PathBuf>)> {
 }
 
 /// Model B remote dispatch (control side): resolve the target machine's SSH endpoint
-/// and credential from the spec, then run `sudo ouro tool run <tool> --machine <m>` on
+/// and credential from the spec, then run `sudo ouro-ops tool run <tool> --machine <m>` on
 /// the target over SSH. Audit + token are minted/verified ON THE TARGET (§2.1 D2), so
 /// control mints nothing and passes no `--audit-id`; it relays the target's JSON + exit
 /// code. `--remote-spec` overrides the target-side spec path (default: same as --spec).
@@ -403,7 +403,7 @@ fn run_tool_dispatch(args: &[String]) -> Result<()> {
     std::process::exit(outcome.status);
 }
 
-/// `ouro tool run` — the sole audited write entrypoint. It creates (or reuses via
+/// `ouro-ops tool run` — the sole audited write entrypoint. It creates (or reuses via
 /// `--audit-id`) an audit invocation, signs an invocation token bound to that id,
 /// executes the resolved L2 script with a controlled environment, captures its
 /// output, and records a finish/crash terminal audit event before propagating the
@@ -446,7 +446,7 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
     let token = confirm::invocation_token(&secret, &audit_id);
     let self_bin = std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "ouro".to_string());
+        .unwrap_or_else(|_| "ouro-ops".to_string());
 
     // env_clear + allowlist: the child script receives ONLY a controlled environment.
     // This prevents an agent from injecting policy or test hooks (e.g. a quorum knob or
@@ -496,7 +496,7 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
 
     match output.status.code() {
         Some(code) => {
-            // p3-4: record the ACTUAL executing ouro version (and a monotonic-floor reset,
+            // p3-4: record the ACTUAL executing ouro-ops version (and a monotonic-floor reset,
             // if the anti-rollback state had to be re-established) for reproducibility.
             let detail = format!(
                 "exit_{code} ouro={}{}",
@@ -514,7 +514,7 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
     }
 }
 
-/// Verify that an L2 script is running inside a genuine `ouro tool run` context: the
+/// Verify that an L2 script is running inside a genuine `ouro-ops tool run` context: the
 /// invocation id must exist as a `start` audit event AND the supplied token must match
 /// the id signed with the local secret. Exits nonzero (→ script refuses to write) on
 /// any mismatch. Called by `ouro_require_audit_context` in `ouro-lib.sh`.
@@ -534,7 +534,7 @@ fn run_tool_verify_context(args: &[String]) -> Result<()> {
         Ok(())
     } else {
         Err(OuroError::Validation(
-            "invalid or forged invocation token; run via ouro tool run".to_string(),
+            "invalid or forged invocation token; run via ouro-ops tool run".to_string(),
         ))
     }
 }
@@ -629,7 +629,7 @@ fn run_status(args: &[String]) -> Result<()> {
 }
 
 fn print_help() {
-    println!("ouro: deterministic Cardano stake pool operations CLI");
+    println!("ouro-ops: deterministic Cardano stake pool operations CLI");
     println!("commands: version, paths, contract, spec validate --spec <path>, config render/apply, audit init, legacy inspect --db <path>");
 }
 
@@ -765,7 +765,7 @@ fn optional_flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 }
 
 /// The ONLY confirmation path for dangerous commands: a single-use `tok_` token
-/// minted out-of-band by `ouro confirm create` and consumed from the store. There is
+/// minted out-of-band by `ouro-ops confirm create` and consumed from the store. There is
 /// deliberately no static/guessable fallback — a literal an agent can construct from
 /// public spec fields must never satisfy the gate (§2.2#3).
 fn consume_confirmation(
@@ -779,10 +779,10 @@ fn consume_confirmation(
             ConfirmationStore::consume(&paths.confirmations, token, action, machine)
         }
         Some(_) => Err(OuroError::Validation(format!(
-            "invalid confirmation token; issue one out-of-band with `ouro confirm create --action {action} --machine {machine}`"
+            "invalid confirmation token; issue one out-of-band with `ouro-ops confirm create --action {action} --machine {machine}`"
         ))),
         None => Err(OuroError::Validation(format!(
-            "dangerous {action} requires a human-issued confirmation token (ouro confirm create)"
+            "dangerous {action} requires a human-issued confirmation token (ouro-ops confirm create)"
         ))),
     }
 }

@@ -9,8 +9,8 @@ Diagnose failures after an L1/L2 tool returns non-zero.
 
 ## Decision Tree
 - Read the failed JSON output and audit id.
-- Use `ouro audit log` for invocation history.
-- Use `ouro status --diff-spec` for drift and network identity checks.
+- Use `ouro-ops audit log` for invocation history.
+- Use `ouro-ops status --diff-spec` for drift and network identity checks.
 - Use read-only diagnostic principal outputs only.
 - Propose a repair that can be executed through an L1/L2 tool.
 
@@ -23,7 +23,7 @@ Diagnose failures after an L1/L2 tool returns non-zero.
 - L3 is read-only.
 - Diagnostic principal has no secret directory access and no write capability.
 - Do not turn a diagnosis into an ad hoc mutation.
-- Writes only through `ouro tool run`.
+- Writes only through `ouro-ops tool run`.
 - No cold, KES secret, or VRF material enters context or output.
 - Every change step is followed by verify.
 - On exit 30, run the rollback-capable path before continuing.

@@ -24,7 +24,7 @@ dc up -d --build --wait --wait-timeout 240 >/dev/null
 bash fixtures/e2e/provision.sh >/dev/null
 
 echo "[takeover] assume management of the live legacy node on bp1"
-out1=$(ctl ouro tool run deploy/takeover --dispatch bp1 --spec "$SPEC")
+out1=$(ctl ouro-ops tool run deploy/takeover --dispatch bp1 --spec "$SPEC")
 echo "$out1" | jqpy "d['status']" | grep -qx ok || fail "takeover not ok: $out1"
 echo "$out1" | jqpy "d['changed']" | grep -qx True || fail "first takeover not changed=true: $out1"
 pass "takeover bp1: live node+keys detected, changed=true (keys snapshotted for rollback)"
@@ -35,18 +35,18 @@ dc exec -T bp1 bash -lc 'grep -q "pools-keys/pool1/kes.skey" /tmp/ouro-deploy-st
 pass "rollback artifact present: key checksum snapshot on target"
 
 echo "[takeover] verify — keys preserved (checksums match) + legacy node still forging"
-outv=$(ctl ouro tool run deploy/takeover-verify --dispatch bp1 --spec "$SPEC")
+outv=$(ctl ouro-ops tool run deploy/takeover-verify --dispatch bp1 --spec "$SPEC")
 echo "$outv" | jqpy "d['status']" | grep -qx ok || fail "takeover-verify not ok: $outv"
 echo "$outv" | jqpy "d['checks'][0]['detail']" | grep -qi "preserved" || fail "verify did not confirm key preservation: $outv"
 pass "takeover-verify: keys preserved + node running (real sha256 -c against live keys)"
 
 echo "[takeover] idempotent — second takeover is changed=false"
-out2=$(ctl ouro tool run deploy/takeover --dispatch bp1 --spec "$SPEC")
+out2=$(ctl ouro-ops tool run deploy/takeover --dispatch bp1 --spec "$SPEC")
 echo "$out2" | jqpy "d['changed']" | grep -qx False || fail "second takeover not changed=false: $out2"
 pass "takeover idempotent: already-managed => changed=false"
 
 echo "[takeover] failure path — no legacy node on relay1 => REFUSE, rollback-safe (no marker)"
-if ctl ouro tool run deploy/takeover --dispatch relay1 --spec "$SPEC" >/tmp/tko-relay.json 2>&1; then
+if ctl ouro-ops tool run deploy/takeover --dispatch relay1 --spec "$SPEC" >/tmp/tko-relay.json 2>&1; then
   fail "takeover on relay1 (no node) unexpectedly succeeded"
 fi
 grep -q "takeover_precondition_failed" /tmp/tko-relay.json || fail "relay1 takeover failed for wrong reason: $(cat /tmp/tko-relay.json)"

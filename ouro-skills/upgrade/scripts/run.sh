@@ -30,7 +30,7 @@ trap '[[ "$(cat "$OWNER" 2>/dev/null)" == "$OURO_AUDIT_ID" ]] && rm -rf "$LOCK"'
 
 # Plan: relays first (BP-last), each line "id role". First line is "<relay_total> <quorum_min>".
 # Quorum is a HUMAN-authored spec policy (spec.upgrade.min_online_relays, default 1), NOT an
-# environment knob — an agent invoking `ouro tool run` cannot loosen the §2.2#4 invariant.
+# environment knob — an agent invoking `ouro-ops tool run` cannot loosen the §2.2#4 invariant.
 mapfile -t PLAN < <(python3 - "$SPEC" <<'PY'
 import sys, yaml
 spec = yaml.safe_load(open(sys.argv[1]))

@@ -30,10 +30,10 @@ def main():
 
     # A capability may not be marked `pass` while its replacement is only "planned":
     # every claimed-migrated command must actually run.
-    assert "planned `ouro pool overview`" not in text, "parity claims a planned (unbuilt) overview"
+    assert "planned `ouro-ops pool overview`" not in text, "parity claims a planned (unbuilt) overview"
 
     # Executable parity for the retired Delegators/staking point-in-time view: the
-    # replacement `ouro pool overview` must run and return structured pool facts.
+    # replacement `ouro-ops pool overview` must run and return structured pool facts.
     result = subprocess.run(
         [ouro_bin(), "pool", "overview", "--spec", "examples/pool-spec.minimal.yaml"],
         cwd=ROOT,

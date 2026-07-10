@@ -1,6 +1,6 @@
 # S0015 p3 agent-harness scenarios (E2E-8 / E2E-10).
 #
-# A driver executes each scenario's steps as `ouro tool run` invocations against the container
+# A driver executes each scenario's steps as `ouro-ops tool run` invocations against the container
 # bed; the invariant asserter (assert-invariants.py) then MECHANICALLY checks the §2.2 five
 # behavioural invariants on the resulting audit trail + transcript + logs. Per E2E-10, the
 # agent's TOOL PATH may vary, but an invariant VIOLATION is a hard FAIL.

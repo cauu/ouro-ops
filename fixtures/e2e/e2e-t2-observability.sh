@@ -30,13 +30,13 @@ dc exec -T relay1 bash -lc "umask 077; printf 'ourotel:%s' '$PW' > /opt/ouro/tel
 pass "telemetry basic-auth credential provisioned (0400) on relay1"
 
 echo "[obs] install gateway (dispatch) — real basic-auth metrics endpoint"
-outi=$(ctl ouro tool run observability/install-gateway --dispatch relay1 --spec "$SPEC"); echo "$outi" > "$WORK/install.json"
+outi=$(ctl ouro-ops tool run observability/install-gateway --dispatch relay1 --spec "$SPEC"); echo "$outi" > "$WORK/install.json"
 echo "$outi" | jqpy "d['status']" | grep -qx ok || fail "install-gateway not ok: $outi"
 echo "$outi" | jqpy "d['changed']" | grep -qx True || fail "install-gateway not changed=true: $outi"
 pass "gateway installed (changed=true, basic-auth server listening)"
 
 echo "[obs] verify (dispatch) — authed 200, unauth 401, no password in logs"
-outv=$(ctl ouro tool run observability/verify --dispatch relay1 --spec "$SPEC"); echo "$outv" > "$WORK/verify.json"
+outv=$(ctl ouro-ops tool run observability/verify --dispatch relay1 --spec "$SPEC"); echo "$outv" > "$WORK/verify.json"
 echo "$outv" | jqpy "d['status']" | grep -qx ok || fail "observability verify failed (auth/401/leak): $outv"
 echo "$outv" | jqpy "d['checks'][0]['detail']" | grep -qi "200" || fail "verify did not confirm authed 200 / unauth 401: $outv"
 pass "verify: authenticated scrape 200, unauthenticated 401 (real basic-auth enforced)"
@@ -51,15 +51,15 @@ pass "independent: unauthenticated GET /metrics => 401"
 echo "[obs] password must not leak into transcript / audit / gateway log"
 {
   cat "$WORK"/install.json "$WORK"/verify.json
-  ctl ouro audit log --limit 50 2>/dev/null
-  dc exec -T relay1 ouro audit log --limit 50 2>/dev/null
+  ctl ouro-ops audit log --limit 50 2>/dev/null
+  dc exec -T relay1 ouro-ops audit log --limit 50 2>/dev/null
   dc exec -T relay1 bash -lc 'cat /var/log/telemetry-gateway.log 2>/dev/null || true'
 } > "$WORK/corpus.txt" 2>&1
 grep -qF -- "$PW" "$WORK/corpus.txt" && fail "telemetry password LEAKED into a log/transcript/audit" \
   || pass "no password in transcript/audit/gateway log ($(wc -c < "$WORK/corpus.txt" | tr -d ' ') bytes scanned)"
 
 echo "[obs] rollback removes the gateway marker"
-outr=$(ctl ouro tool run observability/rollback --dispatch relay1 --spec "$SPEC")
+outr=$(ctl ouro-ops tool run observability/rollback --dispatch relay1 --spec "$SPEC")
 echo "$outr" | jqpy "d['status']" | grep -qx ok || fail "rollback not ok: $outr"
 pass "rollback: gateway removed"
 

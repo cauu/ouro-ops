@@ -2,7 +2,7 @@
 //!
 //! The generated `EMBEDDED` slice (build.rs → `$OUT_DIR/embedded_skills.rs`) is the single
 //! in-binary source for BOTH the decision layer (`<skill>/SKILL.md`, served by
-//! `ouro skill show`, R2 N3) and the mechanism layer (`<skill>/scripts/*.sh`, `lib/*.sh`,
+//! `ouro-ops skill show`, R2 N3) and the mechanism layer (`<skill>/scripts/*.sh`, `lib/*.sh`,
 //! schemas). Nothing is fetched from disk or network at runtime for the installed binary.
 
 use std::collections::BTreeMap;
@@ -23,7 +23,7 @@ pub fn asset(rel_path: &str) -> Option<&'static [u8]> {
 }
 
 /// The decision-layer doc (`<skill>/SKILL.md`) for a skill, as text. This is the
-/// authoritative decision source the agent consumes via `ouro skill show` — NOT the prompt.
+/// authoritative decision source the agent consumes via `ouro-ops skill show` — NOT the prompt.
 pub fn skill_doc(skill: &str) -> Option<&'static str> {
     asset(&format!("{skill}/SKILL.md")).and_then(|b| std::str::from_utf8(b).ok())
 }
@@ -168,7 +168,7 @@ pub fn parse_floor(constraint: &str) -> Option<(u64, u64, u64)> {
 /// decision docs / mechanism scripts / schemas, the overall embedded digest, and the built-in
 /// `required_ouro` floor. At release this is signed and published alongside the binary; a
 /// spoofed prompt cannot alter it (the prompt only *references* the digest, R2 N3), and
-/// `ouro manifest verify` proves the running binary's embedded assets match the signed set.
+/// `ouro-ops manifest verify` proves the running binary's embedded assets match the signed set.
 pub fn bundle_manifest() -> serde_json::Value {
     serde_json::json!({
         "manifest_version": 1,
@@ -220,7 +220,7 @@ mod tests {
     #[test]
     fn committed_manifest_matches_embedded() {
         // p2-6/TC-4/TC-13 drift guard: editing any skill/schema without regenerating
-        // packaging/bundle-manifest.json (via `ouro manifest show`) fails CI here.
+        // packaging/bundle-manifest.json (via `ouro-ops manifest show`) fails CI here.
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/packaging/bundle-manifest.json");
         let committed: serde_json::Value =
             serde_json::from_slice(&std::fs::read(path).expect("committed manifest present"))
@@ -230,7 +230,7 @@ mod tests {
             assert_eq!(
                 committed.get(key),
                 actual.get(key),
-                "bundle manifest drift in {key}: run `ouro manifest show > packaging/bundle-manifest.json`"
+                "bundle manifest drift in {key}: run `ouro-ops manifest show > packaging/bundle-manifest.json`"
             );
         }
     }

@@ -11,7 +11,7 @@ MACHINE="${OURO_MACHINE:?OURO_MACHINE required}"
 CARDANO_ROOT="${OURO_CARDANO_ROOT:-/opt/cardano}"
 CONFIG_DIR="$CARDANO_ROOT/config"
 RENDERED="$CONFIG_DIR/$MACHINE"
-OURO="${OURO_BIN:-ouro}"
+OURO="${OURO_BIN:-ouro-ops}"
 
 # The `node` user exists only on a real node host (container); on the dev host it is
 # absent, so ownership enforcement/chown are conditional on it existing.

@@ -18,9 +18,9 @@ agent loop 与交互 UI 复用现成 agent harness（Claude Code / Cowork），�
 
 ## 安全模型（机制级，非 prompt 约定）
 
-- **写操作唯一入口**：一切写操作只能经 `ouro tool run <skill>/<script>`；该命令建审计上下文、注入 **HMAC 签名的 invocation token**，脚本经 `ouro tool verify-context` 校验后才放行——仅设置 `OURO_AUDIT_ID` 环境变量无法绕过。
+- **写操作唯一入口**：一切写操作只能经 `ouro-ops tool run <skill>/<script>`；该命令建审计上下文、注入 **HMAC 签名的 invocation token**，脚本经 `ouro-ops tool verify-context` 校验后才放行——仅设置 `OURO_AUDIT_ID` 环境变量无法绕过。
 - **强制审计**：每次调用记录 append-only 的 `start` / `finish` / `crash` 事件（SQLite）。
-- **带外确认令牌**：破坏性动作（`kes push`、`rollback`）需人显式经 `ouro confirm create` 签发的一次性 `tok_` 令牌；agent 无签发权限，不存在可猜测的静态令牌。
+- **带外确认令牌**：破坏性动作（`kes push`、`rollback`）需人显式经 `ouro-ops confirm create` 签发的一次性 `tok_` 令牌；agent 无签发权限，不存在可猜测的静态令牌。
 - **密钥隔离**：冷钥 / KES skey / VRF 永不进模型上下文；JSON / 审计 / 日志只记录 hash、路径、counter、metadata。
 - **确定性编排**：跨机顺序由 `upgrade/scripts/run.sh` 执行（原子 machine lock、relay quorum、BP-last、verify-before-next、失败即停批次）；「BP + 至少一个 relay 在线」不变式由 `spec.upgrade.min_online_relays`（默认 1）机制强制，不可经环境放宽。
 

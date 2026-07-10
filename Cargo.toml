@@ -8,7 +8,7 @@ description = "Deterministic Cardano stake pool operations CLI"
 path = "crates/ouro/src/lib.rs"
 
 [[bin]]
-name = "ouro"
+name = "ouro-ops"
 path = "crates/ouro/src/main.rs"
 
 [dependencies]
