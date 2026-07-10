@@ -269,6 +269,12 @@ agent 装 skill",又不给决策层留投毒面。
   供应链;残留风险的知情接受)
 - [ ] p4-4(可选加固轨)受限 agent-run 硬命令面:仅允许 `ouro` 子命令、无 shell/网络/凭据旁路 +
   对抗性绕过测试(把云 agent 便利模式升级为"安全路径")
+- [x] p1-restyle 首页视觉重设计:采用 bubble-studio 设计系统(`bubble-studio-assets/design/
+  DESIGN-bubble-light.md` + extensions)重做 `web/onboarding/index.html` 的视觉层——毛玻璃导航、
+  hero aura(sky/lavender/mint/lemon 光斑 + grain)、双层 ink 蓝黑阴影、Cardano 轨道点环 logo/
+  装饰(克制)、操作卡片单选(替代 select)、segmented 网络/同步切换、role pill、深色终端窗口
+  (incana 同色影)输出区、reveal 入场 + reduced-motion 降级;**功能与安全门不变**(CSP/单一
+  fetch/`skill show` 指针/披露弹窗/校验逻辑全保留)。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 生成的 `pool-spec.yaml` 通过 `ouro-ops spec validate`(含 1 BP + N relay,N≥2;覆盖
@@ -352,6 +358,12 @@ agent 装 skill",又不给决策层留投毒面。
     N4 bootstrap 签名身份 pin 进仓库 artifact + 安装命令自动验证;N9 主向量=Homebrew(npx 次);
     N11 网站=单个自包含 HTML 零构建。写入 p1-1/p2-1/p2-4。
   · 未修:N5-N8 P2、N9-N11 余项——随实现期处理或后续 append。
+
+- 2026-07-10 p1-restyle completed: 首页按用户指定的 bubble-studio 设计原则重设计(简洁、科技感、
+  适度 Cardano 元素、现代表单交互;参考 ouro-pass.paopao.studio 的气质但不照搬)。视觉层全部重写
+  (token 化调色/字体/圆角/间距、glass nav、aura+grain、双层阴影、op 卡片、segmented control、
+  终端式 prompt 窗口、CTA band、reveal 动效);JS 生成逻辑仅适配控件形态(radio 取值),collect/
+  yaml/prompt/bootstrap/NET/OP/RE 与披露流程逐字保留。静态安全门与真浏览器验证均通过。
 
 ## 6. Validation Evidence (append-only)
 - p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
@@ -445,6 +457,14 @@ agent 装 skill",又不给决策层留投毒面。
   wrapper 名、ouro.* 输出事件标签、已归档 S0015 spec/design 历史。**重生成 bundle-manifest.json**(SKILL.md
   内容变)。验证:cargo 33 passed、python 全 pass、二进制 target/debug/ouro-ops、spec validate ok、网站 prompt
   全用 ouro-ops。
+
+- TC-3 | stack: python | command: python3 tests/test_web_generator.py | result: pass | note: p1-restyle 重设计后
+  CSP default-src 'none' + connect-src 单 host、唯一固定 fetch、无外链资源、skill-show 指针、披露、tool-run 门全过
+- TC-3/TC-3b | stack: ui | command: manual validation via Chrome (localhost:8080) | result: pass | note: p1-restyle
+  0 console error/0 CSP violation;live 版本拉取 11.0.1;op 卡片切换驱动字段矩阵(upgrade 隐 ticker、
+  troubleshooting 空 step3 + 终端标题跟随);披露弹窗列出机器拓扑后才可复制
+- TC-11 | stack: ui | command: manual reduced-motion/a11y spot check | result: pass | note: reveal JS-gated、
+  prefers-reduced-motion 全量降级、radiogroup/aria-label 保留、focus-visible 3px 焦点环
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
