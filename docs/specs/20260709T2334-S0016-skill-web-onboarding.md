@@ -286,6 +286,10 @@ agent 装 skill",又不给决策层留投毒面。
   incana→sea、终端/on-color 按钮同色系阴影转 sea、setup kicker 统一 sea;④modal 拆两步:
   Step 1 Configure(fleet+操作字段+校验)→ Continue(校验不过留在本步并滚到错误)→ Step 2
   Copy(披露提示+终端+Back/Copy),顶部步骤胶囊指示,切步重置滚动。安全门不变。
+- [x] p1-restyle-fix3 hero 图形改为**真 Cardano logo**(用户指出自创轨道球不是 Cardano logo):
+  采用 simple-icons 的 Cardano 官方几何(CC0,构建期取回、**内嵌** path,页面零出站),
+  以 sea 调色板做 3D 渲染——径向渐变受光 + 左上高光层 + 同色系软投影 + 环境辉光
+  (defs path + 多层 <use>,单一几何真源)。
 ## 4. Test and Acceptance Criteria
 - TC-1 生成的 `pool-spec.yaml` 通过 `ouro-ops spec validate`(含 1 BP + N relay,N≥2;覆盖
   mainnet/preprod/preview、genesis vs Mithril、缺失/非法必填字段的 fixture)。
@@ -382,6 +386,9 @@ agent 装 skill",又不给决策层留投毒面。
 - 2026-07-10 p1-restyle-fix2 completed: sea 主色强化 + hero 3D 轨道球 + modal 两步向导。验证:静态门
   pass;真浏览器——orb 渲染正常且不压文案、Step1→Continue→Step2 切换正确(胶囊高亮跟随)、披露弹窗
   叠层于 Step2 之上、Back 返回、0 console 错误。
+
+- 2026-07-10 p1-restyle-fix3 completed: hero 换为官方 Cardano mark(simple-icons CC0 path 内嵌)+
+  sea 3D 渲染。验证:静态门 pass(无外链资源,SVG 全内联);真浏览器渲染正常、不压 hero 文案。
 
 ## 6. Validation Evidence (append-only)
 - p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
@@ -489,6 +496,9 @@ agent 装 skill",又不给决策层留投毒面。
 
 - TC-3/TC-3b/TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
   p1-restyle-fix2 两步向导后所有静态安全门不变;Step2 才可复制且披露确认仍强制;SVG orb 为内联资源(零出站)
+
+- TC-3/TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
+  p1-restyle-fix3 真 Cardano logo 为内嵌 path(CC0),零新增出站;hero 视觉核验通过
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
