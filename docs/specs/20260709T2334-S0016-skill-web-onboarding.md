@@ -317,6 +317,8 @@ agent 装 skill",又不给决策层留投毒面。
   CTA band 之前的**横向三栏轻量安全带**(无卡片容器,canvas 底)。
 - [x] p1-restyle-fix11 trust 卡回归首屏(用户 review:横排放页尾没意义):恢复最初的三张白色
   信任卡形式,置于 hero 之下、两个步骤面板之上(叙事:主张 → 凭证 → 行动);步骤面板保持相邻。
+- [x] p1-restyle-fix12 标题文案(用户 review:"not your xxx" 句式刻意):h1 改为直陈工具作用的
+  一句话 "Operate your stake pool with an AI agent."(sea 强调 "with an AI agent",固定断行两行)。
 ## 4. Test and Acceptance Criteria
 - TC-1 生成的 `pool-spec.yaml` 通过 `ouro-ops spec validate`(含 1 BP + N relay,N≥2;覆盖
   mainnet/preprod/preview、genesis vs Mithril、缺失/非法必填字段的 fixture)。
@@ -438,6 +440,9 @@ agent 装 skill",又不给决策层留投毒面。
 
 - 2026-07-10 p1-restyle-fix11 completed: trust 白卡回到 hero 与面板①之间(首次修复时 CSS 替换
   未命中导致无卡片样式,已用精确 Edit 修正)。验证:静态门 pass;真浏览器三卡 3 栏正常渲染。
+
+- 2026-07-10 p1-restyle-fix12 completed: h1 换直陈句并修断行(br 固定两行,避免 balance 断在
+  stake/pool 中间)。验证:静态门 pass;真浏览器渲染正常。
 
 ## 6. Validation Evidence (append-only)
 - p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
@@ -572,6 +577,9 @@ agent 装 skill",又不给决策层留投毒面。
 
 - TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
   p1-restyle-fix11 页面节奏:hero → trust 3 卡 → 面板① → 面板② → CTA → footer
+
+- TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
+  p1-restyle-fix12 h1 两行断行正确、不与 orb 重叠
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。
