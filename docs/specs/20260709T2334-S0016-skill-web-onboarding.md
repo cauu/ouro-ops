@@ -312,6 +312,9 @@ agent 装 skill",又不给决策层留投毒面。
   面板**——面板① Set up once(序号圆 + 安装 pill + 交叉核对提示),面板② Pick an operation
   (序号圆 + 说明 + trust-list 侧栏 + 6 操作卡);撤 hero 内嵌 stepper,步骤顺序由相邻面板 1→2
   直接表达。
+- [x] p1-restyle-fix10 步骤面板收尾(用户 review):①删除面板① 安装条旁的交叉核对小字
+  (contract/init 细节留给正式文档,不挤首屏);②trust-list 移出面板②,改为两步面板之后、
+  CTA band 之前的**横向三栏轻量安全带**(无卡片容器,canvas 底)。
 ## 4. Test and Acceptance Criteria
 - TC-1 生成的 `pool-spec.yaml` 通过 `ouro-ops spec validate`(含 1 BP + N relay,N≥2;覆盖
   mainnet/preprod/preview、genesis vs Mithril、缺失/非法必填字段的 fixture)。
@@ -427,6 +430,9 @@ agent 装 skill",又不给决策层留投毒面。
 
 - 2026-07-10 p1-restyle-fix9 completed: 两步改为相邻面板布局。验证:静态门 pass;真浏览器两面板
   相邻渲染、白卡在 soft 面板上对比清晰、os 切换/copy/modal 入口不受影响。
+
+- 2026-07-10 p1-restyle-fix10 completed: 页面节奏定型为 hero → 面板① → 面板② → 安全三栏 → CTA →
+  footer。验证:静态门 pass;真浏览器渲染正常。
 
 ## 6. Validation Evidence (append-only)
 - p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
@@ -555,6 +561,9 @@ agent 装 skill",又不给决策层留投毒面。
 
 - TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
   p1-restyle-fix9 面板为 section+aria-labelledby,步骤语义清晰;#setup/#operate 锚点保留
+
+- TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
+  p1-restyle-fix10 trust 内容保留于独立 aria-label section;移动端退化单栏
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。

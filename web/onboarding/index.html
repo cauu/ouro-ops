@@ -112,9 +112,10 @@
   .btn-icon:hover{color:var(--orange);background:rgba(229,105,46,.08)}
 
   /* ============ trust list (rides beside the operate header) ============ */
-  .operate-head{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:36px;align-items:start}
-  @media (max-width:960px){.operate-head{grid-template-columns:1fr;gap:22px}}
   .step-panel .ops{margin-top:24px}
+  .trust-strip{margin-top:64px}
+  .trust-strip .trust-list{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin:0}
+  @media (max-width:860px){.trust-strip .trust-list{grid-template-columns:1fr;gap:16px}}
   .trust-list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:14px}
   .trust-list li{display:flex;gap:12px;align-items:flex-start;font-size:13.5px;line-height:1.5;color:var(--muted)}
   .trust-list li b{color:var(--body-strong);font-weight:600}
@@ -392,14 +393,11 @@
         <code id="setup-out">brew install ouro/tap/ouro</code>
         <button type="button" class="btn btn-oncolor" id="copy-setup">Copy</button>
       </div>
-      <p class="hint">Cross-check <code>ouro-ops contract</code> against this site ·
-        arm each target with <code>ouro-ops init</code> (S0017).</p>
     </div>
   </section>
 
   <section class="step-panel reveal" id="operate" aria-labelledby="s2-h">
-    <div class="operate-head">
-      <div class="panel-head">
+    <div class="panel-head">
         <span class="step-dot">2</span>
         <div>
           <h2 id="s2-h">Pick an operation</h2>
@@ -407,22 +405,8 @@
             and gives you one prompt to paste into your agent.</p>
         </div>
       </div>
-      <ul class="trust-list" aria-label="security model">
-      <li>
-        <span class="tile t-sea" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V6z"/></svg></span>
-        <span><b>Zero upload</b> — generated locally; the only network call is a read-only version check.</span>
-      </li>
-      <li>
-        <span class="tile t-lavender" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8"/></svg></span>
-        <span><b>Verified procedures</b> — the agent reads steps from <code>ouro-ops skill show</code>, embedded in the signed binary.</span>
-      </li>
-      <li>
-        <span class="tile t-mint" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
-        <span><b>Gated writes</b> — every change runs through audited <code>ouro-ops tool run</code>, with human confirmation.</span>
-      </li>
-    </ul>
-  </div>
-  <div class="ops reveal" id="ops">
+
+    <div class="ops reveal" id="ops">
     <button type="button" class="op-card" data-op="deploy">
       <span class="tile t-sea" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="M6.5 9.5 12 4l5.5 5.5"/><path d="M4 20h16"/></svg></span>
       <span><b>deploy</b><small>Bring up / converge the pool</small></span>
@@ -451,6 +435,24 @@
   </section>
 </div>
 
+
+<!-- The security model, as a quiet 3-up strip AFTER the two steps — supporting, not interrupting -->
+<section class="trust-strip wrap reveal" aria-label="security model">
+  <ul class="trust-list" aria-label="security model">
+      <li>
+        <span class="tile t-sea" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V6z"/></svg></span>
+        <span><b>Zero upload</b> — generated locally; the only network call is a read-only version check.</span>
+      </li>
+      <li>
+        <span class="tile t-lavender" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8"/></svg></span>
+        <span><b>Verified procedures</b> — the agent reads steps from <code>ouro-ops skill show</code>, embedded in the signed binary.</span>
+      </li>
+      <li>
+        <span class="tile t-mint" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+        <span><b>Gated writes</b> — every change runs through audited <code>ouro-ops tool run</code>, with human confirmation.</span>
+      </li>
+    </ul>
+</section>
 <div class="cta-band wrap reveal">
   <div class="cta-band-in">
     <div><h2>Open source, end to end.</h2>
