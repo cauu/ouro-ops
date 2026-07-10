@@ -298,6 +298,8 @@ agent 装 skill",又不给决策层留投毒面。
   (与信任卡重复的机制论述删除);setup 终端从多行窗口压成**单行安装命令 pill**(OS tab + 命令 +
   Copy),与主 CTA "Pick an operation →" 并排为**一行动作行**(step1→step2 动线);提示压成
   一行半(验签交叉核对 + S0017 init);cross-check 命令移入提示文案。
+- [x] p1-restyle-fix6 hero orb 遮挡修复(用户 review:"遮住了"):logo 的 z-index 0→-1(退到
+  hero 内容层之下,Linux 长命令时 CTA 不再被卫星圆点覆盖),并右移出内容热区(right -20px)。
 ## 4. Test and Acceptance Criteria
 - TC-1 生成的 `pool-spec.yaml` 通过 `ouro-ops spec validate`(含 1 BP + N relay,N≥2;覆盖
   mainnet/preprod/preview、genesis vs Mithril、缺失/非法必填字段的 fixture)。
@@ -403,6 +405,8 @@ agent 装 skill",又不给决策层留投毒面。
 
 - 2026-07-10 p1-restyle-fix5 completed: hero 密度收敛为「3 行 lede + 1 行动作 + 1.5 行提示」,首屏
   可见信任卡。验证:静态门 pass;真浏览器 mac/linux pill 切换正常、Copy 正常、0 console 错误。
+
+- 2026-07-10 p1-restyle-fix6 completed: orb 退至内容层后;Linux 最长命令下动作行完全可读。
 
 ## 6. Validation Evidence (append-only)
 - p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
@@ -519,6 +523,9 @@ agent 装 skill",又不给决策层留投毒面。
 
 - TC-3/TC-11 | stack: python+ui | command: python3 tests/test_web_generator.py + manual Chrome | result: pass | note:
   p1-restyle-fix5 安装 pill 仍纯静态文本;安全门不变
+
+- TC-11 | stack: ui | command: manual Chrome (Linux tab, longest command) | result: pass | note: p1-restyle-fix6
+  CTA/命令 pill 不再被 orb 覆盖
 
 ## 7. Change Requests (append-only)
 - 2026-07-09 范围拆分:p5/p6/审计反签名 移出 → S0017。

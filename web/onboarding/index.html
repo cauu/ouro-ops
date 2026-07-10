@@ -80,8 +80,8 @@
     0%{transform:translate3d(0,0,0) scale(1)}
     50%{transform:translate3d(6%,-4%,0) scale(1.12)}
     100%{transform:translate3d(-5%,3%,0) scale(1.04)}}
-  /* the Cardano mark, rendered 3D in the sea palette, floating in the hero */
-  .hero-orb{position:absolute;right:10px;top:-10px;width:460px;height:460px;pointer-events:none;z-index:0}
+  /* the Cardano mark, rendered 3D in the sea palette, floating BEHIND the hero content */
+  .hero-orb{position:absolute;right:-20px;top:-20px;width:460px;height:460px;pointer-events:none;z-index:-1}
   @media (min-width:861px) and (max-width:1200px){.hero-orb{width:360px;right:-40px;top:30px}}
   .hero-in{position:relative;z-index:1;padding-top:88px;padding-bottom:56px}
   .kicker{font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);
