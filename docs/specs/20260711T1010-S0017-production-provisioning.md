@@ -298,8 +298,13 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   逐一改写 runtime/upgrade/kes-rotation/deploy 全部生命周期脚本只调 adapter;**静态闸**禁 adapter 外
   `pgrep|pkill|setsid|systemctl|docker|podman`
   (交付:bare 模式 adapter + 静态闸 + bare 真节点 e2e;systemd/container 分模式 = p2-5 层叠,多模式 e2e 待 p2-9 fixtures)
-- [ ] p2-9 (new) **托管模式测试 fixtures**:systemd-in-docker / 嵌套 docker / podman / 混合托管目标 +
+- [~] p2-9 (new) **托管模式测试 fixtures**:systemd-in-docker / 嵌套 docker / podman / 混合托管目标 +
   `make e2e-t2-runtime-modes`(补 TC-5/TC-7 基座)
+  (**已交付 systemd**:`fixtures/e2e/systemd-node/`(systemd PID1 + `cardano-node.service`,private cgroupns
+  =干净 `/system.slice` 无 docker id,忠实 bare-metal/VM systemd 主机)+ `e2e-t2-runtime-modes` harness +
+  make 目标;真 systemd 验证 detect=systemd/unit + `systemctl restart <unit>` 分发使 PID 轮转、MainPID 一致。
+  **待**:docker-in-docker / podman fixture(TC-7 容器升级基座,较重,且 container-upgrade=换镜像逻辑本身未建模)、
+  混合托管目标。)
 
 ### p3 — 审计完整性 & 传输安全
 - [ ] p3-1 (rev) 目标机权威审计**哈希链 + 反签名 + 独立远端锚点 + ack**(机器身份 + 单调序号;检测修改/删除/
@@ -380,6 +385,15 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T14:55+08:00 p2-9 部分交付(systemd 真环境 mode fixture):可行性先探明——本机 Docker Desktop 下
+  systemd 可作 PID1(privileged + `/sys/fs/cgroup` 挂载),且 **private cgroupns** 下 service cgroup 为干净
+  `/system.slice/<unit>`(无外层 docker id),忠实还原裸机/VM systemd 主机(host cgroupns 会泄露 docker id 致误判
+  docker,故用 private)。新增 `fixtures/e2e/systemd-node/Dockerfile`(systemd + `cardano-node.service` 跑
+  stand-in `cardano-node run` 进程 + ouro-skills)、`e2e-t2-runtime-modes.sh` harness、make 目标。真 systemd 验证:
+  (1) `detect/runtime` → mode=systemd、unit=cardano-node.service、container_id=None;(2) adapter 走
+  `ouro_node_effective_mode`+`guard`+`restart_mode systemd` → `systemctl restart <unit>` 使 PID 50→167 轮转、
+  unit active、systemd MainPID 与检测 pid 一致。把先前仅桩测的 systemd 分支变为真环境验证。**待**:docker-in-docker
+  / podman fixture(TC-7,较重 + container-upgrade 逻辑本身未建模)、混合托管目标。
 - 2026-07-11T14:15+08:00 p2-5b enforcement 交付(破坏性派发的目标绑定确认门):`run_tool_dispatch` 对
   `CONFIRM_BOUND_TOOLS = {runtime/restart, runtime/topology-apply, kes-rotation/rotate}` 强制:控制侧先跑只读
   `detect/runtime`(新 helper `dispatch_runtime_evidence`,SSH 探测 + 解析 `data.evidence_hash`,非 0/不可解析
@@ -536,6 +550,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   counter 0→1(pid 45→368 重启 + forging)、#2 单调 1→2。
 - p2-5b(gate)| stack: e2e | command: make e2e-t2-secrets | result: pass | note: 确认流不引入泄露——corpus 0 secret
   指纹命中(23 指纹扫描)、canary 仍被检出(2 命中);证明 detect+confirm create 无泄密。
+- TC-5(systemd leg)| stack: e2e | command: make e2e-t2-runtime-modes | result: pass | note: 真 systemd 主机:
+  detect/runtime=systemd + unit=cardano-node.service + 无 container id;`systemctl restart <unit>` 分发 PID 50→167
+  轮转、unit active、MainPID 一致。docker/podman leg(TC-7)待重 fixture。
 
 ## 7. Change Requests (append-only)
 - 2026-07-10 评审驱动的 draft 强化(见执行日志);属 draft 阶段自由编辑,不改变 S0017 的范围边界
