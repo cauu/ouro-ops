@@ -237,7 +237,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 > 依赖 p1 传输 + p2 supervisor;p4 deploy 依赖已 provision 目标。顺序非纯线性,见各项。
 
 ### p1 — 目标机 provisioning(Model P + 三补强)
-- [ ] p1-1 (rev) target-mutating bootstrap 传输,**独立模块 `bootstrap.rs`**;有意突破现状 exec-only/no-scp;
+- [x] p1-1 (rev) target-mutating bootstrap 传输,**独立模块 `bootstrap.rs`**;有意突破现状 exec-only/no-scp;
   bootstrap 凭据独立于 `ouro-exec`、agent 不可得(enforcement 见 p1-7);**per-op dispatch 的 no-scp 断言保留**,
   init 传输走独立断言
 - [ ] p1-2 (rev) `ouro-ops init`:对真机幂等 provisioning(用户 + wrapper + sudoers + pubkey-only sshd +
@@ -387,6 +387,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T17:10+08:00 p1-1 completed(特权 bootstrap 传输模块):新增 `crates/ouro/src/bootstrap.rs`——
+  与 exec-only 的 `ssh.rs` **并列的独立模块**,只供 `ouro-ops init`。首次接入 = 已有 sudo 用户 + SSH key
+  (`BootstrapTarget{host,port,user}`,user≠ouro-exec);`run_argv`= `ssh … <user>@<host> sudo -n sh -c '<cmd>'`
+  跑特权 provisioning 命令;`push_argv`= 文件字节**经 SSH 通道**管道进远端 `sudo sh -c 't=$(mktemp) && cat>$t &&
+  install -D -m <mode> -o root -g root $t <dest> && rm $t'`(**无 scp 依赖**、原子安装、建父目录)。注入防护:每个
+  动态字段 shell_quote(双层:dest 为内层 sh -c、整条 remote 为外层 ssh 登录 shell),mode 校验为 3-4 位八进制。
+  `HostKeyCheck{AcceptNew,Yes}` 参数化(p3-2/p3-3 换成 pin)。**per-op no-scp 边界保留**:未动 `ssh.rs`,其
+  no-scp 断言随全量 41 cargo 测试仍绿。6 个单测:argv 形态、注入失效(run/push)、mode 校验、dry-run no-op。
 - 2026-07-11T16:40+08:00 P0-1 决策落定(见 §7 Change Requests):用户选便利模式(选项 C),不做 bootstrap 凭据
   隔离,依赖上游安全;保留唯一非防护动作=诚实标注残余风险。据此 p1-7 = 便利模式 + 文档标注,TC-4 收窄,
   S0016 受限 agent runner 不再作前置。p1 其余项(init/deinit 机制、安装账本、host-key pin、平台矩阵)照常。
@@ -521,6 +529,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p1-1 | stack: rust | command: cargo test -q bootstrap; cargo test -q -- --test-threads=1 | result: pass | note:
+  bootstrap 6 单测(argv 形态/注入失效/mode 校验/dry-run)+ 全量 41 pass;ssh.rs no-scp 断言未动仍绿(per-op
+  边界保留)。独立模块,仅供 init;首次接入=sudo 用户,文件经 SSH 通道 install 无 scp。
 - p1-10 | stack: rust | command: cargo build --release --locked | result: pass | note: 产出
   target/release/ouro-ops(无 ouro);strip 无需 `|| true` 即成功。
 - p1-10 | stack: rust | command: cargo test -q | result: pass | note: 33 passed / 0 failed,名字修正无回归。
