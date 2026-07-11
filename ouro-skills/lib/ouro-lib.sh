@@ -140,3 +140,55 @@ ouro_detect_firewall() {
     printf 'none\n'
   fi
 }
+
+# --- Supervisor adapter (S0017 p2-8) -----------------------------------------
+# The ONE place allowed to call the raw process-supervision primitives
+# (pgrep/pkill/setsid). Every lifecycle skill (runtime/upgrade/kes-rotation/
+# deploy/observability) must route node + daemon start/stop/detect through
+# these functions, never inline. A static gate (tests/test_supervisor_gate.py,
+# TC-14) forbids those primitives anywhere else, so a node started here cannot
+# be half-managed by a stray pkill elsewhere (split-brain).
+#
+# Bare mode only for now: this wraps the current host-process behavior behind a
+# stable API. Supervisor-mode awareness (systemd unit restart, container image
+# re-pin + recreate) is layered onto ouro_node_* by p2-5 without touching the
+# call sites here.
+
+# Generic process primitives — match by full command line (`pgrep -f`).
+ouro_proc_running() { pgrep -f "$1" >/dev/null 2>&1; }
+ouro_proc_pid()     { pgrep -f "$1" 2>/dev/null | head -1 || true; }
+ouro_proc_stop()    { pkill -f "$1" 2>/dev/null || true; sleep "${2:-2}"; }
+
+# Spawn a detached background daemon: $1 = logfile, rest = command + args.
+# Centralizes `setsid` so the supervisor gate can forbid it elsewhere. The
+# daemon inherits the caller's environment (callers export any needed vars
+# before invoking — e.g. the telemetry gateway's non-secret auth-file path).
+ouro_daemon_spawn() {
+  local log="$1"; shift
+  setsid "$@" >"$log" 2>&1 </dev/null &
+}
+
+# cardano-node lifecycle. `OURO_NODE_MATCH` is the single source of the
+# process-match pattern; all node argv is derived from OURO_DEVNET_DIR so the
+# four call sites (restart/topology-apply/upgrade/rotate) share one definition.
+OURO_NODE_MATCH="${OURO_NODE_MATCH:-cardano-node run}"
+ouro_node_running() { ouro_proc_running "$OURO_NODE_MATCH"; }
+ouro_node_pid()     { ouro_proc_pid "$OURO_NODE_MATCH"; }
+ouro_node_stop()    { ouro_proc_stop "$OURO_NODE_MATCH" "${1:-2}"; }
+
+ouro_node_start() {
+  local devnet="${OURO_DEVNET_DIR:-/opt/devnet}"
+  local pool="$devnet/pools-keys/pool1"
+  local sock="$devnet/node.socket"
+  # KEEP the existing db across restarts (wiping it re-triggers the p2-0 cold-start
+  # trap). Port + log path are fixed and identical across all four call sites.
+  ouro_daemon_spawn /var/log/cardano-node.log \
+    cardano-node run \
+    --config "$devnet/config.json" --topology "$devnet/topology.json" \
+    --database-path "$devnet/db" --socket-path "$sock" \
+    --shelley-kes-key "$pool/kes.skey" --shelley-vrf-key "$pool/vrf.skey" \
+    --shelley-operational-certificate "$pool/opcert.cert" --port 3001
+}
+
+# Rolling restart: stop (with settle) then start onto the on-disk config/keys.
+ouro_node_restart() { ouro_node_stop; ouro_node_start; }

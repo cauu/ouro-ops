@@ -41,7 +41,7 @@ BEFORE=$(ondisk_counter "$POOL/opcert.cert")
 # (e.g. BEFORE=-1, AFTER=0 → 0 == -1+1). Also snapshot the pre-restart PID + block so the
 # post-restart check proves a genuine restart + NEW forging (not a stale db replay).
 [ "${BEFORE:--1}" -ge 0 ] 2>/dev/null || ouro_emit_error 30 "kes_precheck_failed" "could not read on-disk opcert counter before rotation"
-PRE_PID="$(pgrep -f 'cardano-node run' | head -1 || true)"
+PRE_PID="$(ouro_node_pid)"
 PRE_BLOCK="$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
   | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))
@@ -63,22 +63,13 @@ mv -f "$POOL/kes.vkey.new"  "$POOL/kes.vkey"
 mv -f "$POOL/opcert.cert.new" "$POOL/opcert.cert"
 
 echo "[kes] restarting node onto rotated opcert" >&2
-pkill -f 'cardano-node run' 2>/dev/null || true
-sleep 2
-# KEEP the existing db: the chain is unchanged (only the forging credential rotates). Wiping
-# it would restart the node at the current wall-clock slot with no blocks to bridge the Praos
-# forecast window -> NoLedgerView -> it never forges (the p2-0 cold-start trap).
-setsid cardano-node run \
-  --config "$DEVNET/config.json" --topology "$DEVNET/topology.json" \
-  --database-path "$DEVNET/db" --socket-path "$SOCK" \
-  --shelley-kes-key "$POOL/kes.skey" --shelley-vrf-key "$POOL/vrf.skey" \
-  --shelley-operational-certificate "$POOL/opcert.cert" --port 3001 \
-  >/var/log/cardano-node.log 2>&1 < /dev/null &
+# Restart onto the new opcert/KES skey (db preserved — see ouro_node_start's cold-start note).
+ouro_node_restart
 
 # Ground-truth: the node must be a NEW process (restarted) AND forge PAST the pre-restart block
 # with the new opcert. `block > PRE_BLOCK` (not `> 0`) rejects a node that merely replays the
 # preserved db without producing a new block (e.g. a bad opcert that starts but cannot forge).
-NEW_PID="$(pgrep -f 'cardano-node run' | head -1 || true)"
+NEW_PID="$(ouro_node_pid)"
 if [ -n "$PRE_PID" ] && [ "$NEW_PID" = "$PRE_PID" ]; then
   ouro_emit_error 30 "node_did_not_restart" "node PID unchanged ($NEW_PID) after opcert rotation"
 fi

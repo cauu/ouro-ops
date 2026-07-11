@@ -13,7 +13,7 @@ if [ -f "$DEVNET/config.json" ]; then
   MAGIC=1
   [ -n "${OURO_SPEC:-}" ] && MAGIC="$(python3 -c 'import yaml,sys;print(yaml.safe_load(open(sys.argv[1]))["pool"]["network_magic"])' "$OURO_SPEC" 2>/dev/null || echo 1)"
   export CARDANO_NODE_SOCKET_PATH="$SOCK"
-  pgrep -f 'cardano-node run' >/dev/null 2>&1 || ouro_emit_error 30 "node_not_running" "no running node on $MACHINE"
+  ouro_node_running || ouro_emit_error 30 "node_not_running" "no running node on $MACHINE"
   tip_block() { cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
     | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))

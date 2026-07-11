@@ -11,7 +11,7 @@ MARKER="$STATE_DIR/upgraded-$MACHINE"
 DEVNET="${OURO_DEVNET_DIR:-/opt/devnet}"
 SPEC="${OURO_SPEC:-}"
 
-# Role from the SPEC, not runtime pgrep — a role=bp host with a DEAD node must still take the
+# Role from the SPEC, not a runtime process scan — a role=bp host with a DEAD node must still take the
 # REAL path (a dead node cannot be silently treated as a relay and marker-passed). Magic also
 # from the spec (OURO_NETWORK_MAGIC is not in the ouro-ops tool run env allowlist).
 ROLE=""; MAGIC=1
@@ -29,7 +29,7 @@ fi
 # host so unit tests stay in marker mode). The role branch means a role=bp host with a DEAD node
 # still takes the real path and FAILS there, rather than being silently marker-passed.
 NODE_HOST=0
-if pgrep -f 'cardano-node run' >/dev/null 2>&1 || { [ "$ROLE" = "bp" ] && [ -f "$DEVNET/config.json" ]; }; then
+if ouro_node_running || { [ "$ROLE" = "bp" ] && [ -f "$DEVNET/config.json" ]; }; then
   NODE_HOST=1
 fi
 
@@ -40,10 +40,9 @@ if [ "$NODE_HOST" = 1 ]; then
   if [ -f "$MARKER" ]; then
     ouro_emit_ok false "node already rolling-upgraded"
   fi
-  POOL="$DEVNET/pools-keys/pool1"
   SOCK="$DEVNET/node.socket"
   export CARDANO_NODE_SOCKET_PATH="$SOCK"
-  PRE_PID="$(pgrep -f 'cardano-node run' | head -1 || true)"
+  PRE_PID="$(ouro_node_pid)"
   [ -n "$PRE_PID" ] || ouro_emit_error 30 "node_not_running" "expected a running node on $MACHINE before upgrade"
   PRE_BLOCK="$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
     | python3 -c 'import json,sys
@@ -53,14 +52,7 @@ except: print(-1)' 2>/dev/null || echo -1)"
   mkdir -p "$STATE_DIR"
   printf '%s' "$PRE_PID"   > "$STATE_DIR/pre-pid-$MACHINE"
   printf '%s' "$PRE_BLOCK" > "$STATE_DIR/pre-block-$MACHINE"
-  pkill -f 'cardano-node run' 2>/dev/null || true
-  sleep 2
-  setsid cardano-node run \
-    --config "$DEVNET/config.json" --topology "$DEVNET/topology.json" \
-    --database-path "$DEVNET/db" --socket-path "$SOCK" \
-    --shelley-kes-key "$POOL/kes.skey" --shelley-vrf-key "$POOL/vrf.skey" \
-    --shelley-operational-certificate "$POOL/opcert.cert" --port 3001 \
-    >/var/log/cardano-node.log 2>&1 < /dev/null &
+  ouro_node_restart
   touch "$MARKER"
   ouro_emit_ok true "node rolling-restarted (pre pid=$PRE_PID block=$PRE_BLOCK recorded for verify)"
 else

@@ -31,11 +31,13 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(b"cardano_node_metrics 1\n")
 HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
 PYEOF
-  if pgrep -f 'telemetry-gateway.py' >/dev/null 2>&1 && [ -f "$MARKER" ]; then
+  if ouro_proc_running 'telemetry-gateway.py' && [ -f "$MARKER" ]; then
     ouro_emit_ok false "telemetry gateway already running"
   else
-    OURO_TEL_AUTH_FILE="$AUTH_FILE" setsid python3 /opt/ouro/telemetry-gateway.py "$PORT" \
-      >/var/log/telemetry-gateway.log 2>&1 < /dev/null &
+    # The daemon reads the (non-secret) auth-file PATH from the environment; export it so the
+    # detached process inherits it. The credential VALUE is never on argv, echoed, or logged.
+    export OURO_TEL_AUTH_FILE="$AUTH_FILE"
+    ouro_daemon_spawn /var/log/telemetry-gateway.log python3 /opt/ouro/telemetry-gateway.py "$PORT"
     up=0
     for _ in $(seq 1 20); do
       if python3 -c "import socket;socket.create_connection(('127.0.0.1',$PORT),1).close()" 2>/dev/null; then up=1; break; fi

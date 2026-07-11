@@ -26,15 +26,9 @@ PY
     ouro_emit_ok false "topology already applied (${#DESIRED} bytes, unchanged)"
   else
     printf '%s' "$DESIRED" > "$DEVNET/topology.json"
-    if pgrep -f 'cardano-node run' >/dev/null 2>&1; then
-      POOL="$DEVNET/pools-keys/pool1"; SOCK="$DEVNET/node.socket"
-      pkill -f 'cardano-node run' 2>/dev/null || true; sleep 2
-      setsid cardano-node run \
-        --config "$DEVNET/config.json" --topology "$DEVNET/topology.json" \
-        --database-path "$DEVNET/db" --socket-path "$SOCK" \
-        --shelley-kes-key "$POOL/kes.skey" --shelley-vrf-key "$POOL/vrf.skey" \
-        --shelley-operational-certificate "$POOL/opcert.cert" --port 3001 \
-        >/var/log/cardano-node.log 2>&1 < /dev/null &
+    # Apply the new topology by restarting the node onto it (only if one is running).
+    if ouro_node_running; then
+      ouro_node_restart
     fi
     touch "$MARKER"
     ouro_emit_ok true "topology applied + node restarted (producers=$(printf '%s' "$DESIRED" | grep -o addr | wc -l | tr -d ' '))"

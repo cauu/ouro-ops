@@ -32,7 +32,7 @@ else
   DEVNET="${OURO_DEVNET_DIR:-/opt/devnet}"
   SOCK="$DEVNET/node.socket"
   POOL="$DEVNET/pools-keys/pool1"
-  pgrep -f 'cardano-node run' >/dev/null 2>&1 || ouro_emit_error 20 "takeover_precondition_failed" "no running legacy cardano-node on target"
+  ouro_node_running || ouro_emit_error 20 "takeover_precondition_failed" "no running legacy cardano-node on target"
   [ -S "$SOCK" ] || ouro_emit_error 20 "takeover_precondition_failed" "legacy node socket not active"
   for k in kes.skey vrf.skey cold.skey; do
     [ -f "$POOL/$k" ] || ouro_emit_error 20 "takeover_precondition_failed" "legacy key missing: $k"

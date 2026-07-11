@@ -36,13 +36,13 @@ fi
 # ($DEVNET/config.json exists — absent on the dev host so unit tests stay in marker mode). On
 # such a role=bp host a missing socket/process is a FAILURE, never a marker pass (that is how a
 # dead BP slipped through before).
-if [ -S "$SOCK" ] || pgrep -f 'cardano-node run' >/dev/null 2>&1 || { [ "$ROLE" = "bp" ] && [ -f "$DEVNET/config.json" ]; }; then
+if [ -S "$SOCK" ] || ouro_node_running || { [ "$ROLE" = "bp" ] && [ -f "$DEVNET/config.json" ]; }; then
   export CARDANO_NODE_SOCKET_PATH="$SOCK"
   PRE_PID="$(cat "$STATE_DIR/pre-pid-$MACHINE" 2>/dev/null || echo "")"
   PRE_BLOCK="$(cat "$STATE_DIR/pre-block-$MACHINE" 2>/dev/null || echo -1)"
   # Ground-truth: the node must be a NEW process (restarted) AND forge PAST the pre-restart
   # block. `block > PRE_BLOCK` (not `> 0`) rejects a node that merely replays the preserved db.
-  NEW_PID="$(pgrep -f 'cardano-node run' | head -1 || true)"
+  NEW_PID="$(ouro_node_pid)"
   [ -n "$NEW_PID" ] || ouro_emit_error 30 "upgrade_verify_failed" "no running node on $MACHINE after upgrade"
   if [ -n "$PRE_PID" ] && [ "$NEW_PID" = "$PRE_PID" ]; then
     ouro_emit_error 30 "upgrade_verify_failed" "node PID unchanged ($NEW_PID) — restart did not happen on $MACHINE"

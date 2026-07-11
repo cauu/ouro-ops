@@ -27,8 +27,8 @@ if [[ "$(head -c1 "$ROLLBACK")" != "{" ]]; then
     ouro_emit_error 30 "keys_not_preserved" "a legacy key changed or is missing since takeover"
   fi
   # Continuity: the legacy node must still be running AND genuinely FORGING (tip advances across
-  # two samples) — a hung/stuck process that only `pgrep`-matches is not a healthy takeover.
-  pgrep -f 'cardano-node run' >/dev/null 2>&1 || ouro_emit_error 30 "node_not_running" "legacy node stopped after takeover"
+  # two samples) — a hung/stuck process that only name-matches is not a healthy takeover.
+  ouro_node_running || ouro_emit_error 30 "node_not_running" "legacy node stopped after takeover"
   tip_block() { cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
     | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))

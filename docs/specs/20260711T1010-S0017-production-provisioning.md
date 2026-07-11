@@ -272,9 +272,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [ ] p2-6 (rev) fail-closed:模式/候选模糊、混合/嵌套/多节点、幻觉选错、与声明不符 → exit 40 + conflict 码
 - [ ] p2-7 no-leak 可证伪测试:向探测器植入 env/config/inspect 里的 key-shaped + 通用 canary,断言 agent 侧
   输出零泄露
-- [ ] p2-8 (new) **中心 supervisor adapter**:`ouro_node_*` 统管 detect/stop/start/restart/recreate/status/verify;
+- [x] p2-8 (new) **中心 supervisor adapter**:`ouro_node_*` 统管 detect/stop/start/restart/recreate/status/verify;
   逐一改写 runtime/upgrade/kes-rotation/deploy 全部生命周期脚本只调 adapter;**静态闸**禁 adapter 外
   `pgrep|pkill|setsid|systemctl|docker|podman`
+  (交付:bare 模式 adapter + 静态闸 + bare 真节点 e2e;systemd/container 分模式 = p2-5 层叠,多模式 e2e 待 p2-9 fixtures)
 - [ ] p2-9 (new) **托管模式测试 fixtures**:systemd-in-docker / 嵌套 docker / podman / 混合托管目标 +
   `make e2e-t2-runtime-modes`(补 TC-5/TC-7 基座)
 
@@ -357,6 +358,16 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T11:05+08:00 p2-8 completed(中心 supervisor adapter + 静态闸):在 `ouro-lib.sh` 新增
+  supervisor adapter——通用进程原语 `ouro_proc_running/pid/stop`、后台守护 `ouro_daemon_spawn`、
+  cardano-node 封装 `ouro_node_running/pid/stop/start/restart`(bare 模式,argv 由 `OURO_DEVNET_DIR` 单一
+  推导)。把 `pgrep/pkill/setsid` 从 6 类脚本(runtime restart/topology-apply/verify、upgrade
+  upgrade-one/verify、kes-rotation rotate、deploy takeover/takeover-verify)以及遥测网关 install-gateway
+  全部收敛到 adapter,消除四处重复的 `setsid cardano-node run …` 与 `pkill;sleep 2`。新增静态闸
+  `tests/test_supervisor_gate.py`(TC-14):零容忍禁止 adapter 之外出现
+  `pgrep|pkill|setsid|systemctl|docker|podman`(含注释),并断言 adapter API 齐全 + 四个节点生命周期脚本确
+  经 `ouro_node_*`。因内嵌脚本变更,按 tamper-evident 机制重生成 `packaging/bundle-manifest.json`。
+  **注**:systemd/container 分模式执行 = p2-5(层叠到 `ouro_node_*` 不动调用点);多模式 e2e 待 p2-9 fixtures。
 - 2026-07-11T10:30+08:00 p1-10 completed(参考 fixture 修复,P3 二进制路径定稿 + 干净构建前置):
   统一二进制规范名/路径为 `/usr/local/bin/ouro-ops`(Cargo bin = `ouro-ops`,`ouro` 仅是 lib)。改 5 处
   名字不一致:`Dockerfile.base`(strip/COPY `ouro`→`ouro-ops`,去掉掩盖失败的 `|| true`)、`bp/Dockerfile`
@@ -409,6 +420,15 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - p1-10 | stack: docker | command: docker run --rm ouro-e2e-base:local /usr/local/bin/ouro-ops version && … skill list
   | result: pass | note: 镜像内仅规范路径 ouro-ops(无短名 ouro);version binary=ouro-ops v0.1.0;内嵌 6
   skills(embedded_digest 非空)证明 build.rs 生效。
+- TC-14 | stack: python | command: python3 tests/test_supervisor_gate.py | result: pass | note: 静态闸通过;
+  注入 `pkill -f x` 探针即断言失败(可证伪);adapter API 齐全 + 4 节点生命周期脚本经 ouro_node_*。
+- p2-8 | stack: bash | command: grep -rE '\b(pgrep|pkill|setsid|systemctl|docker|podman)\b' ouro-skills --include='*.sh' | grep -v lib/ouro-lib.sh
+  | result: pass(0 命中) | note: 全部原语仅存于 adapter;bash -n 十个脚本全通过。
+- p2-8 | stack: rust | command: cargo test -q(regen bundle-manifest 后) | result: pass | note: 33 passed;
+  committed_manifest_matches_embedded 在重生成 manifest 后一致。
+- p2-8 | stack: e2e | command: make e2e-t2-runtime | result: pass | note: 真 forging 节点验证 adapter 路径:
+  restart PID 45→176(真重启)、verify forging、topology-apply 176→314 重启 + 幂等 changed=false + 再验证
+  forging;bed 自动 teardown 无残留容器。(bare 模式;systemd/container 模式待 p2-9。)
 
 ## 7. Change Requests (append-only)
 - 2026-07-10 评审驱动的 draft 强化(见执行日志);属 draft 阶段自由编辑,不改变 S0017 的范围边界
