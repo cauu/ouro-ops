@@ -16,6 +16,13 @@ pub struct ConfirmationToken {
     pub machine: String,
     pub expires_at: DateTime<Utc>,
     pub used: bool,
+    /// S0017 p2-5b — optional target fingerprint the human approved (supervision
+    /// mode + unit/container id + image digest, hashed by detect/runtime). When set,
+    /// consumption requires the LIVE fingerprint to equal it, so a token approved for
+    /// one target cannot drive an action on a different/changed one (review P1 + TOCTOU).
+    /// Absent = legacy action+machine binding (rollback / kes-push), unchanged.
+    #[serde(default)]
+    pub evidence: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -44,6 +51,7 @@ impl ConfirmationStore {
         action: &str,
         machine: &str,
         ttl: Duration,
+        evidence: Option<&str>,
     ) -> Result<ConfirmationToken> {
         let mut store = Self::load(path)?;
         let expires_at = Utc::now() + ttl;
@@ -57,13 +65,24 @@ impl ConfirmationStore {
             machine: machine.to_string(),
             expires_at,
             used: false,
+            evidence: evidence.map(str::to_string),
         };
         store.tokens.push(entry.clone());
         store.save(path)?;
         Ok(entry)
     }
 
-    pub fn consume(path: &Path, token: &str, action: &str, machine: &str) -> Result<()> {
+    /// Consume a token, binding it to `(action, machine)` and — when the token carries an
+    /// approved `evidence` fingerprint — to the LIVE fingerprint supplied by the caller.
+    /// A token WITH evidence requires a matching `evidence` argument (missing or different
+    /// is refused); a token WITHOUT evidence keeps the legacy action+machine behavior.
+    pub fn consume(
+        path: &Path,
+        token: &str,
+        action: &str,
+        machine: &str,
+        evidence: Option<&str>,
+    ) -> Result<()> {
         let mut store = Self::load(path)?;
         let entry = store
             .tokens
@@ -84,6 +103,23 @@ impl ConfirmationStore {
             return Err(OuroError::Validation(
                 "confirmation token expired".to_string(),
             ));
+        }
+        // Target-fingerprint binding (p2-5b): an evidence-bound token only fires against the
+        // exact target the human approved, and only while it still matches (TOCTOU).
+        if let Some(approved) = &entry.evidence {
+            match evidence {
+                Some(live) if live == approved => {}
+                Some(_) => {
+                    return Err(OuroError::Validation(
+                        "confirmation token runtime evidence mismatch (target changed since approval)".to_string(),
+                    ))
+                }
+                None => {
+                    return Err(OuroError::Validation(
+                        "confirmation token requires runtime evidence but none was supplied".to_string(),
+                    ))
+                }
+            }
         }
         entry.used = true;
         store.save(path)?;
@@ -202,9 +238,44 @@ mod tests {
     #[test]
     fn token_is_single_use() {
         let path = std::env::temp_dir().join(format!("ouro-confirm-{}.json", std::process::id()));
+        let _ = std::fs::remove_file(&path);
         let token =
-            ConfirmationStore::create(&path, "kes-push", "bp1", parse_ttl("60s").unwrap()).unwrap();
-        ConfirmationStore::consume(&path, &token.token, "kes-push", "bp1").unwrap();
-        assert!(ConfirmationStore::consume(&path, &token.token, "kes-push", "bp1").is_err());
+            ConfirmationStore::create(&path, "kes-push", "bp1", parse_ttl("60s").unwrap(), None)
+                .unwrap();
+        ConfirmationStore::consume(&path, &token.token, "kes-push", "bp1", None).unwrap();
+        assert!(ConfirmationStore::consume(&path, &token.token, "kes-push", "bp1", None).is_err());
+    }
+
+    #[test]
+    fn evidence_bound_token_requires_matching_live_fingerprint() {
+        let path =
+            std::env::temp_dir().join(format!("ouro-confirm-ev-{}.json", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let token = ConfirmationStore::create(
+            &path,
+            "runtime/restart",
+            "bp1",
+            parse_ttl("60s").unwrap(),
+            Some("fp_abc123"),
+        )
+        .unwrap();
+        assert_eq!(token.evidence.as_deref(), Some("fp_abc123"));
+        // Wrong live fingerprint (target changed since approval) is refused and does NOT
+        // burn the token.
+        assert!(ConfirmationStore::consume(
+            &path, &token.token, "runtime/restart", "bp1", Some("fp_DIFFERENT")
+        )
+        .is_err());
+        // Missing live fingerprint on an evidence-bound token is refused.
+        assert!(
+            ConfirmationStore::consume(&path, &token.token, "runtime/restart", "bp1", None).is_err()
+        );
+        // Matching fingerprint fires exactly once.
+        ConfirmationStore::consume(&path, &token.token, "runtime/restart", "bp1", Some("fp_abc123"))
+            .unwrap();
+        assert!(ConfirmationStore::consume(
+            &path, &token.token, "runtime/restart", "bp1", Some("fp_abc123")
+        )
+        .is_err());
     }
 }

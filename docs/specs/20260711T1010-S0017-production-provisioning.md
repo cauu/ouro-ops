@@ -278,8 +278,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   候选证据哈希 + 动作 + digest;执行前重快照防 TOCTOU);动作前机制复验 + 人工确认显示 ground-truth
   (**已交付 p2-5a**:adapter 分模式 restart 分发(bare/systemd/container);effective-mode = 检测治理 + 声明
   交叉核对;**目标(unit/container)由检测解析,绝非 LLM 传参**;bare 真节点 e2e 透明无回归;container 升级
-  =换镜像未建模→fail-closed。**待 p2-5b**:人工确认令牌绑定候选证据哈希 + 动手前重核(TOCTOU)。**待 p2-9**:
-  systemd/container 真环境 e2e。)
+  =换镜像未建模→fail-closed。**已交付 p2-5b 原语**:确认令牌绑定目标指纹——`ConfirmationToken.evidence`
+  (可选)+ `confirm create --runtime-evidence`;consume 要求 live 指纹与批准指纹相等(不符/缺失即拒,不烧令牌);
+  探测器输出 `data.evidence_hash`(mode|unit|container|digest 的稳定哈希,单一定义);带证据令牌单测 + 探测器指纹
+  稳定单测。**待 p2-5b enforcement**:run_tool_dispatch 对破坏性工具强制"detect→consume(live 指纹)→dispatch"门
+  + 3 个 e2e harness(restart/upgrade/kes)接入确认流。**待 p2-9**:systemd/container 真环境 e2e。)
 - [x] p2-6 (rev) fail-closed:模式/候选模糊、混合/嵌套/多节点、幻觉选错、与声明不符 → exit 40 + conflict 码
   (交付:`ouro_node_guard_mode` 在**脚本顶层**(非子 shell,修掉一个 fail-closed 绕过 bug)对
   none/ambiguous/mismatch 发 exit 40;多节点→ambiguous;"幻觉选错候选"被结构性消除——目标由机制检测解析而非
@@ -373,6 +376,16 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T13:20+08:00 p2-5b 原语交付(确认令牌绑定目标指纹):`confirm.rs` 的 `ConfirmationToken` 加可选
+  `evidence` 字段;`create(..., evidence)` + `consume(..., evidence)`——带证据令牌只对**批准指纹**生效,live 指纹
+  不符=拒(且不烧令牌)、缺失=拒;无证据令牌保持 rollback/kes-push 旧行为(向后兼容)。`confirm create
+  --runtime-evidence <fp>` 暴露;`consume_confirmation` 加 evidence 形参(rollback/kes-push 传 None)。探测器
+  `detect/runtime` 输出 `data.evidence_hash = fp_ + sha256(mode|unit|container_id|image_digest)[:32]`——人核对
+  ground-truth 后用它 issue 令牌、机制 re-detect 后据它放行(TOCTOU)。测试:confirm evidence 单测(不符/缺失/
+  单次)、探测器指纹存在+稳定+不泄露。regen bundle-manifest。**待**:enforcement 门(run_tool_dispatch)+ 3
+  harness 接入(见 p2-5 备注)。**观察**(非本 spec):`cargo test` 并行下 `embedded_fallback_*` 与
+  `committed_manifest_*` 因全局 `OURO_SKILLS_DIR` env 存在既有竞态偶发失败,单线程稳定 35 pass——建议后续给那两个
+  测试做隔离(与 S0017 无关)。
 - 2026-07-11T12:45+08:00 p2-5a + p2-6 交付(托管模式生命周期分发 + fail-closed):adapter 加
   `ouro_node_detect_mode`(检测 mode,单一真源,与探测器一致由测试保证)、`ouro_node_effective_mode`(检测
   治理 + 声明交叉核对,**纯函数**)、`ouro_node_guard_mode`(顶层 fail-closed)、`ouro_node_restart_mode`
@@ -498,6 +511,12 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   bare 透明:restart PID 45→228 真重启、topology-apply 228→388、幂等、forging 通过;容器内 cgroup=0::/ 正确判 bare。
 - p2-5/p2-6 | stack: rust+python | command: cargo test -q; 全 python | result: pass | note: cargo 34、python 16
   (含 test_supervisor_mode_dispatch);supervisor gate 仍绿(新 systemctl/docker/podman 仅在 adapter)。
+- p2-5b | stack: rust | command: cargo test -q evidence_bound | result: pass | note: 带证据令牌:live 指纹不符/
+  缺失被拒且不烧令牌、匹配则单次生效;向后兼容(无证据令牌 rollback/kes-push 不变)。
+- p2-5b | stack: python | command: python3 tests/test_detect_runtime.py | result: pass | note: `data.evidence_hash`
+  fp_ 前缀 35 长、同目标稳定、canary 零泄露;探测全模式 + no-leak 不回归。
+- p2-5b | stack: rust+python | command: cargo test -q -- --test-threads=1; 全 python | result: pass | note:
+  cargo 35 pass(regen manifest 后;单线程规避既有 env 竞态)、python 16 pass。
 
 ## 7. Change Requests (append-only)
 - 2026-07-10 评审驱动的 draft 强化(见执行日志);属 draft 阶段自由编辑,不改变 S0017 的范围边界

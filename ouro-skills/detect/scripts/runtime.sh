@@ -47,7 +47,7 @@ if [ "$RUNNING" = true ] && [ -z "$CID" ] && [ -z "$UNIT" ]; then SIG_BARE=true;
 # JSON; python receives only already-projected scalars, never raw source text.
 python3 - "$MACHINE" "$RUNNING" "$SIG_BARE" "$SIG_SYSTEMD" "$SIG_DOCKER" "$SIG_PODMAN" \
   "$UNIT" "$CID" "$DIGEST" "$PORT" "$COUNT" "${OURO_AUDIT_ID:-}" <<'PY'
-import json, sys
+import hashlib, json, sys
 (machine, running, s_bare, s_systemd, s_docker, s_podman,
  unit, cid, digest, port, count, audit_id) = sys.argv[1:13]
 
@@ -74,6 +74,14 @@ elif len(active) == 1:
 else:
     mode, conflict = "ambiguous", ["unclassified"]
 
+# p2-5b: a stable fingerprint of WHICH target this is (mode + unit + container id +
+# image digest). A human approves this hash (confirm create --runtime-evidence); the
+# dispatch gate re-detects and only fires a destructive action while the live hash still
+# equals the approved one. Canonical, order-fixed input so control and target agree.
+evidence_hash = "fp_" + hashlib.sha256(
+    "|".join([mode, unit, cid, digest]).encode()
+).hexdigest()[:32]
+
 data = {
     "node_running": b(running),
     "node_count": node_count,
@@ -84,6 +92,7 @@ data = {
         "container_id": cid or None,
         "image_digest": digest or None,
     },
+    "evidence_hash": evidence_hash,
     "port": int(port) if port else None,
     "conflict": conflict,
 }

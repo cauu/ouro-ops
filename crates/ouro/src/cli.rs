@@ -100,7 +100,7 @@ fn run_rollback(args: &[String]) -> Result<()> {
     let backup_id = flag_value(args, "--to")?;
     let token = optional_flag_value(args, "--confirm-token");
     let paths = ConfigPaths::discover();
-    consume_confirmation(&paths, token, "rollback", machine)?;
+    consume_confirmation(&paths, token, "rollback", machine, None)?;
     let store = AuditStore::open(&paths.audit_db)?;
     let audit_id = store.begin_invocation("rollback", Some(machine))?;
     store.finish_invocation(&audit_id, "rollback")?;
@@ -211,14 +211,20 @@ fn run_confirm(args: &[String]) -> Result<()> {
             let action = flag_value(args, "--action")?;
             let machine = flag_value(args, "--machine")?;
             let ttl = confirm::parse_ttl(flag_value(args, "--ttl").unwrap_or("60s"))?;
+            // p2-5b: bind the token to the target fingerprint the human reviewed (the
+            // `data.evidence_hash` from `detect/runtime`), so it only fires against that
+            // exact, unchanged target.
+            let evidence = optional_flag_value(args, "--runtime-evidence");
             let paths = ConfigPaths::discover();
-            let token = ConfirmationStore::create(&paths.confirmations, action, machine, ttl)?;
+            let token =
+                ConfirmationStore::create(&paths.confirmations, action, machine, ttl, evidence)?;
             output::print_json(
                 &ToolOutput::ok("ouro.confirm.create", true).with_data(json!({
                     "token": token.token,
                     "action": token.action,
                     "machine": token.machine,
                     "expires_at": token.expires_at,
+                    "runtime_evidence": token.evidence,
                     "single_use": true
                 })),
             )?;
@@ -599,7 +605,7 @@ fn run_kes(args: &[String]) -> Result<()> {
             let paths = ConfigPaths::discover();
             // Single confirmation gate: consume the out-of-band token here, then run
             // the push. push_opcert no longer re-checks a (fabricated) token.
-            consume_confirmation(&paths, token, "kes-push", machine)?;
+            consume_confirmation(&paths, token, "kes-push", machine, None)?;
             let store = AuditStore::open(&paths.audit_db)?;
             let report = kes::push_opcert(&spec, machine, &cert, &counter, &store)?;
             output::print_json(&ToolOutput::ok("ouro.kes.push", true).with_data(json!(report)))?;
@@ -773,10 +779,11 @@ fn consume_confirmation(
     token: Option<&str>,
     action: &str,
     machine: &str,
+    evidence: Option<&str>,
 ) -> Result<()> {
     match token {
         Some(token) if token.starts_with("tok_") => {
-            ConfirmationStore::consume(&paths.confirmations, token, action, machine)
+            ConfirmationStore::consume(&paths.confirmations, token, action, machine, evidence)
         }
         Some(_) => Err(OuroError::Validation(format!(
             "invalid confirmation token; issue one out-of-band with `ouro-ops confirm create --action {action} --machine {machine}`"

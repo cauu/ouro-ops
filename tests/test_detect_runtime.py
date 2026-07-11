@@ -100,7 +100,12 @@ def main():
         assert data["evidence"]["image_digest"] == "sha256:cafe1234", data
         assert data["port"] == 3001, data
         assert data["node_running"] is True and data["node_count"] == 1, data
+        # p2-5b: a stable target fingerprint the confirm gate binds to.
+        assert data["evidence_hash"].startswith("fp_") and len(data["evidence_hash"]) == 35, data
         assert_no_leak(out)
+        first_hash = data["evidence_hash"]
+        again = json.loads(run_probe(tmp, cgroup=cg, cmdline=cmdline))["data"]["evidence_hash"]
+        assert again == first_hash, "evidence_hash must be stable for the same target"
 
     with tempfile.TemporaryDirectory() as tmp:
         # --- podman mode ---
