@@ -26,9 +26,12 @@ PY
     ouro_emit_ok false "topology already applied (${#DESIRED} bytes, unchanged)"
   else
     printf '%s' "$DESIRED" > "$DEVNET/topology.json"
-    # Apply the new topology by restarting the node onto it (only if one is running).
+    # Apply the new topology by restarting the node onto it (only if one is running),
+    # dispatched by detected mode + declaration cross-check (p2-5; fail-closed on drift).
     if ouro_node_running; then
-      ouro_node_restart
+      MODE="$(ouro_node_effective_mode "$(ouro_declared_mode "${OURO_SPEC:-}" "$MACHINE")")"
+      ouro_node_guard_mode "$MODE"
+      ouro_node_restart_mode "$MODE"
     fi
     touch "$MARKER"
     ouro_emit_ok true "topology applied + node restarted (producers=$(printf '%s' "$DESIRED" | grep -o addr | wc -l | tr -d ' '))"

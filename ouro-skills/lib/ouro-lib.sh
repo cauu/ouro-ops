@@ -250,3 +250,94 @@ ouro_supervisor_image_digest() {
   [ -n "$rt" ] && [ -n "$cid" ] || return 0
   "$rt" inspect --format '{{.Image}}' "$cid" 2>/dev/null | head -1 || true
 }
+
+# Detected supervision mode of the node from live signals:
+# bare | systemd | docker | podman | ambiguous | none. Single source of the mode
+# decision for lifecycle dispatch (kept consistent with detect/runtime by a test).
+ouro_node_detect_mode() {
+  local pid count cid runtime unit
+  pid="$(ouro_node_pid)"
+  [ -n "$pid" ] || { printf 'none'; return 0; }
+  count="$(ouro_node_count)"
+  [ "${count:-0}" -gt 1 ] 2>/dev/null && { printf 'ambiguous'; return 0; }
+  cid="$(ouro_supervisor_container_id "$pid")"
+  runtime="$(ouro_supervisor_container_runtime "$pid")"
+  unit="$(ouro_supervisor_systemd_unit "$pid")"
+  if   [ -n "$cid" ] && [ "$runtime" = docker ]; then printf 'docker'
+  elif [ -n "$cid" ] && [ "$runtime" = podman ]; then printf 'podman'
+  elif [ -z "$cid" ] && [ -n "$unit" ];          then printf 'systemd'
+  elif [ -z "$cid" ] && [ -z "$unit" ];          then printf 'bare'
+  else printf 'ambiguous'; fi
+}
+
+# --- Supervisor-mode lifecycle dispatch (S0017 p2-5) -------------------------
+# Destructive lifecycle actions choose their path from the DETECTED mode,
+# cross-checked against the spec-DECLARED mode. Any mismatch, ambiguity, mixed/
+# nested/multi-node signal, or missing node => fail closed (exit 40): the
+# mechanism never guesses which supervisor owns the node. Bare stays byte-identical
+# to the pre-p2-5 path. systemd/container actions target the unit/container id
+# resolved by read-only detection — never an LLM-supplied argument (p2-5 binding).
+
+# Declared runtime.mode for a machine from the spec ('' if undeclared/no spec).
+ouro_declared_mode() {
+  local spec="$1" machine="$2"
+  [ -n "$spec" ] && [ -n "$machine" ] || return 0
+  python3 - "$spec" "$machine" <<'PY' 2>/dev/null || true
+import sys, yaml
+try:
+    s = yaml.safe_load(open(sys.argv[1]))
+    m = next((x for x in s.get("machines", []) if x.get("id") == sys.argv[2]), None)
+    print((m or {}).get("runtime", {}).get("mode", ""), end="")
+except Exception:
+    pass
+PY
+}
+
+# Resolve the effective mode for a destructive action. $1 = declared mode ('' when
+# undeclared). Prints one of: bare|systemd|docker|podman (act) OR none|ambiguous|mismatch
+# (the caller MUST fail closed). This is PURE — it never exits, because callers invoke it in
+# a command substitution (`MODE="$(...)"`) where an `exit` would only kill the subshell and
+# silently be swallowed. The fail-closed exit-40 therefore happens in the caller, at top level
+# (see ouro_node_guard_mode), so it actually terminates the script.
+ouro_node_effective_mode() {
+  local declared="$1" detected
+  detected="$(ouro_node_detect_mode)"
+  if [ -n "$declared" ] && [ "$declared" != "$detected" ] \
+     && [ "$detected" != ambiguous ] && [ "$detected" != none ]; then
+    printf 'mismatch'; return 0
+  fi
+  printf '%s' "$detected"
+}
+
+# Caller-side fail-closed guard: emit exit-40 at TOP LEVEL (not in a subshell) when the
+# resolved mode is not actionable. Usage in a script:  MODE="$(ouro_node_effective_mode "$d")"
+# then:  ouro_node_guard_mode "$MODE"   # terminates the script on none/ambiguous/mismatch.
+ouro_node_guard_mode() {
+  local mid="${OURO_MACHINE:-target}"
+  case "$1" in
+    none)      ouro_emit_error 40 "node_not_running" "no running node to act on ($mid)" ;;
+    ambiguous) ouro_emit_error 40 "runtime_mode_ambiguous" \
+                 "supervision mode ambiguous on $mid (mixed/nested/multi-node); refusing to act" ;;
+    mismatch)  ouro_emit_error 40 "runtime_mode_mismatch" \
+                 "declared runtime differs from detected on $mid; refusing to act" ;;
+  esac
+}
+
+# Rolling restart onto the on-disk config/keys, dispatched by mode. $1 = mode.
+# systemd/container target the detected unit/container id (not a passed-in name).
+ouro_node_restart_mode() {
+  local mode="$1" pid unit cid
+  pid="$(ouro_node_pid)"
+  case "$mode" in
+    systemd) unit="$(ouro_supervisor_systemd_unit "$pid")"
+             [ -n "$unit" ] || ouro_emit_error 40 "systemd_unit_unresolved" "could not resolve node unit"
+             systemctl restart "$unit" ;;
+    docker)  cid="$(ouro_supervisor_container_id "$pid")"
+             [ -n "$cid" ] || ouro_emit_error 40 "container_unresolved" "could not resolve node container"
+             docker restart "$cid" >/dev/null ;;
+    podman)  cid="$(ouro_supervisor_container_id "$pid")"
+             [ -n "$cid" ] || ouro_emit_error 40 "container_unresolved" "could not resolve node container"
+             podman restart "$cid" >/dev/null ;;
+    *)       ouro_node_restart ;;   # bare — unchanged
+  esac
+}

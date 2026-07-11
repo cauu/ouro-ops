@@ -274,9 +274,16 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   (**已交付**:optional-v1 `runtime{mode,unit,container,image}` schema + `Machine.runtime` domain + 一致性校验
   (systemd 需 unit、docker/podman 需 container|image)+ 示例 + schema/domain 测试;absent=fail-safe 由检测治理。
   **待**:required-v2 决策、init 记录+验证声明(依赖 p1 init)、检测↔声明交叉核对 exit-40(=p2-5)、生成器可选 emit)
-- [ ] p2-5 (rev) 生命周期/upgrade 走托管器,分模式 + **绑定候选身份**(候选图 + 稳定 ID + 证据;token 绑定
+- [~] p2-5 (rev) 生命周期/upgrade 走托管器,分模式 + **绑定候选身份**(候选图 + 稳定 ID + 证据;token 绑定
   候选证据哈希 + 动作 + digest;执行前重快照防 TOCTOU);动作前机制复验 + 人工确认显示 ground-truth
-- [ ] p2-6 (rev) fail-closed:模式/候选模糊、混合/嵌套/多节点、幻觉选错、与声明不符 → exit 40 + conflict 码
+  (**已交付 p2-5a**:adapter 分模式 restart 分发(bare/systemd/container);effective-mode = 检测治理 + 声明
+  交叉核对;**目标(unit/container)由检测解析,绝非 LLM 传参**;bare 真节点 e2e 透明无回归;container 升级
+  =换镜像未建模→fail-closed。**待 p2-5b**:人工确认令牌绑定候选证据哈希 + 动手前重核(TOCTOU)。**待 p2-9**:
+  systemd/container 真环境 e2e。)
+- [x] p2-6 (rev) fail-closed:模式/候选模糊、混合/嵌套/多节点、幻觉选错、与声明不符 → exit 40 + conflict 码
+  (交付:`ouro_node_guard_mode` 在**脚本顶层**(非子 shell,修掉一个 fail-closed 绕过 bug)对
+  none/ambiguous/mismatch 发 exit 40;多节点→ambiguous;"幻觉选错候选"被结构性消除——目标由机制检测解析而非
+  LLM 传参;探测器 conflict 码 + guard 结构化错误码。单测覆盖顶层终止 + 各分支)
 - [x] p2-7 no-leak 可证伪测试:向探测器植入 env/config/inspect 里的 key-shaped + 通用 canary,断言 agent 侧
   输出零泄露(交付:`test_detect_runtime.py` 向 cgroup/cmdline/`docker inspect` 植入 5 类 canary,全模式零泄露;
   supervisor gate 注入 `pkill` 探针即失败)
@@ -366,6 +373,19 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T12:45+08:00 p2-5a + p2-6 交付(托管模式生命周期分发 + fail-closed):adapter 加
+  `ouro_node_detect_mode`(检测 mode,单一真源,与探测器一致由测试保证)、`ouro_node_effective_mode`(检测
+  治理 + 声明交叉核对,**纯函数**)、`ouro_node_guard_mode`(顶层 fail-closed)、`ouro_node_restart_mode`
+  (分模式:systemd=`systemctl restart <检测出的 unit>`、docker/podman=`<rt> restart <检测出的 cid>`、
+  bare=原路径)。**关键安全点**:破坏性动作的目标(unit/container id)一律由**只读检测解析**,绝不接受 LLM
+  传参(评审 P1)。4 个生命周期脚本(restart/topology-apply/rotate/upgrade-one)改为 resolve→guard→dispatch;
+  upgrade 的 container 路径=换镜像 digest 重建,未建模→**fail-closed**(拒绝对容器做宿主二进制交换的假成功)。
+  **修掉一个自身设计 bug**:原打算在 `MODE="$(require_mode …)"` 里 emit+exit,但 exit 只杀子 shell、错误 JSON
+  被吞进 MODE、脚本继续跑=**fail-closed 绕过**;改为纯 resolve + 顶层 guard。新增
+  `test_supervisor_mode_dispatch.py`:断言 guard **真终止脚本**(mismatch/ambiguous/none,后续行不执行、无 restart
+  调用)、各模式分发到正确二进制、detect_mode 与探测器一致。真 bare 节点 `make e2e-t2-runtime` 透明无回归
+  (PID 45→228 真重启、topology 228→388、forging 通过)。容器内 cgroup=`0::/`(namespace 隐藏)→ 正确判为 bare。
+  regen bundle-manifest。**待**:p2-5b 人工确认令牌绑定证据 + 动手前重核(TOCTOU);p2-9 systemd/container 真 e2e。
 - 2026-07-11T12:05+08:00 p2-4 部分交付(spec `runtime` 声明字段,optional-v1 + fail-safe):给
   `pool-spec.schema.json` 的 machine 加**可选** `runtime{mode:bare|systemd|docker|podman, unit?, container?,
   image?}`(additionalProperties:false);`domain.rs` 加 `Machine.runtime: Option<RuntimeDecl>`(`#[serde(default)]`
@@ -471,6 +491,13 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   (minimal 无 runtime)仍 valid=向后兼容;complete(systemd+docker 声明)valid;坏 mode(kubernetes)invalid。
 - p2-4 | stack: rust | command: cargo test -q runtime_declaration | result: pass | note: absent=valid(fail-safe)、
   systemd+unit valid、systemd 缺 unit / docker 缺 container&image 被拒、bare 无需目标字段;cargo 全量 34 pass。
+- p2-5/p2-6 | stack: python | command: python3 tests/test_supervisor_mode_dispatch.py | result: pass | note:
+  guard 顶层**真终止脚本**(mismatch/ambiguous/none:后续行不跑、零 restart 调用);systemd→systemctl restart
+  <unit>、docker→docker restart <cid12>、bare→不碰 systemctl/docker;detect_mode 与探测器 4 模式全一致。
+- p2-5a | stack: e2e | command: make e2e-t2-runtime | result: pass | note: 真 forging 节点,mode-aware 分发对
+  bare 透明:restart PID 45→228 真重启、topology-apply 228→388、幂等、forging 通过;容器内 cgroup=0::/ 正确判 bare。
+- p2-5/p2-6 | stack: rust+python | command: cargo test -q; 全 python | result: pass | note: cargo 34、python 16
+  (含 test_supervisor_mode_dispatch);supervisor gate 仍绿(新 systemctl/docker/podman 仅在 adapter)。
 
 ## 7. Change Requests (append-only)
 - 2026-07-10 评审驱动的 draft 强化(见执行日志);属 draft 阶段自由编辑,不改变 S0017 的范围边界

@@ -52,7 +52,17 @@ except: print(-1)' 2>/dev/null || echo -1)"
   mkdir -p "$STATE_DIR"
   printf '%s' "$PRE_PID"   > "$STATE_DIR/pre-pid-$MACHINE"
   printf '%s' "$PRE_BLOCK" > "$STATE_DIR/pre-block-$MACHINE"
-  ouro_node_restart
+  # p2-5: upgrade dispatch by detected mode + declaration cross-check. bare/systemd = the new
+  # binary is already staged, so restart onto it. container = image digest re-pin + recreate
+  # (a host-binary swap under a container is a silent no-op) — not yet modeled, so fail closed
+  # rather than falsely report success. Real container upgrade lands with p2-9 fixtures.
+  MODE="$(ouro_node_effective_mode "$(ouro_declared_mode "${OURO_SPEC:-}" "$MACHINE")")"
+  ouro_node_guard_mode "$MODE"
+  if [ "$MODE" = "docker" ] || [ "$MODE" = "podman" ]; then
+    ouro_emit_error 40 "container_upgrade_unsupported" \
+      "container upgrade needs image re-pin + recreate (pending p2-9); refusing host-binary swap on $MACHINE"
+  fi
+  ouro_node_restart_mode "$MODE"
   touch "$MARKER"
   ouro_emit_ok true "node rolling-restarted (pre pid=$PRE_PID block=$PRE_BLOCK recorded for verify)"
 else

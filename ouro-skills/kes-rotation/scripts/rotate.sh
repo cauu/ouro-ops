@@ -63,8 +63,11 @@ mv -f "$POOL/kes.vkey.new"  "$POOL/kes.vkey"
 mv -f "$POOL/opcert.cert.new" "$POOL/opcert.cert"
 
 echo "[kes] restarting node onto rotated opcert" >&2
-# Restart onto the new opcert/KES skey (db preserved — see ouro_node_start's cold-start note).
-ouro_node_restart
+# Restart onto the new opcert/KES skey (db preserved — see ouro_node_start's cold-start note),
+# dispatched by detected mode + declaration cross-check (p2-5; fail-closed on drift).
+MODE="$(ouro_node_effective_mode "$(ouro_declared_mode "${OURO_SPEC:-}" "$MACHINE")")"
+ouro_node_guard_mode "$MODE"
+ouro_node_restart_mode "$MODE"
 
 # Ground-truth: the node must be a NEW process (restarted) AND forge PAST the pre-restart block
 # with the new opcert. `block > PRE_BLOCK` (not `> 0`) rejects a node that merely replays the

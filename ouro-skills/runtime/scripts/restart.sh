@@ -14,7 +14,11 @@ if [ -f "$DEVNET/config.json" ] && ouro_node_running; then
   # cold-start). Record the pre-restart PID so runtime/verify can prove a genuine restart.
   PRE_PID="$(ouro_node_pid)"
   printf '%s' "$PRE_PID" > "$STATE_DIR/pre-pid-$MACHINE"
-  ouro_node_restart
+  # p2-5: dispatch by detected mode, cross-checked against the spec declaration.
+  # Resolve is pure; the guard emits exit 40 at TOP LEVEL on none/ambiguous/mismatch.
+  MODE="$(ouro_node_effective_mode "$(ouro_declared_mode "${OURO_SPEC:-}" "$MACHINE")")"
+  ouro_node_guard_mode "$MODE"
+  ouro_node_restart_mode "$MODE"
   date +%s > "$MARKER"
   ouro_emit_ok true "node restarted (was pid $PRE_PID)"
 else
