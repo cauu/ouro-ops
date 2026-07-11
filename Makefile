@@ -71,5 +71,8 @@ e2e-t2-runtime: e2e-build-base ## Run the T2 REAL runtime E2E (restart/topology-
 e2e-t2-runtime-modes: ## Run the T2 supervision-mode E2E (p2-9: detect + systemctl-restart against a REAL systemd host)
 	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-runtime-modes.sh"
 
+accept: ## Automated acceptance: fast tests + full docker E2E suite, with apt-retry + a PASS/FAIL summary
+	bash "$(REPO_ROOT)/fixtures/e2e/accept.sh"
+
 e2e-clean: ## Remove ALL S0015 test artifacts (containers, our images, build cache, /tmp); preserves your pre-existing images
 	bash "$(REPO_ROOT)/fixtures/e2e/clean.sh"
