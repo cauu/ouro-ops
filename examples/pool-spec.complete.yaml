@@ -22,6 +22,10 @@ machines:
       port: 22
       user: ouro-exec
       key_ref: "creds://bp1"
+    # S0017 p2-4: optional declared supervision runtime (verified against detect/runtime).
+    runtime:
+      mode: systemd
+      unit: cardano-node.service
   - id: relay1
     role: relay
     public_endpoint:
@@ -32,6 +36,9 @@ machines:
       port: 22
       user: ouro-exec
       key_ref: "creds://relay1"
+    runtime:
+      mode: docker
+      image: ghcr.io/blinklabs-io/cardano-node:10.5.4
   - id: relay2
     role: relay
     public_endpoint:

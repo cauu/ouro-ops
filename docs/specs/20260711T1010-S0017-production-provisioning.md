@@ -269,8 +269,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   (交付:封闭投影 by-construction 不 emit raw;探测器不碰 key 目录;canary 测试含 S0015 corpus token)
 - [x] p2-3 LLM 基于封闭投影判定托管模式 + **解释候选**(顾问性;写进相关 SKILL.md 决策树)
   (交付:`detect/SKILL.md` 决策树教 agent 读 mode/evidence + ambiguous→停手;生命周期侧 mode 分支集成 = p2-5)
-- [ ] p2-4 (rev) spec `runtime` 字段 + **schema 迁移兼容**(optional-v1/required-v2、fail-safe 默认、迁移命令、
+- [~] p2-4 (rev) spec `runtime` 字段 + **schema 迁移兼容**(optional-v1/required-v2、fail-safe 默认、迁移命令、
   版本偏斜行为、**S0016 生成器更新归属**、示例、跨版本测试)+ `ouro-ops init` 探测记录验证声明
+  (**已交付**:optional-v1 `runtime{mode,unit,container,image}` schema + `Machine.runtime` domain + 一致性校验
+  (systemd 需 unit、docker/podman 需 container|image)+ 示例 + schema/domain 测试;absent=fail-safe 由检测治理。
+  **待**:required-v2 决策、init 记录+验证声明(依赖 p1 init)、检测↔声明交叉核对 exit-40(=p2-5)、生成器可选 emit)
 - [ ] p2-5 (rev) 生命周期/upgrade 走托管器,分模式 + **绑定候选身份**(候选图 + 稳定 ID + 证据;token 绑定
   候选证据哈希 + 动作 + digest;执行前重快照防 TOCTOU);动作前机制复验 + 人工确认显示 ground-truth
 - [ ] p2-6 (rev) fail-closed:模式/候选模糊、混合/嵌套/多节点、幻觉选错、与声明不符 → exit 40 + conflict 码
@@ -363,6 +366,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T12:05+08:00 p2-4 部分交付(spec `runtime` 声明字段,optional-v1 + fail-safe):给
+  `pool-spec.schema.json` 的 machine 加**可选** `runtime{mode:bare|systemd|docker|podman, unit?, container?,
+  image?}`(additionalProperties:false);`domain.rs` 加 `Machine.runtime: Option<RuntimeDecl>`(`#[serde(default)]`
+  向后兼容)+ `RuntimeMode` 枚举 + 一致性校验(systemd 须 unit;docker/podman 须 container|image;absent=未声明,
+  由检测治理,不假设)。示例 complete.yaml 加 systemd + docker 声明;新增 invalid-runtime-mode fixture;
+  schema 测试(minimal 无 runtime 仍 valid、complete 有 runtime valid、坏 mode invalid)+ domain 单测。regen
+  bundle-manifest(schema 内嵌)。**待**:required-v2、init 记录+验证声明(p1)、检测↔声明 exit-40 交叉核对(p2-5)、
+  S0016 生成器可选 emit。标 [~]。
 - 2026-07-11T11:40+08:00 p2-1/p2-2/p2-3/p2-7 completed(托管模式探测:封闭投影 + 不泄密):新增只读诊断
   skill `detect`(`detect/runtime` 探测器 + `detect/SKILL.md` 决策树)。在 `ouro-lib.sh` 加只读探测原语
   (`ouro_supervisor_container_id/runtime`、`ouro_supervisor_systemd_unit`、`ouro_node_port/count`、
@@ -456,6 +467,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   剥离注释+引号匹配命令调用;detect 探测器的枚举/JSON-键 `docker` 放行,注入 `docker rm`/`setsid` 仍被捕获(可证伪)。
 - p2-1..7 | stack: rust+python | command: cargo test -q; 全 python 套件 | result: pass | note: cargo 33 pass
   (regen bundle-manifest 后);python 15 pass(含新增 test_detect_runtime)。
+- TC-16(部分) | stack: python | command: python3 tests/test_pool_spec_schema.py | result: pass | note: 旧 spec
+  (minimal 无 runtime)仍 valid=向后兼容;complete(systemd+docker 声明)valid;坏 mode(kubernetes)invalid。
+- p2-4 | stack: rust | command: cargo test -q runtime_declaration | result: pass | note: absent=valid(fail-safe)、
+  systemd+unit valid、systemd 缺 unit / docker 缺 container&image 被拒、bare 无需目标字段;cargo 全量 34 pass。
 
 ## 7. Change Requests (append-only)
 - 2026-07-10 评审驱动的 draft 强化(见执行日志);属 draft 阶段自由编辑,不改变 S0017 的范围边界

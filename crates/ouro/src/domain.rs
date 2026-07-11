@@ -73,6 +73,34 @@ pub struct Machine {
     pub role: MachineRole,
     pub public_endpoint: Option<Endpoint>,
     pub ssh: SshTarget,
+    /// S0017 p2-4 — OPTIONAL declared supervision runtime. Absent (v1 default) means
+    /// "undeclared": the mechanism must DETECT the mode (detect/runtime) and, per p2-5/p2-6,
+    /// fail closed on a detected↔declared mismatch. Declaring it lets `ouro-ops init` record
+    /// and verify the mode rather than assume a bare process. Never a substitute for detection.
+    #[serde(default)]
+    pub runtime: Option<RuntimeDecl>,
+}
+
+/// Declared supervision runtime for a machine (advisory; verified against detect/runtime).
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RuntimeDecl {
+    pub mode: RuntimeMode,
+    /// systemd unit name (mode=systemd). Container name/id and image ref (mode=docker|podman).
+    #[serde(default)]
+    pub unit: Option<String>,
+    #[serde(default)]
+    pub container: Option<String>,
+    #[serde(default)]
+    pub image: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RuntimeMode {
+    Bare,
+    Systemd,
+    Docker,
+    Podman,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -188,6 +216,29 @@ impl PoolSpec {
                     "machine {} must use ouro-exec ssh user",
                     machine.id
                 )));
+            }
+            // p2-4: if runtime is DECLARED, it must be internally consistent — a systemd
+            // declaration names a unit; a container declaration names a container or image.
+            // (Absent = undeclared = fail-safe: detection governs; no assumption here.)
+            if let Some(rt) = &machine.runtime {
+                let named = |s: &Option<String>| s.as_deref().is_some_and(|v| !v.is_empty());
+                match rt.mode {
+                    RuntimeMode::Systemd if !named(&rt.unit) => {
+                        return Err(OuroError::Validation(format!(
+                            "machine {} runtime.mode=systemd requires runtime.unit",
+                            machine.id
+                        )));
+                    }
+                    RuntimeMode::Docker | RuntimeMode::Podman
+                        if !named(&rt.container) && !named(&rt.image) =>
+                    {
+                        return Err(OuroError::Validation(format!(
+                            "machine {} runtime.mode={:?} requires runtime.container or runtime.image",
+                            machine.id, rt.mode
+                        )));
+                    }
+                    _ => {}
+                }
             }
             match machine.role {
                 MachineRole::Bp => bp_count += 1,
@@ -388,6 +439,56 @@ mod tests {
         let mut s = valid_spec();
         s.pool.ticker = "ab;".to_string();
         assert!(s.validate().is_err(), "non-alnum ticker rejected");
+    }
+
+    #[test]
+    fn runtime_declaration_optional_and_consistency_checked() {
+        use super::{RuntimeDecl, RuntimeMode};
+
+        // p2-4 fail-safe: absent runtime (the v1 default) is valid — detection governs.
+        let base = valid_spec();
+        assert!(base.machines[0].runtime.is_none());
+        assert!(base.validate().is_ok(), "undeclared runtime is valid");
+
+        // A well-formed declaration is accepted.
+        let mut s = valid_spec();
+        s.machines[0].runtime = Some(RuntimeDecl {
+            mode: RuntimeMode::Systemd,
+            unit: Some("cardano-node.service".to_string()),
+            container: None,
+            image: None,
+        });
+        assert!(s.validate().is_ok(), "systemd + unit is valid");
+
+        // systemd without a unit is rejected (a declaration must name its target).
+        let mut s = valid_spec();
+        s.machines[0].runtime = Some(RuntimeDecl {
+            mode: RuntimeMode::Systemd,
+            unit: None,
+            container: None,
+            image: None,
+        });
+        assert!(s.validate().is_err(), "systemd without unit rejected");
+
+        // docker/podman without a container OR image is rejected.
+        let mut s = valid_spec();
+        s.machines[0].runtime = Some(RuntimeDecl {
+            mode: RuntimeMode::Docker,
+            unit: None,
+            container: None,
+            image: None,
+        });
+        assert!(s.validate().is_err(), "docker without container/image rejected");
+
+        // bare needs no extra fields.
+        let mut s = valid_spec();
+        s.machines[0].runtime = Some(RuntimeDecl {
+            mode: RuntimeMode::Bare,
+            unit: None,
+            container: None,
+            image: None,
+        });
+        assert!(s.validate().is_ok(), "bare needs no target field");
     }
 
     #[test]

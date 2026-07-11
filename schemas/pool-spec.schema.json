@@ -204,6 +204,20 @@
             },
             "key_ref": { "$ref": "#/$defs/credentialRef" }
           }
+        },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["bare", "systemd", "docker", "podman"]
+            },
+            "unit": { "type": "string", "minLength": 1 },
+            "container": { "type": "string", "minLength": 1 },
+            "image": { "type": "string", "minLength": 1 }
+          }
         }
       },
       "allOf": [
