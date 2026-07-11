@@ -1,9 +1,9 @@
 # Production Provisioning & Real-Node Lifecycle
 
 Spec-ID: S0017
-Status: draft
+Status: active
 Created Time: 2026-07-09T11:00:00+08:00
-Start Time:
+Start Time: 2026-07-11T10:10:11+08:00
 Completion Time:
 Previous Spec-ID: S0016
 Closure Reason:
@@ -357,6 +357,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T10:10+08:00 spec 激活:draft → active,Start Time 记录,移入 `docs/specs/`
+  (`20260711T1010-S0017-production-provisioning.md`)。Previous Spec-ID=S0016。按依赖顺序执行:
+  p1-10(fixture 修复,p1-2 前置)→ p1-1(bootstrap 传输模块)→ p2-8(supervisor adapter)→ … ;
+  需真实基础设施的项(真 cardano-cli/devnet、systemd·docker fixtures、气隙机)在无基座环境下如实标注阻塞。
 - 2026-07-09 draft 创建:从 S0016 拆出。承接两处盘点结论(无真机 provisioning、裸进程假设),
   确立 Model P + 三补强、托管模式感知(机制采集脱敏 → LLM 判定 → 机制走托管器)、审计反签名 +
   主机密钥 pin。修正 F2(操作自清理改为"只写/清理 /tmp state,不推脚本"——脚本随内嵌二进制)、
