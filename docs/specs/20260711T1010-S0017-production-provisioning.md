@@ -387,6 +387,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T16:40+08:00 P0-1 决策落定(见 §7 Change Requests):用户选便利模式(选项 C),不做 bootstrap 凭据
+  隔离,依赖上游安全;保留唯一非防护动作=诚实标注残余风险。据此 p1-7 = 便利模式 + 文档标注,TC-4 收窄,
+  S0016 受限 agent runner 不再作前置。p1 其余项(init/deinit 机制、安装账本、host-key pin、平台矩阵)照常。
+  开始 p1。
 - 2026-07-11T16:10+08:00 compose 容器升级真环境 e2e + 修一个真 bug:`fixtures/e2e/compose-node/Dockerfile`
   (v1/v2 两个不同 content id 的 stand-in node 镜像,无 apt)+ `e2e-t2-runtime-modes` 加 docker/compose leg——真
   docker+compose:起 v1 → 经 `ouro_node_upgrade_container` 升 v2(compose 文件重定 + 容器按 image id 重建)→ 升
@@ -588,3 +592,18 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - 2026-07-10 评审驱动的 draft 强化(见执行日志);属 draft 阶段自由编辑,不改变 S0017 的范围边界
   (仍 = provisioning + 托管感知 + 审计完整性 + 冷签流程),仅把"红线已宣示、机制未指定"补成可执行设计 + 可
   证伪 TC。范围唯一微调:显式声明 **takeover 冷密钥迁移不在本 spec**(P1 vrf 修正,留待后续 spec)。
+- 2026-07-11 **P0-1 决策(用户定案):选 §1 Constraints 的选项 C——不做 bootstrap 凭据与 agent 的机制隔离。**
+  用户判断"agent 被投毒→借 init 提权"这条威胁概率过小,依赖**上游安全策略**(agent 运行时 / 控制机 OS 与
+  账户安全)兜底。据此调整:
+  - p1-7 的交付从"enforcement(独立主体/硬件密钥)"改为**便利模式 + 诚实标注**:bootstrap 凭据可与 per-op
+    凭据同置于控制机凭据区,`ouro-ops init` 为普通(特权)命令,不加 TTY/带外授权门。
+  - **强制诚实标注(唯一保留项,非防护)**:spec 顶部 + `ouro-ops init` 输出/文档 + `packaging` 说明须明写
+    "bootstrap 凭据未与 agent 做机制隔离;一个被投毒的 prompt 借 agent 之手可用该凭据对可达主机做特权
+    provisioning;残余风险已知并接受,依赖上游控制机/agent-runtime 安全"。**不得**在文档中宣称 init 凭据对
+    agent 隔离(否则即虚假声明)。
+  - TC-4 相应收窄:去掉"敌意 agent 读取/调用 init 被 OS 边界拒绝"这条(不再成立);保留 (a) bootstrap key
+    路径/内容不进 `ouro-ops` JSON/audit/`confirm preview`/corpus fingerprint(避免**意外**泄露到输出/日志,这
+    与隔离无关、仍应做),(c) per-op `ouro-exec` 仍只走受限 wrapper。
+  - S0016 p4-4"受限 agent 运行器"不再作为本 spec 前置依赖(用户以上游安全替代)。
+  - **不改**其余 p1 项:init/deinit 的 provisioning 机制、安装账本、主机密钥 pin、平台矩阵、no-scp 边界与本
+    决策无关,照常按可执行设计推进。
