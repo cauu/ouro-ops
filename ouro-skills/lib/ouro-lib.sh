@@ -157,6 +157,7 @@ ouro_detect_firewall() {
 # Generic process primitives — match by full command line (`pgrep -f`).
 ouro_proc_running() { pgrep -f "$1" >/dev/null 2>&1; }
 ouro_proc_pid()     { pgrep -f "$1" 2>/dev/null | head -1 || true; }
+ouro_proc_count()   { pgrep -f "$1" 2>/dev/null | grep -c . || true; }
 ouro_proc_stop()    { pkill -f "$1" 2>/dev/null || true; sleep "${2:-2}"; }
 
 # Spawn a detached background daemon: $1 = logfile, rest = command + args.
@@ -174,6 +175,7 @@ ouro_daemon_spawn() {
 OURO_NODE_MATCH="${OURO_NODE_MATCH:-cardano-node run}"
 ouro_node_running() { ouro_proc_running "$OURO_NODE_MATCH"; }
 ouro_node_pid()     { ouro_proc_pid "$OURO_NODE_MATCH"; }
+ouro_node_count()   { ouro_proc_count "$OURO_NODE_MATCH"; }
 ouro_node_stop()    { ouro_proc_stop "$OURO_NODE_MATCH" "${1:-2}"; }
 
 ouro_node_start() {
@@ -192,3 +194,59 @@ ouro_node_start() {
 
 # Rolling restart: stop (with settle) then start onto the on-disk config/keys.
 ouro_node_restart() { ouro_node_stop; ouro_node_start; }
+
+# --- Supervisor DETECTION (S0017 p2-1) — read-only, closed projection ---------
+# The adapter is the sole supervisor-aware module (p2-8 gate), so read-only mode
+# detection lives here too. Every function emits ONLY a closed projection:
+# booleans, enums, opaque immutable ids (container id / systemd unit basename),
+# and content hashes (image digest) — NEVER raw env/argv/mounts/labels or full
+# `inspect`/`systemctl cat` output. `docker`/`podman` are called only with
+# `--format` to project a single field. Test seam: OURO_PROC_ROOT overrides
+# /proc so mode + canary fixtures can be injected without a real container.
+
+ouro_proc_root() { printf '%s' "${OURO_PROC_ROOT:-/proc}"; }
+
+# cgroup membership of a pid (never emitted raw; only regex-extracted below).
+ouro_proc_cgroup() {
+  local pid="$1"
+  [ -n "$pid" ] || return 0
+  cat "$(ouro_proc_root)/$pid/cgroup" 2>/dev/null || true
+}
+
+# 12-hex container id if the pid lives in a docker/podman container cgroup, else empty.
+ouro_supervisor_container_id() {
+  ouro_proc_cgroup "$1" \
+    | grep -oE '(docker[-/]|libpod[-/])[0-9a-f]{64}' \
+    | grep -oE '[0-9a-f]{64}' | head -1 | cut -c1-12 || true
+}
+
+# Container runtime enum from cgroup markers only: 'docker' | 'podman' | ''.
+ouro_supervisor_container_runtime() {
+  local cg; cg="$(ouro_proc_cgroup "$1")"
+  if   printf '%s' "$cg" | grep -qE 'libpod'; then printf 'podman'
+  elif printf '%s' "$cg" | grep -qE 'docker'; then printf 'docker'
+  fi
+}
+
+# systemd unit basename if the pid is under a *.service slice, else empty. Emits
+# only the safe-charset unit name — never the raw cgroup path or unit body.
+ouro_supervisor_systemd_unit() {
+  ouro_proc_cgroup "$1" | grep -oE '[A-Za-z0-9_.@-]+\.service' | head -1 || true
+}
+
+# --port integer from the node's cmdline (a closed extraction — the rest of the
+# cmdline, incl. key file PATHS, is never emitted). Empty if absent.
+ouro_node_port() {
+  local pid="$1"
+  [ -n "$pid" ] || return 0
+  tr '\0' ' ' < "$(ouro_proc_root)/$pid/cmdline" 2>/dev/null \
+    | grep -oE -- '--port[= ]+[0-9]+' | grep -oE '[0-9]+' | head -1 || true
+}
+
+# Container image digest via the runtime's OWN --format (projects to one field;
+# never the raw inspect JSON). $1=runtime(docker|podman) $2=container-id.
+ouro_supervisor_image_digest() {
+  local rt="$1" cid="$2"
+  [ -n "$rt" ] && [ -n "$cid" ] || return 0
+  "$rt" inspect --format '{{.Image}}' "$cid" 2>/dev/null | head -1 || true
+}

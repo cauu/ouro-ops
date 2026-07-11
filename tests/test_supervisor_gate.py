@@ -19,9 +19,33 @@ ROOT = Path(__file__).resolve().parents[1]
 SKILLS = ROOT / "ouro-skills"
 ADAPTER = SKILLS / "lib" / "ouro-lib.sh"
 
-# Raw process-supervision primitives that must live only in the adapter.
+# Raw process-supervision primitives that must live only in the adapter. Forbidden as
+# COMMAND INVOCATIONS — not as enum values, JSON keys, comparisons, or comments. Words
+# like "docker"/"podman"/"systemd" are legitimate DATA in the detect projection; only
+# actually *calling* the binaries outside the adapter is a split-brain risk.
 FORBIDDEN = ("pgrep", "pkill", "setsid", "systemctl", "docker", "podman")
 FORBIDDEN_RE = re.compile(r"\b(" + "|".join(FORBIDDEN) + r")\b")
+
+
+def strip_noncode(line):
+    """Drop shell comments and quoted-string spans so only unquoted code remains — a
+    forbidden token surviving this is an actual command word, not a string/comment."""
+    out, i, n, quote = [], 0, len(line), None
+    while i < n:
+        c = line[i]
+        if quote:
+            if c == quote:
+                quote = None
+            i += 1
+            continue
+        if c in ("'", '"'):
+            quote = c
+        elif c == "#" and (i == 0 or line[i - 1].isspace()):
+            break  # comment to end of line
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
 
 # The adapter API every lifecycle script is expected to call instead.
 ADAPTER_FUNCS = (
@@ -58,7 +82,7 @@ def main():
         if script.resolve() == ADAPTER.resolve():
             continue
         for lineno, line in enumerate(script.read_text().splitlines(), 1):
-            m = FORBIDDEN_RE.search(line)
+            m = FORBIDDEN_RE.search(strip_noncode(line))
             if m:
                 rel = script.relative_to(ROOT)
                 offenders.append(f"{rel}:{lineno}: {m.group(1)} -> {line.strip()}")

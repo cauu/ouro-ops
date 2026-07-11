@@ -261,17 +261,22 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [x] p1-10 (new) **参考 fixture 修复**:E2E base 的 `ouro`→`ouro-ops` 名一致 + 干净构建作为 p1-2 前置
 
 ### p2 — 节点托管模式感知(LLM 判定 + 机制不泄密 + 候选绑定)
-- [ ] p2-1 (rev) confined 只读探测工具 `detect/runtime`(L3 姿态),采集托管信号,输出**带类型封闭投影**
+- [x] p2-1 (rev) confined 只读探测工具 `detect/runtime`(L3 姿态),采集托管信号,输出**带类型封闭投影**
   (布尔/枚举/端口/不可变 ID/哈希;绝不序列化 raw env/argv/inspect/unit/mounts/labels;未识别源 fail-closed)
-- [ ] p2-2 (rev) 脱敏作**纵深防御**(复用 S0015 no-leak #3 corpus/fingerprint);canary 断言 + 未知字段拒绝
-- [ ] p2-3 LLM 基于封闭投影判定托管模式 + **解释候选**(顾问性;写进相关 SKILL.md 决策树)
+  (交付:新 `detect` skill + `ouro-lib.sh` 只读探测原语,读 /proc cgroup + `--format` 单字段;bare/systemd/
+  docker/podman/ambiguous/none;双节点→ambiguous。**注**:目标侧 ouro-diag 只读 principal 的 dispatch posture = p1)
+- [x] p2-2 (rev) 脱敏作**纵深防御**(复用 S0015 no-leak #3 corpus/fingerprint);canary 断言 + 未知字段拒绝
+  (交付:封闭投影 by-construction 不 emit raw;探测器不碰 key 目录;canary 测试含 S0015 corpus token)
+- [x] p2-3 LLM 基于封闭投影判定托管模式 + **解释候选**(顾问性;写进相关 SKILL.md 决策树)
+  (交付:`detect/SKILL.md` 决策树教 agent 读 mode/evidence + ambiguous→停手;生命周期侧 mode 分支集成 = p2-5)
 - [ ] p2-4 (rev) spec `runtime` 字段 + **schema 迁移兼容**(optional-v1/required-v2、fail-safe 默认、迁移命令、
   版本偏斜行为、**S0016 生成器更新归属**、示例、跨版本测试)+ `ouro-ops init` 探测记录验证声明
 - [ ] p2-5 (rev) 生命周期/upgrade 走托管器,分模式 + **绑定候选身份**(候选图 + 稳定 ID + 证据;token 绑定
   候选证据哈希 + 动作 + digest;执行前重快照防 TOCTOU);动作前机制复验 + 人工确认显示 ground-truth
 - [ ] p2-6 (rev) fail-closed:模式/候选模糊、混合/嵌套/多节点、幻觉选错、与声明不符 → exit 40 + conflict 码
-- [ ] p2-7 no-leak 可证伪测试:向探测器植入 env/config/inspect 里的 key-shaped + 通用 canary,断言 agent 侧
-  输出零泄露
+- [x] p2-7 no-leak 可证伪测试:向探测器植入 env/config/inspect 里的 key-shaped + 通用 canary,断言 agent 侧
+  输出零泄露(交付:`test_detect_runtime.py` 向 cgroup/cmdline/`docker inspect` 植入 5 类 canary,全模式零泄露;
+  supervisor gate 注入 `pkill` 探针即失败)
 - [x] p2-8 (new) **中心 supervisor adapter**:`ouro_node_*` 统管 detect/stop/start/restart/recreate/status/verify;
   逐一改写 runtime/upgrade/kes-rotation/deploy 全部生命周期脚本只调 adapter;**静态闸**禁 adapter 外
   `pgrep|pkill|setsid|systemctl|docker|podman`
@@ -358,6 +363,19 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T11:40+08:00 p2-1/p2-2/p2-3/p2-7 completed(托管模式探测:封闭投影 + 不泄密):新增只读诊断
+  skill `detect`(`detect/runtime` 探测器 + `detect/SKILL.md` 决策树)。在 `ouro-lib.sh` 加只读探测原语
+  (`ouro_supervisor_container_id/runtime`、`ouro_supervisor_systemd_unit`、`ouro_node_port/count`、
+  `ouro_supervisor_image_digest`)——全部读 /proc cgroup(可 `OURO_PROC_ROOT` 注入),docker/podman 只用
+  `--format` 抽单字段。探测器输出**带类型封闭投影**:node_running/node_count、mode
+  (bare|systemd|docker|podman|ambiguous|none)、signals、evidence(unit/container_id/image_digest)、port、
+  conflict;**绝不 emit raw** env/argv/mounts/inspect JSON。fail-closed:双节点 / 多信号 / running-但不可分类
+  → ambiguous(p2-6 探测侧;destructive-action 侧 exit-40 强制 = p2-5)。探测器只读、不碰 key 目录、不带 L2
+  审计写门(L3 posture;目标侧 ouro-diag principal 的 dispatch = p1)。新增 `test_detect_runtime.py`(TC-6):
+  向 cgroup/cmdline/`docker inspect` 植入 5 类 canary(含 S0015 corpus token、AWS key、bech32、PEM),全 6 模式
+  断言零泄露;精化 supervisor gate 改为剥离注释+引号后匹配命令调用(允许 `docker` 作枚举/JSON 键,仍捕获真
+  `docker rm`/`setsid` 调用)。regen bundle-manifest(新 skill 内嵌)。**注**:目标侧 ouro-diag dispatch
+  posture、生命周期 mode 分支(p2-5)、多模式容器 fixtures(p2-9)另行承接。
 - 2026-07-11T11:05+08:00 p2-8 completed(中心 supervisor adapter + 静态闸):在 `ouro-lib.sh` 新增
   supervisor adapter——通用进程原语 `ouro_proc_running/pid/stop`、后台守护 `ouro_daemon_spawn`、
   cardano-node 封装 `ouro_node_running/pid/stop/start/restart`(bare 模式,argv 由 `OURO_DEVNET_DIR` 单一
@@ -429,6 +447,15 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - p2-8 | stack: e2e | command: make e2e-t2-runtime | result: pass | note: 真 forging 节点验证 adapter 路径:
   restart PID 45→176(真重启)、verify forging、topology-apply 176→314 重启 + 幂等 changed=false + 再验证
   forging;bed 自动 teardown 无残留容器。(bare 模式;systemd/container 模式待 p2-9。)
+- TC-6 | stack: python | command: python3 tests/test_detect_runtime.py | result: pass | note: 全 6 模式
+  (docker/podman/systemd/bare/ambiguous-双节点/none)判定正确;cgroup/cmdline/inspect 植入 5 类 canary
+  (S0015 corpus token/AWS key/password/bech32/PEM)零泄露;RAW `docker inspect` 含 canary 但探测器只调 --format 证明不走 raw。
+- p2-1 | stack: shell | command: ouro-ops tool run detect/runtime --machine devhost | result: pass | note:
+  内嵌探测器经真 tool-run 路径提取执行,dev host 无节点 → mode=none 封闭投影,合 tool-output schema。
+- p2-2/p2-7 | stack: python | command: python3 tests/test_supervisor_gate.py(精化后) | result: pass | note:
+  剥离注释+引号匹配命令调用;detect 探测器的枚举/JSON-键 `docker` 放行,注入 `docker rm`/`setsid` 仍被捕获(可证伪)。
+- p2-1..7 | stack: rust+python | command: cargo test -q; 全 python 套件 | result: pass | note: cargo 33 pass
+  (regen bundle-manifest 后);python 15 pass(含新增 test_detect_runtime)。
 
 ## 7. Change Requests (append-only)
 - 2026-07-10 评审驱动的 draft 强化(见执行日志);属 draft 阶段自由编辑,不改变 S0017 的范围边界
