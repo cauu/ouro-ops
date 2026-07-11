@@ -18,6 +18,15 @@ ctl() { dc exec -T control "$@"; }
 cleanup() { dc down -v --remove-orphans >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 SPEC=/opt/ouro/pool-spec.yaml
+# p2-5b: dispatch a target-bound destructive op (detect fingerprint -> token -> run with token).
+cdispatch() {
+  local tool="$1" m="${2:-bp1}" fp tok
+  fp=$(ctl ouro-ops tool run detect/runtime --dispatch "$m" --spec "$SPEC" \
+       | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["evidence_hash"])')
+  tok=$(ctl ouro-ops confirm create --action "$tool" --machine "$m" --runtime-evidence "$fp" \
+        | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["token"])')
+  ctl ouro-ops tool run "$tool" --dispatch "$m" --spec "$SPEC" --confirm-token "$tok"
+}
 WORK="$(pwd)/tmp/secret-scan"; rm -rf "$WORK"; mkdir -p "$WORK"
 
 echo "[bed] rebuild base + up (bp1 forging) + provision + run a real flow"
@@ -27,7 +36,7 @@ bash fixtures/e2e/provision.sh >/dev/null
 # Real flow that handles secrets: status collection + a KES rotation (touches KES/cold keys).
 # The flow MUST actually succeed — a 0-hit scan over a flow that never ran is meaningless.
 ctl ouro-ops tool run deploy/status      --dispatch bp1 --spec "$SPEC" > "$WORK/transcript.status.json" 2>&1 || true
-ctl ouro-ops tool run kes-rotation/rotate --dispatch bp1 --spec "$SPEC" > "$WORK/transcript.kes.json"    2>&1 || true
+cdispatch kes-rotation/rotate > "$WORK/transcript.kes.json" 2>&1 || true
 for t in status kes; do
   grep -q '"status":"ok"' "$WORK/transcript.$t.json" || fail "real flow ($t) did not return status=ok — 0-hit scan would be meaningless: $(head -c200 "$WORK/transcript.$t.json")"
 done

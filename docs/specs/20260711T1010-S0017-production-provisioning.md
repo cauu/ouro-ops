@@ -281,8 +281,12 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   =换镜像未建模→fail-closed。**已交付 p2-5b 原语**:确认令牌绑定目标指纹——`ConfirmationToken.evidence`
   (可选)+ `confirm create --runtime-evidence`;consume 要求 live 指纹与批准指纹相等(不符/缺失即拒,不烧令牌);
   探测器输出 `data.evidence_hash`(mode|unit|container|digest 的稳定哈希,单一定义);带证据令牌单测 + 探测器指纹
-  稳定单测。**待 p2-5b enforcement**:run_tool_dispatch 对破坏性工具强制"detect→consume(live 指纹)→dispatch"门
-  + 3 个 e2e harness(restart/upgrade/kes)接入确认流。**待 p2-9**:systemd/container 真环境 e2e。)
+  稳定单测。**已交付 p2-5b enforcement**:`run_tool_dispatch` 对直接派发的破坏性工具
+  (runtime/restart、runtime/topology-apply、kes-rotation/rotate)强制门——控制侧 re-detect 目标拿 live 指纹 →
+  `consume_confirmation(action=tool, machine, evidence=live 指纹)`;无令牌/指纹不符即拒(fail-closed)。runtime +
+  kes + secrets 三个 e2e harness 接入 `cdispatch`(detect→confirm create --runtime-evidence→dispatch --confirm-token);
+  真节点 e2e 证明**无令牌被拒** + **确认流通过**。**编排式 upgrade**(upgrade/rollout→upgrade-one)= rollout 级
+  确认,单列后续。**待 p2-9**:systemd/container 真环境 e2e。)
 - [x] p2-6 (rev) fail-closed:模式/候选模糊、混合/嵌套/多节点、幻觉选错、与声明不符 → exit 40 + conflict 码
   (交付:`ouro_node_guard_mode` 在**脚本顶层**(非子 shell,修掉一个 fail-closed 绕过 bug)对
   none/ambiguous/mismatch 发 exit 40;多节点→ambiguous;"幻觉选错候选"被结构性消除——目标由机制检测解析而非
@@ -376,6 +380,15 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T14:15+08:00 p2-5b enforcement 交付(破坏性派发的目标绑定确认门):`run_tool_dispatch` 对
+  `CONFIRM_BOUND_TOOLS = {runtime/restart, runtime/topology-apply, kes-rotation/rotate}` 强制:控制侧先跑只读
+  `detect/runtime`(新 helper `dispatch_runtime_evidence`,SSH 探测 + 解析 `data.evidence_hash`,非 0/不可解析
+  即 fail-closed)拿 live 指纹 → `consume_confirmation(action=tool, machine, evidence=live)`。无 `--confirm-token`
+  或指纹不符即拒。runtime/kes/secrets 三 harness 接入 `cdispatch`(detect→`confirm create --runtime-evidence`→
+  `tool run --confirm-token`)。runtime harness 加负向断言:**无令牌 restart 被拒**。编排式 upgrade
+  (upgrade/rollout→upgrade-one)不在此门(= rollout 级确认,单列后续)。真节点 e2e 三条全绿:runtime(无令牌拒 +
+  restart PID 45→322 + topology + 幂等 + forging)、kes(rotate 门通过,counter 0→1→2 + 重启 forging)、secrets
+  (确认流不引入泄露:corpus 0 命中,canary 仍被检出)。cli.rs 非内嵌、harness 非内嵌 → manifest 不变。
 - 2026-07-11T13:20+08:00 p2-5b 原语交付(确认令牌绑定目标指纹):`confirm.rs` 的 `ConfirmationToken` 加可选
   `evidence` 字段;`create(..., evidence)` + `consume(..., evidence)`——带证据令牌只对**批准指纹**生效,live 指纹
   不符=拒(且不烧令牌)、缺失=拒;无证据令牌保持 rollback/kes-push 旧行为(向后兼容)。`confirm create
@@ -517,6 +530,12 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   fp_ 前缀 35 长、同目标稳定、canary 零泄露;探测全模式 + no-leak 不回归。
 - p2-5b | stack: rust+python | command: cargo test -q -- --test-threads=1; 全 python | result: pass | note:
   cargo 35 pass(regen manifest 后;单线程规避既有 env 竞态)、python 16 pass。
+- p2-5b(gate)| stack: e2e | command: make e2e-t2-runtime | result: pass | note: **无令牌 restart 被拒**
+  (报错含 "confirmation token")+ 确认流通过:restart PID 45→322、topology 322→592、幂等、forging;bed 自动清理。
+- p2-5b(gate)| stack: e2e | command: make e2e-t2-kes | result: pass | note: rotate 门通过(cdispatch 每次新令牌):
+  counter 0→1(pid 45→368 重启 + forging)、#2 单调 1→2。
+- p2-5b(gate)| stack: e2e | command: make e2e-t2-secrets | result: pass | note: 确认流不引入泄露——corpus 0 secret
+  指纹命中(23 指纹扫描)、canary 仍被检出(2 命中);证明 detect+confirm create 无泄密。
 
 ## 7. Change Requests (append-only)
 - 2026-07-10 评审驱动的 draft 强化(见执行日志);属 draft 阶段自由编辑,不改变 S0017 的范围边界

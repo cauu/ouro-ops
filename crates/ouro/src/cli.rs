@@ -366,6 +366,36 @@ fn resolve_skill_script(tool_name: &str) -> Result<(PathBuf, Option<PathBuf>)> {
 /// the target over SSH. Audit + token are minted/verified ON THE TARGET (§2.1 D2), so
 /// control mints nothing and passes no `--audit-id`; it relays the target's JSON + exit
 /// code. `--remote-spec` overrides the target-side spec path (default: same as --spec).
+/// Run the read-only `detect/runtime` probe on a target over SSH and extract its
+/// `data.evidence_hash` — the live target fingerprint the confirm gate binds against.
+/// Fails closed (a non-zero probe or unparseable output refuses the destructive action).
+fn dispatch_runtime_evidence(
+    target: &crate::domain::SshTarget,
+    key_path: &std::path::Path,
+    machine_id: &str,
+    remote_spec: &str,
+) -> Result<String> {
+    let outcome =
+        SshRunner::new(false).execute(target, key_path, "detect/runtime", machine_id, remote_spec)?;
+    if outcome.status != 0 {
+        return Err(OuroError::Validation(format!(
+            "could not detect {machine_id} runtime before a destructive action (exit {}); refusing",
+            outcome.status
+        )));
+    }
+    let value: serde_json::Value = serde_json::from_str(outcome.stdout.trim()).map_err(|e| {
+        OuroError::Validation(format!("detect/runtime output not JSON for {machine_id}: {e}"))
+    })?;
+    value
+        .get("data")
+        .and_then(|d| d.get("evidence_hash"))
+        .and_then(|h| h.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            OuroError::Validation(format!("detect/runtime gave no evidence_hash for {machine_id}"))
+        })
+}
+
 fn run_tool_dispatch(args: &[String]) -> Result<()> {
     let tool_name = args
         .get(1)
@@ -393,6 +423,27 @@ fn run_tool_dispatch(args: &[String]) -> Result<()> {
             "credential key not found for {machine_id}: {} (run provisioning)",
             key_path.display()
         )));
+    }
+    // p2-5b enforcement: a directly-dispatched destructive lifecycle op requires a human
+    // confirmation token BOUND to the target's LIVE fingerprint. Control re-detects the
+    // target here (read-only) and consumes the token against that live evidence, so a token
+    // approved for a different — or since-changed — target cannot drive the action (review P1
+    // + TOCTOU). Orchestrated upgrade (upgrade/rollout -> upgrade-one) is a separate rollout-
+    // level confirm and is intentionally NOT gated here.
+    const CONFIRM_BOUND_TOOLS: &[&str] =
+        &["runtime/restart", "runtime/topology-apply", "kes-rotation/rotate"];
+    if CONFIRM_BOUND_TOOLS.contains(&tool_name.as_str()) {
+        let token = optional_flag_value(args, "--confirm-token").ok_or_else(|| {
+            OuroError::Validation(format!(
+                "{tool_name} on {machine_id} requires a target-bound confirmation token: run \
+                 `ouro-ops tool run detect/runtime --dispatch {machine_id} --spec <spec>`, review \
+                 data.evidence_hash, then `ouro-ops confirm create --action {tool_name} --machine \
+                 {machine_id} --runtime-evidence <hash>` and pass --confirm-token"
+            ))
+        })?;
+        let live_fp =
+            dispatch_runtime_evidence(&machine.ssh, &key_path, machine_id, remote_spec)?;
+        consume_confirmation(&paths, Some(token), &tool_name, machine_id, Some(&live_fp))?;
     }
     let outcome = SshRunner::new(false).execute(
         &machine.ssh,
