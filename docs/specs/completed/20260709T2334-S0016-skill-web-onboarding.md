@@ -1,12 +1,12 @@
 # Skill Distribution via Static Web Prompt Generator
 
 Spec-ID: S0016
-Status: active
+Status: completed
 Created Time: 2026-07-09T10:00:00+08:00
 Start Time: 2026-07-09T23:34:00+08:00
-Completion Time:
+Completion Time: 2026-07-10T22:31:19+08:00
 Previous Spec-ID: S0015
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
@@ -469,6 +469,12 @@ agent 装 skill",又不给决策层留投毒面。
 
 - 2026-07-10 p1-i18n-fix1 completed: 三语字典整体重写为 native 文案;真浏览器验证简中渲染 + 语言
   记忆恢复,0 console 错误;静态门 pass。
+
+- 2026-07-10 spec closed (delivered): 用户验收通过("ok 没问题了 该spec可以close")。
+  已交付:网站生成器(bubble-light 重设计 + 两步面板 + modal 向导 + 四语 i18n)、自更新单二进制
+  (编译期内嵌 skills、bundle manifest、验签打包)、版本闸 + tamper-evident 防回滚、注入校验/确认
+  ground-truth/威胁模型。**遗留**(不阻塞关闭):p2-3 [~] self-update 网络 apply(依赖真实 release
+  基础设施)、p4-4 [ ] 可选受限 agent-run 加固轨——两者如需推进,由后续 spec 承接。
 
 ## 6. Validation Evidence (append-only)
 - p3-1 | stack: python | command: python3 tests/test_skill_docs.py | result: pass | note: 6 份 SKILL.md
