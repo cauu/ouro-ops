@@ -323,8 +323,10 @@ PY
   fi
 
   # Recreate the service onto the new image, then verify convergence by IMAGE ID of the
-  # RUNNING service container. Any failure => restore the compose file and re-up (rollback).
-  if (cd "${wd:-$(dirname "$cfg")}" && $ccmd -f "$cfg" up -d --no-deps "$svc" >/dev/null 2>&1); then
+  # RUNNING service container. `-p "$proj"` is REQUIRED — without it compose derives the
+  # project from the cwd and would target a DIFFERENT deployment, not the running node. Any
+  # failure => restore the compose file and re-up (rollback).
+  if (cd "${wd:-$(dirname "$cfg")}" && $ccmd -p "$proj" -f "$cfg" up -d --no-deps "$svc" >/dev/null 2>&1); then
     sleep 2
     newcid="$("$rt" ps -q \
       --filter "label=com.docker.compose.project=$proj" \
@@ -337,7 +339,7 @@ PY
   fi
   # Rollback: old compose file back, recreate the service on the previous image.
   mv -f "$cfg.ouro-backup" "$cfg"
-  (cd "${wd:-$(dirname "$cfg")}" && $ccmd -f "$cfg" up -d --no-deps "$svc" >/dev/null 2>&1) || true
+  (cd "${wd:-$(dirname "$cfg")}" && $ccmd -p "$proj" -f "$cfg" up -d --no-deps "$svc" >/dev/null 2>&1) || true
   ouro_emit_error 30 "container_upgrade_failed" \
     "service $svc did not converge to $want; compose file restored and previous image re-upped"
 }

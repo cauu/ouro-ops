@@ -60,4 +60,52 @@ MAINPID=$(dex systemctl show -p MainPID --value cardano-node.service)
 [ "$MAINPID" = "$PID1" ] || fail "systemd MainPID ($MAINPID) != detected pid ($PID1)"
 pass "systemd restart: PID rotated $PID0 -> $PID1, unit active, MainPID matches"
 
-echo "supervision-mode (systemd) E2E: ALL PASSED"
+echo "[modes] docker/compose — container upgrade = image re-pin + recreate + rollback (TC-7)"
+CPROJ="ouro-e2e-cup-$$"
+CDIR="$(pwd)/tmp/compose-node-$$"; rm -rf "$CDIR"; mkdir -p "$CDIR"
+CFG="$CDIR/docker-compose.yaml"
+compose_cleanup() { docker compose -p "$CPROJ" -f "$CFG" down >/dev/null 2>&1 || true; rm -rf "$CDIR"; }
+trap 'cleanup; compose_cleanup' EXIT
+
+# Two DISTINCT node image versions (different content ids) — no apt, so no flaky fetch.
+docker build -q --build-arg V=1 -f fixtures/e2e/compose-node/Dockerfile -t ouro-e2e-cnode:v1 . >/dev/null
+docker build -q --build-arg V=2 -f fixtures/e2e/compose-node/Dockerfile -t ouro-e2e-cnode:v2 . >/dev/null
+V1_ID=$(docker image inspect --format '{{.Id}}' ouro-e2e-cnode:v1)
+V2_ID=$(docker image inspect --format '{{.Id}}' ouro-e2e-cnode:v2)
+[ "$V1_ID" != "$V2_ID" ] || fail "v1/v2 images have the same id — upgrade check would be vacuous"
+
+printf 'services:\n  cardano-node:\n    image: ouro-e2e-cnode:v1\n    command: run\n' > "$CFG"
+docker compose -p "$CPROJ" -f "$CFG" up -d >/dev/null 2>&1 || fail "compose up (v1) failed"
+CID=$(docker compose -p "$CPROJ" -f "$CFG" ps -q cardano-node | head -1)
+[ -n "$CID" ] || fail "no compose container id"
+[ "$(docker inspect --format '{{.Image}}' "$CID")" = "$V1_ID" ] || fail "compose node not on v1"
+pass "compose node up on v1 (project=$CPROJ)"
+
+# Upgrade to v2 via the REAL adapter path against real docker + compose (adapter runs here,
+# reading the container's own compose labels to locate the project + compose file).
+OURO_MACHINE=bp1 OURO_TOOL_NAME=modes/upgrade bash -c '
+  source ouro-skills/lib/ouro-lib.sh
+  ouro_node_upgrade_container docker "'"$CID"'" ouro-e2e-cnode:v2' \
+  || fail "container upgrade v1->v2 failed"
+grep -q 'image: ouro-e2e-cnode:v2' "$CFG" || fail "compose file NOT re-pinned to v2"
+NEWCID=$(docker compose -p "$CPROJ" -f "$CFG" ps -q cardano-node | head -1)
+[ -n "$NEWCID" ] || fail "no container after v2 recreate"
+[ "$(docker inspect --format '{{.Image}}' "$NEWCID")" = "$V2_ID" ] || fail "recreated container NOT on v2 image"
+pass "upgrade v1->v2: compose re-pinned + container recreated on v2 image id"
+
+# Rollback: upgrade to a NONEXISTENT image => must restore the compose file to v2 and fail.
+if OURO_MACHINE=bp1 OURO_TOOL_NAME=modes/upgrade bash -c '
+     source ouro-skills/lib/ouro-lib.sh
+     ouro_node_upgrade_container docker "'"$NEWCID"'" ouro-e2e-cnode:does-not-exist-9x' >/dev/null 2>&1; then
+  fail "upgrade to a nonexistent image unexpectedly succeeded"
+fi
+grep -q 'image: ouro-e2e-cnode:v2' "$CFG" || fail "compose file NOT restored to v2 after failed upgrade"
+STILL=$(docker compose -p "$CPROJ" -f "$CFG" ps -q cardano-node | head -1)
+[ -n "$STILL" ] && [ "$(docker inspect --format '{{.Image}}' "$STILL")" = "$V2_ID" ] \
+  || fail "node not still on v2 after rolled-back upgrade"
+pass "rollback: failed upgrade restored compose to v2, node still on v2"
+
+compose_cleanup
+docker rmi ouro-e2e-cnode:v1 ouro-e2e-cnode:v2 >/dev/null 2>&1 || true
+
+echo "supervision-mode (systemd + docker/compose) E2E: ALL PASSED"

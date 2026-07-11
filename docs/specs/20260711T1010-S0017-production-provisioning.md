@@ -303,8 +303,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   (**已交付 systemd**:`fixtures/e2e/systemd-node/`(systemd PID1 + `cardano-node.service`,private cgroupns
   =干净 `/system.slice` 无 docker id,忠实 bare-metal/VM systemd 主机)+ `e2e-t2-runtime-modes` harness +
   make 目标;真 systemd 验证 detect=systemd/unit + `systemctl restart <unit>` 分发使 PID 轮转、MainPID 一致。
-  **container-upgrade 逻辑已建模**(compose 重定镜像 + 重建 + 回滚,见 p2-5 备注,单测覆盖)。
-  **待**:docker-in-docker 真环境跑通 compose 升级往返、podman fixture、混合托管目标。)
+  **container-upgrade 已真环境验证**(`compose-node/` v1/v2 镜像 + `e2e-t2-runtime-modes` docker/compose leg:真
+  docker+compose 上 v1→v2 重定+重建、失败回滚还原到 v2;host-level 真 daemon,非 dind)。
+  **待**:podman fixture、混合托管目标、docker-in-docker 下的完整 /proc 检测→升级往返(host leg 已覆盖升级逻辑,
+  检测由 cgroup 单测 + systemd 真测覆盖)。)
 
 ### p3 — 审计完整性 & 传输安全
 - [ ] p3-1 (rev) 目标机权威审计**哈希链 + 反签名 + 独立远端锚点 + ack**(机器身份 + 单调序号;检测修改/删除/
@@ -385,6 +387,12 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T16:10+08:00 compose 容器升级真环境 e2e + 修一个真 bug:`fixtures/e2e/compose-node/Dockerfile`
+  (v1/v2 两个不同 content id 的 stand-in node 镜像,无 apt)+ `e2e-t2-runtime-modes` 加 docker/compose leg——真
+  docker+compose:起 v1 → 经 `ouro_node_upgrade_container` 升 v2(compose 文件重定 + 容器按 image id 重建)→ 升
+  不存在镜像触发**回滚**(compose 文件还原到 v2、节点仍 v2)。写这个真 e2e 时**揪出一个真 bug**:
+  `ouro_node_upgrade_container` 的 `compose up` 漏了 `-p <project>`——compose 会据 cwd 另推项目名、打到别的部署而
+  非运行中的节点;补上从 label 取的 `-p "$proj"`(升级 + 回滚两处)。full modes e2e(systemd + docker/compose)全绿。
 - 2026-07-11T15:40+08:00 容器升级建模 + compose 自动适配(p2-5 container 分支 + 探测器 compose 识别):用户生产
   用 docker compose,要求两种部署(裸/容器)自动适配。探测器加**机械式 compose 识别**——`ouro_supervisor_compose_label`
   经 `docker inspect --format {{index .Config.Labels "…"}}` 单字段读 compose project/service(config_files/working_dir
@@ -572,6 +580,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   docker 模式 evidence.compose={project,service}(桩仅经 --format 单字段;raw inspect 含 canary 证明不走 raw);全模式 no-leak。
 - p2-5(bare 回归)| stack: e2e | command: make e2e-t2-upgrade | result: pass | note: upgrade-one 重构后裸路径无回归:
   bp1 pid 45→253 真重启 + forge past 4、rollout relays-first-BP-last、quorum/lock/部分失败 rollback 全绿。
+- TC-7(compose 真环境)| stack: e2e | command: make e2e-t2-runtime-modes | result: pass | note: 真 docker+compose:
+  节点 up v1 → 升级 v1→v2(compose 重定 + 容器按 image id 重建)→ 升不存在镜像→回滚还原 v2、节点仍 v2。
+  (含 systemd leg;揪出并修 `compose up` 漏 `-p project` 的真 bug。)
 
 ## 7. Change Requests (append-only)
 - 2026-07-10 评审驱动的 draft 强化(见执行日志);属 draft 阶段自由编辑,不改变 S0017 的范围边界
