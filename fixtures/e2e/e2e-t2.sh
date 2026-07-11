@@ -111,7 +111,7 @@ pass "E2E-3 diag no-sudo; ouro-exec confined to tool-run wrapper (no confirm/rm/
 # with an arbitrary --audit-id, (c) missing token.
 refute_reason "invalid_audit_context" dc exec -T \
   -e OURO_AUDIT_ID=fabricated -e OURO_TOOL_NAME=deploy/provision -e OURO_INVOCATION_TOKEN=inv_bogus \
-  -e OURO_BIN=/usr/local/bin/ouro bp1 bash /opt/ouro/ouro-skills/deploy/scripts/provision.sh
+  -e OURO_BIN=/usr/local/bin/ouro-ops bp1 bash /opt/ouro/ouro-skills/deploy/scripts/provision.sh
 refute_reason "audit_context" dc exec -T -u ouro-exec bp1 \
   sudo -n /usr/local/sbin/ouro-tool-run deploy/provision --machine bp1 --spec "$SPEC" --audit-id fabricated
 pass "E2E-16 forged context rejected (forged env + arbitrary --audit-id)"

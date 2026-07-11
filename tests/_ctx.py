@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 @functools.lru_cache(maxsize=1)
 def ouro_bin():
     subprocess.run(["cargo", "build", "-q"], cwd=ROOT, check=True)
-    return str(ROOT / "target" / "debug" / "ouro")
+    return str(ROOT / "target" / "debug" / "ouro-ops")
 
 
 def tool_run(tool, *, spec=None, machine=None, env=None, home=None, check=True):

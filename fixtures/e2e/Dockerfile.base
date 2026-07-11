@@ -12,17 +12,23 @@ WORKDIR /build
 RUN apt-get update \
  && apt-get install -y --no-install-recommends gcc libc6-dev pkg-config \
  && rm -rf /var/lib/apt/lists/*
-# Cache deps: copy manifests first, then sources.
-COPY Cargo.toml Cargo.lock ./
+# Cache deps: copy manifests first, then sources. build.rs lives at the repo root (package
+# root, auto-detected by cargo) and MUST be copied or no build script runs.
+COPY Cargo.toml Cargo.lock build.rs ./
 COPY crates ./crates
+# build.rs (S0016 p2-1) embeds ouro-skills/ + schemas/ at compile time (CARGO_MANIFEST_DIR-
+# relative), so both MUST be present in the builder or the generated EMBEDDED slice is absent
+# and the lib fails to compile. Keep this COPY in sync with build.rs's inputs.
+COPY ouro-skills ./ouro-skills
+COPY schemas ./schemas
 RUN cargo build --release --locked \
- && strip target/release/ouro || true
+ && strip target/release/ouro-ops
 
 FROM debian:12-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df AS base
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /build/target/release/ouro /usr/local/bin/ouro
+COPY --from=builder /build/target/release/ouro-ops /usr/local/bin/ouro-ops
 COPY ouro-skills /opt/ouro/ouro-skills
 COPY schemas    /opt/ouro/schemas
 # Provenance for the version-skew check (E2E-12): every container built FROM this base

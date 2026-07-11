@@ -11,7 +11,7 @@ FROM ouro-e2e-base:local AS ouro
 FROM ghcr.io/blinklabs-io/cardano-node:10.5.4@sha256:6de965784be4134deccb94ca8d92c11dfb3e140a9d0616210f29a1836fdb13d7
 
 # Same pinned ouro + skills + schemas as the rest of the bed (identical provenance).
-COPY --from=ouro /usr/local/bin/ouro /usr/local/bin/ouro
+COPY --from=ouro /usr/local/bin/ouro-ops /usr/local/bin/ouro-ops
 COPY --from=ouro /opt/ouro /opt/ouro
 
 # sshd + sudo + python3 (L2 scripts emit JSON via python3 / parse the spec). Principals +

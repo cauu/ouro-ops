@@ -258,7 +258,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   `sshd -t`/`visudo -c` + 二次登录;不支持主机 fail-closed
 - [ ] p1-9 (new) **版本化 root-owned 安装账本**:created-vs-adopted 属主 + 改前摘要/备份 + 精确逆操作;冲突
   默认拒绝除非 `--adopt`
-- [ ] p1-10 (new) **参考 fixture 修复**:E2E base 的 `ouro`→`ouro-ops` 名一致 + 干净构建作为 p1-2 前置
+- [x] p1-10 (new) **参考 fixture 修复**:E2E base 的 `ouro`→`ouro-ops` 名一致 + 干净构建作为 p1-2 前置
 
 ### p2 — 节点托管模式感知(LLM 判定 + 机制不泄密 + 候选绑定)
 - [ ] p2-1 (rev) confined 只读探测工具 `detect/runtime`(L3 姿态),采集托管信号,输出**带类型封闭投影**
@@ -357,6 +357,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T10:30+08:00 p1-10 completed(参考 fixture 修复,P3 二进制路径定稿 + 干净构建前置):
+  统一二进制规范名/路径为 `/usr/local/bin/ouro-ops`(Cargo bin = `ouro-ops`,`ouro` 仅是 lib)。改 5 处
+  名字不一致:`Dockerfile.base`(strip/COPY `ouro`→`ouro-ops`,去掉掩盖失败的 `|| true`)、`bp/Dockerfile`
+  (COPY 路径)、`e2e-t2.sh`(`OURO_BIN`)、`tests/_ctx.py`(`target/debug/ouro`→`ouro-ops`,此前测试碰巧
+  用旧残留二进制)。删除陈旧 `target/{debug,release}/ouro` 残留。**干净构建暴露并修掉更深的遗留断裂**:
+  S0016 编译期内嵌(`build.rs` walk `ouro-skills/`+`schemas/` 生成 `EMBEDDED`)后,`Dockerfile.base` 的
+  builder 阶段从未 COPY `build.rs`/`ouro-skills`/`schemas` —— 之前靠 `|| true` + 缓存镜像掩盖,`make
+  e2e-build-base` 干净构建实际会 `E0425 EMBEDDED not found` 失败。补齐三处 COPY 后构建通过。
 - 2026-07-11T10:10+08:00 spec 激活:draft → active,Start Time 记录,移入 `docs/specs/`
   (`20260711T1010-S0017-production-provisioning.md`)。Previous Spec-ID=S0016。按依赖顺序执行:
   p1-10(fixture 修复,p1-2 前置)→ p1-1(bootstrap 传输模块)→ p2-8(supervisor adapter)→ … ;
@@ -389,7 +397,18 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
-- (待执行)
+- p1-10 | stack: rust | command: cargo build --release --locked | result: pass | note: 产出
+  target/release/ouro-ops(无 ouro);strip 无需 `|| true` 即成功。
+- p1-10 | stack: rust | command: cargo test -q | result: pass | note: 33 passed / 0 failed,名字修正无回归。
+- p1-10 | stack: python | command: python3 tests/test_tool_output_schema.py && python3 tests/test_deploy_scripts.py
+  | result: pass | note: 删除陈旧 target/debug/ouro 后,经 _ctx.py 走新 ouro-ops 路径仍全 pass(证明此前
+  测试确在用旧残留二进制)。
+- p1-10 | stack: docker | command: docker build -f fixtures/e2e/Dockerfile.base -t ouro-e2e-base:local . |
+  result: pass | note: 干净构建端到端成功(此前 E0425 EMBEDDED 失败);最后一步 `/usr/local/bin/ouro-ops
+  version` 通过。
+- p1-10 | stack: docker | command: docker run --rm ouro-e2e-base:local /usr/local/bin/ouro-ops version && … skill list
+  | result: pass | note: 镜像内仅规范路径 ouro-ops(无短名 ouro);version binary=ouro-ops v0.1.0;内嵌 6
+  skills(embedded_digest 非空)证明 build.rs 生效。
 
 ## 7. Change Requests (append-only)
 - 2026-07-10 评审驱动的 draft 强化(见执行日志);属 draft 阶段自由编辑,不改变 S0017 的范围边界
