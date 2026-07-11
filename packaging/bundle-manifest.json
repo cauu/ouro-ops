@@ -10,10 +10,10 @@
     "deploy/scripts/takeover.sh": "fd992903d3ac3172a2d1d99bdeea59dd3831667d284e1d6c6d875f02cfccfff0",
     "deploy/scripts/verify.sh": "7a8a47cf4503fe86239a182ee61a4b74db973a0ce681d8b0ca4278b1a6adb0bb",
     "detect/SKILL.md": "c48098f35ea5a9e0bacee8e3e364b6a3c167f9ae3fd62bc4100b8e7edca1e85e",
-    "detect/scripts/runtime.sh": "93965b31484a0612f66dde8d72745f323f1a5136ea5063478bbe40f042e99a1e",
+    "detect/scripts/runtime.sh": "63106a5b42fa467c60bf7182062d8a4dc9648e002348a13b467a6c01aa4d5940",
     "kes-rotation/SKILL.md": "4cac6e0cc6c13c971a6668e61192d45050e3969dfdc664447185bbed47414791",
     "kes-rotation/scripts/rotate.sh": "9a6a39d6c8022262be909cfe0866443f1caf93d4ac70205047d9d2efa6c38a6c",
-    "lib/ouro-lib.sh": "4584bd45c558e5d4030b372e1cef52417c1fae988e7330dcb9af049fb5ec0226",
+    "lib/ouro-lib.sh": "550320690ad830136d1044c97eb6820dfd1a310e1fdf2b830428ac819adec76a",
     "observability/SKILL.md": "5304d5311eda7fe4feb9588167e1d11adb3a275c6738708b6a464e2cab81d61e",
     "observability/scripts/install-gateway.sh": "8be5e1f07516aa6a08bc44699b37e2f7a927aa456223a329dd25b4db9ef82c15",
     "observability/scripts/rollback.sh": "74a7182079d42080e105a5c14a22a5cd7054337ca09e20c31e0e15c59b6ad468",
@@ -29,14 +29,14 @@
     "upgrade/scripts/rollback.sh": "a69ed01338e46c8aa1169919f71ab89cce39a8d37ed10b844c593b5b77e04971",
     "upgrade/scripts/rollout.sh": "5096f65db31ee3a615452dc22d8f9138f8a06103333a06472b181614617741ca",
     "upgrade/scripts/run.sh": "c09b41c0fe455c5e96b36d743c0ad58d637843ce501b621979b9c1b8c9022ba9",
-    "upgrade/scripts/upgrade-one.sh": "ba51b62718bd754191fd9b4d0ddb00822643cfcff374eaebbcf7d1566a459b6b",
+    "upgrade/scripts/upgrade-one.sh": "12800fe5c8bc7ce204a770ba7a57e4dc293c3139bc11c98ba9adb87bd6d43b56",
     "upgrade/scripts/verify.sh": "87cead3bbee5f8427210237240580ddcf6bc2c4d721868a283d133cfe4d2e7d1"
   },
   "decision_hash": "3494ee36af45f850e56f2673f26ad18fe434b999587d0584dc05e2d687efb690",
-  "embedded_digest": "7a470066ec42157783f467c608300962665a7915a9be46880210367a49673637",
+  "embedded_digest": "6a15efe3145ea97ced0bc0e436ac3d7c843e710ce603def28f3f541a6e03d50c",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
   "schema_hash": "064373a060a04b84cdaf0b7f0f44a78e2d6731436116236e80a42c8976972125",
-  "skills_hash": "0cb1071f34d0549ae294b885733f50f78006e06e07d6392b433aa10f5ffb0f33"
+  "skills_hash": "bc554e578e6155f34c007ff35bd03355a76da946f54b34ea8facd401461eea2b"
 }

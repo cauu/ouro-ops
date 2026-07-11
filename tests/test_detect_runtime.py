@@ -55,13 +55,22 @@ def run_probe(tmp, *, cgroup, cmdline="", pids=("4242",), docker=None, systemctl
         'for a in "$@"; do case "$a" in *cardano-node*) '
         f'printf "%s\\n" "{pid_lines}"; exit 0;; esac; done\nexit 1\n'
     ))
-    # Fake docker/podman: `inspect --format` projects one field; a RAW `inspect` returns a
-    # canary-laden blob — proving the probe only ever calls the --format projection.
+    # Fake docker/podman: `inspect --format` projects ONE field (keyed off the format string:
+    # image digest vs. a compose label); a RAW `inspect` returns a canary-laden blob — proving
+    # the probe only ever calls the --format projection, never the raw inspect JSON.
     raw_leak = ('{"Env":["' + CANARIES[1] + '","' + CANARIES[2] + '"],'
                 '"Mounts":"' + CANARIES[0] + '"}')
     default_rt = (
         "#!/usr/bin/env bash\n"
-        'if [ "$1" = inspect ] && [ "$2" = --format ]; then echo "sha256:cafe1234"; exit 0; fi\n'
+        'if [ "$1" = inspect ] && [ "$2" = --format ]; then\n'
+        '  case "$3" in\n'
+        '    *compose.project*) echo "ouro-pool" ;;\n'
+        '    *compose.service*) echo "cardano-node" ;;\n'
+        '    *.Image*) echo "sha256:cafe1234" ;;\n'
+        '    *) echo "<no value>" ;;\n'
+        '  esac\n'
+        '  exit 0\n'
+        'fi\n'
         f"echo '{raw_leak}'; exit 0\n"
     )
     _write_exec(binp / "docker", docker or default_rt)
@@ -98,6 +107,8 @@ def main():
         assert data["mode"] == "docker", data
         assert data["evidence"]["container_id"] == CID64[:12], data
         assert data["evidence"]["image_digest"] == "sha256:cafe1234", data
+        # compose-managed node: which project/service owns it (single-label projections).
+        assert data["evidence"]["compose"] == {"project": "ouro-pool", "service": "cardano-node"}, data
         assert data["port"] == 3001, data
         assert data["node_running"] is True and data["node_count"] == 1, data
         # p2-5b: a stable target fingerprint the confirm gate binds to.

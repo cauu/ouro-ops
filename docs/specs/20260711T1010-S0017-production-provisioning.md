@@ -303,8 +303,8 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   (**已交付 systemd**:`fixtures/e2e/systemd-node/`(systemd PID1 + `cardano-node.service`,private cgroupns
   =干净 `/system.slice` 无 docker id,忠实 bare-metal/VM systemd 主机)+ `e2e-t2-runtime-modes` harness +
   make 目标;真 systemd 验证 detect=systemd/unit + `systemctl restart <unit>` 分发使 PID 轮转、MainPID 一致。
-  **待**:docker-in-docker / podman fixture(TC-7 容器升级基座,较重,且 container-upgrade=换镜像逻辑本身未建模)、
-  混合托管目标。)
+  **container-upgrade 逻辑已建模**(compose 重定镜像 + 重建 + 回滚,见 p2-5 备注,单测覆盖)。
+  **待**:docker-in-docker 真环境跑通 compose 升级往返、podman fixture、混合托管目标。)
 
 ### p3 — 审计完整性 & 传输安全
 - [ ] p3-1 (rev) 目标机权威审计**哈希链 + 反签名 + 独立远端锚点 + ack**(机器身份 + 单调序号;检测修改/删除/
@@ -385,6 +385,18 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-11T15:40+08:00 容器升级建模 + compose 自动适配(p2-5 container 分支 + 探测器 compose 识别):用户生产
+  用 docker compose,要求两种部署(裸/容器)自动适配。探测器加**机械式 compose 识别**——`ouro_supervisor_compose_label`
+  经 `docker inspect --format {{index .Config.Labels "…"}}` 单字段读 compose project/service(config_files/working_dir
+  留机制内部,不入 agent 投影);`detect/runtime` 的 evidence 增 `compose:{project,service}`(非 compose 则 null)。
+  adapter 加 `ouro_node_upgrade_container`:compose 管的容器 → 拉/解析声明镜像(spec `runtime.image`)→ 备份 compose 文件
+  → 改写 `services.<svc>.image` → `compose up -d --no-deps <svc>` → 按**运行容器的 image id == 声明 image id** 验证收敛;
+  任一步失败 → 还原 compose 文件 + 重新 up(回滚到旧镜像)+ exit 30。裸 run 容器(无 compose 标签)→ exit 40 fail-closed
+  (通用配置克隆重建未建模)。`upgrade-one.sh` 重构:先解析 mode,container/podman 走容器升级(幂等:已在声明镜像 id →
+  no-op)、bare/systemd 走原二进制换 + restart。新增 `test_container_upgrade.py`(真 compose 文件改写 + 桩 docker):
+  成功重定+清备份、不收敛→还原+exit30、无标签→exit40;`test_detect_runtime` 加 compose 断言 + 桩只经 --format 单字段
+  (raw inspect 含 canary 证明不走 raw)。真 bare 升级 e2e(rollout)回归通过(bp1 pid 45→253 + forge,顺序/quorum/lock/
+  rollback 全绿),证明重构不伤裸/systemd 路径。regen bundle-manifest。**待**:docker-in-docker 真环境跑 compose 升级往返。
 - 2026-07-11T14:55+08:00 p2-9 部分交付(systemd 真环境 mode fixture):可行性先探明——本机 Docker Desktop 下
   systemd 可作 PID1(privileged + `/sys/fs/cgroup` 挂载),且 **private cgroupns** 下 service cgroup 为干净
   `/system.slice/<unit>`(无外层 docker id),忠实还原裸机/VM systemd 主机(host cgroupns 会泄露 docker id 致误判
@@ -553,6 +565,13 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - TC-5(systemd leg)| stack: e2e | command: make e2e-t2-runtime-modes | result: pass | note: 真 systemd 主机:
   detect/runtime=systemd + unit=cardano-node.service + 无 container id;`systemctl restart <unit>` 分发 PID 50→167
   轮转、unit active、MainPID 一致。docker/podman leg(TC-7)待重 fixture。
+- TC-7(compose 升级逻辑)| stack: python | command: python3 tests/test_container_upgrade.py | result: pass | note:
+  真 compose 文件改写:成功→重定 v1→v2 + 清备份 + 收敛;不收敛→还原 v1 + exit 30 container_upgrade_failed;无 compose
+  标签→exit 40 container_unmanaged。docker-in-docker 真环境往返待补。
+- p2-5(container detect)| stack: python | command: python3 tests/test_detect_runtime.py | result: pass | note:
+  docker 模式 evidence.compose={project,service}(桩仅经 --format 单字段;raw inspect 含 canary 证明不走 raw);全模式 no-leak。
+- p2-5(bare 回归)| stack: e2e | command: make e2e-t2-upgrade | result: pass | note: upgrade-one 重构后裸路径无回归:
+  bp1 pid 45→253 真重启 + forge past 4、rollout relays-first-BP-last、quorum/lock/部分失败 rollback 全绿。
 
 ## 7. Change Requests (append-only)
 - 2026-07-10 评审驱动的 draft 强化(见执行日志);属 draft 阶段自由编辑,不改变 S0017 的范围边界

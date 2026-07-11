@@ -251,6 +251,97 @@ ouro_supervisor_image_digest() {
   "$rt" inspect --format '{{.Image}}' "$cid" 2>/dev/null | head -1 || true
 }
 
+# One compose label of a container (single-field projection via --format index; never the
+# raw label map). Empty if absent / not compose-managed. $1=rt $2=cid $3=label key.
+ouro_supervisor_compose_label() {
+  local rt="$1" cid="$2" key="$3" v
+  [ -n "$rt" ] && [ -n "$cid" ] || return 0
+  v="$("$rt" inspect --format "{{index .Config.Labels \"$key\"}}" "$cid" 2>/dev/null | head -1)"
+  case "$v" in "<no value>") ;; *) printf '%s' "$v" ;; esac
+}
+
+# Image ID (content hash) of an image ref / of a container's running image. Used for the
+# container-upgrade convergence check (running id == declared image's id => converged).
+ouro_image_id_of()      { "$1" image inspect --format '{{.Id}}' "$2" 2>/dev/null | head -1 || true; }
+ouro_container_image_id() { "$1" inspect --format '{{.Image}}' "$2" 2>/dev/null | head -1 || true; }
+
+# Compose CLI on this host: the v2 plugin (`docker compose`) or the v1 binary
+# (`docker-compose`). Empty if neither exists.
+ouro_compose_cmd() {
+  if docker compose version >/dev/null 2>&1; then printf 'docker compose'
+  elif command -v docker-compose >/dev/null 2>&1; then printf 'docker-compose'
+  fi
+}
+
+# --- Container upgrade: image re-pin + recreate via compose (S0017 p2-5 / TC-7) --------
+# A container-managed node upgrades by RECREATING the container from the DECLARED image
+# (spec runtime.image) — swapping a host binary under a container is a silent no-op. For a
+# compose-managed container the compose file is the deployment's source of truth, so the
+# mechanism converges IT (otherwise the next `compose up` would silently roll the node back):
+#   pull/resolve declared image -> backup compose file -> rewrite services.<svc>.image ->
+#   `compose up -d --no-deps <svc>` -> verify the service's running container is on the
+#   declared image id; on any failure RESTORE the backup and re-up (rollback to the old
+#   image), then exit 30. Plain `docker run` containers (no compose labels) fail closed:
+#   generic config-cloning recreation is not yet modeled.
+# Runs at TOP LEVEL of an L2 script (never in a command substitution): emits and exits.
+ouro_node_upgrade_container() {
+  local rt="$1" cid="$2" want="$3"
+  local proj svc cfg wd ccmd want_id newcid new_id
+  proj="$(ouro_supervisor_compose_label "$rt" "$cid" com.docker.compose.project)"
+  svc="$(ouro_supervisor_compose_label "$rt" "$cid" com.docker.compose.service)"
+  cfg="$(ouro_supervisor_compose_label "$rt" "$cid" com.docker.compose.project.config_files)"
+  wd="$(ouro_supervisor_compose_label "$rt" "$cid" com.docker.compose.project.working_dir)"
+  if [ -z "$proj" ] || [ -z "$svc" ] || [ -z "$cfg" ]; then
+    ouro_emit_error 40 "container_unmanaged" \
+      "container upgrade needs a compose-managed node (labels absent); plain-run recreation not yet modeled"
+  fi
+  # compose may list several config files comma-separated; converge the first that
+  # defines the service (in practice the project file).
+  cfg="${cfg%%,*}"
+  [ -f "$cfg" ] || ouro_emit_error 40 "compose_file_missing" "compose file from container labels not found: $cfg"
+  ccmd="$(ouro_compose_cmd)"
+  [ -n "$ccmd" ] || ouro_emit_error 40 "compose_cli_missing" "no compose CLI on this host"
+
+  # Resolve the declared image locally (pull only if absent) and its content id.
+  "$rt" image inspect "$want" >/dev/null 2>&1 || "$rt" pull "$want" >/dev/null 2>&1 \
+    || ouro_emit_error 30 "image_unavailable" "declared image not present and pull failed: $want"
+  want_id="$(ouro_image_id_of "$rt" "$want")"
+  [ -n "$want_id" ] || ouro_emit_error 30 "image_unavailable" "could not resolve image id for $want"
+
+  # Rewrite the service's image in the compose file (backup first — the rollback artifact).
+  cp "$cfg" "$cfg.ouro-backup" || ouro_emit_error 30 "compose_backup_failed" "could not back up $cfg"
+  if ! python3 - "$cfg" "$svc" "$want" <<'PY'
+import sys, yaml
+cfg, svc, want = sys.argv[1:4]
+doc = yaml.safe_load(open(cfg))
+doc["services"][svc]["image"] = want
+yaml.safe_dump(doc, open(cfg, "w"), default_flow_style=False, sort_keys=False)
+PY
+  then
+    mv -f "$cfg.ouro-backup" "$cfg"
+    ouro_emit_error 30 "compose_rewrite_failed" "could not set services.$svc.image in $cfg"
+  fi
+
+  # Recreate the service onto the new image, then verify convergence by IMAGE ID of the
+  # RUNNING service container. Any failure => restore the compose file and re-up (rollback).
+  if (cd "${wd:-$(dirname "$cfg")}" && $ccmd -f "$cfg" up -d --no-deps "$svc" >/dev/null 2>&1); then
+    sleep 2
+    newcid="$("$rt" ps -q \
+      --filter "label=com.docker.compose.project=$proj" \
+      --filter "label=com.docker.compose.service=$svc" 2>/dev/null | head -1)"
+    new_id="$(ouro_container_image_id "$rt" "$newcid")"
+    if [ -n "$newcid" ] && [ "$new_id" = "$want_id" ]; then
+      rm -f "$cfg.ouro-backup"
+      return 0
+    fi
+  fi
+  # Rollback: old compose file back, recreate the service on the previous image.
+  mv -f "$cfg.ouro-backup" "$cfg"
+  (cd "${wd:-$(dirname "$cfg")}" && $ccmd -f "$cfg" up -d --no-deps "$svc" >/dev/null 2>&1) || true
+  ouro_emit_error 30 "container_upgrade_failed" \
+    "service $svc did not converge to $want; compose file restored and previous image re-upped"
+}
+
 # Detected supervision mode of the node from live signals:
 # bare | systemd | docker | podman | ambiguous | none. Single source of the mode
 # decision for lifecycle dispatch (kept consistent with detect/runtime by a test).

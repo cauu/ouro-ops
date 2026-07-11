@@ -30,9 +30,12 @@ CID="$(ouro_supervisor_container_id "$PID")"
 RUNTIME="$(ouro_supervisor_container_runtime "$PID")"
 UNIT="$(ouro_supervisor_systemd_unit "$PID")"
 PORT="$(ouro_node_port "$PID")"
-DIGEST=""
+DIGEST=""; COMPOSE_PROJ=""; COMPOSE_SVC=""
 if [ -n "$RUNTIME" ] && [ -n "$CID" ]; then
   DIGEST="$(ouro_supervisor_image_digest "$RUNTIME" "$CID")"
+  # compose-managed? (single-label projections; the config-file PATH stays mechanism-internal)
+  COMPOSE_PROJ="$(ouro_supervisor_compose_label "$RUNTIME" "$CID" com.docker.compose.project)"
+  COMPOSE_SVC="$(ouro_supervisor_compose_label "$RUNTIME" "$CID" com.docker.compose.service)"
 fi
 
 # Signals: a container id + runtime => container mode; a *.service slice (and NOT a
@@ -46,10 +49,10 @@ if [ "$RUNNING" = true ] && [ -z "$CID" ] && [ -z "$UNIT" ]; then SIG_BARE=true;
 # Emit the closed projection. Mode + conflict resolution is done in python for clean
 # JSON; python receives only already-projected scalars, never raw source text.
 python3 - "$MACHINE" "$RUNNING" "$SIG_BARE" "$SIG_SYSTEMD" "$SIG_DOCKER" "$SIG_PODMAN" \
-  "$UNIT" "$CID" "$DIGEST" "$PORT" "$COUNT" "${OURO_AUDIT_ID:-}" <<'PY'
+  "$UNIT" "$CID" "$DIGEST" "$PORT" "$COUNT" "$COMPOSE_PROJ" "$COMPOSE_SVC" "${OURO_AUDIT_ID:-}" <<'PY'
 import hashlib, json, sys
 (machine, running, s_bare, s_systemd, s_docker, s_podman,
- unit, cid, digest, port, count, audit_id) = sys.argv[1:13]
+ unit, cid, digest, port, count, compose_proj, compose_svc, audit_id) = sys.argv[1:15]
 
 def b(x): return x == "true"
 signals = {"bare": b(s_bare), "systemd": b(s_systemd),
@@ -91,6 +94,11 @@ data = {
         "unit": unit or None,
         "container_id": cid or None,
         "image_digest": digest or None,
+        # compose-managed container => which project/service owns the node (else null).
+        "compose": (
+            {"project": compose_proj, "service": compose_svc}
+            if compose_proj or compose_svc else None
+        ),
     },
     "evidence_hash": evidence_hash,
     "port": int(port) if port else None,
