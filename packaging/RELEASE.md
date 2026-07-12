@@ -13,6 +13,22 @@ should not be, runnable from the repo.
 official site shows the same values for an independent cross-check (≥2 channels). This is what
 defeats first-install typosquat / fake-package / bootstrap-key substitution (R2 N4).
 
+## Security boundary — bootstrap credential (S0017 P0-1, convenience mode)
+
+`ouro-ops init` provisions a target using a privileged bootstrap credential (an SSH key + sudo).
+That credential is **NOT mechanism-isolated from the agent**: `ouro-ops init` is an ordinary
+privileged command with no TTY / out-of-band-authorization gate, and the credential may sit in the
+same control-machine credential store as per-operation credentials. A poisoned prompt could
+therefore invoke `init` via the agent and use that credential to perform privileged provisioning on
+any reachable host. This residual risk is **known and accepted** (P0-1): the tool relies on upstream
+control-machine / agent-runtime security for it, not on an in-tool boundary.
+
+Do NOT claim in any documentation that the bootstrap credential is isolated from the agent — that
+would be a false statement. What the tool DOES guarantee is narrower and unrelated to isolation:
+the bootstrap key path/content never enters `ouro-ops` JSON / audit / `confirm preview` / the
+secret-fingerprint corpus (no accidental leakage to output/logs), and per-operation dispatch still
+runs only through the confined `ouro-exec` wrapper.
+
 ## Release process (per version)
 
 1. **Reproducible build** of the single static `ouro` binary (skills embedded, p2-1).

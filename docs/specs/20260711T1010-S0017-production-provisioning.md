@@ -259,7 +259,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   `--stop-then-remove` 自动停节点、审计导出。)
 - [ ] p1-6 (rev) 操作自清理 + **state 三层命名空间**(per-process / per-invocation / workflow-scoped by
   audit-id,仅终态删除 + 崩溃 TTL GC);清理错误可见/入审计
-- [ ] p1-7 (new) **bootstrap 凭据 enforcement**:§1 Constraints A(独立主体/设备 + 强制 TTY + 带外一次性授权 +
+- [x] p1-7 (便利模式收窄) **bootstrap 凭据 = 便利模式 + 诚实标注**(P0-1 已定案:不做机制隔离):唯一保留义务=三处
+  诚实标注齐全且不虚假宣称隔离。补齐 `packaging/RELEASE.md` 的诚实边界段(init 输出 security_note + spec §1 早已有);
+  加 `test_honest_labeling.py` 静态闸(init+packaging 含诚实标注 + 任何含 credential+isolated 的句子必带否定/禁止
+  语气,防未来悄悄加虚假隔离声明),已核可证伪。原 enforcement(独立主体/硬件密钥)按 P0-1 明确不做。
+- [x] p1-7 (原文保留;已由上「便利模式收窄」交付,原 enforcement 按 P0-1 明确不做) **bootstrap 凭据 enforcement**:§1 Constraints A(独立主体/设备 + 强制 TTY + 带外一次性授权 +
   禁 `--dispatch`/非交互)或 B(硬件密钥 + touch/PIN);若都不做则降级为诚实纪律声明 + 把受限 agent-run 面
   列为前置依赖
 - [ ] p1-8 (new) **bootstrap 输入契约 + 平台/架构矩阵**:认证法/主体/sudo/bastion/恢复 console;Debian·Ubuntu +
@@ -361,7 +365,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   独立信道摘要核对 + 人工 view/审读 + 断网 confinement + 全新输出目录 + 回传文件白名单
 - [x] p4-9 (new/精简) **VRF 传输(复用 SSH 通道)+ takeover 边界**:用户定 scope=复用现有 SSH bootstrap 通道。原
   spec 的完整加密信封协议按用户裁剪不做,改为如下:
-- [~] p4-9 (原文保留) **VRF 传输协议 + takeover 边界**:操作员中介加密传输(收件人密钥/完整性/权限/原子安装/无内容
+- [x] p4-9 (原文保留;已由上「复用 SSH 通道」交付,原完整加密信封协议按用户裁剪不做) **VRF 传输协议 + takeover 边界**:操作员中介加密传输(收件人密钥/完整性/权限/原子安装/无内容
   审计/安全删除/重放)+ 真双机测试;显式声明 takeover 冷密钥迁移不在本 spec(或改 takeover 拒绝目标驻留冷密钥)
 
 ## 4. Test and Acceptance Criteria
@@ -409,6 +413,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T22:40+08:00 p1-7 completed(便利模式收窄——补齐诚实标注三处齐全):P0-1 已定案不做机制隔离,唯一保留
+  义务是三处诚实标注。核查发现 `packaging/RELEASE.md` 缺该标注(init 输出 security_note + spec §1 早已有),补上
+  「bootstrap 凭据未与 agent 机制隔离、残余风险已知接受、不得宣称隔离」的安全边界段。加 `test_honest_labeling.py`
+  静态闸冻结:init+packaging 必含诚实标注 + 任何 credential+isolated 同句必带否定/禁止语气(防未来悄悄加虚假隔离
+  声明),已探针自证可证伪。原 enforcement(独立主体/硬件密钥/TTY 门)按 P0-1 明确不做。
 - 2026-07-12T22:10+08:00 p4-9 completed(VRF 传输复用 SSH 通道 + takeover 冷钥边界,用户裁剪 scope):① `bootstrap.rs`
   加 `push_key_argv`——vrf.skey 经**既有加密 SSH bootstrap 通道** cold→BP,原子 temp→install `-D -m 0400 -o <node>
   -g <node>`(仅节点进程可读);`validate_owner` 挡 owner 位注入。② `takeover.sh`:冷钥**去必需**——只要求 forging 钥
@@ -677,6 +686,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p1-7 | stack: python | command: python3 tests/test_honest_labeling.py | result: pass | note: init security_note +
+  packaging 均含「NOT mechanism-isolated from the agent」;无虚假隔离声明(含 credential+isolated 的句必带否定)。
+  已探针注入 "credential is isolated" 确认闸触发。
 - p4-9 | stack: rust | command: cargo test -q bootstrap | result: pass | note: `push_key_argv` 装 vrf.skey
   `install -D -m 0400 -o node -g node`(原子 temp→install)+ `validate_owner` 拒空/空格/`;rm`/`-x`/`$(id)`/超长;共 9 pass。
 - p4-9 | stack: python | command: python3 tests/test_takeover_scripts.py | result: pass | note: 静态边界断言——takeover
