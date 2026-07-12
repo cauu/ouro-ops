@@ -246,7 +246,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   (交付:`provision.rs` plan builder + 执行器 + `ouro-ops init` CLI(零注入、默认推自身二进制、诚实标注 P0-1);
   **真裸机 e2e 通过**:`bare-node` 裸目标(仅 sshd+sudo 用户)→ init → ouro-exec/wrapper/sudoers/hardened sshd
   就位 → **受限派发实活**(经 wrapper 的 tool run 成功、任意 sudo 被拒)→ 二次 init 收敛。host-key pin 归 p3-3。)
-- [ ] p1-3 底座最小化(只留约束必需项)
+- [x] p1-3 底座最小化(只留约束必需项)(交付:init 底座本就最小——**不装任何 OS 包/不拉 node 运行时**(依"已有
+  sudo 用户+SSH key"首访决策),仅 3 个约束必需接入主体(ouro-exec/ouro-diag/node)+ ouro-ops 二进制 + wrapper +
+  sudoers + sshd 加固 + 控制钥。加 `base_install_is_minimal_only_constraint_required_items` 单测**锁定**:任何 Run
+  无 apt/dnf/yum/apk/pip/npm/curl/wget/cardano-node、写入路径 ⊆ 4 条允许清单、useradd 恰 3 个主体——防日后底座膨胀。)
 - [x] p1-4 可审计:`ouro-ops init` 输出安装清单(逐条可核对)(交付:install manifest——每步 desc/kind/remote/
   status/changed + 整体 ok;init JSON 输出携带)
 - [x] p1-5 (rev) `ouro-ops deinit`/uninstall:**deinit 状态机**——全局锁、拒绝在途工作、运行中节点默认拒绝
@@ -413,6 +416,8 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T23:15+08:00 p1-3 completed(底座最小化——锁定):审 `init_plan` 确认底座本就最小(见交付说明),加静态
+  单测锁死"无包管理器/无 node 运行时 + 写入路径 ⊆ 允许清单 + 恰 3 主体",防未来底座膨胀。node 运行时由 deploy 装,不入 init。
 - 2026-07-12T23:00+08:00 p2-4 completed(required-v2 定案 + init 记录/验证声明):§7 定案**保持 optional-v1**
   (检测权威,required 只增摩擦不增安全)。`cli.rs` 加 `init_runtime_record` + `ouro-ops init` 可选 `--spec --machine`:
   给出时加载 spec(**加载即验证** runtime 声明一致性)→ 输出 `data.declared_runtime`(declared=true 带 runtime,
@@ -691,6 +696,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p1-3 | stack: rust | command: cargo test -q base_install_is_minimal | result: pass | note: init 底座——0 包管理器/0
+  node 运行时;写入仅 {ouro-ops 二进制, ouro-tool-run wrapper, sudoers.d/ouro-exec, sshd_config.d/10-ouro.conf};
+  useradd 恰 3(ouro-exec/ouro-diag/node)。
 - p2-4 | stack: rust | command: cargo test -q init_records | result: pass | note: `init_runtime_record`——bp1 无声明
   →declared=false + 「DETECTED/检测治理」note;未知 machine 拒绝;声明 systemd+unit→declared=true 记录 mode/unit
   (一致性已在 spec 加载校验)。init 输出加 `declared_runtime`。

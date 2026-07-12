@@ -328,6 +328,54 @@ mod tests {
     }
 
     #[test]
+    fn base_install_is_minimal_only_constraint_required_items() {
+        // p1-3 base minimization: the base provision installs ONLY what the confinement/dispatch
+        // constraints require — no OS packages, no node runtime, and only the allowlisted paths +
+        // the three access principals. Deploy (not init) brings the cardano-node runtime.
+        let plan = init_plan("ubuntu", Path::new("/usr/local/bin/ouro-ops"));
+
+        // (1) no package manager / network fetch of extra software in any Run command.
+        let forbidden = [
+            "apt-get install", "apt install", "dnf install", "yum install", "apk add",
+            "pip install", "npm install", "curl ", "wget ", "cardano-node",
+        ];
+        for step in &plan {
+            if let Step::Run { cmd, .. } = step {
+                for bad in forbidden {
+                    assert!(!cmd.contains(bad), "base install pulls extra software: {bad:?} in {cmd:?}");
+                }
+            }
+        }
+
+        // (2) every file the base writes is in the minimal allowlisted set.
+        let allowed_paths = [
+            "/usr/local/bin/ouro-ops",
+            "/usr/local/sbin/ouro-tool-run",
+            "/etc/sudoers.d/ouro-exec",
+            "/etc/ssh/sshd_config.d/10-ouro.conf",
+        ];
+        for step in &plan {
+            let remote = match step {
+                Step::Push { remote, .. } | Step::PushContent { remote, .. } => Some(remote.as_str()),
+                Step::Run { .. } => None,
+            };
+            if let Some(r) = remote {
+                assert!(allowed_paths.contains(&r), "base writes an unexpected path: {r}");
+            }
+        }
+
+        // (3) exactly the three required principals are created — nothing else.
+        let useradds: Vec<&str> = plan
+            .iter()
+            .filter_map(|s| match s { Step::Run { cmd, .. } if cmd.contains("useradd") => Some(cmd.as_str()), _ => None })
+            .collect();
+        assert_eq!(useradds.len(), 3, "expected exactly 3 principals, got {}", useradds.len());
+        for u in ["ouro-exec", "ouro-diag", "node"] {
+            assert!(useradds.iter().any(|c| c.contains(u)), "missing required principal {u}");
+        }
+    }
+
+    #[test]
     fn no_dynamic_value_is_interpolated_into_a_run_command() {
         // A hostile bootstrap username must NOT reach any Run command string (it only appears as
         // sshd config CONTENT). This is the anti-injection invariant for provisioning.
