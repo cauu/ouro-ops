@@ -113,6 +113,17 @@ def main():
         assert r.returncode == 0, (r.stdout, r.stderr)
         assert f"docker restart {CID64[:12]}" in record.read_text(), record.read_text()
 
+    # --- dispatch: podman restarts the detected container id (12-hex from libpod-<id>.scope) ---
+    with tempfile.TemporaryDirectory() as tmp:
+        proc, binp, record = bed(tmp, CG["podman"])
+        r = run('MODE="$(ouro_node_effective_mode "")"\nouro_node_guard_mode "$MODE"\n'
+                'ouro_node_restart_mode "$MODE"', proc, binp)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        log = record.read_text()
+        assert f"podman restart {CID64[:12]}" in log, log
+        # podman path must NOT fall through to docker/systemctl.
+        assert "docker restart" not in log and "systemctl" not in log, log
+
     # --- dispatch: bare uses the host-process path, never systemctl/docker ---
     with tempfile.TemporaryDirectory() as tmp:
         proc, binp, record = bed(tmp, CG["bare"])

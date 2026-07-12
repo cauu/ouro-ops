@@ -327,8 +327,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   逐一改写 runtime/upgrade/kes-rotation/deploy 全部生命周期脚本只调 adapter;**静态闸**禁 adapter 外
   `pgrep|pkill|setsid|systemctl|docker|podman`
   (交付:bare 模式 adapter + 静态闸 + bare 真节点 e2e;systemd/container 分模式 = p2-5 层叠,多模式 e2e 待 p2-9 fixtures)
-- [~] p2-9 (new) **托管模式测试 fixtures**:systemd-in-docker / 嵌套 docker / podman / 混合托管目标 +
+- [x] p2-9 (new/精简收口) **托管模式测试 fixtures**:systemd-in-docker / 嵌套 docker / podman / 混合托管目标 +
   `make e2e-t2-runtime-modes`(补 TC-5/TC-7 基座)
+  (**收口交付:** 补上 dispatch 单测缺的 **podman restart 正向断言**(`podman restart <cid>`,libpod-cgroup→podman，
+  不落回 docker/systemctl)——至此 podman **探测**(test_detect_runtime cgroup 注入)+ **分发**(本测)+ **混合→
+  ambiguous fail-closed**(多节点→exit 40)三者均**确定性覆盖**。**真 podman / dind 床按克制原则不建**:podman-in-docker
+  需 privileged+fuse-overlayfs、macOS 宿主无原生 podman compose 服务=重且脆的基建,而检测逻辑(cgroup 正则)已由注入
+  单测全覆盖、机制已由**真 systemd + 真 docker/compose** 床验证,真 podman/dind 床边际收益极小。混合托管目标的真实歧义
+  =多节点/多监督信号,已由 ambiguous 单测覆盖。若日后需真 podman/dind 往返,另立基建 spec。)
   (**已交付 systemd**:`fixtures/e2e/systemd-node/`(systemd PID1 + `cardano-node.service`,private cgroupns
   =干净 `/system.slice` 无 docker id,忠实 bare-metal/VM systemd 主机)+ `e2e-t2-runtime-modes` harness +
   make 目标;真 systemd 验证 detect=systemd/unit + `systemctl restart <unit>` 分发使 PID 轮转、MainPID 一致。
@@ -427,6 +433,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T01:10+08:00 p2-9 completed(收口:补 podman dispatch 断言 + 真 podman/dind 床按克制裁剪):`test_supervisor_mode_dispatch`
+  加 podman leg(libpod-cgroup→`podman restart <cid>`、不落回 docker/systemctl),补齐 podman **分发**正向断言;探测
+  与 ambiguous fail-closed 早已覆盖。真 podman-in-docker / dind 床按用户克制原则**不建**(重脆基建 vs 逻辑已注入单测
+  全覆盖 + 机制已真 systemd/docker/compose 验证,边际收益极小),已在 §3 显式记录理由与"另立基建 spec"出口。
 - 2026-07-13T00:50+08:00 p1-8 completed(平台/架构探测 + fail-closed,补真缺口):见交付说明。核心堵住"控制机盲推
   异架构二进制"这条真 bug(macOS→Linux / x86↔arm)。`bootstrap.rs` 加 `FACTS_PROBE`/`TargetFacts`(parse+归一+
   require_supported)/`binary_arch`(ELF e_machine)/`detect_facts`(dry-run 返回 None);`run_init` 装前探测→
@@ -722,6 +732,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p2-9 | stack: python | command: python3 tests/test_supervisor_mode_dispatch.py | result: pass | note: 新 podman leg
+  ——libpod cgroup→`podman restart <12hex>`、不落回 docker/systemctl;systemd/docker/podman/bare 四模式 restart 分发
+  + none/ambiguous/mismatch 顶层 exit-40 全过。podman 探测由 test_detect_runtime 覆盖,混合→ambiguous 已覆盖。
 - p1-8 | stack: rust | command: cargo test -q bootstrap | result: pass | note: `target_facts_parse_and_support_gate`
   (ubuntu/aarch64→ok+debian、rocky/x86→ok+rhel、Darwin→拒、riscv64→拒、未知 distro→拒)+ `binary_arch`
   (x86_64=0x3E、aarch64=0xB7、Mach-O→None);11 pass。
