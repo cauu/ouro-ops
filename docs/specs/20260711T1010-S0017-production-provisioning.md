@@ -347,7 +347,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [~] p4-3 (rev) 决策树更新:deploy + kes-rotation `SKILL.md` 加"**问冷环境 → 生成 bundle → 冷机核对签名 →
   执行 → 回装/提交**";kes 回装走 p4-6 真 `kes push`(counter 防重放 + confirm 门);deploy 装 vrf.skey/node.cert
   (经 p4-9 VRF 协议)+ 提交注册 tx 后再 `deploy/start`
-- [~] p4-4 安全不变量:冷签脚本只带公开数据、就地读冷密钥;**cold.skey 永不移动**(限定新池 deploy + kes);
+- [x] p4-4 安全不变量:冷签脚本只带公开数据、就地读冷密钥;**cold.skey 永不移动**(限定新池 deploy + kes);
   deploy 仅 **vrf.skey 一把私钥**经 p4-9 协议从冷机搬到 BP;agent/`ouro-ops` 永不请求/打印冷或 KES 私钥
 - [ ] p4-5 (rev) **cardano-cli 版本能力矩阵**:pin 支持版本 + 每命令能力表 + CLI 版本与 ledger era 分离 + 据探测
   生成命令 + 每二进制 golden test;脚本离线可跑;对 bed(cold 同机)验证整条往返
@@ -405,6 +405,13 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T20:25+08:00 p4-4 completed(冷签安全不变量静态闸——KES + deploy 双覆盖):`test_coldsign_invariants.py`
+  抽出 `strip_to_code`/`EXFIL`,新增 `deploy_case`——对 `ouro-ops deploy cold-sign-script` **真实生成**的脚本
+  断言四条:① 只嵌公开 tx body(无签名密钥 cbor、无 `SigningKey`);② 每把冷钥仅作 `--signing-key-file` 传给
+  `transaction witness`,不 cat/echo 外泄;③ 唯一外部子命令是 `<era> transaction witness`(逐 role 计数),无
+  scp/curl/... 外泄原语;④ 传签名密钥被拒且不吐脚本/不回显 cbor。fixtures 加 `deploy/tx-body-unsigned.json`
+  /`deploy/payment-skey-private.json`。至此冷签两条路径(KES p4-1 + deploy p4-2)的公开-only/就地读/无外泄不变量
+  均由同一 fast 闸强制。**注:deploy 仅 vrf.skey 单私钥搬运的 VRF 不变量属 p4-9。**
 - 2026-07-12T20:10+08:00 p4-2 completed(真矿池注册冷签分阶段流程,替换 pool.rs 占位):`cold_sign.rs` 加
   `tx_cold_sign_script`——嵌**公开**未签 tx body,按 `--cold-key <role>` 逐一 era-scoped
   `cardano-cli <era> transaction witness` 就地读冷密钥出**独立 witness**(冷钥不必同处,仅公开 witness 回传);
@@ -632,6 +639,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p4-4 | stack: python | command: python3 tests/test_coldsign_invariants.py | result: pass | note: 同一 fast 闸现
+  覆盖 KES + deploy 两条冷签脚本,八条断言全过(各:公开-only 嵌入 / 就地读冷钥 / 唯一签名子命令且无外泄 /
+  拒签名密钥);deploy 段计数逐 role 的 `transaction witness`,并断言 $COLD_SKEY/$STAKE_SKEY 不被 cat/echo。
 - p4-2/TC-12 | stack: e2e | command: make e2e-t2-register | result: pass | note: **对 bed 真注册第二矿池**:
   离线预建 pool2 cold/vrf/stake 钥 → 派发 register-build(build 未签 tx + 在线 witness,**cold.skey sha256 前后一致
   未被碰**)→ 用返回的公开 tx body 经 `ouro-ops deploy cold-sign-script --cold-key cold` 生成脚本 → 冷机就地读
