@@ -240,15 +240,15 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [x] p1-1 (rev) target-mutating bootstrap 传输,**独立模块 `bootstrap.rs`**;有意突破现状 exec-only/no-scp;
   bootstrap 凭据独立于 `ouro-exec`、agent 不可得(enforcement 见 p1-7);**per-op dispatch 的 no-scp 断言保留**,
   init 传输走独立断言
-- [~] p1-2 (rev) `ouro-ops init`:对真机幂等 provisioning(用户 + wrapper + sudoers + pubkey-only sshd +
+- [x] p1-2 (rev) `ouro-ops init`:对真机幂等 provisioning(用户 + wrapper + sudoers + pubkey-only sshd +
   ouro 二进制 + authorized_keys + 主机密钥 pin);参考配方 = 修复后的 `node/Dockerfile`;**二进制路径/名定稿**
   `/usr/local/bin/ouro-ops`
-  (**已交付核心**:`provision.rs` 的 plan builder(用户/二进制/wrapper/sudoers+visudo/pubkey-only sshd/
-  authorized_keys/reload,幂等有序)+ 执行器(经 bootstrap 传输、首失败即停、产 install manifest)+ `ouro-ops
-  init` CLI(参数校验 + 默认推自身二进制 + 诚实标注 P0-1);动态值(公钥/用户名)全走文件内容非 shell(零注入);
-  dry-run + 5 单测。**待**:真裸机 e2e(裸目标 provision → ouro-exec 受限派发)、host-key pin 接入(p3-3)。)
+  (交付:`provision.rs` plan builder + 执行器 + `ouro-ops init` CLI(零注入、默认推自身二进制、诚实标注 P0-1);
+  **真裸机 e2e 通过**:`bare-node` 裸目标(仅 sshd+sudo 用户)→ init → ouro-exec/wrapper/sudoers/hardened sshd
+  就位 → **受限派发实活**(经 wrapper 的 tool run 成功、任意 sudo 被拒)→ 二次 init 收敛。host-key pin 归 p3-3。)
 - [ ] p1-3 底座最小化(只留约束必需项)
-- [ ] p1-4 可审计:`ouro-ops init` 输出安装清单(逐条可核对)
+- [x] p1-4 可审计:`ouro-ops init` 输出安装清单(逐条可核对)(交付:install manifest——每步 desc/kind/remote/
+  status/changed + 整体 ok;init JSON 输出携带)
 - [ ] p1-5 (rev) `ouro-ops deinit`/uninstall:**deinit 状态机**——全局锁、拒绝在途工作、运行中节点默认拒绝
   (`--leave-node-running`/`--stop-then-remove`)、逆序(先验证替代接入再逆转 sshd、最后移除主体)、审计处置
   显式、每步失败注入
@@ -391,6 +391,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T00:55+08:00 p1-2 真裸机 e2e 通过(p1-2/p1-4 完成)+ 收进 `make accept`:新增
+  `fixtures/e2e/bare-node/Dockerfile`(裸目标:仅 sshd + sudo 用户 `boot`,无任何 ouro 底座)+ `e2e-t2-init.sh`
+  harness(host 侧生成一次性 keypair、抽取 base 的 linux ouro-ops、把裸目标 sshd 映射到 host 端口)。流程:host 跑
+  `ouro-ops init`(经 SSH 以 boot 身份 bootstrap、`--ouro-binary` 推 linux 二进制)→ 断言 manifest ok/changed →
+  裸目标上 ouro-exec/ouro-diag/ouro-ops/wrapper/valid sudoers/hardened sshd 全就位 → **以 ouro-exec 登入跑
+  `sudo -n ouro-tool-run detect/runtime` 成功(受限派发实活)、`sudo -n id` 被拒(confinement 成立)** → 二次
+  init 收敛(幂等)。修一个测试捕获 bug(ssh known-hosts 警告混入 JSON,加 `LogLevel=ERROR`)。加 `make e2e-t2-init`
+  + 接进 `accept.sh`(现 9 项)。self-clean 无残留。
 - 2026-07-12T00:20+08:00 p1-2 核心交付(`ouro-ops init` provisioning 流程)+ p1-4(install manifest):新增
   `crates/ouro/src/provision.rs`——`init_plan()` 按现成 `node/Dockerfile` 配方产有序幂等步骤(建 ouro-exec/
   ouro-diag/node、推 ouro-ops 二进制、装 wrapper、装 sudoers + `visudo -cf` 校验、pubkey-only sshd 保留 bootstrap
@@ -541,6 +549,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p1-2/p1-4 | stack: e2e | command: make e2e-t2-init | result: pass | note: 裸目标(仅 sshd+sudo 用户)→ init →
+  ouro-exec/wrapper/sudoers/hardened-sshd 就位;**受限派发实活**(经 wrapper 的 detect/runtime 成功、任意 sudo 拒)
+  ;二次 init 幂等收敛;install manifest ok/changed。self-clean。
 - p1-1 | stack: rust | command: cargo test -q bootstrap; cargo test -q -- --test-threads=1 | result: pass | note:
   bootstrap 6 单测(argv 形态/注入失效/mode 校验/dry-run)+ 全量 41 pass;ssh.rs no-scp 断言未动仍绿(per-op
   边界保留)。独立模块,仅供 init;首次接入=sudo 用户,文件经 SSH 通道 install 无 scp。

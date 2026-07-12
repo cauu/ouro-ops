@@ -71,6 +71,9 @@ e2e-t2-runtime: e2e-build-base ## Run the T2 REAL runtime E2E (restart/topology-
 e2e-t2-runtime-modes: ## Run the T2 supervision-mode E2E (p2-9: detect + systemctl-restart against a REAL systemd host)
 	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-runtime-modes.sh"
 
+e2e-t2-init: ## Run the T2 init E2E (p1-2: provision a BARE box -> constrained target -> confined ouro-exec dispatch)
+	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-init.sh"
+
 accept: ## Automated acceptance: fast tests + full docker E2E suite, with apt-retry + a PASS/FAIL summary
 	bash "$(REPO_ROOT)/fixtures/e2e/accept.sh"
 

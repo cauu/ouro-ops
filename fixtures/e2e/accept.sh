@@ -55,6 +55,7 @@ run_e2e() {   # $1 = human name, $2 = make target
   echo "  FAIL  $name (apt kept failing after 3 tries)"; record "$name" FAIL "apt flake x3"
 }
 
+run_e2e "init: bare box -> constrained target"   e2e-t2-init
 run_e2e "T2 base (dispatch/audit/no-scp)"        e2e-t2
 run_e2e "runtime + confirm gate (p2-5b)"         e2e-t2-runtime
 run_e2e "supervision modes: systemd + compose"   e2e-t2-runtime-modes
