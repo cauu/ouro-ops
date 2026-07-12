@@ -303,7 +303,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   (**已交付**:optional-v1 `runtime{mode,unit,container,image}` schema + `Machine.runtime` domain + 一致性校验
   (systemd 需 unit、docker/podman 需 container|image)+ 示例 + schema/domain 测试;absent=fail-safe 由检测治理。
   **待**:required-v2 决策、init 记录+验证声明(依赖 p1 init)、检测↔声明交叉核对 exit-40(=p2-5)、生成器可选 emit)
-- [~] p2-5 (rev) 生命周期/upgrade 走托管器,分模式 + **绑定候选身份**(候选图 + 稳定 ID + 证据;token 绑定
+- [x] p2-5 (rev) 生命周期/upgrade 走托管器,分模式 + **绑定候选身份**(候选图 + 稳定 ID + 证据;token 绑定
   候选证据哈希 + 动作 + digest;执行前重快照防 TOCTOU);动作前机制复验 + 人工确认显示 ground-truth
   (**已交付 p2-5a**:adapter 分模式 restart 分发(bare/systemd/container);effective-mode = 检测治理 + 声明
   交叉核对;**目标(unit/container)由检测解析,绝非 LLM 传参**;bare 真节点 e2e 透明无回归;container 升级
@@ -433,6 +433,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T01:15+08:00 p2-5 closed:唯一「待」是 p2-9 的 systemd/container 真环境 e2e——p2-9 已交付(真 systemd +
+  真 docker/compose 床,podman/dind 按克制裁剪),故 p2-5a(分模式 restart 分发)+ p2-5b(证据绑定 confirm + enforcement)
+  + 真环境 e2e 全部落地,标记完成。编排式 upgrade 的 rollout 级确认仍为独立后续事项(非本 spec 阻塞项)。
 - 2026-07-13T01:10+08:00 p2-9 completed(收口:补 podman dispatch 断言 + 真 podman/dind 床按克制裁剪):`test_supervisor_mode_dispatch`
   加 podman leg(libpod-cgroup→`podman restart <cid>`、不落回 docker/systemctl),补齐 podman **分发**正向断言;探测
   与 ambiguous fail-closed 早已覆盖。真 podman-in-docker / dind 床按用户克制原则**不建**(重脆基建 vs 逻辑已注入单测
