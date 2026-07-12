@@ -12,6 +12,7 @@
     "deploy/scripts/takeover.sh": "fd992903d3ac3172a2d1d99bdeea59dd3831667d284e1d6c6d875f02cfccfff0",
     "deploy/scripts/verify.sh": "7a8a47cf4503fe86239a182ee61a4b74db973a0ce681d8b0ca4278b1a6adb0bb",
     "detect/SKILL.md": "c48098f35ea5a9e0bacee8e3e364b6a3c167f9ae3fd62bc4100b8e7edca1e85e",
+    "detect/scripts/cardano-cli.sh": "30882b11ba1aab65039a95f0fa52fbbb4a55910b36032693178c1dce631cf195",
     "detect/scripts/runtime.sh": "63106a5b42fa467c60bf7182062d8a4dc9648e002348a13b467a6c01aa4d5940",
     "kes-rotation/SKILL.md": "8ade80d1b68ea8bc802f6c01dd4bb47e37367961de103040f5b593fd49f82797",
     "kes-rotation/scripts/generate-offline.sh": "9afea9641558b5002e60b48105d71039ca4f108a24e824b1ecb4c6533316a54d",
@@ -37,10 +38,10 @@
     "upgrade/scripts/verify.sh": "87cead3bbee5f8427210237240580ddcf6bc2c4d721868a283d133cfe4d2e7d1"
   },
   "decision_hash": "624e2edaf3e3461ee3aed68b2ab001c978523fd30dc59c5eb8f40edc0067f697",
-  "embedded_digest": "1671bf75407523fc4aac2185d9d1b9ed844ac9d3b2e4ad87565636fd9ec6f6b3",
+  "embedded_digest": "3dd5e2b59b19612f0906be54dff90b04578f40d3bcc649ab27c7c54bb4a307e6",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
   "schema_hash": "064373a060a04b84cdaf0b7f0f44a78e2d6731436116236e80a42c8976972125",
-  "skills_hash": "a4936aa9180f77c813e3a6db682138431e69d5ae29bf7d3466f84b40fe9de2c5"
+  "skills_hash": "4a90288b740278ca146549b5a80057895b5c11d4fb9fff82290fe91f4224bc4b"
 }

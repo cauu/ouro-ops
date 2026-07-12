@@ -349,7 +349,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   (经 p4-9 VRF 协议)+ 提交注册 tx 后再 `deploy/start`
 - [x] p4-4 安全不变量:冷签脚本只带公开数据、就地读冷密钥;**cold.skey 永不移动**(限定新池 deploy + kes);
   deploy 仅 **vrf.skey 一把私钥**经 p4-9 协议从冷机搬到 BP;agent/`ouro-ops` 永不请求/打印冷或 KES 私钥
-- [ ] p4-5 (rev) **cardano-cli 版本能力矩阵**:pin 支持版本 + 每命令能力表 + CLI 版本与 ledger era 分离 + 据探测
+- [x] p4-5 (rev) **cardano-cli 版本能力矩阵**:pin 支持版本 + 每命令能力表 + CLI 版本与 ledger era 分离 + 据探测
   生成命令 + 每二进制 golden test;脚本离线可跑;对 bed(cold 同机)验证整条往返
 - [x] p4-6 (new) **真 KES generate/export/push 前置**(替换占位):目标侧真 `key-gen-KES` + `kes.skey` 原子保留 +
   真 `kes.vkey` 认证导出 + 真 opcert 格式/哈希解析校验 + 目标侧安装 `node.cert` + 托管感知 restart + rollback
@@ -405,6 +405,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T20:55+08:00 p4-5 completed(cardano-cli 版本 pin + era 纪律 golden 闸,克制不过度):`detect/cardano-cli.sh`
+  只读探测(闭合投影:present/version/major.minor.patch/supported/validated_version;pin `SUPPORTED_MAJOR_MIN=10`
+  + `VALIDATED_VERSION=10.14.0.0`)供 agent 操作前预检目标 cardano-cli。`test_cardano_cli_matrix.py` golden 冻结**CLI
+  版本与 ledger era 分离**这条我刻意实现的纪律:opcert 命令(`node issue-op-cert`/`node key-gen-KES`)**永不**带 era
+  前缀(era-neutral),deploy tx 命令(`<era> transaction witness`)**必带** era(era-scoped);并扫描 kes/deploy L2
+  脚本保持同一纪律 + register-build pin `cardano-cli conway`。已核探测三态(10.x supported / 9.x not / absent)。
+  **克制说明:** era-neutral-vs-scoped 才是真正影响正确性的分离点;`node`/`query` 本就 era-可选,故不做易脆的全命令
+  矩阵与多版本代码分支(符合"不为极小概率过度防御");整条往返已由 e2e-t2-coldsign + e2e-t2-register 对真 10.14 验证。
 - 2026-07-12T20:35+08:00 p4-3 completed(决策树 deploy 半边落地):`ouro-skills/deploy/SKILL.md` 加"矿池注册
   (冷钥离线—分阶段冷签)"路径——离线预建钥/暂存公开 vkey → `deploy/register-build` 在线 build 未签 tx(不碰
   cold.skey)→ `deploy cold-sign-script` 冷机就地签 → 证据绑定 confirm → `deploy/register-submit` assemble+submit+
@@ -644,6 +652,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p4-5 | stack: python | command: python3 tests/test_cardano_cli_matrix.py | result: pass | note: golden——opcert
+  era-neutral(kes 冷签脚本 + rotate/generate-offline/push-offline 均不 era-前缀 issue-op-cert)/ tx era-scoped
+  (deploy 冷签脚本 `conway transaction witness`;register-build pin `cardano-cli conway`)/ 版本 pin 存在。
+- p4-5 | stack: bash | command: OURO_MACHINE=bp1 bash detect/scripts/cardano-cli.sh(桩 --version) | result: pass |
+  note: 10.14→supported=True、9.x→False、缺失→present=False/supported=False;闭合投影无裸输出。
 - p4-3 | stack: rust+python | command: cargo test -q committed_manifest_matches_embedded; python3 tests/test_skill_docs.py
   | result: pass | note: deploy `SKILL.md` 注册冷签路径入内嵌 bundle(drift 闸重新对齐)+ skill-docs 闸通过
   (决策树/停机/红线齐备,无裸原语词)。
