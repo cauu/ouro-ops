@@ -129,6 +129,28 @@ fn run_rollback(args: &[String]) -> Result<()> {
 /// the agent — a poisoned prompt could, via the agent, invoke this against a reachable host.
 /// This is documented, not defended; per the operator's decision it relies on upstream
 /// control-machine / agent-runtime security. The manifest carries this note.
+/// p2-4 — record + verify the DECLARED runtime for the target machine at init time. Loading the
+/// spec already validated the declaration's consistency (systemd needs unit, docker needs
+/// container|image); this captures it in the init output so the intended supervision mode is
+/// recorded for the later detect↔declared cross-check (p2-5). An absent declaration is honestly
+/// recorded as "undeclared" — the tool DETECTS the mode at operation time (v1 stays optional; see
+/// the required-v2 decision in the spec §7). Detection always governs; this never substitutes.
+fn init_runtime_record(spec: &PoolSpec, machine_id: &str) -> Result<serde_json::Value> {
+    let machine = spec
+        .machines
+        .iter()
+        .find(|m| m.id == machine_id)
+        .ok_or_else(|| OuroError::Validation(format!("unknown machine {machine_id} in spec")))?;
+    Ok(match &machine.runtime {
+        Some(rt) => json!({ "machine": machine_id, "declared": true, "runtime": rt }),
+        None => json!({
+            "machine": machine_id,
+            "declared": false,
+            "note": "runtime undeclared (v1 optional); mode is DETECTED at operation time, detection governs",
+        }),
+    })
+}
+
 fn run_init(args: &[String]) -> Result<()> {
     let host = flag_value(args, "--host")?.to_string();
     let port: u16 = optional_flag_value(args, "--port")
@@ -174,6 +196,15 @@ fn run_init(args: &[String]) -> Result<()> {
 
     let expected_host_key = optional_flag_value(args, "--expected-host-key");
 
+    // p2-4: optionally record + verify the declared runtime for this target machine.
+    let declared_runtime = match (optional_flag_value(args, "--spec"), optional_flag_value(args, "--machine")) {
+        (Some(spec_path), Some(machine_id)) => {
+            let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?; // load validates consistency
+            Some(init_runtime_record(&spec, machine_id)?)
+        }
+        _ => None,
+    };
+
     let target = BootstrapTarget { host: host.clone(), port, user };
     let transport = BootstrapTransport::new(dry_run);
 
@@ -205,6 +236,7 @@ fn run_init(args: &[String]) -> Result<()> {
         "manifest": manifest,
         "dry_run": dry_run,
         "pinned_host_key": pinned_fp,
+        "declared_runtime": declared_runtime,
         "security_note": "bootstrap credential is NOT mechanism-isolated from the agent \
             (convenience mode, P0-1); a poisoned prompt could invoke init via the agent. \
             Relies on upstream control-machine / agent-runtime security.",
@@ -1227,6 +1259,30 @@ mod tests_embedded_resolution {
         assert_eq!(on_disk, embedded);
 
         std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn init_records_declared_and_undeclared_runtime() {
+        // p2-4: init records the declared runtime (or honestly notes it undeclared).
+        let mut spec =
+            PoolSpec::from_file(std::path::Path::new("examples/pool-spec.minimal.yaml")).unwrap();
+        // v1 default: bp1 has no runtime block → undeclared, detection governs.
+        let rec = init_runtime_record(&spec, "bp1").unwrap();
+        assert_eq!(rec["declared"], json!(false));
+        assert!(rec["note"].as_str().unwrap().contains("DETECTED"));
+        // an unknown machine id is rejected.
+        assert!(init_runtime_record(&spec, "does-not-exist").is_err());
+        // when declared, the runtime is recorded verbatim (consistency already checked at load).
+        spec.machines[0].runtime = Some(crate::domain::RuntimeDecl {
+            mode: crate::domain::RuntimeMode::Systemd,
+            unit: Some("cardano-node.service".to_string()),
+            container: None,
+            image: None,
+        });
+        let rec2 = init_runtime_record(&spec, "bp1").unwrap();
+        assert_eq!(rec2["declared"], json!(true));
+        assert_eq!(rec2["runtime"]["mode"], json!("systemd"));
+        assert_eq!(rec2["runtime"]["unit"], json!("cardano-node.service"));
     }
 
     #[test]

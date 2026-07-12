@@ -284,7 +284,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   (交付:封闭投影 by-construction 不 emit raw;探测器不碰 key 目录;canary 测试含 S0015 corpus token)
 - [x] p2-3 LLM 基于封闭投影判定托管模式 + **解释候选**(顾问性;写进相关 SKILL.md 决策树)
   (交付:`detect/SKILL.md` 决策树教 agent 读 mode/evidence + ambiguous→停手;生命周期侧 mode 分支集成 = p2-5)
-- [~] p2-4 (rev) spec `runtime` 字段 + **schema 迁移兼容**(optional-v1/required-v2、fail-safe 默认、迁移命令、
+- [x] p2-4 (rev) spec `runtime` 字段 + **schema 迁移兼容**(optional-v1/required-v2、fail-safe 默认、迁移命令、
   版本偏斜行为、**S0016 生成器更新归属**、示例、跨版本测试)+ `ouro-ops init` 探测记录验证声明
   (**已交付**:optional-v1 `runtime{mode,unit,container,image}` schema + `Machine.runtime` domain + 一致性校验
   (systemd 需 unit、docker/podman 需 container|image)+ 示例 + schema/domain 测试;absent=fail-safe 由检测治理。
@@ -413,6 +413,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T23:00+08:00 p2-4 completed(required-v2 定案 + init 记录/验证声明):§7 定案**保持 optional-v1**
+  (检测权威,required 只增摩擦不增安全)。`cli.rs` 加 `init_runtime_record` + `ouro-ops init` 可选 `--spec --machine`:
+  给出时加载 spec(**加载即验证** runtime 声明一致性)→ 输出 `data.declared_runtime`(declared=true 带 runtime,
+  或 declared=false 诚实注明「未声明,操作时检测,检测治理」),供 p2-5 detect↔declared 交叉核对。剩余「迁移命令/
+  生成器可选 emit」非本轮安全关键项,按 optional-v1 定案后不再需要强制迁移。检测↔声明交叉核对 exit-40 早由 p2-5 交付。
 - 2026-07-12T22:40+08:00 p1-7 completed(便利模式收窄——补齐诚实标注三处齐全):P0-1 已定案不做机制隔离,唯一保留
   义务是三处诚实标注。核查发现 `packaging/RELEASE.md` 缺该标注(init 输出 security_note + spec §1 早已有),补上
   「bootstrap 凭据未与 agent 机制隔离、残余风险已知接受、不得宣称隔离」的安全边界段。加 `test_honest_labeling.py`
@@ -686,6 +691,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p2-4 | stack: rust | command: cargo test -q init_records | result: pass | note: `init_runtime_record`——bp1 无声明
+  →declared=false + 「DETECTED/检测治理」note;未知 machine 拒绝;声明 systemd+unit→declared=true 记录 mode/unit
+  (一致性已在 spec 加载校验)。init 输出加 `declared_runtime`。
 - p1-7 | stack: python | command: python3 tests/test_honest_labeling.py | result: pass | note: init security_note +
   packaging 均含「NOT mechanism-isolated from the agent」;无虚假隔离声明(含 credential+isolated 的句必带否定)。
   已探针注入 "credential is isolated" 确认闸触发。
@@ -823,6 +831,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   (含 systemd leg;揪出并修 `compose up` 漏 `-p project` 的真 bug。)
 
 ## 7. Change Requests (append-only)
+- 2026-07-12 **p2-4 required-v2 决策(定案:保持 optional-v1,不强制 v2)。** 理由:运行时**检测**(detect/runtime)
+  才是权威——p2-5/p2-6 已用「检测治理 + 声明交叉核对,不符即 exit-40」保证安全;把 `runtime` 声明设为 required
+  只增加 spec 书写摩擦,并不提升安全(缺失时由检测兜底 fail-safe)。故 `Machine.runtime` 维持 optional;声明存在
+  时 `ouro-ops init --spec --machine` 记录+(经 spec 加载)验证其一致性,供后续 detect↔declared 交叉核对。
 - 2026-07-10 评审驱动的 draft 强化(见执行日志);属 draft 阶段自由编辑,不改变 S0017 的范围边界
   (仍 = provisioning + 托管感知 + 审计完整性 + 冷签流程),仅把"红线已宣示、机制未指定"补成可执行设计 + 可
   证伪 TC。范围唯一微调:显式声明 **takeover 冷密钥迁移不在本 spec**(P1 vrf 修正,留待后续 spec)。
