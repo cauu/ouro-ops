@@ -22,6 +22,10 @@ use crate::Result;
 /// execs `ouro-ops tool run "$@"` — so a confined principal cannot invoke other subcommands.
 pub const WRAPPER: &str = "#!/bin/sh\nexec /usr/local/bin/ouro-ops tool run \"$@\"\n";
 
+/// p1-9 — root-owned install ledger on the target: records which principals init CREATED vs
+/// ADOPTED so deinit reverses only what init created (never deletes a pre-existing account).
+pub const LEDGER: &str = "/var/lib/ouro/install-ledger";
+
 /// sudoers confines `ouro-exec` to the wrapper (NOPASSWD, env reset, fixed secure_path).
 pub const SUDOERS: &str = concat!(
     "Defaults:ouro-exec env_reset, secure_path=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\n",
@@ -72,11 +76,40 @@ pub fn init_plan(bootstrap_user: &str, ouro_binary: &Path) -> Vec<Step> {
         remote: remote.into(),
         mode: mode.into(),
     };
+    // p1-9 install ledger — a root-owned, versioned record of what init CREATED vs ADOPTED
+    // (found pre-existing), so deinit can precisely reverse only what init created and never delete
+    // a principal that already belonged to the box. Files are adopt-free by design (init only
+    // writes new ouro-specific drop-ins — see p1-3), so the ledger tracks the principals, which are
+    // the only items that can legitimately pre-exist (e.g. a real `node` service account).
+    // Each principal records `created` (init made it) or `adopted` (already present) with the id.
+    // Idempotent-safe: a principal's created/adopted verdict is recorded ONCE (on the first init
+    // that sees it) and never downgraded on a re-init — otherwise re-running init on an already-
+    // provisioned box would see ouro's own accounts as "adopted" and deinit would spare them.
+    let principal = |desc: &str, user: &str, useradd: &str| {
+        run(
+            desc,
+            &format!(
+                "if grep -q '^principal:{user}:' {LEDGER} 2>/dev/null; then \
+                   id -u {user} >/dev/null 2>&1 || {useradd}; \
+                 elif id -u {user} >/dev/null 2>&1; then printf 'principal:{user}:adopted\\n' >> {LEDGER}; \
+                 else {useradd} && printf 'principal:{user}:created\\n' >> {LEDGER}; fi"
+            ),
+        )
+    };
     vec![
-        // Principals (idempotent: skip if the account already exists).
-        run("create ouro-exec", "id -u ouro-exec >/dev/null 2>&1 || useradd -m -s /bin/bash ouro-exec"),
-        run("create ouro-diag", "id -u ouro-diag >/dev/null 2>&1 || useradd -m -s /bin/bash ouro-diag"),
-        run("create node", "id -u node >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin node"),
+        // Initialize the ledger (root-owned, 0600) ONLY if absent — never truncate an existing one,
+        // so idempotent re-inits preserve the original created/adopted verdicts.
+        run(
+            "init install ledger",
+            &format!(
+                "install -d -m 0700 -o root -g root /var/lib/ouro && \
+                 {{ [ -f {LEDGER} ] || {{ printf 'ledger_version:1\\n' > {LEDGER} && chown root:root {LEDGER} && chmod 0600 {LEDGER}; }}; }}"
+            ),
+        ),
+        // Principals (idempotent: skip if the account already exists) + record created/adopted.
+        principal("create ouro-exec", "ouro-exec", "useradd -m -s /bin/bash ouro-exec"),
+        principal("create ouro-diag", "ouro-diag", "useradd -m -s /bin/bash ouro-diag"),
+        principal("create node", "node", "useradd -r -s /usr/sbin/nologin node"),
         // The single binary (same one that ran init).
         Step::Push {
             desc: "install ouro-ops binary".into(),
@@ -131,13 +164,27 @@ pub fn deinit_plan(remove_node: bool) -> Vec<Step> {
             "rm -f /etc/ssh/sshd_config.d/10-ouro.conf && sshd -t && \
              { systemctl reload ssh 2>/dev/null || service ssh reload 2>/dev/null || systemctl reload sshd 2>/dev/null || true; }",
         ),
-        // Access principals removed LAST (userdel -r takes homes + authorized_keys with them).
-        run("remove ouro-exec", "id -u ouro-exec >/dev/null 2>&1 && userdel -r ouro-exec 2>/dev/null || true"),
-        run("remove ouro-diag", "id -u ouro-diag >/dev/null 2>&1 && userdel -r ouro-diag 2>/dev/null || true"),
     ];
+    // Access principals removed LAST (userdel -r takes homes + authorized_keys with them) — but
+    // ONLY the ones the ledger marks `created` (p1-9). An ADOPTED principal (one init found already
+    // present) is never deleted; if the ledger is absent (legacy install), preserve = fail-safe.
+    let remove_principal = |user: &str| {
+        run(
+            &format!("remove {user}"),
+            &format!(
+                "if grep -qx 'principal:{user}:created' {LEDGER} 2>/dev/null; then \
+                   id -u {user} >/dev/null 2>&1 && userdel -r {user} 2>/dev/null || true; \
+                 else printf '{user} adopted or no ledger; preserved\\n' >&2; fi"
+            ),
+        )
+    };
+    steps.push(remove_principal("ouro-exec"));
+    steps.push(remove_principal("ouro-diag"));
     if remove_node {
-        steps.push(run("remove node account", "id -u node >/dev/null 2>&1 && userdel -r node 2>/dev/null || true"));
+        steps.push(remove_principal("node"));
     }
+    // Remove the ledger itself last (only an ouro artifact).
+    steps.push(run("remove install ledger", &format!("rm -f {LEDGER}")));
     steps
 }
 
@@ -404,6 +451,31 @@ mod tests {
     }
 
     #[test]
+    fn init_records_created_vs_adopted_principals_in_ledger() {
+        // p1-9: each principal step records created (init made it) OR adopted (already present)
+        // into the root-owned ledger, so deinit can precisely reverse only what init created.
+        let plan = init_plan("ubuntu", Path::new("/usr/local/bin/ouro-ops"));
+        let descs: Vec<&str> = plan.iter().map(Step::desc).collect();
+        // The ledger is initialized (root-owned, 0600) before any principal is recorded.
+        let pos = |d: &str| descs.iter().position(|x| *x == d).unwrap_or_else(|| panic!("missing: {d}"));
+        assert!(pos("init install ledger") < pos("create ouro-exec"));
+        for step in &plan {
+            if let Step::Run { desc, cmd } = step {
+                if desc.starts_with("create ") {
+                    // both branches recorded: adopted if already present, created after useradd.
+                    assert!(cmd.contains(":adopted") && cmd.contains(":created"),
+                            "principal step must record created/adopted: {cmd}");
+                    assert!(cmd.contains(LEDGER), "principal step must write the ledger: {cmd}");
+                }
+                if desc == "init install ledger" {
+                    assert!(cmd.contains("-o root -g root") && cmd.contains("0600"),
+                            "ledger must be root-owned 0600: {cmd}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn deinit_removes_access_principals_last_and_spares_node_by_default() {
         let plan = deinit_plan(false);
         let descs: Vec<&str> = plan.iter().map(Step::desc).collect();
@@ -411,11 +483,23 @@ mod tests {
         // Confinement + binary stripped before the access principals are removed.
         assert!(pos("remove sudoers confinement") < pos("remove ouro-exec"));
         assert!(pos("restore sshd (remove hardening)") < pos("remove ouro-exec"));
-        // Access principals are the LAST things removed (never orphan the box mid-run).
-        assert!(pos("remove ouro-diag") == descs.len() - 1);
-        // The shared `node` account is spared by default.
-        assert!(!descs.iter().any(|d| d.contains("node account")));
-        assert!(deinit_plan(true).iter().any(|s| s.desc().contains("node account")));
+        // Access principals are removed after the mechanism (never orphan the box mid-run); the
+        // ledger itself is the very last artifact removed (p1-9).
+        assert!(pos("remove ouro-exec") < pos("remove ouro-diag"));
+        assert!(pos("remove ouro-diag") < pos("remove install ledger"));
+        assert!(pos("remove install ledger") == descs.len() - 1);
+        // The shared `node` account is spared by default; --remove-node adds it.
+        assert!(!descs.iter().any(|d| *d == "remove node"));
+        assert!(deinit_plan(true).iter().any(|s| s.desc() == "remove node"));
+        // p1-9: principal removal is ledger-gated (only `created` principals are deleted).
+        for step in deinit_plan(true) {
+            if let Step::Run { desc, cmd } = step {
+                if matches!(desc.as_str(), "remove ouro-exec" | "remove ouro-diag" | "remove node") {
+                    assert!(cmd.contains(":created") && cmd.contains("userdel"),
+                            "principal removal must be gated on the created-ledger: {cmd}");
+                }
+            }
+        }
     }
 
     #[test]

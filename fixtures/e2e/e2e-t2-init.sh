@@ -140,4 +140,21 @@ dex test -e /etc/ssh/sshd_config.d/10-ouro.conf && fail "sshd drop-in still pres
 ssh_as "$WORK/bootstrap" boot "true" || fail "bootstrap user 'boot' no longer reachable after deinit"
 pass "deinit restored the box: base removed, bootstrap user 'boot' preserved"
 
+echo "[deinit] p1-9 ADOPT case — deinit must PRESERVE a principal init only adopted (pre-existing)"
+# Pre-create ouro-diag as if it were a real pre-existing account, then re-init: ouro-exec is fresh
+# (created) but ouro-diag already exists (adopted). deinit must remove the created one and spare
+# the adopted one — never delete an account init did not create.
+dex useradd -m -s /bin/bash ouro-diag >/dev/null 2>&1 || fail "could not pre-create the adopted ouro-diag"
+OUT5=$(initcmd 2>&1) || fail "re-init (adopt case) exited non-zero: $OUT5"
+echo "$OUT5" | python3 -c 'import json,sys; assert json.load(sys.stdin)["data"]["manifest"]["ok"]' || fail "re-init manifest not ok: $OUT5"
+dex grep -qx 'principal:ouro-exec:created' /var/lib/ouro/install-ledger || fail "ledger did not record ouro-exec as created"
+dex grep -qx 'principal:ouro-diag:adopted' /var/lib/ouro/install-ledger || fail "ledger did not record ouro-diag as adopted"
+pass "re-init ledger: ouro-exec=created, ouro-diag=adopted"
+OUT6=$(OURO_HOME="$OURO_HOME" ./target/debug/ouro-ops deinit \
+  --host 127.0.0.1 --port "$PORT" --bootstrap-user boot --bootstrap-key creds://boot 2>&1) \
+  || fail "adopt-case deinit exited non-zero: $OUT6"
+dex id ouro-exec >/dev/null 2>&1 && fail "deinit did NOT remove the created ouro-exec"
+dex id ouro-diag >/dev/null 2>&1 || fail "deinit WRONGLY deleted the adopted ouro-diag (p1-9 violated)"
+pass "p1-9 adopt: deinit removed created ouro-exec, PRESERVED adopted ouro-diag"
+
 echo "ouro-ops init/deinit (bare <-> constrained target) E2E: ALL PASSED"

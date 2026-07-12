@@ -278,7 +278,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [ ] p1-8 (new) **bootstrap 输入契约 + 平台/架构矩阵**:认证法/主体/sudo/bastion/恢复 console;Debian·Ubuntu +
   RHEL-family + systemd 有无 + x86_64/aarch64;据目标事实选签名产物 + 装前验签/摘要 + 原子安装 +
   `sshd -t`/`visudo -c` + 二次登录;不支持主机 fail-closed
-- [~] p1-9 (new) **版本化 root-owned 安装账本**:created-vs-adopted 属主 + 改前摘要/备份 + 精确逆操作;冲突
+- [x] p1-9 (new) **版本化 root-owned 安装账本**:created-vs-adopted 属主 + 改前摘要/备份 + 精确逆操作;冲突
   默认拒绝除非 `--adopt`
   (**部分**:deinit 目前只删**无歧义的 ouro 专属产物**(specific 路径/用户名),`node` 默认保留——无需账本即安全;
   **待**:真账本以支持 adopted-vs-created 精确还原 + 改前备份 + 冲突 `--adopt`。)
@@ -422,6 +422,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T00:20+08:00 p1-9 completed(root-owned 安装账本 created-vs-adopted + deinit 精确逆操作):关键观察——
+  当前 drop-in 设计**从不改现存系统文件**(只写 ouro 专属新 drop-in,见 p1-3),故唯一能合法预存的是**主体账户**
+  (如真实 `node` 服务账户)。据此落地精简账本(不为不存在的 file-adopt 造备份/还原机制,符合克制原则):init 写
+  root-owned `0600 /var/lib/ouro/install-ledger`,每个主体记 `principal:<user>:created|adopted`;**幂等安全**——账本
+  已有记录则保留原判定(否则再次 init 会把 ouro 自己建的账户误判 adopted)、只在缺失时按"预存=adopted / 新建=created"
+  记录;账本仅缺失时初始化不截断。deinit 主体删除**受账本门控**:仅删 `:created`,adopted 主体一律保留(无账本=
+  保留 fail-safe),账本自身最后删。9 provision 单测(账本记录 + 幂等 shell 逻辑 + deinit 门控)+ 真裸机 e2e 新增
+  **adopt 往返**:预建 ouro-diag→re-init 记 exec=created/diag=adopted→deinit 删 created-exec、**留 adopted-diag**。
 - 2026-07-12T23:40+08:00 p1-6 completed(操作自清理 + state 三层命名 + 崩溃 TTL GC):见交付说明。核心把原本"抽取
   scratch 用随机 uuid + 清理错误被 `let _` 吞"升级为"audit-id 命名 + 崩溃 TTL GC + 清理/ GC 错误上浮"。抽取从
   gate 之后进行(gate 失败不留 scratch)。terminal-only 删除语义保留(仅 child 退出后删)。
@@ -705,6 +713,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p1-9 | stack: rust | command: cargo test -q provision | result: pass | note: 账本步骤记 created/adopted 双分支 +
+  root 0600;deinit 主体删除全部含 `:created` 门控;幂等排序;9 pass。
+- p1-9 | stack: e2e | command: make e2e-t2-init | result: pass | note: 新增 adopt 往返——预建 ouro-diag → re-init 账本
+  记 ouro-exec=created / ouro-diag=adopted → deinit **删 created-exec、留 adopted-diag**;created 路径(两次幂等 init→
+  deinit 全移除)无回归。
 - p1-6 | stack: rust | command: cargo test -q state:: ; cargo test -q -- --test-threads=1 | result: pass | note:
   `run_dir` 命名+净化(拒 `..`/`;`)、`gc_stale_runs` 删旧(age≥ttl)留新(age<ttl)留非-ouro 目录;全量 63 pass。
 - p1-6 | stack: python | command: python3 tests/test_deploy_scripts.py; test_takeover_scripts; test_upgrade_scripts;
