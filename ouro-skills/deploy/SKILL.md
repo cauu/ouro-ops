@@ -30,6 +30,14 @@ Pool registration (cold key kept OFFLINE — staged cold-sign):
   --confirm-token <tok>`. It assembles the online + cold witnesses, submits, and ground-truths the
   pool id is registered on chain. It refuses to resubmit an already-registered pool.
 
+Private-key boundary (S0017 p4-9):
+- `vrf.skey` is the ONLY private key the deploy flow moves cold→BP, over the encrypted bootstrap
+  transport, installed `0400` owned by the node runtime user (atomic temp→install).
+- `cold.skey` NEVER moves — cold-key operations go through the offline cold-sign flow (kes-rotation
+  / registration), never a transfer onto the BP.
+- Takeover adopts a legacy node's FORGING keys (`kes.skey` + `vrf.skey`); it does NOT require or
+  migrate a cold key. Cold-key migration is out of scope for takeover.
+
 ## Stop Conditions
 - Stop on exit 10 and ask for corrected inputs or missing audit context.
 - Stop on exit 20 and run L3 read-only diagnostics only.

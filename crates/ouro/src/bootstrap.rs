@@ -76,6 +76,24 @@ fn validate_mode(mode: &str) -> Result<()> {
     }
 }
 
+/// A bare unix user/group token — no shell metacharacters can slip into the unquoted `install
+/// -o <owner> -g <owner>` position.
+fn validate_owner(owner: &str) -> Result<()> {
+    let ok = !owner.is_empty()
+        && owner.len() <= 32
+        && owner
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    let starts_ok = owner.bytes().next().is_some_and(|b| b.is_ascii_alphabetic() || b == b'_');
+    if ok && starts_ok {
+        Ok(())
+    } else {
+        Err(OuroError::Validation(format!(
+            "owner must be a bare unix user token, got {owner:?}"
+        )))
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct BootstrapTransport {
     pub dry_run: bool,
@@ -135,6 +153,27 @@ impl BootstrapTransport {
         let remote = format!(
             "t=$(mktemp) && cat > \"$t\" && install -D -m {mode} -o root -g root \"$t\" {dest} && rm -f \"$t\"",
             mode = mode,
+            dest = shell_quote(remote_path),
+        );
+        Ok(Self::run_argv(target, key_path, host_key, &remote))
+    }
+
+    /// Install a PRIVATE KEY on the target over the same encrypted SSH channel, with restrictive
+    /// perms: `0400` owned by the node runtime `owner` so only the cardano-node process can read
+    /// it. This is the ONE private key the deploy flow moves cold→BP — vrf.skey (S0017 p4-9);
+    /// cold.skey never moves (offline cold-sign) and KES/opcert are issued offline too. Same atomic
+    /// temp→install→cleanup as `push_argv`. `owner` is validated to a bare user token.
+    pub fn push_key_argv(
+        target: &BootstrapTarget,
+        key_path: &Path,
+        host_key: HostKeyCheck,
+        remote_path: &str,
+        owner: &str,
+    ) -> Result<Vec<String>> {
+        validate_owner(owner)?;
+        let remote = format!(
+            "t=$(mktemp) && cat > \"$t\" && install -D -m 0400 -o {owner} -g {owner} \"$t\" {dest} && rm -f \"$t\"",
+            owner = owner,
             dest = shell_quote(remote_path),
         );
         Ok(Self::run_argv(target, key_path, host_key, &remote))
@@ -257,6 +296,30 @@ mod tests {
             assert!(
                 BootstrapTransport::push_argv(&target(), Path::new("/k"), HostKeyCheck::AcceptNew, "/x", bad).is_err(),
                 "mode {bad:?} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn push_key_argv_installs_0400_with_node_owner() {
+        // p4-9: the one private key that moves cold→BP (vrf.skey) lands 0400 owned by the node
+        // runtime user, atomically, over the same SSH channel.
+        let argv = BootstrapTransport::push_key_argv(
+            &target(), Path::new("/k"), HostKeyCheck::Yes, "/opt/cardano/keys/vrf.skey", "node",
+        )
+        .unwrap();
+        let joined = argv.join(" ");
+        assert!(joined.contains("install -D -m 0400 -o node -g node \"$t\""));
+        assert!(joined.contains("t=$(mktemp)") && joined.contains("rm -f \"$t\""));
+        assert!(joined.contains("/opt/cardano/keys/vrf.skey"));
+    }
+
+    #[test]
+    fn push_key_argv_rejects_shell_metachar_owner() {
+        for bad in ["", "no de", "node;rm", "-x", "$(id)", "a".repeat(33).as_str()] {
+            assert!(
+                BootstrapTransport::push_key_argv(&target(), Path::new("/k"), HostKeyCheck::Yes, "/x", bad).is_err(),
+                "owner {bad:?} should be rejected"
             );
         }
     }

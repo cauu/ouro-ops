@@ -34,16 +34,22 @@ else
   POOL="$DEVNET/pools-keys/pool1"
   ouro_node_running || ouro_emit_error 20 "takeover_precondition_failed" "no running legacy cardano-node on target"
   [ -S "$SOCK" ] || ouro_emit_error 20 "takeover_precondition_failed" "legacy node socket not active"
-  for k in kes.skey vrf.skey cold.skey; do
-    [ -f "$POOL/$k" ] || ouro_emit_error 20 "takeover_precondition_failed" "legacy key missing: $k"
+  # Only the FORGING keys are required: a node forges with kes.skey + vrf.skey + opcert. The COLD
+  # key is NOT required and NOT migrated (S0017 p4-9 boundary): the cold-signing model keeps it
+  # OFFLINE — cold-key operations go through the offline cold-sign flow, never a takeover. We
+  # snapshot cold.skey only if the legacy node happens to co-locate it (convenience deployments).
+  for k in kes.skey vrf.skey; do
+    [ -f "$POOL/$k" ] || ouro_emit_error 20 "takeover_precondition_failed" "legacy forging key missing: $k"
   done
+  KEYS=(kes.skey vrf.skey)
+  [ -f "$POOL/cold.skey" ] && KEYS+=(cold.skey)
   if [ -f "$MARKER" ]; then
     ouro_emit_ok false "node already under ouro management"
   else
     mkdir -p "$STATE_DIR"
     # Snapshot key checksums BEFORE assuming management => rollback artifact + preservation proof.
-    for k in kes.skey vrf.skey cold.skey; do sha256sum "$POOL/$k"; done > "$ROLLBACK"
+    for k in "${KEYS[@]}"; do sha256sum "$POOL/$k"; done > "$ROLLBACK"
     touch "$MARKER"
-    ouro_emit_ok true "legacy node taken over; keys snapshotted for rollback"
+    ouro_emit_ok true "legacy node taken over; forging keys snapshotted for rollback"
   fi
 fi

@@ -39,6 +39,12 @@ def main():
     failed = run("deploy/takeover", "tests/fixtures/deploy/legacy-manifest-bad.json", check=False)
     assert failed.returncode != 0
     assert not Path(STATE_DIR, "takeover-bp1").exists()
+
+    # p4-9 boundary: takeover requires only the FORGING keys, never a resident cold key.
+    tk = (ROOT / "ouro-skills/deploy/scripts/takeover.sh").read_text()
+    assert "for k in kes.skey vrf.skey; do" in tk, "takeover must require only kes.skey + vrf.skey"
+    assert "cold.skey" in tk and "NOT required and NOT migrated" in tk.replace("\n", " "), \
+        "takeover must document cold.skey is optional/not-migrated"
     print("takeover scripts passed")
 
 

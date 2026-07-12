@@ -359,7 +359,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   脱离 stdout 脚本流)供**独立信道核对**;脚本头强制:核对摘要 → less 审读 → **断网**空目录运行 → **只回传公开产物**
   (return 白名单)。不做签名/PKI/模板分发(与便利模式一致)。原 spec 的完整签名 bundle 协议按用户裁剪不做。
   独立信道摘要核对 + 人工 view/审读 + 断网 confinement + 全新输出目录 + 回传文件白名单
-- [ ] p4-9 (new) **VRF 传输协议 + takeover 边界**:操作员中介加密传输(收件人密钥/完整性/权限/原子安装/无内容
+- [x] p4-9 (new/精简) **VRF 传输(复用 SSH 通道)+ takeover 边界**:用户定 scope=复用现有 SSH bootstrap 通道。原
+  spec 的完整加密信封协议按用户裁剪不做,改为如下:
+- [~] p4-9 (原文保留) **VRF 传输协议 + takeover 边界**:操作员中介加密传输(收件人密钥/完整性/权限/原子安装/无内容
   审计/安全删除/重放)+ 真双机测试;显式声明 takeover 冷密钥迁移不在本 spec(或改 takeover 拒绝目标驻留冷密钥)
 
 ## 4. Test and Acceptance Criteria
@@ -407,6 +409,13 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T22:10+08:00 p4-9 completed(VRF 传输复用 SSH 通道 + takeover 冷钥边界,用户裁剪 scope):① `bootstrap.rs`
+  加 `push_key_argv`——vrf.skey 经**既有加密 SSH bootstrap 通道** cold→BP,原子 temp→install `-D -m 0400 -o <node>
+  -g <node>`(仅节点进程可读);`validate_owner` 挡 owner 位注入。② `takeover.sh`:冷钥**去必需**——只要求 forging 钥
+  (kes.skey+vrf.skey),cold.skey 存在才快照(便利部署),并注明 takeover **不要求也不迁移**冷钥(冷钥走离线冷签)。
+  ③ deploy `SKILL.md` 加私钥边界:**vrf.skey 是 deploy 唯一搬运的私钥**、cold.skey 永不移动、takeover 冷钥迁移出
+  scope。**用户决策:** scope=复用 SSH 通道(本身加密)+ 边界,不建收件人密钥/MAC/nonce/安全删除的完整信封协议
+  (与便利模式/依赖上游安全一致)。bootstrap 单测 + takeover 静态边界断言 + 真 takeover e2e(冷钥在场仍全绿)三证。
 - 2026-07-12T21:45+08:00 p4-8 completed(冷签脚本可信投递——轻量完整性,用户裁剪 scope):`ouro-ops kes/deploy
   cold-sign-script` 生成后把脚本 `sha256=<hex>` 打到 **stderr**(stdout 仍是纯脚本),操作员在冷机 `sha256sum`
   独立信道核对一致再运行。两个生成器脚本头改为四步可信投递:①核对摘要 ②less 审读 ③**断网**空目录运行
@@ -668,6 +677,12 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p4-9 | stack: rust | command: cargo test -q bootstrap | result: pass | note: `push_key_argv` 装 vrf.skey
+  `install -D -m 0400 -o node -g node`(原子 temp→install)+ `validate_owner` 拒空/空格/`;rm`/`-x`/`$(id)`/超长;共 9 pass。
+- p4-9 | stack: python | command: python3 tests/test_takeover_scripts.py | result: pass | note: 静态边界断言——takeover
+  只必需 kes.skey+vrf.skey、注明冷钥不要求不迁移;manifest 幂等/坏输入拒绝回归通过。
+- p4-9 | stack: e2e | command: make e2e-t2-takeover | result: pass | note: 真 takeover(冷钥在场→一并快照)在冷钥
+  去必需改动后仍全绿——present-case 向后兼容,兼容冷钥离线 case。
 - p4-8 | stack: rust | command: cargo test -q cold_sign | result: pass | note: `scripts_carry_trusted_delivery_guidance`
   断言两脚本头含摘要核对/断网/return 白名单指引;共 9 pass。stderr `sha256=` 与脚本文件 shasum 一致已手验。
 - p4-7 | stack: python | command: python3 tests/test_kes_period_staleness.py | result: pass | note: 确定性——老 period
