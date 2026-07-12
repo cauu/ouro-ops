@@ -699,8 +699,14 @@ fn run_tool_dispatch(args: &[String]) -> Result<()> {
     // approved for a different — or since-changed — target cannot drive the action (review P1
     // + TOCTOU). Orchestrated upgrade (upgrade/rollout -> upgrade-one) is a separate rollout-
     // level confirm and is intentionally NOT gated here.
-    const CONFIRM_BOUND_TOOLS: &[&str] =
-        &["runtime/restart", "runtime/topology-apply", "kes-rotation/rotate"];
+    const CONFIRM_BOUND_TOOLS: &[&str] = &[
+        "runtime/restart",
+        "runtime/topology-apply",
+        "kes-rotation/rotate",
+        // p4-6 offline install: promotes the staged KES key + cold-signed opcert and restarts —
+        // as target-disruptive as rotate, so it takes the same evidence-bound confirm gate.
+        "kes-rotation/push-offline",
+    ];
     if CONFIRM_BOUND_TOOLS.contains(&tool_name.as_str()) {
         let token = optional_flag_value(args, "--confirm-token").ok_or_else(|| {
             OuroError::Validation(format!(

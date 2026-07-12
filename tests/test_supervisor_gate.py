@@ -66,6 +66,7 @@ NODE_LIFECYCLE = (
     "runtime/scripts/topology-apply.sh",
     "upgrade/scripts/upgrade-one.sh",
     "kes-rotation/scripts/rotate.sh",
+    "kes-rotation/scripts/push-offline.sh",
 )
 
 

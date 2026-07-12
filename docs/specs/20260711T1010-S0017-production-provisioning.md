@@ -351,7 +351,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   deploy 仅 **vrf.skey 一把私钥**经 p4-9 协议从冷机搬到 BP;agent/`ouro-ops` 永不请求/打印冷或 KES 私钥
 - [ ] p4-5 (rev) **cardano-cli 版本能力矩阵**:pin 支持版本 + 每命令能力表 + CLI 版本与 ledger era 分离 + 据探测
   生成命令 + 每二进制 golden test;脚本离线可跑;对 bed(cold 同机)验证整条往返
-- [ ] p4-6 (new) **真 KES generate/export/push 前置**(替换占位):目标侧真 `key-gen-KES` + `kes.skey` 原子保留 +
+- [x] p4-6 (new) **真 KES generate/export/push 前置**(替换占位):目标侧真 `key-gen-KES` + `kes.skey` 原子保留 +
   真 `kes.vkey` 认证导出 + 真 opcert 格式/哈希解析校验 + 目标侧安装 `node.cert` + 托管感知 restart + rollback
 - [ ] p4-7 (new) **冷 counter 权威 + 恢复语义**:文件格式/属主/锁/原子备份/期望前后值/断电后恢复;在线 bundle
   含 genesis hash/tip slot/slotsPerKESPeriod/period/采集时间/最大年龄;安装前重查链校验单调
@@ -405,6 +405,15 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T18:30+08:00 p4-6 completed(真离线 KES generate/push 机制,替换占位):离线路径拆成两个**派发** L2:
+  ① `kes-rotation/generate-offline.sh`——BP 上真 `cardano-cli node key-gen-KES`,新密钥**暂存**($POOL/offline-stage/
+  kes.{skey,vkey}.staged,先写 tmp 再原子 mv;**不动 live 密钥**,运行节点继续用旧钥出块),tool 输出 data 带公开
+  `kes_vkey` 内容 + `kes_period` + `kes_vkey_hash`;非破坏、非 confirm。② `kes-rotation/push-offline.sh`——读回传
+  的 `node.cert.signed`,**原子把暂存 skey + 冷签 opcert 一并装上**,经 adapter 托管感知 restart,地面真值(PID 变 +
+  出块越过 pre-block + on-disk counter 前进);任一失败**回滚**(还原旧 opcert/kes.skey 并重启回旧钥)。counter 权威在
+  冷机(与 cold 同处),故 BP 侧以节点自身 kes-period-info 的 on-disk counter 单调为准(重放/陈旧 opcert 节点拒绝出块
+  → 回滚)。`push-offline` 入 `CONFIRM_BOUND_TOOLS`(证据绑定 confirm,同 rotate);入 supervisor 静态闸生命周期表。
+  SKILL.md 离线路径改用这两条 `tool run` + 中间 `kes cold-sign-script`(p4-1),regen bundle-manifest。
 - 2026-07-12T17:05+08:00 p4-4 in-progress(KES 冷签安全不变量静态闸):新 `tests/test_coldsign_invariants.py`——
   对 `ouro-ops kes cold-sign-script` **真实生成**的脚本断言四条不变量:① 只嵌公开数据(无 skey cborHex、无
   `SigningKey`);② 冷密钥**就地读**(仅作 `--cold-signing-key-file "$COLD_SKEY"` 传给 issue-op-cert,不 cat/echo
@@ -613,6 +622,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p4-6/TC-11 | stack: e2e | command: make e2e-t2-offline-rotation | result: pass | note: **整条真离线往返对 bed**:
+  派发 generate-offline(暂存新钥,live 节点 pid 45 未动)→ 用**返回的公开 vkey** 经 `ouro-ops kes cold-sign-script`
+  生成脚本 → 冷机就地读 cold.skey 出 node.cert → 证据绑定 confirm → 派发 push-offline → counter 0→1、节点重启
+  (pid 45→453)+ 出块(block 10)、kes-period-info 独立确认 counter=1、cold.skey sha256 前后一致仍在原位。
+  返回 vkey 内容 sha256 与 data.kes_vkey_hash 一致(公开交接可验)。
+- p4-6 | stack: python | command: python3 tests/test_kes_offline_rollback.py | result: pass | note: 确定性回滚:
+  桩 cardano-cli/进程表触发装后节点未起(PID 未变),断言 exit 30 + `kes_push_rolled_back` + **opcert.cert/kes.skey
+  还原为旧值**(暂存钥未被永久提升);已核可证伪(未还原即触发断言)。快、无 docker、不经 bed。
 - p4-4 | stack: python | command: python3 tests/test_coldsign_invariants.py | result: pass | note: 四条不变量全过
   (公开-only 嵌入 / 就地读冷密钥 / 唯一 issue-op-cert 且无外泄原语 / 拒签名密钥);已探针自证可证伪(注入 scp
   即 FAIL)。快、无 docker。

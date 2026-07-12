@@ -11,7 +11,9 @@
     "deploy/scripts/verify.sh": "7a8a47cf4503fe86239a182ee61a4b74db973a0ce681d8b0ca4278b1a6adb0bb",
     "detect/SKILL.md": "c48098f35ea5a9e0bacee8e3e364b6a3c167f9ae3fd62bc4100b8e7edca1e85e",
     "detect/scripts/runtime.sh": "63106a5b42fa467c60bf7182062d8a4dc9648e002348a13b467a6c01aa4d5940",
-    "kes-rotation/SKILL.md": "b8830b79fccab29c90b995fbd94fcba8ffa9a9f48c6c7a97099f04cf9247549a",
+    "kes-rotation/SKILL.md": "8ade80d1b68ea8bc802f6c01dd4bb47e37367961de103040f5b593fd49f82797",
+    "kes-rotation/scripts/generate-offline.sh": "9afea9641558b5002e60b48105d71039ca4f108a24e824b1ecb4c6533316a54d",
+    "kes-rotation/scripts/push-offline.sh": "d1b88a3da1749a573702e3bd25e52cae742f626aa468a7bb30e90cf0cf79f66c",
     "kes-rotation/scripts/rotate.sh": "9a6a39d6c8022262be909cfe0866443f1caf93d4ac70205047d9d2efa6c38a6c",
     "lib/ouro-lib.sh": "a0d4b56879e33e5b473f1395f0ef0171f8ca1f6ede0a1fc65c84d56e32527aca",
     "observability/SKILL.md": "5304d5311eda7fe4feb9588167e1d11adb3a275c6738708b6a464e2cab81d61e",
@@ -32,11 +34,11 @@
     "upgrade/scripts/upgrade-one.sh": "4f1838a1b7270e2d184057f65e54d85f8769ace5848bd6669fff5d51e8cebbc0",
     "upgrade/scripts/verify.sh": "87cead3bbee5f8427210237240580ddcf6bc2c4d721868a283d133cfe4d2e7d1"
   },
-  "decision_hash": "db54926b6c535f8e865b5ac6825257a3160143dc8e77b889a05f71504b4ffc67",
-  "embedded_digest": "1f3a8c43d712e5c29a09d26d7691f82867d97d42f15ed521d20d072c214aff9a",
+  "decision_hash": "b050ca60bac552704e4d55644e0a50023759e2a4f715d91380dc0f814a975ba9",
+  "embedded_digest": "459aa0af21902b5d38fd9c2763660082e28f03072815fb3242c22e19eca0426e",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
   "schema_hash": "064373a060a04b84cdaf0b7f0f44a78e2d6731436116236e80a42c8976972125",
-  "skills_hash": "e0b6227191b94072bf3afc760a46de173fae6800b77e3e97db809f053fb92714"
+  "skills_hash": "86c621f0b67e226d77a3daf0f9a1867449c085083eecd062301c44ff77251a91"
 }
