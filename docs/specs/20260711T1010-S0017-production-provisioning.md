@@ -249,9 +249,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [ ] p1-3 底座最小化(只留约束必需项)
 - [x] p1-4 可审计:`ouro-ops init` 输出安装清单(逐条可核对)(交付:install manifest——每步 desc/kind/remote/
   status/changed + 整体 ok;init JSON 输出携带)
-- [ ] p1-5 (rev) `ouro-ops deinit`/uninstall:**deinit 状态机**——全局锁、拒绝在途工作、运行中节点默认拒绝
+- [x] p1-5 (rev) `ouro-ops deinit`/uninstall:**deinit 状态机**——全局锁、拒绝在途工作、运行中节点默认拒绝
   (`--leave-node-running`/`--stop-then-remove`)、逆序(先验证替代接入再逆转 sshd、最后移除主体)、审计处置
   显式、每步失败注入
+  (交付:`deinit_plan` 安全逆序(先拆二进制/wrapper/sudoers → 复原 sshd → **最后**删接入主体 ouro-exec/ouro-diag)
+  + `ouro-ops deinit` CLI(**运行中节点默认拒绝**,`--force` 覆盖,状态测不出=fail-closed;`node` 账户默认保留,
+  `--remove-node` 可删)+ 幂等;真裸机 e2e:运行中拒绝→base 未动、停后还原→base 全移除、bootstrap 用户保留。
+  修 `node_is_running` 的 pgrep `-f` 自匹配 bug(用 `[c]ardano-node run`)。**待**:全局锁/在途拒绝、
+  `--stop-then-remove` 自动停节点、审计导出。)
 - [ ] p1-6 (rev) 操作自清理 + **state 三层命名空间**(per-process / per-invocation / workflow-scoped by
   audit-id,仅终态删除 + 崩溃 TTL GC);清理错误可见/入审计
 - [ ] p1-7 (new) **bootstrap 凭据 enforcement**:§1 Constraints A(独立主体/设备 + 强制 TTY + 带外一次性授权 +
@@ -260,8 +265,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [ ] p1-8 (new) **bootstrap 输入契约 + 平台/架构矩阵**:认证法/主体/sudo/bastion/恢复 console;Debian·Ubuntu +
   RHEL-family + systemd 有无 + x86_64/aarch64;据目标事实选签名产物 + 装前验签/摘要 + 原子安装 +
   `sshd -t`/`visudo -c` + 二次登录;不支持主机 fail-closed
-- [ ] p1-9 (new) **版本化 root-owned 安装账本**:created-vs-adopted 属主 + 改前摘要/备份 + 精确逆操作;冲突
+- [~] p1-9 (new) **版本化 root-owned 安装账本**:created-vs-adopted 属主 + 改前摘要/备份 + 精确逆操作;冲突
   默认拒绝除非 `--adopt`
+  (**部分**:deinit 目前只删**无歧义的 ouro 专属产物**(specific 路径/用户名),`node` 默认保留——无需账本即安全;
+  **待**:真账本以支持 adopted-vs-created 精确还原 + 改前备份 + 冲突 `--adopt`。)
 - [x] p1-10 (new) **参考 fixture 修复**:E2E base 的 `ouro`→`ouro-ops` 名一致 + 干净构建作为 p1-2 前置
 
 ### p2 — 节点托管模式感知(LLM 判定 + 机制不泄密 + 候选绑定)
@@ -391,6 +398,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T01:30+08:00 p1-5 completed(`ouro-ops deinit` + 运行中节点护栏)+ p1-9 部分:`provision.rs` 加
+  `deinit_plan`(安全逆序:二进制/wrapper/sudoers → 复原 sshd → 最后删 ouro-exec/ouro-diag;`node` 默认保留)、
+  把 `execute` 重构出通用 `run_steps`、加 `execute_deinit` + `node_is_running`(特权只读探测)。`cli.rs` 加
+  `ouro-ops deinit`(**运行中节点默认拒绝**,`--force`/`--remove-node`/`--dry-run`;状态测不出=fail-closed)。
+  扩 `e2e-t2-init.sh` 加 deinit leg:植入 stand-in `cardano-node run` → deinit **拒绝且 base 未动** → SIGKILL 停 →
+  deinit **还原**(ouro-exec/ouro-diag/二进制/wrapper/sudoers/sshd drop-in 全消失)+ **bootstrap 用户 boot 仍可登**。
+  过程揪出并修 `node_is_running` 的 `pgrep -f` 自匹配 bug(sh -c 包裹使 pattern 进父进程 cmdline;改用
+  `[c]ardano-node run`)。provision 7 单测(含 deinit 顺序/dry-run)+ 全量 cargo pass;init/deinit e2e ALL PASSED。
 - 2026-07-12T00:55+08:00 p1-2 真裸机 e2e 通过(p1-2/p1-4 完成)+ 收进 `make accept`:新增
   `fixtures/e2e/bare-node/Dockerfile`(裸目标:仅 sshd + sudo 用户 `boot`,无任何 ouro 底座)+ `e2e-t2-init.sh`
   harness(host 侧生成一次性 keypair、抽取 base 的 linux ouro-ops、把裸目标 sshd 映射到 host 端口)。流程:host 跑
@@ -549,9 +564,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
-- p1-2/p1-4 | stack: e2e | command: make e2e-t2-init | result: pass | note: 裸目标(仅 sshd+sudo 用户)→ init →
-  ouro-exec/wrapper/sudoers/hardened-sshd 就位;**受限派发实活**(经 wrapper 的 detect/runtime 成功、任意 sudo 拒)
-  ;二次 init 幂等收敛;install manifest ok/changed。self-clean。
+- p1-2/p1-4/p1-5 | stack: e2e | command: make e2e-t2-init | result: pass | note: 裸目标 → init(受限派发实活、
+  任意 sudo 拒、二次幂等)→ **deinit 运行中拒绝(base 未动)→ 停后还原(base 全移除、boot 保留)**。self-clean。
+- p1-5/p1-9 | stack: rust | command: cargo test -q provision | result: pass | note: 7 单测——init 顺序/零注入/
+  sshd 姿态/wrapper/dry-run manifest + deinit 接入主体最后删/node 默认保留/dry-run removal manifest + node_is_running。
 - p1-1 | stack: rust | command: cargo test -q bootstrap; cargo test -q -- --test-threads=1 | result: pass | note:
   bootstrap 6 单测(argv 形态/注入失效/mode 校验/dry-run)+ 全量 41 pass;ssh.rs no-scp 断言未动仍绿(per-op
   边界保留)。独立模块,仅供 init;首次接入=sudo 用户,文件经 SSH 通道 install 无 scp。

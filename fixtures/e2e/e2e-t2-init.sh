@@ -86,4 +86,34 @@ echo "$OUT3" | python3 -c 'import json,sys; assert json.load(sys.stdin)["data"][
   || fail "second init manifest not ok: $OUT3"
 pass "second init converged (idempotent)"
 
-echo "ouro-ops init (bare -> constrained target) E2E: ALL PASSED"
+echo "[deinit] running-node safety gate — deinit REFUSES while a node runs"
+# Stand-in `cardano-node run` process (bare box has no real node) to trip the gate.
+dex bash -c 'printf "#!/bin/sh\ntrap \"exit 0\" TERM\nwhile true; do sleep 1; done\n" > /usr/local/bin/cardano-node && chmod +x /usr/local/bin/cardano-node && setsid /usr/local/bin/cardano-node run </dev/null >/dev/null 2>&1 &'
+sleep 1
+dex pgrep -f 'cardano-node run' >/dev/null 2>&1 || fail "stand-in node did not start"
+if OURO_HOME="$OURO_HOME" ./target/debug/ouro-ops deinit \
+     --host 127.0.0.1 --port "$PORT" --bootstrap-user boot --bootstrap-key creds://boot >/dev/null 2>&1; then
+  fail "deinit did NOT refuse while a node was running"
+fi
+dex id ouro-exec >/dev/null 2>&1 || fail "deinit removed the base despite refusing (should be untouched)"
+pass "deinit refused while a node was running (base untouched)"
+dex pkill -9 -f 'cardano-node run' 2>/dev/null || true
+for _ in $(seq 1 12); do dex pgrep -f 'cardano-node run' >/dev/null 2>&1 || break; sleep 0.5; done
+dex pgrep -f 'cardano-node run' >/dev/null 2>&1 && fail "stand-in node did not stop"
+
+echo "[deinit] node stopped — deinit restores the box (base removed, boot preserved)"
+OUT4=$(OURO_HOME="$OURO_HOME" ./target/debug/ouro-ops deinit \
+  --host 127.0.0.1 --port "$PORT" --bootstrap-user boot --bootstrap-key creds://boot 2>&1) \
+  || fail "deinit exited non-zero: $OUT4"
+echo "$OUT4" | python3 -c 'import json,sys; assert json.load(sys.stdin)["data"]["manifest"]["ok"]' || fail "deinit manifest not ok: $OUT4"
+dex id ouro-exec >/dev/null 2>&1 && fail "ouro-exec still present after deinit"
+dex id ouro-diag >/dev/null 2>&1 && fail "ouro-diag still present after deinit"
+dex test -e /usr/local/bin/ouro-ops && fail "ouro-ops binary still present after deinit"
+dex test -e /usr/local/sbin/ouro-tool-run && fail "wrapper still present after deinit"
+dex test -e /etc/sudoers.d/ouro-exec && fail "sudoers still present after deinit"
+dex test -e /etc/ssh/sshd_config.d/10-ouro.conf && fail "sshd drop-in still present after deinit"
+# The operator's bootstrap account is preserved (never locked out).
+ssh_as "$WORK/bootstrap" boot "true" || fail "bootstrap user 'boot' no longer reachable after deinit"
+pass "deinit restored the box: base removed, bootstrap user 'boot' preserved"
+
+echo "ouro-ops init/deinit (bare <-> constrained target) E2E: ALL PASSED"

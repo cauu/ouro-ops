@@ -41,6 +41,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         }
         "audit" => run_audit(&args[2..])?,
         "init" => run_init(&args[2..])?,
+        "deinit" => run_deinit(&args[2..])?,
         "confirm" => run_confirm(&args[2..])?,
         "config" => run_config(&args[2..])?,
         "kes" => run_kes(&args[2..])?,
@@ -191,6 +192,76 @@ fn run_init(args: &[String]) -> Result<()> {
     if !manifest.ok {
         return Err(OuroError::Validation(
             "init did not complete: a provisioning step failed (see manifest)".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// `ouro-ops deinit` (S0017 p1-5) — the reverse of init: remove the ouro base and restore the
+/// target, over the same privileged bootstrap transport (as the bootstrap sudo user init kept).
+/// SAFE by default: refuses while a cardano-node is running (removing the base would orphan it)
+/// unless `--force`; access principals are removed last so a mid-run failure never locks the
+/// box. Only unambiguously ouro-owned artifacts are removed; the shared `node` account is kept
+/// unless `--remove-node`. Idempotent. Prints a removal manifest.
+fn run_deinit(args: &[String]) -> Result<()> {
+    let host = flag_value(args, "--host")?.to_string();
+    let port: u16 = optional_flag_value(args, "--port")
+        .unwrap_or("22")
+        .parse()
+        .map_err(|_| OuroError::InvalidArgs("--port must be a number".to_string()))?;
+    let user = flag_value(args, "--bootstrap-user")?.to_string();
+    let key_ref = CredentialRef::parse(flag_value(args, "--bootstrap-key")?)?;
+    let force = args.iter().any(|a| a == "--force");
+    let remove_node = args.iter().any(|a| a == "--remove-node");
+    let dry_run = args.iter().any(|a| a == "--dry-run");
+    let host_key = match optional_flag_value(args, "--host-key") {
+        Some("yes") => HostKeyCheck::Yes,
+        _ => HostKeyCheck::AcceptNew,
+    };
+
+    let paths = ConfigPaths::discover();
+    let key_path = key_ref.resolve(&paths.credentials_dir)?;
+    if !dry_run && !key_path.is_file() {
+        return Err(OuroError::Validation(format!(
+            "bootstrap credential key not found: {}",
+            key_path.display()
+        )));
+    }
+
+    let target = BootstrapTarget { host, port, user };
+    let transport = BootstrapTransport::new(dry_run);
+
+    // Running-node safety gate: refuse by default rather than orphan a forging node. Fail closed
+    // if the state cannot be determined (unless the operator forces it).
+    if !force && !dry_run {
+        match provision::node_is_running(&transport, &target, &key_path, host_key) {
+            Some(true) => {
+                return Err(OuroError::Validation(
+                    "a cardano-node is running on the target; deinit refused (removing the base \
+                     would orphan it). Stop the node first, or pass --force to proceed anyway."
+                        .to_string(),
+                ))
+            }
+            None => {
+                return Err(OuroError::Validation(
+                    "could not determine whether a node is running on the target; deinit refused \
+                     (fail-closed). Pass --force to override."
+                        .to_string(),
+                ))
+            }
+            Some(false) => {}
+        }
+    }
+
+    let manifest = provision::execute_deinit(&transport, &target, &key_path, host_key, remove_node)?;
+    output::print_json(&ToolOutput::ok("ouro.deinit", manifest.ok && !dry_run).with_data(json!({
+        "manifest": manifest,
+        "dry_run": dry_run,
+        "removed_node_account": remove_node,
+    })))?;
+    if !manifest.ok {
+        return Err(OuroError::Validation(
+            "deinit did not complete: a removal step failed (see manifest)".to_string(),
         ));
     }
     Ok(())

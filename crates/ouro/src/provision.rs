@@ -113,6 +113,34 @@ pub fn init_plan(bootstrap_user: &str, ouro_binary: &Path) -> Vec<Step> {
 /// it into place — inserted by the executor right before that step.
 pub const AUTHKEY_STAGE: &str = "/tmp/ouro-init-authkey";
 
+/// `ouro-ops deinit` recipe — the reverse of init, in a SAFE order: strip the confinement
+/// mechanism (binary/wrapper/sudoers) first, then restore the default sshd posture, and remove
+/// the access principals (ouro-exec/ouro-diag) LAST so a mid-run failure never orphans the box
+/// without a way back in (the bootstrap sudo user, which init kept, is never touched). Only
+/// unambiguously ouro-owned artifacts are removed. The shared `node` account MAY be a real
+/// service account, so it is left unless `remove_node` is set. Every step is idempotent.
+pub fn deinit_plan(remove_node: bool) -> Vec<Step> {
+    let run = |desc: &str, cmd: &str| Step::Run { desc: desc.into(), cmd: cmd.into() };
+    let mut steps = vec![
+        run("remove ouro-ops binary", "rm -f /usr/local/bin/ouro-ops"),
+        run("remove tool-run wrapper", "rm -f /usr/local/sbin/ouro-tool-run"),
+        run("remove sudoers confinement", "rm -f /etc/sudoers.d/ouro-exec"),
+        // Restore default sshd (only if the result still validates), then reload.
+        run(
+            "restore sshd (remove hardening)",
+            "rm -f /etc/ssh/sshd_config.d/10-ouro.conf && sshd -t && \
+             { systemctl reload ssh 2>/dev/null || service ssh reload 2>/dev/null || systemctl reload sshd 2>/dev/null || true; }",
+        ),
+        // Access principals removed LAST (userdel -r takes homes + authorized_keys with them).
+        run("remove ouro-exec", "id -u ouro-exec >/dev/null 2>&1 && userdel -r ouro-exec 2>/dev/null || true"),
+        run("remove ouro-diag", "id -u ouro-diag >/dev/null 2>&1 && userdel -r ouro-diag 2>/dev/null || true"),
+    ];
+    if remove_node {
+        steps.push(run("remove node account", "id -u node >/dev/null 2>&1 && userdel -r node 2>/dev/null || true"));
+    }
+    steps
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct StepResult {
     pub desc: String,
@@ -130,9 +158,38 @@ pub struct InstallManifest {
     pub ok: bool,
 }
 
-/// Execute the plan over the bootstrap transport, staging the control pubkey first. Stops at the
-/// first failing step (a half-provisioned host is reported, not silently continued). Returns an
-/// auditable install manifest (p1-4). Dry-run reports every step as a planned no-op.
+/// Run an ordered step list over the bootstrap transport, appending to `steps`/`ok`. Stops at
+/// the first failing step (a half-provisioned host is reported, not silently continued).
+fn run_steps(
+    transport: &BootstrapTransport,
+    target: &BootstrapTarget,
+    key_path: &Path,
+    host_key: HostKeyCheck,
+    plan: Vec<Step>,
+    steps: &mut Vec<StepResult>,
+    ok: &mut bool,
+) -> Result<()> {
+    if !*ok {
+        return Ok(());
+    }
+    for step in plan {
+        let (kind, remote, outcome) = run_step(transport, target, key_path, host_key, &step)?;
+        let step_ok = outcome.status == 0;
+        steps.push(outcome_result(step.desc(), kind, remote.as_deref(), &outcome));
+        if !step_ok {
+            *ok = false;
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn manifest(target: &BootstrapTarget, steps: Vec<StepResult>, ok: bool) -> InstallManifest {
+    InstallManifest { host: target.host.clone(), bootstrap_user: target.user.clone(), steps, ok }
+}
+
+/// `ouro-ops init`: stage the control pubkey, then run the install plan. Returns an auditable
+/// install manifest (p1-4). Dry-run reports every step as a planned no-op.
 pub fn execute(
     transport: &BootstrapTransport,
     target: &BootstrapTarget,
@@ -150,25 +207,43 @@ pub fn execute(
     steps.push(outcome_result("stage control key", "push", Some(AUTHKEY_STAGE), &staged));
     ok &= staged.status == 0;
 
-    if ok {
-        for step in init_plan(&target.user, ouro_binary) {
-            let (kind, remote, outcome) = run_step(transport, target, key_path, host_key, &step)?;
-            let result = outcome_result(step.desc(), kind, remote.as_deref(), &outcome);
-            let step_ok = outcome.status == 0;
-            steps.push(result);
-            if !step_ok {
-                ok = false;
-                break;
-            }
-        }
-    }
+    run_steps(transport, target, key_path, host_key, init_plan(&target.user, ouro_binary), &mut steps, &mut ok)?;
+    Ok(manifest(target, steps, ok))
+}
 
-    Ok(InstallManifest {
-        host: target.host.clone(),
-        bootstrap_user: target.user.clone(),
-        steps,
-        ok,
-    })
+/// `ouro-ops deinit`: run the removal plan (see `deinit_plan`). Returns a manifest of what was
+/// removed. The caller is responsible for the running-node safety gate (see `node_is_running`).
+pub fn execute_deinit(
+    transport: &BootstrapTransport,
+    target: &BootstrapTarget,
+    key_path: &Path,
+    host_key: HostKeyCheck,
+    remove_node: bool,
+) -> Result<InstallManifest> {
+    let mut steps = Vec::new();
+    let mut ok = true;
+    run_steps(transport, target, key_path, host_key, deinit_plan(remove_node), &mut steps, &mut ok)?;
+    Ok(manifest(target, steps, ok))
+}
+
+/// Whether a cardano-node is running on the target (a privileged read used by `deinit` to
+/// refuse by default rather than strand a running node). `None` on a transport/probe error
+/// (fail closed — the caller should refuse). Dry-run reports not-running.
+pub fn node_is_running(
+    transport: &BootstrapTransport,
+    target: &BootstrapTarget,
+    key_path: &Path,
+    host_key: HostKeyCheck,
+) -> Option<bool> {
+    // `[c]ardano-node run` matches a real node but NOT this pgrep's own `sh -c` cmdline (which
+    // contains the literal pattern) — avoids the classic pgrep-f self/parent match.
+    let outcome = transport
+        .run(target, key_path, host_key, "pgrep -f '[c]ardano-node run' >/dev/null 2>&1 && echo RUNNING || echo STOPPED")
+        .ok()?;
+    if outcome.status != 0 {
+        return None;
+    }
+    Some(outcome.stdout.trim() == "RUNNING")
 }
 
 fn run_step(
@@ -278,6 +353,32 @@ mod tests {
     fn wrapper_only_runs_tool_run() {
         assert!(WRAPPER.contains("ouro-ops tool run \"$@\""));
         assert!(!WRAPPER.contains("confirm"));
+    }
+
+    #[test]
+    fn deinit_removes_access_principals_last_and_spares_node_by_default() {
+        let plan = deinit_plan(false);
+        let descs: Vec<&str> = plan.iter().map(Step::desc).collect();
+        let pos = |d: &str| descs.iter().position(|x| *x == d).unwrap_or_else(|| panic!("missing: {d}"));
+        // Confinement + binary stripped before the access principals are removed.
+        assert!(pos("remove sudoers confinement") < pos("remove ouro-exec"));
+        assert!(pos("restore sshd (remove hardening)") < pos("remove ouro-exec"));
+        // Access principals are the LAST things removed (never orphan the box mid-run).
+        assert!(pos("remove ouro-diag") == descs.len() - 1);
+        // The shared `node` account is spared by default.
+        assert!(!descs.iter().any(|d| d.contains("node account")));
+        assert!(deinit_plan(true).iter().any(|s| s.desc().contains("node account")));
+    }
+
+    #[test]
+    fn deinit_dry_run_reports_removal_manifest() {
+        let transport = BootstrapTransport::new(true);
+        let target = BootstrapTarget { host: "10.0.0.10".into(), port: 22, user: "ubuntu".into() };
+        let m = execute_deinit(&transport, &target, Path::new("/k"), HostKeyCheck::AcceptNew, false).unwrap();
+        assert!(m.ok);
+        assert_eq!(m.steps.len(), deinit_plan(false).len());
+        // dry-run node check reports not-running.
+        assert_eq!(node_is_running(&transport, &target, Path::new("/k"), HostKeyCheck::AcceptNew), Some(false));
     }
 
     #[test]
