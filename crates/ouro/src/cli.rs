@@ -217,6 +217,29 @@ fn run_init(args: &[String]) -> Result<()> {
         pinned_fp = Some(pin_host_key(&host, port, &paths.known_hosts, expected_host_key)?);
     }
 
+    // p1-8: probe the target platform BEFORE any write and fail closed on an unsupported host or a
+    // binary the target cannot execute (e.g. a macOS control machine pushing a Mach-O to Linux).
+    let target_facts = transport.detect_facts(&target, &key_path, host_key)?;
+    if let Some(facts) = &target_facts {
+        facts.require_supported()?;
+        match crate::bootstrap::binary_arch(&ouro_binary) {
+            Some(bin_arch) if Some(bin_arch) == facts.norm_arch() => {}
+            Some(bin_arch) => {
+                return Err(OuroError::Validation(format!(
+                    "--ouro-binary is {bin_arch} but the target is {}; supply a matching Linux binary",
+                    facts.norm_arch().unwrap_or(&facts.arch)
+                )));
+            }
+            None => {
+                return Err(OuroError::Validation(format!(
+                    "--ouro-binary {} is not a Linux ELF for {} (a macOS/other-arch binary cannot run on the target)",
+                    ouro_binary.display(),
+                    facts.norm_arch().unwrap_or(&facts.arch)
+                )));
+            }
+        }
+    }
+
     let manifest = provision::execute(
         &transport,
         &target,
@@ -237,6 +260,7 @@ fn run_init(args: &[String]) -> Result<()> {
         "dry_run": dry_run,
         "pinned_host_key": pinned_fp,
         "declared_runtime": declared_runtime,
+        "target_facts": target_facts,
         "security_note": "bootstrap credential is NOT mechanism-isolated from the agent \
             (convenience mode, P0-1); a poisoned prompt could invoke init via the agent. \
             Relies on upstream control-machine / agent-runtime security.",

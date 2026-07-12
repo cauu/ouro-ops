@@ -275,9 +275,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [x] p1-7 (原文保留;已由上「便利模式收窄」交付,原 enforcement 按 P0-1 明确不做) **bootstrap 凭据 enforcement**:§1 Constraints A(独立主体/设备 + 强制 TTY + 带外一次性授权 +
   禁 `--dispatch`/非交互)或 B(硬件密钥 + touch/PIN);若都不做则降级为诚实纪律声明 + 把受限 agent-run 面
   列为前置依赖
-- [ ] p1-8 (new) **bootstrap 输入契约 + 平台/架构矩阵**:认证法/主体/sudo/bastion/恢复 console;Debian·Ubuntu +
-  RHEL-family + systemd 有无 + x86_64/aarch64;据目标事实选签名产物 + 装前验签/摘要 + 原子安装 +
-  `sshd -t`/`visudo -c` + 二次登录;不支持主机 fail-closed
+- [x] p1-8 (new/精简) **bootstrap 平台/架构探测 + fail-closed**:关键补的真缺口——init 原本盲推控制机二进制,
+  **从不查目标 OS/arch/distro**,故 macOS-arm64 控制机推给 linux-x86_64 会静默装上跑不了的二进制。补:装前**只读
+  探测** `FACTS_PROBE`(uname os/arch + /etc/os-release id/id_like + systemd 有无,闭合投影)→ `TargetFacts.parse`
+  归一化(ubuntu→debian、rocky/centos/fedora→rhel;amd64→x86_64、arm64→aarch64)→ `require_supported` **fail-closed**
+  (非 Linux / 不支持 arch / 未知 distro 一律拒,**装前零写入**)+ `binary_arch` 读 ELF e_machine 与目标 arch **交叉核对**
+  (非 Linux ELF 如 Mach-O 直接拒)。init 输出加 `target_facts`。已交付的原子安装 + `sshd -t`/`visudo -c` + 二次登录
+  (e2e 证)不变。**克制说明:** 签名产物/验签属 S0016 发布基建(此处以 arch 匹配兜住"装错架构");bastion/恢复
+  console 属便利模式外的部署形态,未纳入。7 单测(parse/归一/支持门 5 例 + ELF arch 3 例)+ 真裸机 e2e 无回归。
 - [x] p1-9 (new) **版本化 root-owned 安装账本**:created-vs-adopted 属主 + 改前摘要/备份 + 精确逆操作;冲突
   默认拒绝除非 `--adopt`
   (**部分**:deinit 目前只删**无歧义的 ouro 专属产物**(specific 路径/用户名),`node` 默认保留——无需账本即安全;
@@ -422,6 +427,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T00:50+08:00 p1-8 completed(平台/架构探测 + fail-closed,补真缺口):见交付说明。核心堵住"控制机盲推
+  异架构二进制"这条真 bug(macOS→Linux / x86↔arm)。`bootstrap.rs` 加 `FACTS_PROBE`/`TargetFacts`(parse+归一+
+  require_supported)/`binary_arch`(ELF e_machine)/`detect_facts`(dry-run 返回 None);`run_init` 装前探测→
+  require_supported→arch 交叉核对,任一不符**装前拒**。dry-run 不探测(不破坏 dry-run 单测)。
 - 2026-07-13T00:20+08:00 p1-9 completed(root-owned 安装账本 created-vs-adopted + deinit 精确逆操作):关键观察——
   当前 drop-in 设计**从不改现存系统文件**(只写 ouro 专属新 drop-in,见 p1-3),故唯一能合法预存的是**主体账户**
   (如真实 `node` 服务账户)。据此落地精简账本(不为不存在的 file-adopt 造备份/还原机制,符合克制原则):init 写
@@ -713,6 +722,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p1-8 | stack: rust | command: cargo test -q bootstrap | result: pass | note: `target_facts_parse_and_support_gate`
+  (ubuntu/aarch64→ok+debian、rocky/x86→ok+rhel、Darwin→拒、riscv64→拒、未知 distro→拒)+ `binary_arch`
+  (x86_64=0x3E、aarch64=0xB7、Mach-O→None);11 pass。
+- p1-8 | stack: e2e | command: make e2e-t2-init | result: pass | note: 加装前 facts 探测后真裸机 init/deinit（含 adopt
+  往返）全绿——真 Linux 目标过 require_supported + arch 核对，无回归。
 - p1-9 | stack: rust | command: cargo test -q provision | result: pass | note: 账本步骤记 created/adopted 双分支 +
   root 0600;deinit 主体删除全部含 `:created` 门控;幂等排序;9 pass。
 - p1-9 | stack: e2e | command: make e2e-t2-init | result: pass | note: 新增 adopt 往返——预建 ouro-diag → re-init 账本

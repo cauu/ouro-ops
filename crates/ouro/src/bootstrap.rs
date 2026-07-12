@@ -18,6 +18,93 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+/// A read-only probe of the target's platform facts, run BEFORE any write (S0017 p1-8). Selecting
+/// the right (arch-matched) artifact and refusing an unsupported host is a correctness gate: init
+/// pushes a binary, and a control machine of a different OS/arch would otherwise install one the
+/// target cannot execute. Emits only a closed set of facts (no raw files).
+pub const FACTS_PROBE: &str = "printf 'os=%s\\narch=%s\\n' \"$(uname -s)\" \"$(uname -m)\"; \
+    . /etc/os-release 2>/dev/null; printf 'id=%s\\nid_like=%s\\n' \"${ID:-}\" \"${ID_LIKE:-}\"; \
+    { [ -d /run/systemd/system ] && echo systemd=yes || echo systemd=no; }";
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct TargetFacts {
+    pub os: String,
+    pub arch: String,
+    pub distro_family: String,
+    pub has_systemd: bool,
+}
+
+impl TargetFacts {
+    /// Parse the `key=value` lines emitted by `FACTS_PROBE`. `distro_family` normalizes the
+    /// os-release `ID`/`ID_LIKE` to a supported family token, or "unknown".
+    pub fn parse(probe_stdout: &str) -> Self {
+        let mut os = String::new();
+        let mut arch = String::new();
+        let mut id = String::new();
+        let mut id_like = String::new();
+        let mut has_systemd = false;
+        for line in probe_stdout.lines() {
+            let (k, v) = match line.split_once('=') {
+                Some(kv) => kv,
+                None => continue,
+            };
+            match k.trim() {
+                "os" => os = v.trim().to_string(),
+                "arch" => arch = v.trim().to_string(),
+                "id" => id = v.trim().to_lowercase(),
+                "id_like" => id_like = v.trim().to_lowercase(),
+                "systemd" => has_systemd = v.trim() == "yes",
+                _ => {}
+            }
+        }
+        let hay = format!("{id} {id_like}");
+        let family = ["debian", "ubuntu", "rhel", "fedora", "centos", "rocky", "almalinux"]
+            .into_iter()
+            .find(|fam| hay.split_whitespace().any(|t| t == *fam))
+            .map(|fam| match fam {
+                "ubuntu" => "debian",
+                "centos" | "rocky" | "almalinux" | "fedora" => "rhel",
+                other => other,
+            })
+            .unwrap_or("unknown")
+            .to_string();
+        TargetFacts { os, arch, distro_family: family, has_systemd }
+    }
+
+    /// Normalized arch token (`x86_64` / `aarch64`) or None if unsupported.
+    pub fn norm_arch(&self) -> Option<&'static str> {
+        match self.arch.as_str() {
+            "x86_64" | "amd64" => Some("x86_64"),
+            "aarch64" | "arm64" => Some("aarch64"),
+            _ => None,
+        }
+    }
+
+    /// Fail-closed support gate: bootstrap targets must be Linux, on a supported arch, of a
+    /// supported distro family. Returns the reason it is unsupported, or Ok(()).
+    pub fn require_supported(&self) -> Result<()> {
+        if self.os != "Linux" {
+            return Err(OuroError::Validation(format!(
+                "unsupported target OS {:?}: ouro-ops init provisions Linux hosts only",
+                self.os
+            )));
+        }
+        if self.norm_arch().is_none() {
+            return Err(OuroError::Validation(format!(
+                "unsupported target arch {:?}: supported are x86_64 and aarch64",
+                self.arch
+            )));
+        }
+        if self.distro_family == "unknown" {
+            return Err(OuroError::Validation(
+                "unsupported target distro: supported families are debian/ubuntu and rhel/fedora"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 use serde::Serialize;
 
 use crate::{OuroError, Result};
@@ -65,6 +152,22 @@ pub struct BootstrapOutcome {
 
 /// Validate a Unix file mode string (`0755` / `644`): 3–4 octal digits. Rejected values never
 /// reach the remote command, so the mode can be inlined unquoted.
+/// The CPU arch a binary targets, read from its file header — `x86_64` / `aarch64` for a Linux
+/// ELF, or None if it is not a Linux ELF (e.g. a macOS Mach-O) or an unrecognized machine. Used to
+/// refuse pushing a binary the target cannot execute (S0017 p1-8).
+pub fn binary_arch(path: &Path) -> Option<&'static str> {
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.len() < 20 || &bytes[0..4] != b"\x7fELF" {
+        return None; // not a Linux ELF (a macOS Mach-O control binary lands here → refused)
+    }
+    // e_machine is a little-endian u16 at offset 18.
+    match u16::from_le_bytes([bytes[18], bytes[19]]) {
+        0x3E => Some("x86_64"),
+        0xB7 => Some("aarch64"),
+        _ => None,
+    }
+}
+
 fn validate_mode(mode: &str) -> Result<()> {
     let ok = (3..=4).contains(&mode.len()) && mode.bytes().all(|b| (b'0'..=b'7').contains(&b));
     if ok {
@@ -199,6 +302,34 @@ impl BootstrapTransport {
         })
     }
 
+    /// p1-8 — run the read-only facts probe on the target and parse it. Dry-run returns None
+    /// (nothing to probe). A probe that fails or yields no OS is surfaced as an error.
+    pub fn detect_facts(
+        &self,
+        target: &BootstrapTarget,
+        key_path: &Path,
+        host_key: HostKeyCheck,
+    ) -> Result<Option<TargetFacts>> {
+        if self.dry_run {
+            return Ok(None);
+        }
+        let out = self.run(target, key_path, host_key, FACTS_PROBE)?;
+        if out.status != 0 {
+            return Err(OuroError::Validation(format!(
+                "could not probe target platform facts (ssh exit {}): {}",
+                out.status,
+                out.stderr.trim()
+            )));
+        }
+        let facts = TargetFacts::parse(&out.stdout);
+        if facts.os.is_empty() {
+            return Err(OuroError::Validation(
+                "target platform probe returned no OS — cannot verify support".to_string(),
+            ));
+        }
+        Ok(Some(facts))
+    }
+
     /// Push a local file to `remote_path` with `mode`, piping the bytes over the SSH channel
     /// (no scp). Dry-run returns a no-op success.
     pub fn push(
@@ -298,6 +429,59 @@ mod tests {
                 "mode {bad:?} should be rejected"
             );
         }
+    }
+
+    #[test]
+    fn target_facts_parse_and_support_gate() {
+        // Ubuntu on aarch64 with systemd → supported, family normalized to debian.
+        let f = TargetFacts::parse("os=Linux\narch=aarch64\nid=ubuntu\nid_like=debian\nsystemd=yes\n");
+        assert_eq!(f.os, "Linux");
+        assert_eq!(f.distro_family, "debian");
+        assert_eq!(f.norm_arch(), Some("aarch64"));
+        assert!(f.has_systemd);
+        assert!(f.require_supported().is_ok());
+
+        // Rocky (id_like rhel) on x86_64 → supported, family normalized to rhel.
+        let f = TargetFacts::parse("os=Linux\narch=x86_64\nid=rocky\nid_like=\"rhel centos fedora\"\nsystemd=yes");
+        assert_eq!(f.distro_family, "rhel");
+        assert!(f.require_supported().is_ok());
+
+        // macOS control machine mistaken for a target → refused (not Linux).
+        let f = TargetFacts::parse("os=Darwin\narch=arm64\nid=\nid_like=\nsystemd=no");
+        assert!(f.require_supported().is_err());
+
+        // Linux on an unsupported arch → refused.
+        let f = TargetFacts::parse("os=Linux\narch=riscv64\nid=debian\nid_like=\nsystemd=yes");
+        assert!(f.norm_arch().is_none() && f.require_supported().is_err());
+
+        // Linux, supported arch, but an unknown distro → refused (fail-closed).
+        let f = TargetFacts::parse("os=Linux\narch=x86_64\nid=exoticos\nid_like=\nsystemd=yes");
+        assert_eq!(f.distro_family, "unknown");
+        assert!(f.require_supported().is_err());
+    }
+
+    #[test]
+    fn binary_arch_reads_elf_machine_and_rejects_non_elf() {
+        let dir = std::env::temp_dir().join(format!("ouro-elf-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Minimal 20-byte ELF header with e_machine = 0x3E (x86_64) at offset 18.
+        let mut elf = vec![0u8; 20];
+        elf[0..4].copy_from_slice(b"\x7fELF");
+        elf[18] = 0x3E;
+        elf[19] = 0x00;
+        let p = dir.join("x86");
+        std::fs::write(&p, &elf).unwrap();
+        assert_eq!(binary_arch(&p), Some("x86_64"));
+        // aarch64 machine = 0xB7.
+        elf[18] = 0xB7;
+        let p2 = dir.join("arm");
+        std::fs::write(&p2, &elf).unwrap();
+        assert_eq!(binary_arch(&p2), Some("aarch64"));
+        // A non-ELF (e.g. Mach-O magic) → None (would be refused).
+        let p3 = dir.join("macho");
+        std::fs::write(&p3, [0xCF, 0xFA, 0xED, 0xFE, 0, 0, 0, 0]).unwrap();
+        assert_eq!(binary_arch(&p3), None);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
