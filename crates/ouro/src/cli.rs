@@ -920,6 +920,8 @@ fn run_deploy(args: &[String]) -> Result<()> {
             )?;
             std::io::stdout().write_all(script.as_bytes())?;
             std::io::stdout().flush()?;
+            // p4-8 trusted delivery: digest to STDERR for out-of-band verification (see kes above).
+            eprintln!("sha256={}", crate::skills::sha256_hex(script.as_bytes()));
             Ok(())
         }
         _ => Err(OuroError::InvalidArgs(
@@ -1012,6 +1014,9 @@ fn run_kes(args: &[String]) -> Result<()> {
                 crate::cold_sign::kes_cold_sign_script(&vkey, kes_period, cardano_cli, &generated_at)?;
             std::io::stdout().write_all(script.as_bytes())?;
             std::io::stdout().flush()?;
+            // p4-8 trusted delivery: print the script digest to STDERR (out of the stdout script
+            // stream) so the operator can verify the file on the cold machine matches this exactly.
+            eprintln!("sha256={}", crate::skills::sha256_hex(script.as_bytes()));
             Ok(())
         }
         _ => Err(OuroError::InvalidArgs(

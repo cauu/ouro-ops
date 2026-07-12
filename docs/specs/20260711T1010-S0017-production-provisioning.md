@@ -355,7 +355,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   真 `kes.vkey` 认证导出 + 真 opcert 格式/哈希解析校验 + 目标侧安装 `node.cert` + 托管感知 restart + rollback
 - [x] p4-7 (new) **冷 counter 权威 + 恢复语义**:文件格式/属主/锁/原子备份/期望前后值/断电后恢复;在线 bundle
   含 genesis hash/tip slot/slotsPerKESPeriod/period/采集时间/最大年龄;安装前重查链校验单调
-- [ ] p4-8 (new) **签名 bundle 协议**:发布签名+版本 pin 的不可变模板独立装冷机 + 签名 manifest 公开数据 +
+- [x] p4-8 (new/精简) **冷签脚本可信投递(轻量完整性)**:用户定 scope=轻量。生成器为脚本输出 SHA256(stderr,
+  脱离 stdout 脚本流)供**独立信道核对**;脚本头强制:核对摘要 → less 审读 → **断网**空目录运行 → **只回传公开产物**
+  (return 白名单)。不做签名/PKI/模板分发(与便利模式一致)。原 spec 的完整签名 bundle 协议按用户裁剪不做。
   独立信道摘要核对 + 人工 view/审读 + 断网 confinement + 全新输出目录 + 回传文件白名单
 - [ ] p4-9 (new) **VRF 传输协议 + takeover 边界**:操作员中介加密传输(收件人密钥/完整性/权限/原子安装/无内容
   审计/安全删除/重放)+ 真双机测试;显式声明 takeover 冷密钥迁移不在本 spec(或改 takeover 拒绝目标驻留冷密钥)
@@ -405,6 +407,12 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T21:45+08:00 p4-8 completed(冷签脚本可信投递——轻量完整性,用户裁剪 scope):`ouro-ops kes/deploy
+  cold-sign-script` 生成后把脚本 `sha256=<hex>` 打到 **stderr**(stdout 仍是纯脚本),操作员在冷机 `sha256sum`
+  独立信道核对一致再运行。两个生成器脚本头改为四步可信投递:①核对摘要 ②less 审读 ③**断网**空目录运行
+  ④**只回传公开产物**(node.cert / witness,其余不回传)。**用户决策:** scope=轻量完整性,不引入签名/PKI/不可变
+  模板分发(现有最小可审脚本 + p4-4 无外泄闸已够;与 P0-1 便利模式/依赖上游安全一致)。stderr 摘要与脚本文件
+  sha256 一致已验;桩执行确认 p4-7 counter 备份 + 原子 mv 生效(counter 7→8、bak=7、无残留 partial)。
 - 2026-07-12T21:20+08:00 p4-7 completed(冷 counter 权威 + period 时效防护,克制版):三处硬化——① KES 冷签脚本
   (p4-1 生成器)在 issue-op-cert **前**原子备份 counter(`$COUNTER.ouro-bak`,断电/中断可恢复),证书写
   `$OUT.ouro-partial` 再 `mv` 原子落地,签后校验 counter **确已前进**(未进则还原备份并 abort)。② generate-offline
@@ -660,6 +668,8 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p4-8 | stack: rust | command: cargo test -q cold_sign | result: pass | note: `scripts_carry_trusted_delivery_guidance`
+  断言两脚本头含摘要核对/断网/return 白名单指引;共 9 pass。stderr `sha256=` 与脚本文件 shasum 一致已手验。
 - p4-7 | stack: python | command: python3 tests/test_kes_period_staleness.py | result: pass | note: 确定性——老 period
   bundle + 桩链 tip 领先 → push-offline 装前拒(exit 30 `kes_period_stale`)、live opcert **未动**;已核可证伪。
 - p4-7 | stack: rust | command: cargo test -q cold_sign | result: pass | note: 生成器新单测断言 counter 原子备份 +

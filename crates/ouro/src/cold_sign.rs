@@ -64,8 +64,13 @@ pub fn kes_cold_sign_script(
 # cold signing key and opcert counter IN PLACE and never copies them anywhere;
 # cold.skey does not move. Only the public node.cert it writes is brought back.
 #
-# Review it before running (`less` this file). It runs exactly one command:
-# `cardano-cli node issue-op-cert`. It contains NO private key.
+# Before running (p4-8 trusted delivery):
+#   1. Verify this file's SHA256 matches the digest ouro-ops printed when it generated it
+#      (compare out-of-band): `sha256sum <this file>`.
+#   2. Review it (`less` this file). It runs exactly one command: `cardano-cli node
+#      issue-op-cert`. It contains NO private key.
+#   3. Run it on the AIR-GAPPED machine with networking OFF, from a fresh working directory.
+#   4. Bring back ONLY the public $OUT (node.cert). Return nothing else.
 #
 # Generated: {generated_at}
 # Targets KES period: {kes_period}. This is TIME-SENSITIVE — the KES period advances
@@ -233,8 +238,13 @@ pub fn tx_cold_sign_script(
 # key(s) IN PLACE and never copies them anywhere; they do not move. Only the
 # public witness file(s) it writes are brought back.
 #
-# Review it before running (`less` this file). It runs only
-# `cardano-cli {era} transaction witness`. It contains NO private key.
+# Before running (p4-8 trusted delivery):
+#   1. Verify this file's SHA256 matches the digest ouro-ops printed when it generated it
+#      (compare out-of-band): `sha256sum <this file>`.
+#   2. Review it (`less` this file). It runs only `cardano-cli {era} transaction witness`.
+#      It contains NO private key.
+#   3. Run it on the AIR-GAPPED machine with networking OFF, from a fresh working directory.
+#   4. Bring back ONLY the public witness file(s). Return nothing else.
 #
 # Generated: {generated_at}
 # ==============================================================================
@@ -287,6 +297,19 @@ mod tests {
         assert!(s.contains("KesVerificationKey_ed25519_kes"));
         // cold.skey is referenced by PATH, read in place — never copied/moved
         assert!(s.contains("$COLD_SKEY") && !s.contains("cp \"$COLD_SKEY\""));
+    }
+
+    #[test]
+    fn scripts_carry_trusted_delivery_guidance() {
+        // p4-8: both scripts tell the operator to verify the digest out-of-band, review, run
+        // air-gapped from a fresh dir, and return ONLY the public artifact.
+        let kes = kes_cold_sign_script(REAL_VKEY, 1, "cardano-cli", "T").unwrap();
+        let dep = tx_cold_sign_script(REAL_TXBODY, &["cold".into()], "conway", "", "cardano-cli", "T").unwrap();
+        for s in [&kes, &dep] {
+            assert!(s.contains("SHA256") && s.contains("out-of-band"), "no digest-verify guidance");
+            assert!(s.contains("AIR-GAPPED machine with networking OFF"), "no confinement guidance");
+            assert!(s.to_lowercase().contains("bring back only"), "no return-whitelist guidance");
+        }
     }
 
     #[test]
