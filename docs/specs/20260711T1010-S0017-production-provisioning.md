@@ -344,9 +344,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   检测由 cgroup 单测 + systemd 真测覆盖)。)
 
 ### p3 — 审计完整性 & 传输安全
-- [ ] p3-1 (rev) 目标机权威审计**哈希链 + 反签名 + 独立远端锚点 + ack**(机器身份 + 单调序号;检测修改/删除/
+- [-] p3-1 (rev) **【不做/撤销】** 目标机权威审计**哈希链 + 反签名 + 独立远端锚点 + ack**(机器身份 + 单调序号;检测修改/删除/
   前缀回滚/重排/重放/fork/丢失 ack;签名密钥 enroll/rotate/revoke;可用性 fail/queue 策略)
-  **【撤销——用户 2026-07-12 定案判过度;见 §7。审计保持 append-only,残余篡改风险已知接受;TC-8 移出。】**
+  **【撤销——用户 2026-07-12 定案判过度、2026-07-13 再确认不做;见 §7。审计保持 append-only,残余篡改风险已知接受;TC-8 移出。`[-]`=不做,非未完成。】**
 - [x] p3-2 (rev) 主机密钥 pin:dispatch 侧强制校验取代 accept-new;**轮换仪式**(旧 key 证明或新带外指纹 +
   审计 + rollback;无裸 `--repin`)
   (交付:`ConfigPaths.known_hosts` = `~/.ouro/known_hosts`;`ssh.rs` dispatch 改用
@@ -895,6 +895,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   (含 systemd leg;揪出并修 `compose up` 漏 `-p project` 的真 bug。)
 
 ## 7. Change Requests (append-only)
+- 2026-07-13 **p3-1 定案:不做(用户再确认)。** 目标机权威审计哈希链/反签名/远端锚点等属过度防御,超出便利模式
+  与本 spec 范围;审计保持 append-only,残余篡改风险已知接受。spec 中以 `[-]` 标记(不做,区别于未完成 `[ ]`/在途
+  `[~]`/完成 `[x]`)。如日后确需强审计完整性,另立专门 spec。
 - 2026-07-12 **p2-4 required-v2 决策(定案:保持 optional-v1,不强制 v2)。** 理由:运行时**检测**(detect/runtime)
   才是权威——p2-5/p2-6 已用「检测治理 + 声明交叉核对,不符即 exit-40」保证安全;把 `runtime` 声明设为 required
   只增加 spec 书写摩擦,并不提升安全(缺失时由检测兜底 fail-safe)。故 `Machine.runtime` 维持 optional;声明存在
