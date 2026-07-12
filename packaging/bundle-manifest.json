@@ -3,6 +3,8 @@
     "deploy/SKILL.md": "237167adac0d2e78108de9f422f09ee1536f30acc5a5ff02b840f214053d4a5e",
     "deploy/scripts/preflight.sh": "4827982c84c48d207c9c8ffecd5cdf76a3b5144b2a69dc886f7e56a55aa66a5d",
     "deploy/scripts/provision.sh": "4e77fd0dcbe695cc09c4c97d610d8f387625c0bb2446c600d27e4cf062271a58",
+    "deploy/scripts/register-build.sh": "c0b2f93e30371553482435651f39bab8e6759cd9a8481fd930f4a75bf6764f7b",
+    "deploy/scripts/register-submit.sh": "fc265695abd98b074e46f3d954a3677d6d1834f571f3a57bb3f638145f883eb2",
     "deploy/scripts/start.sh": "c811c56961c07f81e568c2f6149d3f31971720d51211c349907d5b536cc0cfa7",
     "deploy/scripts/status.sh": "dfae75b9eb157299fcdca9f7f67994dbb955f8a6409fe931d83eb6c7e827710e",
     "deploy/scripts/sync.sh": "42171858a9c8fba6fe23f31d036903266525edb01df1c5a1811003865610da4b",
@@ -35,10 +37,10 @@
     "upgrade/scripts/verify.sh": "87cead3bbee5f8427210237240580ddcf6bc2c4d721868a283d133cfe4d2e7d1"
   },
   "decision_hash": "b050ca60bac552704e4d55644e0a50023759e2a4f715d91380dc0f814a975ba9",
-  "embedded_digest": "459aa0af21902b5d38fd9c2763660082e28f03072815fb3242c22e19eca0426e",
+  "embedded_digest": "b95728bb03d7c9ed13b4dd088108509fe061cc098caa89f62a414b78df4f422a",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
   "schema_hash": "064373a060a04b84cdaf0b7f0f44a78e2d6731436116236e80a42c8976972125",
-  "skills_hash": "86c621f0b67e226d77a3daf0f9a1867449c085083eecd062301c44ff77251a91"
+  "skills_hash": "a4936aa9180f77c813e3a6db682138431e69d5ae29bf7d3466f84b40fe9de2c5"
 }

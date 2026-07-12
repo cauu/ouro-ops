@@ -44,6 +44,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "deinit" => run_deinit(&args[2..])?,
         "confirm" => run_confirm(&args[2..])?,
         "config" => run_config(&args[2..])?,
+        "deploy" => run_deploy(&args[2..])?,
         "kes" => run_kes(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
         "manifest" => run_manifest(&args[2..])?,
@@ -706,6 +707,9 @@ fn run_tool_dispatch(args: &[String]) -> Result<()> {
         // p4-6 offline install: promotes the staged KES key + cold-signed opcert and restarts —
         // as target-disruptive as rotate, so it takes the same evidence-bound confirm gate.
         "kes-rotation/push-offline",
+        // p4-2 registration submit: broadcasts an on-chain pool-registration tx (irreversible) —
+        // confirm-bound so a human approves the specific target before it is submitted.
+        "deploy/register-submit",
     ];
     if CONFIRM_BOUND_TOOLS.contains(&tool_name.as_str()) {
         let token = optional_flag_value(args, "--confirm-token").ok_or_else(|| {
@@ -869,6 +873,59 @@ fn run_tool_verify_context(args: &[String]) -> Result<()> {
         Err(OuroError::Validation(
             "invalid or forged invocation token; run via ouro-ops tool run".to_string(),
         ))
+    }
+}
+
+fn run_deploy(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        // S0017 p4-2: emit a self-contained cold-signing script for an unsigned registration/deploy
+        // transaction. It embeds ONLY the PUBLIC tx body and witnesses it with the cold key(s) on
+        // the air-gapped machine (`cardano-cli <era> transaction witness`, read in place). Only the
+        // public witnesses come back for online assemble + submit. --cold-key is repeatable.
+        Some("cold-sign-script") => {
+            let tx_body_path = flag_value(args, "--tx-body")?;
+            let era = optional_flag_value(args, "--era").unwrap_or("conway");
+            let cardano_cli = optional_flag_value(args, "--cardano-cli").unwrap_or("cardano-cli");
+            let roles: Vec<String> = args
+                .iter()
+                .zip(args.iter().skip(1))
+                .filter(|(flag, _)| flag.as_str() == "--cold-key")
+                .map(|(_, role)| role.clone())
+                .collect();
+            if roles.is_empty() {
+                return Err(OuroError::InvalidArgs(
+                    "expected at least one --cold-key <role> (e.g. --cold-key cold --cold-key stake)"
+                        .to_string(),
+                ));
+            }
+            // Optional network flag some cardano-cli versions require on `transaction witness`.
+            let network = if args.iter().any(|a| a == "--mainnet") {
+                "--mainnet".to_string()
+            } else if let Some(magic) = optional_flag_value(args, "--testnet-magic") {
+                format!("--testnet-magic {magic}")
+            } else {
+                String::new()
+            };
+            let tx_body = std::fs::read_to_string(tx_body_path).map_err(|e| {
+                OuroError::Validation(format!("cannot read --tx-body {tx_body_path}: {e}"))
+            })?;
+            let generated_at = chrono::Utc::now().to_rfc3339();
+            let script = crate::cold_sign::tx_cold_sign_script(
+                &tx_body,
+                &roles,
+                era,
+                &network,
+                cardano_cli,
+                &generated_at,
+            )?;
+            std::io::stdout().write_all(script.as_bytes())?;
+            std::io::stdout().flush()?;
+            Ok(())
+        }
+        _ => Err(OuroError::InvalidArgs(
+            "expected deploy cold-sign-script --tx-body <path> --cold-key <role> [--cold-key <role>...] [--era conway]"
+                .to_string(),
+        )),
     }
 }
 

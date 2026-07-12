@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help fmt test check ci e2e status e2e-build-base e2e-bed-up e2e-bed-down e2e-provision e2e-t2 e2e-t2-node e2e-t2-kes e2e-t2-secrets e2e-t2-takeover e2e-t2-observability e2e-t2-upgrade e2e-t3 e2e-t2-runtime e2e-t2-coldsign e2e-t2-offline-rotation e2e-clean
+.PHONY: help fmt test check ci e2e status e2e-build-base e2e-bed-up e2e-bed-down e2e-provision e2e-t2 e2e-t2-node e2e-t2-kes e2e-t2-secrets e2e-t2-takeover e2e-t2-observability e2e-t2-upgrade e2e-t3 e2e-t2-runtime e2e-t2-coldsign e2e-t2-offline-rotation e2e-t2-register e2e-clean
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -79,6 +79,9 @@ e2e-t2-coldsign: ## Run the T2 REAL KES cold-signing roundtrip E2E (p4-1: genera
 
 e2e-t2-offline-rotation: ## Run the T2 REAL offline KES rotation E2E (p4-6: generate-offline -> cold-sign -> push-offline, counter advances + node forges)
 	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-offline-rotation.sh"
+
+e2e-t2-register: ## Run the T2 REAL pool-registration cold-sign E2E (p4-2: build-unsigned -> cold-sign -> submit, 2nd pool lands on chain)
+	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-register.sh"
 
 accept: ## Automated acceptance: fast tests + full docker E2E suite, with apt-retry + a PASS/FAIL summary
 	bash "$(REPO_ROOT)/fixtures/e2e/accept.sh"

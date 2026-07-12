@@ -23,6 +23,13 @@ pub struct RegisterTxReport {
     pub audit_id: String,
 }
 
+/// Offline DRAFT manifest of a pool registration — a local, node-less preview of the declared
+/// pool parameters (ticker/pledge/margin/cost). It does NOT build a submittable transaction.
+///
+/// The REAL, submittable registration is the staged cold-sign flow (S0017 p4-2), which needs a
+/// live node + chain snapshot and therefore runs as dispatched L2 scripts:
+/// `deploy/register-build` (build the unsigned tx online) → `ouro-ops deploy cold-sign-script`
+/// (witness the pool cold key offline) → `deploy/register-submit` (assemble + submit online).
 pub fn build_register_tx(
     spec: &PoolSpec,
     out_dir: &Path,

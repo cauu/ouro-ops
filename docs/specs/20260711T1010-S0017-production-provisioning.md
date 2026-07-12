@@ -341,7 +341,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [x] p4-1 (rev) `ouro-ops kes cold-sign-script`:据运行时 KES vkey + kes-period + 冷环境参数生成**自包含 bash
   脚本**——内嵌**公开** vkey/period,顶部环境配置变量;跑 **era-neutral** `cardano-cli node issue-op-cert`
   就地读 cold.skey 出 `node.cert`。**脚本不含任何私钥**;附脚本生成时间戳 + period 最大年龄 + 建议执行时限
-- [ ] p4-2 (rev) `ouro-ops deploy cold-sign-script`:**分阶段**(在线采集校验链快照 → 在线 build unsigned →
+- [x] p4-2 (rev) `ouro-ops deploy cold-sign-script`:**分阶段**(在线采集校验链快照 → 在线 build unsigned →
   冷机 inspect+签名 → 在线复检提交);产物 `node.cert`/`vrf.skey`/签名 tx 回 BP/提交;**cold.skey + counter
   留冷机**;定义快照最大年龄/validity 窗口/deposit·fee/找零/witness/多 owner/陈旧输入重建
 - [~] p4-3 (rev) 决策树更新:deploy + kes-rotation `SKILL.md` 加"**问冷环境 → 生成 bundle → 冷机核对签名 →
@@ -405,6 +405,16 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T20:10+08:00 p4-2 completed(真矿池注册冷签分阶段流程,替换 pool.rs 占位):`cold_sign.rs` 加
+  `tx_cold_sign_script`——嵌**公开**未签 tx body,按 `--cold-key <role>` 逐一 era-scoped
+  `cardano-cli <era> transaction witness` 就地读冷密钥出**独立 witness**(冷钥不必同处,仅公开 witness 回传);
+  可选 `--testnet-magic`/`--mainnet`(10.14 witness 需网络旗标);拒签名密钥/非 tx body/注入 era-role-network。
+  CLI 加 `ouro-ops deploy cold-sign-script`。真机制走两条**派发** L2:`deploy/register-build`(在线:据链快照
+  build 未签注册 tx + stake/pool 注册证书 + **在线** witness(payment+owner stake),返回公开 tx body + pool id;
+  **不碰 cold.skey**;非破坏非 confirm)与 `deploy/register-submit`(在线:assemble 三 witness + submit + 地面真值
+  pool id 落链;幂等:已注册则拒重放;`CONFIRM_BOUND_TOOLS` 证据绑定 confirm)。`pool.rs build_register_tx` 降级为
+  离线草稿预览并注明真路径。regen bundle-manifest。**冷签设计验证:build 只用公开 cold.vkey;cold.skey 仅经
+  cold-sign-script 离线签;payment/stake 为在线操作钥。** spike 先在 bed 打通真 cardano-cli 注册(10.14 conway)再落地。
 - 2026-07-12T18:30+08:00 p4-6 completed(真离线 KES generate/push 机制,替换占位):离线路径拆成两个**派发** L2:
   ① `kes-rotation/generate-offline.sh`——BP 上真 `cardano-cli node key-gen-KES`,新密钥**暂存**($POOL/offline-stage/
   kes.{skey,vkey}.staged,先写 tmp 再原子 mv;**不动 live 密钥**,运行节点继续用旧钥出块),tool 输出 data 带公开
@@ -622,6 +632,13 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p4-2/TC-12 | stack: e2e | command: make e2e-t2-register | result: pass | note: **对 bed 真注册第二矿池**:
+  离线预建 pool2 cold/vrf/stake 钥 → 派发 register-build(build 未签 tx + 在线 witness,**cold.skey sha256 前后一致
+  未被碰**)→ 用返回的公开 tx body 经 `ouro-ops deploy cold-sign-script --cold-key cold` 生成脚本 → 冷机就地读
+  cold.skey 出 cold.witness → 证据绑定 confirm → 派发 register-submit(assemble+submit)→ pool id 落链;**独立**
+  `query stake-pools` 确认该 pool id 在集合内;**无 token 的 submit 被拒**(confirm 门强制)。
+- p4-2 | stack: rust | command: cargo test -q cold_sign | result: pass | note: tx 生成器 3 新单测(逐 role era-scoped
+  witness + 网络旗标穿入 + 拒签名密钥/非 txbody/注入 era-role-network + 空网络时不含 --testnet-magic);共 7 pass。
 - p4-6/TC-11 | stack: e2e | command: make e2e-t2-offline-rotation | result: pass | note: **整条真离线往返对 bed**:
   派发 generate-offline(暂存新钥,live 节点 pid 45 未动)→ 用**返回的公开 vkey** 经 `ouro-ops kes cold-sign-script`
   生成脚本 → 冷机就地读 cold.skey 出 node.cert → 证据绑定 confirm → 派发 push-offline → counter 0→1、节点重启
