@@ -5,12 +5,14 @@ use std::process::Command;
 
 use crate::{
     audit::AuditStore,
+    bootstrap::{BootstrapTarget, BootstrapTransport, HostKeyCheck},
     config::ConfigPaths,
     confirm::{self, ConfirmationStore},
     domain::PoolSpec,
     kes, migration,
     output::{self, ToolOutput},
-    pool, render,
+    pool, provision, render,
+    secrets::CredentialRef,
     ssh::SshRunner,
     status::StatusSnapshot,
     OuroError, Result,
@@ -38,6 +40,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
             )?;
         }
         "audit" => run_audit(&args[2..])?,
+        "init" => run_init(&args[2..])?,
         "confirm" => run_confirm(&args[2..])?,
         "config" => run_config(&args[2..])?,
         "kes" => run_kes(&args[2..])?,
@@ -111,6 +114,85 @@ fn run_rollback(args: &[String]) -> Result<()> {
         "confirmation": "accepted",
         "execution": "planned-forward-change"
     })))?;
+    Ok(())
+}
+
+/// `ouro-ops init` (S0017 p1-2) — arm a bare machine into a constrained target over the
+/// privileged bootstrap transport. First access is an existing sudo user + SSH key; init
+/// installs the two principals, the tool-run wrapper + sudoers confinement, pubkey-only sshd,
+/// the `ouro-ops` binary (the one running init, by default), and the control public key. Prints
+/// an auditable install manifest. Idempotent (re-run converges).
+///
+/// P0-1 DECISION (convenience mode): the bootstrap credential is NOT mechanism-isolated from
+/// the agent — a poisoned prompt could, via the agent, invoke this against a reachable host.
+/// This is documented, not defended; per the operator's decision it relies on upstream
+/// control-machine / agent-runtime security. The manifest carries this note.
+fn run_init(args: &[String]) -> Result<()> {
+    let host = flag_value(args, "--host")?.to_string();
+    let port: u16 = optional_flag_value(args, "--port")
+        .unwrap_or("22")
+        .parse()
+        .map_err(|_| OuroError::InvalidArgs("--port must be a number".to_string()))?;
+    let user = flag_value(args, "--bootstrap-user")?.to_string();
+    // A real Unix username — it becomes sshd `AllowUsers` content; reject anything odd.
+    if user.is_empty()
+        || user.len() > 32
+        || !user.bytes().next().map(|b| b.is_ascii_lowercase() || b == b'_').unwrap_or(false)
+        || !user.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
+    {
+        return Err(OuroError::Validation(format!(
+            "--bootstrap-user must be a valid unix username [a-z_][a-z0-9_-]*: {user}"
+        )));
+    }
+    let key_ref = CredentialRef::parse(flag_value(args, "--bootstrap-key")?)?;
+    let pubkey_path = PathBuf::from(flag_value(args, "--control-pubkey")?);
+    let dry_run = args.iter().any(|a| a == "--dry-run");
+    let host_key = match optional_flag_value(args, "--host-key") {
+        Some("yes") => HostKeyCheck::Yes,
+        _ => HostKeyCheck::AcceptNew,
+    };
+
+    let paths = ConfigPaths::discover();
+    let key_path = key_ref.resolve(&paths.credentials_dir)?;
+    if !dry_run && !key_path.is_file() {
+        return Err(OuroError::Validation(format!(
+            "bootstrap credential key not found: {} (the private key for {})",
+            key_path.display(),
+            key_ref.as_str()
+        )));
+    }
+    let control_pubkey = std::fs::read_to_string(&pubkey_path).map_err(|e| {
+        OuroError::Validation(format!("cannot read --control-pubkey {}: {e}", pubkey_path.display()))
+    })?;
+    let ouro_binary = match optional_flag_value(args, "--ouro-binary") {
+        Some(p) => PathBuf::from(p),
+        None => std::env::current_exe()
+            .map_err(|e| OuroError::Validation(format!("cannot resolve own binary path: {e}")))?,
+    };
+
+    let target = BootstrapTarget { host, port, user };
+    let transport = BootstrapTransport::new(dry_run);
+    let manifest = provision::execute(
+        &transport,
+        &target,
+        &key_path,
+        host_key,
+        &control_pubkey,
+        &ouro_binary,
+    )?;
+
+    output::print_json(&ToolOutput::ok("ouro.init", manifest.ok && !dry_run).with_data(json!({
+        "manifest": manifest,
+        "dry_run": dry_run,
+        "security_note": "bootstrap credential is NOT mechanism-isolated from the agent \
+            (convenience mode, P0-1); a poisoned prompt could invoke init via the agent. \
+            Relies on upstream control-machine / agent-runtime security.",
+    })))?;
+    if !manifest.ok {
+        return Err(OuroError::Validation(
+            "init did not complete: a provisioning step failed (see manifest)".to_string(),
+        ));
+    }
     Ok(())
 }
 

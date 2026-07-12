@@ -9,6 +9,7 @@ pub mod kes;
 pub mod migration;
 pub mod output;
 pub mod pool;
+pub mod provision;
 pub mod render;
 pub mod secrets;
 pub mod skills;

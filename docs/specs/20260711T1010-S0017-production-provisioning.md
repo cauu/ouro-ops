@@ -240,9 +240,13 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [x] p1-1 (rev) target-mutating bootstrap 传输,**独立模块 `bootstrap.rs`**;有意突破现状 exec-only/no-scp;
   bootstrap 凭据独立于 `ouro-exec`、agent 不可得(enforcement 见 p1-7);**per-op dispatch 的 no-scp 断言保留**,
   init 传输走独立断言
-- [ ] p1-2 (rev) `ouro-ops init`:对真机幂等 provisioning(用户 + wrapper + sudoers + pubkey-only sshd +
+- [~] p1-2 (rev) `ouro-ops init`:对真机幂等 provisioning(用户 + wrapper + sudoers + pubkey-only sshd +
   ouro 二进制 + authorized_keys + 主机密钥 pin);参考配方 = 修复后的 `node/Dockerfile`;**二进制路径/名定稿**
   `/usr/local/bin/ouro-ops`
+  (**已交付核心**:`provision.rs` 的 plan builder(用户/二进制/wrapper/sudoers+visudo/pubkey-only sshd/
+  authorized_keys/reload,幂等有序)+ 执行器(经 bootstrap 传输、首失败即停、产 install manifest)+ `ouro-ops
+  init` CLI(参数校验 + 默认推自身二进制 + 诚实标注 P0-1);动态值(公钥/用户名)全走文件内容非 shell(零注入);
+  dry-run + 5 单测。**待**:真裸机 e2e(裸目标 provision → ouro-exec 受限派发)、host-key pin 接入(p3-3)。)
 - [ ] p1-3 底座最小化(只留约束必需项)
 - [ ] p1-4 可审计:`ouro-ops init` 输出安装清单(逐条可核对)
 - [ ] p1-5 (rev) `ouro-ops deinit`/uninstall:**deinit 状态机**——全局锁、拒绝在途工作、运行中节点默认拒绝
@@ -387,6 +391,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T00:20+08:00 p1-2 核心交付(`ouro-ops init` provisioning 流程)+ p1-4(install manifest):新增
+  `crates/ouro/src/provision.rs`——`init_plan()` 按现成 `node/Dockerfile` 配方产有序幂等步骤(建 ouro-exec/
+  ouro-diag/node、推 ouro-ops 二进制、装 wrapper、装 sudoers + `visudo -cf` 校验、pubkey-only sshd 保留 bootstrap
+  用户免锁死、authorized_keys 经 install 转属主 ouro-exec、`sshd -t` 后 reload);执行器 `execute()` 经
+  `BootstrapTransport` 逐步跑、首失败即停、产**可审计 install manifest**(p1-4)。**零注入**:公钥/用户名全走文件
+  内容/stdin 非 shell(单测断言 hostile 用户名不进任何 Run 命令)。`cli.rs` 加 `ouro-ops init`(参数 + 用户名
+  校验、默认推 `current_exe`、输出带 P0-1 诚实标注 `security_note`)。5 单测(顺序/零注入/sshd 姿态/wrapper/
+  dry-run manifest)+ dry-run 实跑出全 manifest;全量 cargo 46 pass。**待**:真裸机 e2e、host-key pin(p3-3)。
 - 2026-07-11T17:10+08:00 p1-1 completed(特权 bootstrap 传输模块):新增 `crates/ouro/src/bootstrap.rs`——
   与 exec-only 的 `ssh.rs` **并列的独立模块**,只供 `ouro-ops init`。首次接入 = 已有 sudo 用户 + SSH key
   (`BootstrapTarget{host,port,user}`,user≠ouro-exec);`run_argv`= `ssh … <user>@<host> sudo -n sh -c '<cmd>'`
