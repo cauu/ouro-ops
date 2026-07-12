@@ -1,6 +1,6 @@
 {
   "assets": {
-    "deploy/SKILL.md": "237167adac0d2e78108de9f422f09ee1536f30acc5a5ff02b840f214053d4a5e",
+    "deploy/SKILL.md": "6d9eba23004c7e14f330fd77a208aeaeff032fe93f3c910d050af158f02c1841",
     "deploy/scripts/preflight.sh": "4827982c84c48d207c9c8ffecd5cdf76a3b5144b2a69dc886f7e56a55aa66a5d",
     "deploy/scripts/provision.sh": "4e77fd0dcbe695cc09c4c97d610d8f387625c0bb2446c600d27e4cf062271a58",
     "deploy/scripts/register-build.sh": "c0b2f93e30371553482435651f39bab8e6759cd9a8481fd930f4a75bf6764f7b",
@@ -36,8 +36,8 @@
     "upgrade/scripts/upgrade-one.sh": "4f1838a1b7270e2d184057f65e54d85f8769ace5848bd6669fff5d51e8cebbc0",
     "upgrade/scripts/verify.sh": "87cead3bbee5f8427210237240580ddcf6bc2c4d721868a283d133cfe4d2e7d1"
   },
-  "decision_hash": "b050ca60bac552704e4d55644e0a50023759e2a4f715d91380dc0f814a975ba9",
-  "embedded_digest": "b95728bb03d7c9ed13b4dd088108509fe061cc098caa89f62a414b78df4f422a",
+  "decision_hash": "624e2edaf3e3461ee3aed68b2ab001c978523fd30dc59c5eb8f40edc0067f697",
+  "embedded_digest": "1671bf75407523fc4aac2185d9d1b9ed844ac9d3b2e4ad87565636fd9ec6f6b3",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",

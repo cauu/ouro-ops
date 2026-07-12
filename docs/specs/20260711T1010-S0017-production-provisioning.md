@@ -344,7 +344,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [x] p4-2 (rev) `ouro-ops deploy cold-sign-script`:**分阶段**(在线采集校验链快照 → 在线 build unsigned →
   冷机 inspect+签名 → 在线复检提交);产物 `node.cert`/`vrf.skey`/签名 tx 回 BP/提交;**cold.skey + counter
   留冷机**;定义快照最大年龄/validity 窗口/deposit·fee/找零/witness/多 owner/陈旧输入重建
-- [~] p4-3 (rev) 决策树更新:deploy + kes-rotation `SKILL.md` 加"**问冷环境 → 生成 bundle → 冷机核对签名 →
+- [x] p4-3 (rev) 决策树更新:deploy + kes-rotation `SKILL.md` 加"**问冷环境 → 生成 bundle → 冷机核对签名 →
   执行 → 回装/提交**";kes 回装走 p4-6 真 `kes push`(counter 防重放 + confirm 门);deploy 装 vrf.skey/node.cert
   (经 p4-9 VRF 协议)+ 提交注册 tx 后再 `deploy/start`
 - [x] p4-4 安全不变量:冷签脚本只带公开数据、就地读冷密钥;**cold.skey 永不移动**(限定新池 deploy + kes);
@@ -405,6 +405,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T20:35+08:00 p4-3 completed(决策树 deploy 半边落地):`ouro-skills/deploy/SKILL.md` 加"矿池注册
+  (冷钥离线—分阶段冷签)"路径——离线预建钥/暂存公开 vkey → `deploy/register-build` 在线 build 未签 tx(不碰
+  cold.skey)→ `deploy cold-sign-script` 冷机就地签 → 证据绑定 confirm → `deploy/register-submit` assemble+submit+
+  落链真值(拒重放)。至此 p4-3 两半(kes-rotation + deploy)均接入真派发机制;regen bundle-manifest,skill-docs
+  闸(无 ssh/scp/docker/bash/sudo/rsync 裸词 + 必备红线)通过。
 - 2026-07-12T20:25+08:00 p4-4 completed(冷签安全不变量静态闸——KES + deploy 双覆盖):`test_coldsign_invariants.py`
   抽出 `strip_to_code`/`EXFIL`,新增 `deploy_case`——对 `ouro-ops deploy cold-sign-script` **真实生成**的脚本
   断言四条:① 只嵌公开 tx body(无签名密钥 cbor、无 `SigningKey`);② 每把冷钥仅作 `--signing-key-file` 传给
@@ -639,6 +644,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p4-3 | stack: rust+python | command: cargo test -q committed_manifest_matches_embedded; python3 tests/test_skill_docs.py
+  | result: pass | note: deploy `SKILL.md` 注册冷签路径入内嵌 bundle(drift 闸重新对齐)+ skill-docs 闸通过
+  (决策树/停机/红线齐备,无裸原语词)。
 - p4-4 | stack: python | command: python3 tests/test_coldsign_invariants.py | result: pass | note: 同一 fast 闸现
   覆盖 KES + deploy 两条冷签脚本,八条断言全过(各:公开-only 嵌入 / 就地读冷钥 / 唯一签名子命令且无外泄 /
   拒签名密钥);deploy 段计数逐 role 的 `transaction witness`,并断言 $COLD_SKEY/$STAKE_SKEY 不被 cat/echo。
