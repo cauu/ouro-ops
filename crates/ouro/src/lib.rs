@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod bootstrap;
 pub mod cli;
+pub mod cold_sign;
 pub mod config;
 pub mod confirm;
 pub mod domain;

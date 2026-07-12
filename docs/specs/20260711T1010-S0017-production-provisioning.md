@@ -338,7 +338,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 > 现状:kes-rotation 的"离线冷签"是一句提示无脚本;deploy **完全没建模**冷签;且 `kes generate/push`、
 > `pool register-tx` 均为占位(§1 Background 3)。目标:两者生成**环境专属、数据内嵌**的冷签脚本,经**签名
 > bundle 协议**分发,操作者气隙机核对后执行即出材料。冷机需 cardano-cli + 离线验签器,无需 `ouro-ops`。
-- [ ] p4-1 (rev) `ouro-ops kes cold-sign-script`:据运行时 KES vkey + kes-period + 冷环境参数生成**自包含 bash
+- [x] p4-1 (rev) `ouro-ops kes cold-sign-script`:据运行时 KES vkey + kes-period + 冷环境参数生成**自包含 bash
   脚本**——内嵌**公开** vkey/period,顶部环境配置变量;跑 **era-neutral** `cardano-cli node issue-op-cert`
   就地读 cold.skey 出 `node.cert`。**脚本不含任何私钥**;附脚本生成时间戳 + period 最大年龄 + 建议执行时限
 - [ ] p4-2 (rev) `ouro-ops deploy cold-sign-script`:**分阶段**(在线采集校验链快照 → 在线 build unsigned →
@@ -405,6 +405,15 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T16:20+08:00 p4-1 completed(KES 冷签脚本生成器):新 `cold_sign.rs` 纯函数
+  `kes_cold_sign_script(vkey, period, cardano_cli, generated_at)` 生成**自包含 bash 脚本**——顶部冷环境变量
+  (`COLD_SKEY`/`COUNTER`/`OUT`,可 export 覆盖)、内嵌**公开** KES vkey(引号 heredoc,不展开)+ period,跑
+  **era-neutral** `cardano-cli node issue-op-cert` 就地读 cold.skey 出 `node.cert`。安全:`validate_kes_vkey`
+  **拒绝**误传签名密钥(`SigningKey`/`signing key`/`_sk`)或非 KES vkey(须含 `VerificationKey`+`cborHex`),
+  确保脚本永不嵌私钥;头部盖生成时间戳 + period 时效告警(诚实标注,非强制——冷机无时钟/链视图可校)。
+  CLI 加 `ouro-ops kes cold-sign-script --kes-vkey <公开vkey> --kes-period <n> [--cardano-cli <bin>]`,
+  脚本写 stdout。cold.skey 只按路径就地读、绝不移动/复制——符合 §7 p4-4 不变量。`make e2e-t2-coldsign` +
+  accept.sh 第 5 项。**注:此项交付冷签脚本 + issue-op-cert 往返;`ouro-ops kes generate` 真机制仍是 p4-6 占位。**
 - 2026-07-12T03:30+08:00 多方代码评审(claude+codex+cursor,`code_review/S0017-impl/`)+ 按用户两条原则
   (不为极小概率过度防御、只改 ≥2 agent 提出的)择要修复 3 项:
   ① **pin_host_key 只写匹配 key**(2/3):`fingerprint_of` 逐条指纹,给 `--expected-host-key` 时仅保留匹配条目
@@ -591,6 +600,16 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p4-1 | stack: rust | command: cargo test -q cold_sign | result: pass | note: 4 单测——嵌公开数据+跑
+  issue-op-cert(era-neutral,无 conway 前缀)/拒签名密钥(JSON skey + bech32 `kes_sk1`)/拒非 KES vkey
+  (缺 cborHex)/输出无 `SigningKey` 指纹。build 绿。
+- p4-1 | stack: e2e | command: make e2e-t2-coldsign | result: pass | note: **对 bed 真 cardano 环境往返**:
+  bp1 真 `key-gen-KES` 出公开 vkey + 据链 tip 算 period → `ouro-ops kes cold-sign-script` 生成脚本 →
+  **无私钥断言**(cold.skey cborHex 不在脚本 + 无 SigningKey/kes.skey 引用)→ 脚本就地读真 cold.skey+counter
+  出 node.cert → `cardano-cli query kes-period-info --op-cert-file` **接受该证书(有效 opcert)** → cold.skey
+  sha256 前后一致且仍在原位、counter 已递增。证明生成脚本在真机制上产出有效运营证书且冷密钥永不移动。
+- p4-1/TC-11(部分) | stack: e2e | note: TC-11 冷签往返的 cold-sign-script + issue-op-cert 段已证;
+  `ouro-ops kes generate` 真 key-gen 段仍待 p4-6(当前 e2e 直接用 cardano-cli key-gen-KES 代 generate 占位)。
 - p1-2/p1-4/p1-5 | stack: e2e | command: make e2e-t2-init | result: pass | note: 裸目标 → init(受限派发实活、
   任意 sudo 拒、二次幂等)→ **deinit 运行中拒绝(base 未动)→ 停后还原(base 全移除、boot 保留)**。self-clean。
 - p1-5/p1-9 | stack: rust | command: cargo test -q provision | result: pass | note: 7 单测——init 顺序/零注入/

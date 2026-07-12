@@ -932,8 +932,27 @@ fn run_kes(args: &[String]) -> Result<()> {
             output::print_json(&ToolOutput::ok("ouro.kes.push", true).with_data(json!(report)))?;
             Ok(())
         }
+        // S0017 p4-1: emit a self-contained KES cold-signing script to stdout. It embeds ONLY the
+        // public KES vkey + period; the operator runs it on the air-gapped machine to issue the
+        // opcert (cold.skey read in place, never moved). --kes-vkey = the PUBLIC vkey file.
+        Some("cold-sign-script") => {
+            let vkey_path = flag_value(args, "--kes-vkey")?;
+            let kes_period: u64 = flag_value(args, "--kes-period")?
+                .parse()
+                .map_err(|_| OuroError::InvalidArgs("--kes-period must be a non-negative integer".to_string()))?;
+            let cardano_cli = optional_flag_value(args, "--cardano-cli").unwrap_or("cardano-cli");
+            let vkey = std::fs::read_to_string(vkey_path).map_err(|e| {
+                OuroError::Validation(format!("cannot read --kes-vkey {vkey_path}: {e}"))
+            })?;
+            let generated_at = chrono::Utc::now().to_rfc3339();
+            let script =
+                crate::cold_sign::kes_cold_sign_script(&vkey, kes_period, cardano_cli, &generated_at)?;
+            std::io::stdout().write_all(script.as_bytes())?;
+            std::io::stdout().flush()?;
+            Ok(())
+        }
         _ => Err(OuroError::InvalidArgs(
-            "expected kes generate|counter status|push".to_string(),
+            "expected kes generate|counter status|push|cold-sign-script".to_string(),
         )),
     }
 }
