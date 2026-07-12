@@ -74,6 +74,7 @@ impl SshRunner {
     pub fn tool_run_argv(
         target: &SshTarget,
         key_path: &Path,
+        known_hosts: &Path,
         tool: &str,
         machine: &str,
         remote_spec: &str,
@@ -86,10 +87,12 @@ impl SshRunner {
             "-o".to_string(),
             "BatchMode=yes".to_string(),
             "-o".to_string(),
-            // accept-new: known hosts are pre-populated by provision.sh (ssh-keyscan), so
-            // this verifies them; it only TOFU-trusts a host never seen before. Production
-            // should use `yes` with a managed known_hosts (bed-convenience default).
-            "StrictHostKeyChecking=accept-new".to_string(),
+            // S0017 p3-2: enforce the PINNED host key (init pins it on first connect). `yes`
+            // + the ouro-managed known_hosts rejects a swapped/unknown host key instead of
+            // TOFU-trusting it (no accept-new).
+            format!("UserKnownHostsFile={}", known_hosts.display()),
+            "-o".to_string(),
+            "StrictHostKeyChecking=yes".to_string(),
             format!("{}@{}", target.user, target.host),
             "sudo".to_string(),
             "-n".to_string(),
@@ -114,6 +117,7 @@ impl SshRunner {
         &self,
         target: &SshTarget,
         key_path: &Path,
+        known_hosts: &Path,
         tool: &str,
         machine: &str,
         remote_spec: &str,
@@ -125,7 +129,7 @@ impl SshRunner {
                 stderr: String::new(),
             });
         }
-        let args = Self::tool_run_argv(target, key_path, tool, machine, remote_spec);
+        let args = Self::tool_run_argv(target, key_path, known_hosts, tool, machine, remote_spec);
         let output = Command::new("ssh").args(&args).output()?;
         Ok(SshOutcome {
             status: output.status.code().unwrap_or(255),
@@ -169,6 +173,7 @@ mod tests {
         let args = SshRunner::tool_run_argv(
             &target(),
             Path::new("/home/op/.ouro/credentials/relay1"),
+            Path::new("/home/op/.ouro/known_hosts"),
             "deploy/provision",
             "relay1",
             "/opt/ouro/pool-spec.yaml",
@@ -179,6 +184,10 @@ mod tests {
         assert!(joined.contains("sudo -n /usr/local/sbin/ouro-tool-run 'deploy/provision'"));
         assert!(joined.contains("ouro-exec@relay1.example.com"));
         assert!(joined.contains("BatchMode=yes"));
+        // p3-2: the PINNED host key is enforced (no accept-new TOFU).
+        assert!(joined.contains("UserKnownHostsFile=/home/op/.ouro/known_hosts"));
+        assert!(joined.contains("StrictHostKeyChecking=yes"));
+        assert!(!joined.contains("accept-new"));
         // Target-side call uses --machine (local exec, no re-dispatch); no secret inlined.
         assert!(joined.contains("--machine 'relay1'"));
         assert!(!joined.contains("--dispatch"));
@@ -192,6 +201,7 @@ mod tests {
         let args = SshRunner::tool_run_argv(
             &target(),
             Path::new("/k"),
+            Path::new("/kh"),
             "deploy/preflight; touch /tmp/pwned #",
             "bp1",
             "/spec; rm -rf /",
@@ -207,7 +217,7 @@ mod tests {
     #[test]
     fn dry_run_execute_is_noop_success() {
         let outcome = SshRunner::new(true)
-            .execute(&target(), Path::new("/tmp/key"), "deploy/preflight", "bp1", "/opt/ouro/spec.yaml")
+            .execute(&target(), Path::new("/tmp/key"), Path::new("/kh"), "deploy/preflight", "bp1", "/opt/ouro/spec.yaml")
             .unwrap();
         assert_eq!(outcome.status, 0);
     }

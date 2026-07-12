@@ -13,6 +13,10 @@ pub struct ConfigPaths {
     pub audit_db: PathBuf,
     pub confirmations: PathBuf,
     pub tool_run_secret: PathBuf,
+    /// S0017 p3-2/p3-3 — pinned target host keys (a known_hosts file). `ouro-ops init` pins the
+    /// target's key here on first connect; per-op dispatch enforces it with
+    /// StrictHostKeyChecking=yes, so a swapped host key is rejected (no accept-new TOFU).
+    pub known_hosts: PathBuf,
     pub legacy_db: Option<PathBuf>,
 }
 
@@ -29,6 +33,7 @@ impl ConfigPaths {
             audit_db: home.join("audit.sqlite3"),
             confirmations: home.join("confirmations.json"),
             tool_run_secret: home.join("tool-run.secret"),
+            known_hosts: home.join("known_hosts"),
             home,
             legacy_db,
         }

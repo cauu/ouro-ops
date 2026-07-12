@@ -171,7 +171,9 @@ fn run_init(args: &[String]) -> Result<()> {
             .map_err(|e| OuroError::Validation(format!("cannot resolve own binary path: {e}")))?,
     };
 
-    let target = BootstrapTarget { host, port, user };
+    let expected_host_key = optional_flag_value(args, "--expected-host-key");
+
+    let target = BootstrapTarget { host: host.clone(), port, user };
     let transport = BootstrapTransport::new(dry_run);
     let manifest = provision::execute(
         &transport,
@@ -182,9 +184,18 @@ fn run_init(args: &[String]) -> Result<()> {
         &ouro_binary,
     )?;
 
+    // p3-3: pin the target host key so later dispatch (StrictHostKeyChecking=yes) enforces it.
+    // Only after a successful provision, and never in dry-run.
+    let pinned_fp = if manifest.ok && !dry_run {
+        Some(pin_host_key(&host, port, &paths.known_hosts, expected_host_key)?)
+    } else {
+        None
+    };
+
     output::print_json(&ToolOutput::ok("ouro.init", manifest.ok && !dry_run).with_data(json!({
         "manifest": manifest,
         "dry_run": dry_run,
+        "pinned_host_key": pinned_fp,
         "security_note": "bootstrap credential is NOT mechanism-isolated from the agent \
             (convenience mode, P0-1); a poisoned prompt could invoke init via the agent. \
             Relies on upstream control-machine / agent-runtime security.",
@@ -195,6 +206,80 @@ fn run_init(args: &[String]) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+/// S0017 p3-3 — pin the target's SSH host key so later dispatch enforces it. Captures the key
+/// with `ssh-keyscan`, optionally verifies it against an out-of-band fingerprint (`sha256:…` or
+/// `SHA256:…`) the operator obtained through a trusted channel (this is what defends the FIRST
+/// connection against MITM; without it the pin is trust-on-first-use — good against LATER key
+/// swaps), then writes it (idempotently) into the ouro-managed known_hosts. Returns the pinned
+/// key's fingerprint.
+fn pin_host_key(host: &str, port: u16, known_hosts: &std::path::Path, expected: Option<&str>) -> Result<String> {
+    let scan = Command::new("ssh-keyscan")
+        .args(["-T", "5", "-p", &port.to_string(), host])
+        .output()
+        .map_err(|e| OuroError::Validation(format!("ssh-keyscan failed to run: {e}")))?;
+    let scanned = String::from_utf8_lossy(&scan.stdout);
+    let entries: Vec<&str> = scanned
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
+        .collect();
+    if entries.is_empty() {
+        return Err(OuroError::Validation(format!(
+            "ssh-keyscan captured no host key for {host}:{port} (is sshd reachable?)"
+        )));
+    }
+    // Fingerprint the captured key(s) via ssh-keygen.
+    let mut kg = Command::new("ssh-keygen")
+        .args(["-l", "-f", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| OuroError::Validation(format!("ssh-keygen failed to run: {e}")))?;
+    kg.stdin.take().unwrap().write_all(scanned.as_bytes())?;
+    let fp_out = kg.wait_with_output()?;
+    let fingerprints = String::from_utf8_lossy(&fp_out.stdout);
+    // "256 SHA256:abc… host (ED25519)" -> pull the SHA256:… token(s).
+    let fps: Vec<&str> = fingerprints
+        .split_whitespace()
+        .filter(|t| t.starts_with("SHA256:"))
+        .collect();
+    let primary = fps.first().copied().unwrap_or("unknown").to_string();
+
+    if let Some(exp) = expected {
+        let norm = |s: &str| s.trim().trim_start_matches("SHA256:").trim_start_matches("sha256:").to_string();
+        let want = norm(exp);
+        let ok = fps.iter().any(|f| norm(f) == want);
+        if !ok {
+            return Err(OuroError::Validation(format!(
+                "host key fingerprint mismatch for {host}:{port} — expected {exp}, got {}. \
+                 REFUSING to pin (possible MITM).",
+                fps.join(", ")
+            )));
+        }
+    }
+
+    // Idempotent write: drop any prior entry for this host, then append the freshly scanned key.
+    if let Some(parent) = known_hosts.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if !known_hosts.exists() {
+        std::fs::write(known_hosts, "")?;
+    }
+    let remove_target = if port == 22 { host.to_string() } else { format!("[{host}]:{port}") };
+    let _ = Command::new("ssh-keygen")
+        .args(["-R", &remove_target, "-f", &known_hosts.display().to_string()])
+        .output();
+    let mut existing = std::fs::read_to_string(known_hosts).unwrap_or_default();
+    if !existing.is_empty() && !existing.ends_with('\n') {
+        existing.push('\n');
+    }
+    for e in &entries {
+        existing.push_str(e);
+        existing.push('\n');
+    }
+    std::fs::write(known_hosts, existing)?;
+    Ok(primary)
 }
 
 /// `ouro-ops deinit` (S0017 p1-5) — the reverse of init: remove the ouro base and restore the
@@ -404,6 +489,7 @@ fn run_confirm(args: &[String]) -> Result<()> {
             let argv = SshRunner::tool_run_argv(
                 &machine.ssh,
                 &key_path,
+                &paths.known_hosts,
                 tool_name,
                 machine_id,
                 remote_spec,
@@ -525,11 +611,12 @@ fn resolve_skill_script(tool_name: &str) -> Result<(PathBuf, Option<PathBuf>)> {
 fn dispatch_runtime_evidence(
     target: &crate::domain::SshTarget,
     key_path: &std::path::Path,
+    known_hosts: &std::path::Path,
     machine_id: &str,
     remote_spec: &str,
 ) -> Result<String> {
     let outcome =
-        SshRunner::new(false).execute(target, key_path, "detect/runtime", machine_id, remote_spec)?;
+        SshRunner::new(false).execute(target, key_path, known_hosts, "detect/runtime", machine_id, remote_spec)?;
     if outcome.status != 0 {
         return Err(OuroError::Validation(format!(
             "could not detect {machine_id} runtime before a destructive action (exit {}); refusing",
@@ -595,12 +682,13 @@ fn run_tool_dispatch(args: &[String]) -> Result<()> {
             ))
         })?;
         let live_fp =
-            dispatch_runtime_evidence(&machine.ssh, &key_path, machine_id, remote_spec)?;
+            dispatch_runtime_evidence(&machine.ssh, &key_path, &paths.known_hosts, machine_id, remote_spec)?;
         consume_confirmation(&paths, Some(token), &tool_name, machine_id, Some(&live_fp))?;
     }
     let outcome = SshRunner::new(false).execute(
         &machine.ssh,
         &key_path,
+        &paths.known_hosts,
         &tool_name,
         machine_id,
         remote_spec,

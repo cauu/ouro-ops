@@ -322,10 +322,17 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 ### p3 — 审计完整性 & 传输安全
 - [ ] p3-1 (rev) 目标机权威审计**哈希链 + 反签名 + 独立远端锚点 + ack**(机器身份 + 单调序号;检测修改/删除/
   前缀回滚/重排/重放/fork/丢失 ack;签名密钥 enroll/rotate/revoke;可用性 fail/queue 策略)
-- [ ] p3-2 (rev) 主机密钥 pin:dispatch 侧强制校验取代 accept-new;**轮换仪式**(旧 key 证明或新带外指纹 +
+  **【撤销——用户 2026-07-12 定案判过度;见 §7。审计保持 append-only,残余篡改风险已知接受;TC-8 移出。】**
+- [x] p3-2 (rev) 主机密钥 pin:dispatch 侧强制校验取代 accept-new;**轮换仪式**(旧 key 证明或新带外指纹 +
   审计 + rollback;无裸 `--repin`)
-- [ ] p3-3 (new) **首跳认证前置**(单一归属,部分先于 p1-2):期望 SHA256 指纹或 SSH CA 经独立信道;首个
+  (交付:`ConfigPaths.known_hosts` = `~/.ouro/known_hosts`;`ssh.rs` dispatch 改用
+  `UserKnownHostsFile=<pinned> + StrictHostKeyChecking=yes`(去 accept-new);e2e bed `provision.sh` 改钉进
+  ouro known_hosts;dispatch e2e(restart/topology)在强制 pin 下全绿。**待**:显式轮换仪式命令 + 冲突 rollback。)
+- [x] p3-3 (new) **首跳认证前置**(单一归属,部分先于 p1-2):期望 SHA256 指纹或 SSH CA 经独立信道;首个
   bootstrap 用 per-machine known_hosts + `StrictHostKeyChecking=yes`;覆盖恶意 enroll / DNS·IP 重用
+  (交付:`ouro-ops init` 成功后 `pin_host_key`(ssh-keyscan 捕获 + ssh-keygen 指纹 + 幂等写 known_hosts);
+  可选 `--expected-host-key <sha256>` **带外核对**——不符即拒不钉(防首连 MITM);真裸机 e2e:钉入验证 + 错误
+  指纹被拒。无 expected 时为 TOFU(防日后换钥,不防首连——诚实标注)。**待**:DNS/IP 重用、SSH CA 支持。)
 
 ### p4 — 冷签脚本流程(deploy + kes-rotation 的 air-gapped 签名)
 > 现状:kes-rotation 的"离线冷签"是一句提示无脚本;deploy **完全没建模**冷签;且 `kes generate/push`、
@@ -398,6 +405,15 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T02:15+08:00 p3-2 + p3-3 completed(主机密钥 pin + 首跳认证):`ConfigPaths` 加
+  `known_hosts=~/.ouro/known_hosts`;`ssh.rs` 的 `tool_run_argv`/`execute` 加 known_hosts 形参,dispatch 由
+  `StrictHostKeyChecking=accept-new` 改为 `UserKnownHostsFile=<pinned> + StrictHostKeyChecking=yes`(**去 TOFU**,
+  谁换主机密钥即拒);更新 4 处 ssh argv 测试断言。`cli.rs` 加 `pin_host_key`(ssh-keyscan 捕获目标 host key →
+  ssh-keygen 出 SHA256 指纹 → 幂等写 known_hosts,先 `-R` 去旧再追加)+ `ouro-ops init` 成功后调用;可选
+  `--expected-host-key` 带外核对不符即拒(防首连 MITM,否则 TOFU 防日后换钥)。bed `provision.sh` 改钉进
+  `/root/.ouro/known_hosts`(dispatch 现读此)。init e2e 加 pin 断言(钉入 + 错误指纹被拒);dispatch e2e
+  (e2e-t2-runtime)在强制 pin 下全绿(restart 45→323、topology 323→594)。cargo 48 pass。**p3-1(审计密码学)
+  按用户决策撤销**(§7)。
 - 2026-07-12T01:30+08:00 p1-5 completed(`ouro-ops deinit` + 运行中节点护栏)+ p1-9 部分:`provision.rs` 加
   `deinit_plan`(安全逆序:二进制/wrapper/sudoers → 复原 sshd → 最后删 ouro-exec/ouro-diag;`node` 默认保留)、
   把 `execute` 重构出通用 `run_steps`、加 `execute_deinit` + `node_is_running`(特权只读探测)。`cli.rs` 加
@@ -568,6 +584,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   任意 sudo 拒、二次幂等)→ **deinit 运行中拒绝(base 未动)→ 停后还原(base 全移除、boot 保留)**。self-clean。
 - p1-5/p1-9 | stack: rust | command: cargo test -q provision | result: pass | note: 7 单测——init 顺序/零注入/
   sshd 姿态/wrapper/dry-run manifest + deinit 接入主体最后删/node 默认保留/dry-run removal manifest + node_is_running。
+- p3-2/p3-3 | stack: rust+e2e | command: cargo test -q; make e2e-t2-init; make e2e-t2-runtime | result: pass | note:
+  ssh argv 断言 UserKnownHostsFile+StrictHostKeyChecking=yes、无 accept-new;init e2e 钉入 host key + 错误
+  `--expected-host-key` 被拒;dispatch e2e 在强制 pin 下 restart/topology 全绿(证明 pin 不破坏派发)。cargo 48。
 - p1-1 | stack: rust | command: cargo test -q bootstrap; cargo test -q -- --test-threads=1 | result: pass | note:
   bootstrap 6 单测(argv 形态/注入失效/mode 校验/dry-run)+ 全量 41 pass;ssh.rs no-scp 断言未动仍绿(per-op
   边界保留)。独立模块,仅供 init;首次接入=sudo 用户,文件经 SSH 通道 install 无 scp。

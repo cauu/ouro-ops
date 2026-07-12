@@ -56,6 +56,22 @@ echo "$OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["dat
   || fail "init manifest not ok/changed: $OUT"
 pass "init completed; install manifest ok"
 
+echo "[init] host key pinned (p3-3) into the ouro known_hosts"
+echo "$OUT" | python3 -c 'import json,sys; assert json.load(sys.stdin)["data"]["pinned_host_key"], "no pinned_host_key"' \
+  || fail "init did not report a pinned host key"
+grep -q "\[127.0.0.1\]:$PORT" "$OURO_HOME/known_hosts" 2>/dev/null \
+  || fail "target host key not pinned into $OURO_HOME/known_hosts"
+pass "host key pinned into ouro known_hosts"
+
+echo "[init] --expected-host-key MISMATCH is refused (first-hop MITM defense)"
+if OURO_HOME="$OURO_HOME" ./target/debug/ouro-ops init \
+     --host 127.0.0.1 --port "$PORT" --bootstrap-user boot --bootstrap-key creds://boot \
+     --control-pubkey "$WORK/control.pub" --ouro-binary "$OURO_BIN_LINUX" \
+     --expected-host-key "SHA256:bogusbogusbogusbogusbogusbogusbogusbogus00" >/dev/null 2>&1; then
+  fail "init did NOT refuse a mismatched --expected-host-key"
+fi
+pass "init refused a mismatched expected host key"
+
 echo "[init] baseline installed on the (formerly bare) target"
 dex id ouro-exec >/dev/null 2>&1 || fail "ouro-exec not created"
 dex id ouro-diag >/dev/null 2>&1 || fail "ouro-diag not created"

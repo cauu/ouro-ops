@@ -13,11 +13,12 @@ TARGETS=(bp1 relay1 relay2)
 "${COMPOSE[@]}" exec -T control mkdir -p /opt/ouro /root/.ouro/credentials /root/.ssh
 "${COMPOSE[@]}" cp "$SPEC_SRC" control:/opt/ouro/pool-spec.yaml
 
-# Refresh control's known_hosts from the CURRENT bed (targets get fresh host keys on each
-# rebuild). This keeps StrictHostKeyChecking meaningful without stale-key churn.
-"${COMPOSE[@]}" exec -T control bash -c ': > /root/.ssh/known_hosts; chmod 600 /root/.ssh/known_hosts'
+# Pin each target's host key into the OURO-managed known_hosts (S0017 p3-2: dispatch enforces
+# StrictHostKeyChecking=yes against ~/.ouro/known_hosts). The bed stands in for `ouro-ops init`'s
+# pin step; targets get fresh host keys on each rebuild, so refresh it here.
+"${COMPOSE[@]}" exec -T control bash -c ': > /root/.ouro/known_hosts; chmod 600 /root/.ouro/known_hosts'
 for m in "${TARGETS[@]}"; do
-  "${COMPOSE[@]}" exec -T control bash -c "ssh-keyscan -t ed25519 $m 2>/dev/null >> /root/.ssh/known_hosts"
+  "${COMPOSE[@]}" exec -T control bash -c "ssh-keyscan -t ed25519 $m 2>/dev/null >> /root/.ouro/known_hosts"
 done
 
 for m in "${TARGETS[@]}"; do
