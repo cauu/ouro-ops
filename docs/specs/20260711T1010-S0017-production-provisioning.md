@@ -260,8 +260,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   `--remove-node` 可删)+ 幂等;真裸机 e2e:运行中拒绝→base 未动、停后还原→base 全移除、bootstrap 用户保留。
   修 `node_is_running` 的 pgrep `-f` 自匹配 bug(用 `[c]ardano-node run`)。**待**:全局锁/在途拒绝、
   `--stop-then-remove` 自动停节点、审计导出。)
-- [ ] p1-6 (rev) 操作自清理 + **state 三层命名空间**(per-process / per-invocation / workflow-scoped by
+- [x] p1-6 (rev) 操作自清理 + **state 三层命名空间**(per-process / per-invocation / workflow-scoped by
   audit-id,仅终态删除 + 崩溃 TTL GC);清理错误可见/入审计
+  (交付:新 `state.rs`——`run_dir(root, audit_id, pid, uniq)` 把每次 tool-run scratch 命名为
+  `ouro-run-inv-<audit>-pid-<pid>-<uniq>`(三层:per-invocation=audit-id、per-process=pid、workflow 共享 audit-id;
+  id 净化防遍历/注入);`gc_stale_runs(root, ttl=1h, now)` 按 mtime **崩溃 TTL GC**(仅删 `ouro-run-*` 且 age≥ttl,
+  绝不碰新目录=不与在跑竞争,也不碰非 ouro 目录),返回未能删除项供上浮。`run_tool_exec` 重排:gate→audit_id→**GC
+  (错误 eprintln 上浮)**→按 audit-id 命名抽取;**终态删除**(仅 child 退出后删)且**清理错误不再吞**(原 `let _ =`
+  改为 eprintln)。2 单测(命名/净化 + GC 删旧留新留外)+ 全量 63 cargo + L2 python(经 tool run)回归绿。)
 - [x] p1-7 (便利模式收窄) **bootstrap 凭据 = 便利模式 + 诚实标注**(P0-1 已定案:不做机制隔离):唯一保留义务=三处
   诚实标注齐全且不虚假宣称隔离。补齐 `packaging/RELEASE.md` 的诚实边界段(init 输出 security_note + spec §1 早已有);
   加 `test_honest_labeling.py` 静态闸(init+packaging 含诚实标注 + 任何含 credential+isolated 的句子必带否定/禁止
@@ -416,6 +422,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T23:40+08:00 p1-6 completed(操作自清理 + state 三层命名 + 崩溃 TTL GC):见交付说明。核心把原本"抽取
+  scratch 用随机 uuid + 清理错误被 `let _` 吞"升级为"audit-id 命名 + 崩溃 TTL GC + 清理/ GC 错误上浮"。抽取从
+  gate 之后进行(gate 失败不留 scratch)。terminal-only 删除语义保留(仅 child 退出后删)。
 - 2026-07-12T23:15+08:00 p1-3 completed(底座最小化——锁定):审 `init_plan` 确认底座本就最小(见交付说明),加静态
   单测锁死"无包管理器/无 node 运行时 + 写入路径 ⊆ 允许清单 + 恰 3 主体",防未来底座膨胀。node 运行时由 deploy 装,不入 init。
 - 2026-07-12T23:00+08:00 p2-4 completed(required-v2 定案 + init 记录/验证声明):§7 定案**保持 optional-v1**
@@ -696,6 +705,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p1-6 | stack: rust | command: cargo test -q state:: ; cargo test -q -- --test-threads=1 | result: pass | note:
+  `run_dir` 命名+净化(拒 `..`/`;`)、`gc_stale_runs` 删旧(age≥ttl)留新(age<ttl)留非-ouro 目录;全量 63 pass。
+- p1-6 | stack: python | command: python3 tests/test_deploy_scripts.py; test_takeover_scripts; test_upgrade_scripts;
+  test_security_negative | result: pass | note: 经真 `ouro-ops tool run`(重排后 gate→audit_id→GC→抽取)全绿,无回归。
 - p1-3 | stack: rust | command: cargo test -q base_install_is_minimal | result: pass | note: init 底座——0 包管理器/0
   node 运行时;写入仅 {ouro-ops 二进制, ouro-tool-run wrapper, sudoers.d/ouro-exec, sshd_config.d/10-ouro.conf};
   useradd 恰 3(ouro-exec/ouro-diag/node)。

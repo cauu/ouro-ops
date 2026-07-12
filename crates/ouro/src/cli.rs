@@ -632,7 +632,7 @@ fn validate_tool_name(tool_name: &str) -> Result<()> {
 ///      run from there, and removed afterwards. Nothing is fetched from disk or network.
 ///
 /// Returns the script path plus an optional temp base dir the caller MUST remove after use.
-fn resolve_skill_script(tool_name: &str) -> Result<(PathBuf, Option<PathBuf>)> {
+fn resolve_skill_script(tool_name: &str, label: &str) -> Result<(PathBuf, Option<PathBuf>)> {
     validate_tool_name(tool_name)?;
     let (skill, script) = tool_name.split_once('/').expect("validated tool name");
     let disk = skills_root().join(format!("{skill}/scripts/{script}.sh"));
@@ -646,7 +646,14 @@ fn resolve_skill_script(tool_name: &str) -> Result<(PathBuf, Option<PathBuf>)> {
             skill, script
         )));
     }
-    let base = std::env::temp_dir().join(format!("ouro-run-{}", uuid::Uuid::new_v4()));
+    // p1-6: per-invocation, audit-id-namespaced scratch (traceable + GC-visible via the
+    // `ouro-run-` prefix). Terminal-only deletion is the caller's responsibility.
+    let base = crate::state::run_dir(
+        &crate::state::run_root(),
+        label,
+        std::process::id(),
+        &uuid::Uuid::new_v4().to_string(),
+    );
     std::fs::create_dir_all(&base)?;
     #[cfg(unix)]
     {
@@ -790,20 +797,12 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
     // The (untrusted) min_ouro_version a pasted prompt may carry — it can only RAISE the
     // requirement, never lower it (S0016 p3-2 / R2 P0-2).
     let min_ouro = optional_flag_value(args, "--min-ouro");
-    let (script, temp_base) = resolve_skill_script(&tool_name)?;
 
     let paths = ConfigPaths::discover();
     // Version gate BEFORE any execution (p3-2/p3-3): required = max(prompt, embedded,
-    // monotonic anti-rollback, security floor). Fails closed if the binary is below it.
-    let gate = match crate::version::gate(&paths.home, min_ouro) {
-        Ok(g) => g,
-        Err(e) => {
-            if let Some(base) = &temp_base {
-                let _ = std::fs::remove_dir_all(base);
-            }
-            return Err(e);
-        }
-    };
+    // monotonic anti-rollback, security floor). Fails closed if the binary is below it. Runs
+    // before extraction, so a gate failure leaves no scratch to clean up.
+    let gate = crate::version::gate(&paths.home, min_ouro)?;
     let store = AuditStore::open(&paths.audit_db)?;
     // Reuse a caller-supplied audit id (e.g. an orchestrator's) when it refers to a
     // real invocation; otherwise begin a fresh one.
@@ -811,6 +810,18 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
         Some(id) if store.invocation_has_start(id)? => id.to_string(),
         _ => store.begin_invocation(&tool_name, machine)?,
     };
+    // p1-6 crash-tolerant GC: reclaim scratch left by runs that died before their terminal
+    // cleanup. Surface (never swallow) any dir it could not remove — an unreclaimable scratch
+    // area is an operational fact the operator must see.
+    for (path, err) in crate::state::gc_stale_runs(
+        &crate::state::run_root(),
+        std::time::Duration::from_secs(3600),
+        std::time::SystemTime::now(),
+    ) {
+        eprintln!("ouro: could not GC stale run state {}: {err}", path.display());
+    }
+    // Extract the embedded skill into a per-invocation, audit-id-namespaced scratch dir (p1-6).
+    let (script, temp_base) = resolve_skill_script(&tool_name, &audit_id)?;
     let secret = confirm::load_or_create_secret(&paths.tool_run_secret)?;
     let token = confirm::invocation_token(&secret, &audit_id);
     let self_bin = std::env::current_exe()
@@ -854,10 +865,13 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
         cmd.env("OURO_MACHINE", machine);
     }
     let output = cmd.output()?;
-    // Self-clean the per-run extraction (p2-1): operations leave no accumulated scripts.
-    // Done before the exit()s below (which skip destructors). Disk/dev runs have no temp.
+    // Self-clean the per-run extraction (p2-1): operations leave no accumulated scripts. TERMINAL
+    // deletion — only now, after the child has exited (never mid-run). Done before the exit()s
+    // below (which skip destructors). Cleanup errors are surfaced, not swallowed (p1-6).
     if let Some(base) = &temp_base {
-        let _ = std::fs::remove_dir_all(base);
+        if let Err(e) = std::fs::remove_dir_all(base) {
+            eprintln!("ouro: could not remove run scratch {}: {e}", base.display());
+        }
     }
     // Forward the child's stdout (the single-line JSON contract) to our caller.
     std::io::stdout().write_all(&output.stdout)?;
@@ -1246,7 +1260,7 @@ mod tests_embedded_resolution {
         // Force a disk miss (nonexistent OURO_SKILLS_DIR) so resolution takes the embedded path.
         std::env::set_var("OURO_SKILLS_DIR", "/nonexistent-ouro-skills-xyz");
         let (script, temp_base) =
-            resolve_skill_script("deploy/status").expect("resolve embedded deploy/status");
+            resolve_skill_script("deploy/status", "test-audit").expect("resolve embedded deploy/status");
         std::env::remove_var("OURO_SKILLS_DIR");
 
         let base = temp_base.expect("embedded path returns a temp base to clean");
@@ -1288,7 +1302,7 @@ mod tests_embedded_resolution {
     #[test]
     fn unknown_tool_rejected_even_when_absent_on_disk() {
         std::env::set_var("OURO_SKILLS_DIR", "/nonexistent-ouro-skills-xyz");
-        let err = resolve_skill_script("deploy/does-not-exist");
+        let err = resolve_skill_script("deploy/does-not-exist", "test-audit");
         std::env::remove_var("OURO_SKILLS_DIR");
         assert!(err.is_err(), "absent-everywhere tool must error, not fabricate");
     }
