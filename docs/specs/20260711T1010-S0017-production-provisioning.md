@@ -657,3 +657,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   - S0016 p4-4"受限 agent 运行器"不再作为本 spec 前置依赖(用户以上游安全替代)。
   - **不改**其余 p1 项:init/deinit 的 provisioning 机制、安装账本、主机密钥 pin、平台矩阵、no-scp 边界与本
     决策无关,照常按可执行设计推进。
+- 2026-07-12 **p3/p4 决策(用户定案):**
+  - **p3-1(目标机审计哈希链 + 反签名 / TC-8)撤销**——用户判断"目标机被 root 攻破后本地审计防篡改"过度、非必要。
+    审计保持 S0015 现状(SQLite append-only,无密码学防篡改)。残余风险:被 root 攻破的目标机可改/删本地审计,
+    **已知并接受**。相应 TC-8 移出验收。
+  - **p3-2 + p3-3(主机密钥 pin + 首跳认证)保留推进**——闭掉 dispatch 侧 accept-new 的 MITM 口。
+  - **p4 冷签名方案确认(沿用既定):agent 生成自包含 cardano-cli 脚本 → 操作者拿到气隙机执行签名 → 只回传公开
+    产物(node.cert / vrf.skey / 签名 tx),cold.skey 永不移动。** 现状"冷密钥与 BP 同机"的便利路径(bed 用)
+    退役为该脚本流。实现仍需 cardano-cli/era 正确性 + 真环境验证(见 p4 track 说明)。
