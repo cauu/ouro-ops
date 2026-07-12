@@ -27,18 +27,18 @@ STAGE="$POOL/offline-stage"
 SIGNED="$STAGE/node.cert.signed"
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
 
-command -v cardano-cli >/dev/null || ouro_emit_error 20 "no_cardano_cli" "cardano-cli not on target"
+ouro_cardano_cli_available || ouro_emit_error 20 "no_cardano_cli" "ouro_cardano_cli not on target"
 [ -f "$SIGNED" ]                  || ouro_emit_error 20 "no_signed_opcert" "no cold-signed node.cert at $SIGNED"
 [ -s "$STAGE/kes.skey.staged" ]   || ouro_emit_error 20 "no_staged_key" "no staged KES skey (run generate-offline first)"
 [ -s "$STAGE/kes.vkey.staged" ]   || ouro_emit_error 20 "no_staged_key" "no staged KES vkey (run generate-offline first)"
 
 # On-disk opcert counter from the live node (kes-period-info prints "✓ …" lines before the JSON).
 ondisk_counter() {
-  cardano-cli query kes-period-info --op-cert-file "$1" --testnet-magic "$MAGIC" 2>/dev/null \
+  ouro_cardano_cli query kes-period-info --op-cert-file "$1" --testnet-magic "$MAGIC" 2>/dev/null \
     | python3 -c 'import json,sys; s=sys.stdin.read(); i=s.find("{"); print(json.loads(s[i:]).get("qKesOnDiskOperationalCertificateNumber",-1) if i>=0 else -1)' 2>/dev/null || echo -1
 }
 tip_block() {
-  cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys
+  ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))
 except: print(-1)' 2>/dev/null || echo -1
 }
@@ -47,7 +47,7 @@ except: print(-1)' 2>/dev/null || echo -1
 # since generate-offline captured it (a cert issued for a period too far in the past will not let
 # the node forge). Uses the freshness bundle generate-offline staged.
 if [ -s "$STAGE/kes.bundle.json" ]; then
-  CUR_SLOT=$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys
+  CUR_SLOT=$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys
 try: print(json.load(sys.stdin)["slot"])
 except: print(-1)' 2>/dev/null || echo -1)
   STALE=$(python3 - "$STAGE/kes.bundle.json" "$CUR_SLOT" <<'PY'

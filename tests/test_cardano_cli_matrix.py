@@ -82,7 +82,9 @@ def main():
 
     # 5. the registration builder keeps tx/cert commands era-scoped (conway).
     rb = (SK / "deploy/scripts/register-build.sh").read_text()
-    check('CLI=(cardano-cli conway)' in rb, "register-build must pin the era in its cardano-cli prefix")
+    # register-build pins the era in its cardano-cli prefix; the binary now routes through the
+    # managed-mode adapter (S0017 p5-1), so the array is `(ouro_cardano_cli conway)`.
+    check('CLI=(ouro_cardano_cli conway)' in rb, "register-build must pin the era via the adapter prefix")
     check("transaction build" in rb and "registration-certificate" in rb,
           "register-build must build the tx + registration certs")
 

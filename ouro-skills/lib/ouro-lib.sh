@@ -363,6 +363,59 @@ ouro_node_detect_mode() {
   else printf 'ambiguous'; fi
 }
 
+# --- cardano-cli managed-mode adapter (S0017 p5-1) --------------------------
+# In bare/systemd mode cardano-cli is on the host PATH (the node runs as a host process). In
+# docker/podman mode the node — and its cardano-cli binary and node socket — live INSIDE the
+# container, so a host `cardano-cli` would not exist. This adapter dispatches every cardano-cli
+# invocation to the right place: host, or `<runtime> exec <cid>` for a containerized node.
+#
+# CONVENTION (standard SPO container layout): the pool key/data directory and the node socket are
+# bind-mounted at the SAME path on the host and inside the container, so file arguments and
+# $CARDANO_NODE_SOCKET_PATH resolve identically either way. The socket env is forwarded into the
+# container so `query` works. Resolution is cached per script run (a `docker restart` keeps the
+# same container id, so the cache stays valid across the lifecycle scripts' own restarts).
+_OURO_CLI_KIND=""   # "" unresolved | host | container
+_OURO_CLI_RT=""     # docker | podman   (container kind only)
+_OURO_CLI_CID=""    # container id      (container kind only)
+ouro_cardano_cli_resolve() {
+  local mode pid
+  mode="$(ouro_node_detect_mode)"
+  case "$mode" in
+    docker|podman)
+      pid="$(ouro_node_pid)"
+      _OURO_CLI_CID="$(ouro_supervisor_container_id "$pid")"
+      _OURO_CLI_RT="$(ouro_supervisor_container_runtime "$pid")"
+      if [ -n "$_OURO_CLI_CID" ] && [ -n "$_OURO_CLI_RT" ]; then
+        _OURO_CLI_KIND=container
+      else
+        _OURO_CLI_KIND=host   # container mode but id unresolved → fall back to host cardano-cli
+      fi
+      ;;
+    *) _OURO_CLI_KIND=host ;;
+  esac
+}
+
+# Run cardano-cli in the node's supervision context. Use this for EVERY cardano-cli call in a
+# dispatched L2 script (the static gate forbids raw `cardano-cli` outside this adapter).
+ouro_cardano_cli() {
+  [ -n "$_OURO_CLI_KIND" ] || ouro_cardano_cli_resolve
+  if [ "$_OURO_CLI_KIND" = container ]; then
+    "$_OURO_CLI_RT" exec -e CARDANO_NODE_SOCKET_PATH="${CARDANO_NODE_SOCKET_PATH:-}" "$_OURO_CLI_CID" cardano-cli "$@"
+  else
+    cardano-cli "$@"
+  fi
+}
+
+# Presence check for cardano-cli in the node's supervision context (host or inside the container).
+ouro_cardano_cli_available() {
+  [ -n "$_OURO_CLI_KIND" ] || ouro_cardano_cli_resolve
+  if [ "$_OURO_CLI_KIND" = container ]; then
+    "$_OURO_CLI_RT" exec "$_OURO_CLI_CID" sh -c 'command -v cardano-cli' >/dev/null 2>&1
+  else
+    command -v cardano-cli >/dev/null 2>&1
+  fi
+}
+
 # --- Supervisor-mode lifecycle dispatch (S0017 p2-5) -------------------------
 # Destructive lifecycle actions choose their path from the DETECTED mode,
 # cross-checked against the spec-DECLARED mode. Any mismatch, ambiguity, mixed/

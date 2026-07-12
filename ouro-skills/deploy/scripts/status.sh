@@ -24,15 +24,15 @@ export CARDANO_NODE_SOCKET_PATH="$SOCK"
 MAGIC="$(python3 -c 'import yaml,sys; print(yaml.safe_load(open(sys.argv[1]))["pool"]["network_magic"])' "$SPEC" 2>/dev/null || echo "")"
 [ -n "$MAGIC" ] || ouro_emit_error 20 "spec_magic_missing" "pool.network_magic not in spec"
 
-query_tip() { cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null; }
+query_tip() { ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null; }
 TIP1="$(query_tip)" || true
 if [ -z "$TIP1" ] || ! printf '%s' "$TIP1" | grep -q '"block"'; then
-  ouro_emit_error 30 "node_query_failed" "cardano-cli query tip failed (socket $SOCK, magic $MAGIC) — node down or wrong network"
+  ouro_emit_error 30 "node_query_failed" "ouro_cardano_cli query tip failed (socket $SOCK, magic $MAGIC) — node down or wrong network"
 fi
 sleep 3
 TIP2="$(query_tip)" || true
 
-GENESIS_HASH="$(cardano-cli hash genesis-file --genesis "$GENESIS" 2>/dev/null | tr -d '\r' || echo "")"
+GENESIS_HASH="$(ouro_cardano_cli hash genesis-file --genesis "$GENESIS" 2>/dev/null | tr -d '\r' || echo "")"
 
 python3 - "$MACHINE" "$MAGIC" "$GENESIS_HASH" "${OURO_AUDIT_ID:-}" "$TIP1" "$TIP2" <<'PY'
 import json, sys

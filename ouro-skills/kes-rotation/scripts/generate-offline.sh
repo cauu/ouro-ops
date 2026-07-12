@@ -22,11 +22,11 @@ MAGIC="${OURO_NETWORK_MAGIC:-1}"
 STAGE="$POOL/offline-stage"
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
 
-command -v cardano-cli >/dev/null || ouro_emit_error 20 "no_cardano_cli" "cardano-cli not on target"
+ouro_cardano_cli_available || ouro_emit_error 20 "no_cardano_cli" "ouro_cardano_cli not on target"
 
 # Target KES period = tip slot / slotsPerKESPeriod (the same computation rotate.sh uses).
 SPK=$(python3 -c 'import json;print(json.load(open("'"$DEVNET"'/shelley-genesis.json"))["slotsPerKESPeriod"])' 2>/dev/null || echo 0)
-SLOT=$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys
+SLOT=$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys
 try: print(json.load(sys.stdin)["slot"])
 except: print(-1)' 2>/dev/null || echo -1)
 [ "${SPK:-0}" -gt 0 ] 2>/dev/null || ouro_emit_error 30 "kes_precheck_failed" "could not read slotsPerKESPeriod"
@@ -38,11 +38,11 @@ PERIOD=$(( SLOT / SPK ))
 mkdir -p "$STAGE"
 chmod 700 "$STAGE"
 rm -f "$STAGE/kes.vkey.staged" "$STAGE/kes.skey.staged"
-cardano-cli node key-gen-KES \
+ouro_cardano_cli node key-gen-KES \
   --verification-key-file "$STAGE/kes.vkey.staged.tmp" \
   --signing-key-file "$STAGE/kes.skey.staged.tmp" >/dev/null
 [ -s "$STAGE/kes.vkey.staged.tmp" ] && [ -s "$STAGE/kes.skey.staged.tmp" ] \
-  || ouro_emit_error 30 "kes_keygen_failed" "cardano-cli produced no KES key pair"
+  || ouro_emit_error 30 "kes_keygen_failed" "ouro_cardano_cli produced no KES key pair"
 chmod 600 "$STAGE/kes.skey.staged.tmp"
 mv -f "$STAGE/kes.vkey.staged.tmp" "$STAGE/kes.vkey.staged"
 mv -f "$STAGE/kes.skey.staged.tmp" "$STAGE/kes.skey.staged"

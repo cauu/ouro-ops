@@ -21,9 +21,9 @@ MAGIC="${OURO_NETWORK_MAGIC:-1}"
 STAGE="$DEVNET/deploy-stage"
 UTXO="$DEVNET/utxo-keys/utxo1"
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
-CLI=(cardano-cli conway)
+CLI=(ouro_cardano_cli conway)
 
-command -v cardano-cli >/dev/null || ouro_emit_error 20 "no_cardano_cli" "cardano-cli not on target"
+ouro_cardano_cli_available || ouro_emit_error 20 "no_cardano_cli" "ouro_cardano_cli not on target"
 for f in cold.vkey vrf.vkey stake.vkey stake.skey; do
   [ -s "$STAGE/$f" ] || ouro_emit_error 20 "missing_staged_key" "staged pool key $STAGE/$f not present"
 done

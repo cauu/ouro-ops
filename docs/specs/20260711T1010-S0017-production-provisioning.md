@@ -388,6 +388,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [x] p4-9 (原文保留;已由上「复用 SSH 通道」交付,原完整加密信封协议按用户裁剪不做) **VRF 传输协议 + takeover 边界**:操作员中介加密传输(收件人密钥/完整性/权限/原子安装/无内容
   审计/安全删除/重放)+ 真双机测试;显式声明 takeover 冷密钥迁移不在本 spec(或改 takeover 拒绝目标驻留冷密钥)
 
+### p5 — cardano-cli 托管模式适配(用户提出的容器缺口,spec 关闭前补)
+- [x] p5-1 (new) **cardano-cli 托管适配器**:原状——11 个 L2 脚本 30 处**裸调 cardano-cli**,全假设 host 有;
+  但**容器化 node**(docker/podman)里 cardano-cli 在容器内、host 上没有 → KES/冷签/注册/status 全断。补
+  `ouro_cardano_cli`/`ouro_cardano_cli_available`(ouro-lib.sh):按检测模式分发——bare/systemd 走 host,
+  docker/podman 走 `<rt> exec -e CARDANO_NODE_SOCKET_PATH <cid> cardano-cli`(缓存解析;约定 key/data 目录与
+  socket 在 host↔容器**同路径 bind-mount**,故文件参数与 socket 两侧一致)。30 处调用全改走适配器 + detect/cardano-cli
+  版本探测也按模式探容器内 cli。加**静态闸** `test_cardano_cli_gate.py`(禁 adapter 外裸 cardano-cli,已探针证伪)。
+
 ## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
@@ -433,6 +441,12 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T03:30+08:00 p5-1 completed(cardano-cli 托管适配器——用户提出容器缺口后补):核实 11 脚本 30 处裸调
+  cardano-cli 全假设 host,容器化 node 必断。ouro-lib.sh 加 `ouro_cardano_cli`/`_available`/`_resolve`(模式分发 +
+  缓存 + docker/podman exec + socket 转发 + 同路径 mount 约定);30 处调用 + detect/cardano-cli 版本探测全改走适配器。
+  静态闸禁 adapter 外裸调(已证伪)。四证:静态闸 + 确定性分发单测(容器→`<rt> exec <cid> cardano-cli`、bare→host)+
+  **真 blinklabs 镜像 `docker exec` 达 cardano-cli 10.14**(容器路径真验)+ **bare kes e2e 经适配器全绿**(host 路径真
+  端到端:轮换 0→1→2、重启出块)。**同路径 bind-mount 约定**已在 adapter 注释 + spec 记录(标准 SPO 容器布局)。
 - 2026-07-13T01:15+08:00 p2-5 closed:唯一「待」是 p2-9 的 systemd/container 真环境 e2e——p2-9 已交付(真 systemd +
   真 docker/compose 床,podman/dind 按克制裁剪),故 p2-5a(分模式 restart 分发)+ p2-5b(证据绑定 confirm + enforcement)
   + 真环境 e2e 全部落地,标记完成。编排式 upgrade 的 rollout 级确认仍为独立后续事项(非本 spec 阻塞项)。
@@ -735,6 +749,13 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-1 | stack: python | command: python3 tests/test_cardano_cli_gate.py ; python3 tests/test_cardano_cli_adapter.py |
+  result: pass | note: 静态闸(禁 adapter 外裸 cardano-cli,注入探针即 FAIL)+ 确定性分发(docker→`docker exec -e
+  CARDANO_NODE_SOCKET_PATH <cid[:12]> cardano-cli …`、可用性走容器内、bare→host 且不碰 docker/podman)。
+- p5-1 | stack: docker | command: docker run blinklabs; docker exec <cid> cardano-cli --version | result: pass | note:
+  真镜像 `docker exec` 达 `cardano-cli 10.14.0.0`——容器路径在真 cardano-cli 上成立。
+- p5-1 | stack: e2e | command: make e2e-t2-kes | result: pass | note: bare 模式 KES 轮换**经适配器**在真 forging 节点上
+  全绿(counter 0→1→2 单调、节点重启出块)——host 路径真端到端无回归。全量 66 cargo + python 闸(含新 2 闸)全过。
 - p2-9 | stack: python | command: python3 tests/test_supervisor_mode_dispatch.py | result: pass | note: 新 podman leg
   ——libpod cgroup→`podman restart <12hex>`、不落回 docker/systemctl;systemd/docker/podman/bare 四模式 restart 分发
   + none/ambiguous/mismatch 顶层 exit-40 全过。podman 探测由 test_detect_runtime 覆盖,混合→ambiguous 已覆盖。

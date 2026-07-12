@@ -21,9 +21,11 @@ SUPPORTED_MAJOR_MIN=10
 VALIDATED_VERSION="10.14.0.0"
 
 RAW=""
-if command -v cardano-cli >/dev/null 2>&1; then
+# Probe cardano-cli in the node's supervision context (host, or inside the container in
+# docker/podman mode) via the adapter — a containerized node has cardano-cli only in the container.
+if ouro_cardano_cli_available; then
   # `cardano-cli --version` → "cardano-cli 10.14.0.0 - linux-... - ghc-9.6"; take field 2 only.
-  RAW="$(cardano-cli --version 2>/dev/null | head -1 | awk '{print $2}')"
+  RAW="$(ouro_cardano_cli --version 2>/dev/null | head -1 | awk '{print $2}')"
 fi
 
 python3 - "$MACHINE" "$RAW" "$SUPPORTED_MAJOR_MIN" "$VALIDATED_VERSION" "${OURO_AUDIT_ID:-}" <<'PY'

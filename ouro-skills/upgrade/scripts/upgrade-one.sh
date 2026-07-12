@@ -84,7 +84,7 @@ PY
   # (block strictly advances). Keep the db (wiping it re-triggers the p2-0 cold-start).
   SOCK="$DEVNET/node.socket"
   export CARDANO_NODE_SOCKET_PATH="$SOCK"
-  PRE_BLOCK="$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
+  PRE_BLOCK="$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
     | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))
 except: print(-1)' 2>/dev/null || echo -1)"

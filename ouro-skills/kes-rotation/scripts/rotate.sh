@@ -22,18 +22,18 @@ SOCK="$DEVNET/node.socket"
 MAGIC="${OURO_NETWORK_MAGIC:-1}"
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
 
-command -v cardano-cli >/dev/null || ouro_emit_error 20 "no_cardano_cli" "cardano-cli not on target"
+ouro_cardano_cli_available || ouro_emit_error 20 "no_cardano_cli" "ouro_cardano_cli not on target"
 [ -f "$POOL/cold.skey" ] || ouro_emit_error 20 "no_cold_key" "pool cold key not present on target"
 
 # Current KES period = tip slot / slotsPerKESPeriod.
 SPK=$(python3 -c 'import json;print(json.load(open("'"$DEVNET"'/shelley-genesis.json"))["slotsPerKESPeriod"])')
-SLOT=$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["slot"])')
+SLOT=$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["slot"])')
 PERIOD=$(( SLOT / SPK ))
 
 # On-disk opcert counter from the live node. `query kes-period-info` prints human-readable
 # "✓ …" lines to stdout BEFORE the JSON, so parse from the first '{'.
 ondisk_counter() {
-  cardano-cli query kes-period-info --op-cert-file "$1" --testnet-magic "$MAGIC" 2>/dev/null \
+  ouro_cardano_cli query kes-period-info --op-cert-file "$1" --testnet-magic "$MAGIC" 2>/dev/null \
     | python3 -c 'import json,sys; s=sys.stdin.read(); i=s.find("{"); print(json.loads(s[i:]).get("qKesOnDiskOperationalCertificateNumber",-1) if i>=0 else -1)' 2>/dev/null || echo -1
 }
 BEFORE=$(ondisk_counter "$POOL/opcert.cert")
@@ -42,16 +42,16 @@ BEFORE=$(ondisk_counter "$POOL/opcert.cert")
 # post-restart check proves a genuine restart + NEW forging (not a stale db replay).
 [ "${BEFORE:--1}" -ge 0 ] 2>/dev/null || ouro_emit_error 30 "kes_precheck_failed" "could not read on-disk opcert counter before rotation"
 PRE_PID="$(ouro_node_pid)"
-PRE_BLOCK="$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
+PRE_BLOCK="$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
   | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))
 except: print(-1)' 2>/dev/null || echo -1)"
 [ "${PRE_BLOCK:--1}" -ge 0 ] 2>/dev/null || ouro_emit_error 30 "kes_precheck_failed" "could not read tip before rotation"
 
 echo "[kes] issuing new opcert (period=$PERIOD, prior on-disk counter=$BEFORE)" >&2
-cardano-cli node key-gen-KES --verification-key-file "$POOL/kes.vkey.new" --signing-key-file "$POOL/kes.skey.new" >/dev/null
+ouro_cardano_cli node key-gen-KES --verification-key-file "$POOL/kes.vkey.new" --signing-key-file "$POOL/kes.skey.new" >/dev/null
 # issue-op-cert consumes the counter file and writes counter+1 back (persisted, monotonic).
-cardano-cli node issue-op-cert \
+ouro_cardano_cli node issue-op-cert \
   --kes-verification-key-file "$POOL/kes.vkey.new" \
   --cold-signing-key-file "$POOL/cold.skey" \
   --operational-certificate-issue-counter-file "$POOL/opcert.counter" \
@@ -79,7 +79,7 @@ fi
 FORGED=0
 for _ in $(seq 1 40); do
   sleep 3
-  BLK=$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
+  BLK=$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
         | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))
 except: print(-1)' 2>/dev/null || echo -1)

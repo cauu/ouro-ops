@@ -29,7 +29,7 @@ if [[ "$(head -c1 "$ROLLBACK")" != "{" ]]; then
   # Continuity: the legacy node must still be running AND genuinely FORGING (tip advances across
   # two samples) — a hung/stuck process that only name-matches is not a healthy takeover.
   ouro_node_running || ouro_emit_error 30 "node_not_running" "legacy node stopped after takeover"
-  tip_block() { cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
+  tip_block() { ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
     | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))
 except: print(-1)' 2>/dev/null || echo -1; }

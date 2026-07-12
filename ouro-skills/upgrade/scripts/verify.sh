@@ -49,7 +49,7 @@ if [ -S "$SOCK" ] || ouro_node_running || { [ "$ROLE" = "bp" ] && [ -f "$DEVNET/
   fi
   found=0
   for _ in $(seq 1 40); do
-    blk=$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
+    blk=$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
           | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))
 except: print(-1)' 2>/dev/null || echo -1)
