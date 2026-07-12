@@ -344,7 +344,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
 - [ ] p4-2 (rev) `ouro-ops deploy cold-sign-script`:**分阶段**(在线采集校验链快照 → 在线 build unsigned →
   冷机 inspect+签名 → 在线复检提交);产物 `node.cert`/`vrf.skey`/签名 tx 回 BP/提交;**cold.skey + counter
   留冷机**;定义快照最大年龄/validity 窗口/deposit·fee/找零/witness/多 owner/陈旧输入重建
-- [ ] p4-3 (rev) 决策树更新:deploy + kes-rotation `SKILL.md` 加"**问冷环境 → 生成 bundle → 冷机核对签名 →
+- [~] p4-3 (rev) 决策树更新:deploy + kes-rotation `SKILL.md` 加"**问冷环境 → 生成 bundle → 冷机核对签名 →
   执行 → 回装/提交**";kes 回装走 p4-6 真 `kes push`(counter 防重放 + confirm 门);deploy 装 vrf.skey/node.cert
   (经 p4-9 VRF 协议)+ 提交注册 tx 后再 `deploy/start`
 - [ ] p4-4 安全不变量:冷签脚本只带公开数据、就地读冷密钥;**cold.skey 永不移动**(限定新池 deploy + kes);
@@ -405,6 +405,12 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T16:40+08:00 p4-3 in-progress(kes-rotation 决策树接入冷签脚本):`ouro-skills/kes-rotation/SKILL.md`
+  离线生产路径由笼统"Pause for offline signing"改为**具体步骤**——`kes generate`(KES skey 留 BP,vkey 公开)→
+  据链 tip 算 period(`slot/slotsPerKESPeriod`)→ `ouro-ops kes cold-sign-script --kes-vkey <公开> --kes-period`
+  生成**唯一**脚本交操作员 → 冷机就地读 `COLD_SKEY`/`COUNTER` 出 `node.cert`(cold.skey 永不移动)→ `confirm
+  create` → `kes push` → verify。regen `packaging/bundle-manifest.json`(SKILL.md 内嵌,drift 闸重新对齐)。
+  **注:deploy 半边(deploy `SKILL.md` + `deploy cold-sign-script`)待 p4-2,故此项 [~];kes 回装真 push 待 p4-6。**
 - 2026-07-12T16:20+08:00 p4-1 completed(KES 冷签脚本生成器):新 `cold_sign.rs` 纯函数
   `kes_cold_sign_script(vkey, period, cardano_cli, generated_at)` 生成**自包含 bash 脚本**——顶部冷环境变量
   (`COLD_SKEY`/`COUNTER`/`OUT`,可 export 覆盖)、内嵌**公开** KES vkey(引号 heredoc,不展开)+ period,跑
@@ -600,6 +606,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p4-3 | stack: rust | command: cargo test -q committed_manifest_matches_embedded | result: pass | note:
+  SKILL.md 改动后 regen `ouro-ops manifest show > packaging/bundle-manifest.json`,drift 闸(decision_hash
+  等 5 键)重新对齐通过——证明离线冷签决策树已进内嵌 bundle。deploy 半边待 p4-2。
 - p4-1 | stack: rust | command: cargo test -q cold_sign | result: pass | note: 4 单测——嵌公开数据+跑
   issue-op-cert(era-neutral,无 conway 前缀)/拒签名密钥(JSON skey + bech32 `kes_sk1`)/拒非 KES vkey
   (缺 cborHex)/输出无 `SigningKey` 指纹。build 绿。

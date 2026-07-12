@@ -11,9 +11,17 @@ Rotate KES by generating BP-local KES vkey metadata and installing opcert-only p
 Production path (cold key kept OFFLINE — preferred):
 - Validate spec with `ouro-ops spec validate`.
 - Inspect counters with `ouro-ops kes counter status`.
-- Generate BP-local KES vkey metadata with `ouro-ops kes generate`.
-- Pause for offline certificate signing outside the agent context.
-- Request a human confirmation with `ouro-ops confirm create`.
+- Generate a fresh KES key on the BP with `ouro-ops kes generate`; the KES signing key stays on
+  the BP, the public KES **vkey** is what the certificate is issued for.
+- Compute the target KES period from the live chain tip: `slot / slotsPerKESPeriod` (query the tip
+  over dispatch; read `slotsPerKESPeriod` from shelley-genesis).
+- Generate the offline signing script with
+  `ouro-ops kes cold-sign-script --kes-vkey <public kes.vkey> --kes-period <period>`. It embeds ONLY
+  public data (the vkey + period); it contains NO private key. Hand this ONE script to the operator.
+- The operator carries the script to the AIR-GAPPED machine and runs it there. It reads `cold.skey`
+  and the opcert counter IN PLACE (paths set via `COLD_SKEY=`/`COUNTER=`/`OUT=`) and issues
+  `node.cert`. cold.skey never moves; only the public `node.cert` (and advanced counter) come back.
+- Request a human confirmation with `ouro-ops confirm create` before installing.
 - Install only `node.cert` with `ouro-ops kes push`.
 - Verify status with `ouro-ops status --diff-spec`.
 
