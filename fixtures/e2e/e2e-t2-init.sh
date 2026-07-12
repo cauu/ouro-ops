@@ -45,32 +45,40 @@ dex bash -c 'cat /tmp/boot.pub > /home/boot/.ssh/authorized_keys && chown boot:b
 dex id ouro-exec >/dev/null 2>&1 && fail "bare target already has ouro-exec (fixture not bare)"
 pass "bare target up; sudo user 'boot' reachable; no ouro base present"
 
-echo "[init] run ouro-ops init from the host (bootstrap over SSH, pushes the linux binary)"
 export OURO_HOME="$WORK/ouro-home"; mkdir -p "$OURO_HOME/credentials"
 cp "$WORK/bootstrap" "$OURO_HOME/credentials/boot"; chmod 600 "$OURO_HOME/credentials/boot"
-OUT=$(OURO_HOME="$OURO_HOME" ./target/debug/ouro-ops init \
+initcmd() { OURO_HOME="$OURO_HOME" ./target/debug/ouro-ops init \
   --host 127.0.0.1 --port "$PORT" --bootstrap-user boot --bootstrap-key creds://boot \
-  --control-pubkey "$WORK/control.pub" --ouro-binary "$OURO_BIN_LINUX" 2>&1) \
-  || fail "init exited non-zero: $OUT"
-echo "$OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["data"]["manifest"]["ok"], d; assert d["changed"], d' \
-  || fail "init manifest not ok/changed: $OUT"
-pass "init completed; install manifest ok"
+  --control-pubkey "$WORK/control.pub" --ouro-binary "$OURO_BIN_LINUX" "$@"; }
 
-echo "[init] host key pinned (p3-3) into the ouro known_hosts"
+echo "[init] --expected-host-key MISMATCH refuses BEFORE any write (first-hop MITM defense)"
+if initcmd --expected-host-key "SHA256:bogusbogusbogusbogusbogusbogusbogusbogus00" >/dev/null 2>&1; then
+  fail "init did NOT refuse a mismatched --expected-host-key"
+fi
+# The fresh box must be UNTOUCHED — the refusal happened before provisioning wrote anything.
+dex id ouro-exec >/dev/null 2>&1 && fail "mismatched init still provisioned (verify was NOT before writes)"
+dex test -e /usr/local/bin/ouro-ops && fail "mismatched init still pushed the binary"
+pass "mismatched expected host key refused with ZERO writes to the target"
+
+echo "[init] run ouro-ops init with the CORRECT expected host key (also proves pin-only-matching)"
+# The real ed25519 host key fingerprint, captured out-of-band (here: directly from the box).
+REAL_FP=$(ssh-keyscan -T 5 -t ed25519 -p "$PORT" 127.0.0.1 2>/dev/null | ssh-keygen -lf - 2>/dev/null | awk '{print $2}')
+[ -n "$REAL_FP" ] || fail "could not capture the target's real host key fingerprint"
+OUT=$(initcmd --expected-host-key "$REAL_FP" 2>&1) || fail "init (correct expected key) exited non-zero: $OUT"
+echo "$OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["data"]["manifest"]["ok"], d' \
+  || fail "init manifest not ok: $OUT"
+pass "init completed with verified host key; install manifest ok"
+
+echo "[init] host key pinned (p3-3), and ONLY the matching key was pinned (not every scanned key)"
 echo "$OUT" | python3 -c 'import json,sys; assert json.load(sys.stdin)["data"]["pinned_host_key"], "no pinned_host_key"' \
   || fail "init did not report a pinned host key"
 grep -q "\[127.0.0.1\]:$PORT" "$OURO_HOME/known_hosts" 2>/dev/null \
   || fail "target host key not pinned into $OURO_HOME/known_hosts"
-pass "host key pinned into ouro known_hosts"
-
-echo "[init] --expected-host-key MISMATCH is refused (first-hop MITM defense)"
-if OURO_HOME="$OURO_HOME" ./target/debug/ouro-ops init \
-     --host 127.0.0.1 --port "$PORT" --bootstrap-user boot --bootstrap-key creds://boot \
-     --control-pubkey "$WORK/control.pub" --ouro-binary "$OURO_BIN_LINUX" \
-     --expected-host-key "SHA256:bogusbogusbogusbogusbogusbogusbogusbogus00" >/dev/null 2>&1; then
-  fail "init did NOT refuse a mismatched --expected-host-key"
-fi
-pass "init refused a mismatched expected host key"
+# The box offers rsa/ecdsa/ed25519 (ssh-keygen -A); with --expected-host-key only the ONE
+# matching entry must be pinned, not all three.
+KH_ENTRIES=$(grep -c "\[127.0.0.1\]:$PORT" "$OURO_HOME/known_hosts")
+[ "$KH_ENTRIES" = 1 ] || fail "expected exactly 1 pinned key (the matching one), got $KH_ENTRIES"
+pass "host key pinned; only the expected-matching key was written (1 entry)"
 
 echo "[init] baseline installed on the (formerly bare) target"
 dex id ouro-exec >/dev/null 2>&1 || fail "ouro-exec not created"

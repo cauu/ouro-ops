@@ -29,14 +29,14 @@
     "upgrade/scripts/rollback.sh": "a69ed01338e46c8aa1169919f71ab89cce39a8d37ed10b844c593b5b77e04971",
     "upgrade/scripts/rollout.sh": "5096f65db31ee3a615452dc22d8f9138f8a06103333a06472b181614617741ca",
     "upgrade/scripts/run.sh": "c09b41c0fe455c5e96b36d743c0ad58d637843ce501b621979b9c1b8c9022ba9",
-    "upgrade/scripts/upgrade-one.sh": "12800fe5c8bc7ce204a770ba7a57e4dc293c3139bc11c98ba9adb87bd6d43b56",
+    "upgrade/scripts/upgrade-one.sh": "4f1838a1b7270e2d184057f65e54d85f8769ace5848bd6669fff5d51e8cebbc0",
     "upgrade/scripts/verify.sh": "87cead3bbee5f8427210237240580ddcf6bc2c4d721868a283d133cfe4d2e7d1"
   },
   "decision_hash": "3494ee36af45f850e56f2673f26ad18fe434b999587d0584dc05e2d687efb690",
-  "embedded_digest": "0ae6a16d4e76c6806b411f99e885ae50fd4a7a7a5c8671c75bb4f56f295b93ec",
+  "embedded_digest": "3d5ffe3011294f32546be0fe98abec334e894a42a3a1070b2772a605aa49f412",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
   "schema_hash": "064373a060a04b84cdaf0b7f0f44a78e2d6731436116236e80a42c8976972125",
-  "skills_hash": "51f5a7d7e7ed83dab1fc0c6e19ce0b01eebe3f660fcdd8f1c558ac0cf963eb71"
+  "skills_hash": "e0b6227191b94072bf3afc760a46de173fae6800b77e3e97db809f053fb92714"
 }

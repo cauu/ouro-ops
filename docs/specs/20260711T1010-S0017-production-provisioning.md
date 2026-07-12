@@ -405,6 +405,17 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T03:30+08:00 多方代码评审(claude+codex+cursor,`code_review/S0017-impl/`)+ 按用户两条原则
+  (不为极小概率过度防御、只改 ≥2 agent 提出的)择要修复 3 项:
+  ① **pin_host_key 只写匹配 key**(2/3):`fingerprint_of` 逐条指纹,给 `--expected-host-key` 时仅保留匹配条目
+    (原来 any-match 却 append-all,MITM 可夹带额外 key)。
+  ② **init 先验 host key 再动手**(3/3):给 `--expected-host-key` 时在 `provision::execute` **之前** pin+verify,
+    不符即拒、目标零写入(原来在 provision 之后才验)。
+  ③ **容器升级生产入口穿透**(1/3 codex,但属用户 compose 路径真 bug、改动极小):`upgrade-one.sh` 容器分支与
+    marker no-op 加 `exit 0`,不再掉进 bare/systemd 段(`ouro_emit_ok` 不 exit 导致的双 emit)。
+  验证:cargo 48 pass;init e2e 加断言并通过——**mismatch 零写入**(ouro-exec/二进制均未落地)+ **仅钉入匹配 key
+  (known_hosts 恰 1 条,非全部 3 个 host key)**;bare 升级 e2e(rollout)回归通过(bp1 44→249 + forge,顺序/
+  quorum/lock/rollback 全绿)。regen bundle-manifest。评审其余项按用户原则(≥2 且非过度防御)不改,记录在案。
 - 2026-07-12T02:15+08:00 p3-2 + p3-3 completed(主机密钥 pin + 首跳认证):`ConfigPaths` 加
   `known_hosts=~/.ouro/known_hosts`;`ssh.rs` 的 `tool_run_argv`/`execute` 加 known_hosts 形参,dispatch 由
   `StrictHostKeyChecking=accept-new` 改为 `UserKnownHostsFile=<pinned> + StrictHostKeyChecking=yes`(**去 TOFU**,

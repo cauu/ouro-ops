@@ -175,6 +175,16 @@ fn run_init(args: &[String]) -> Result<()> {
 
     let target = BootstrapTarget { host: host.clone(), port, user };
     let transport = BootstrapTransport::new(dry_run);
+
+    // p3-3: when an out-of-band fingerprint is supplied, authenticate the host BEFORE writing
+    // anything — pin+verify first, so a first-hop MITM (whose key won't match) is refused before
+    // any privileged provisioning step runs. Without `--expected-host-key` the pin is TOFU and
+    // happens AFTER a successful provision (nothing to authenticate against yet).
+    let mut pinned_fp = None;
+    if expected_host_key.is_some() && !dry_run {
+        pinned_fp = Some(pin_host_key(&host, port, &paths.known_hosts, expected_host_key)?);
+    }
+
     let manifest = provision::execute(
         &transport,
         &target,
@@ -184,13 +194,11 @@ fn run_init(args: &[String]) -> Result<()> {
         &ouro_binary,
     )?;
 
-    // p3-3: pin the target host key so later dispatch (StrictHostKeyChecking=yes) enforces it.
-    // Only after a successful provision, and never in dry-run.
-    let pinned_fp = if manifest.ok && !dry_run {
-        Some(pin_host_key(&host, port, &paths.known_hosts, expected_host_key)?)
-    } else {
-        None
-    };
+    // TOFU pin (only when no expected fingerprint was pre-verified above): after a successful
+    // provision, capture and pin the target host key so later dispatch enforces it.
+    if pinned_fp.is_none() && manifest.ok && !dry_run {
+        pinned_fp = Some(pin_host_key(&host, port, &paths.known_hosts, None)?);
+    }
 
     output::print_json(&ToolOutput::ok("ouro.init", manifest.ok && !dry_run).with_data(json!({
         "manifest": manifest,
@@ -214,6 +222,25 @@ fn run_init(args: &[String]) -> Result<()> {
 /// connection against MITM; without it the pin is trust-on-first-use — good against LATER key
 /// swaps), then writes it (idempotently) into the ouro-managed known_hosts. Returns the pinned
 /// key's fingerprint.
+fn fingerprint_of(entry: &str) -> Option<String> {
+    // Fingerprint a single known_hosts entry so each key's fingerprint is unambiguously its own
+    // (fixes the "match one, pin all" flaw — pairing by position across ssh-keygen output is
+    // fragile). Returns the SHA256 token, e.g. "SHA256:abc…".
+    let mut kg = Command::new("ssh-keygen")
+        .args(["-l", "-f", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    kg.stdin.take()?.write_all(format!("{entry}\n").as_bytes()).ok()?;
+    let out = kg.wait_with_output().ok()?;
+    String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .find(|t| t.starts_with("SHA256:"))
+        .map(str::to_string)
+}
+
 fn pin_host_key(host: &str, port: u16, known_hosts: &std::path::Path, expected: Option<&str>) -> Result<String> {
     let scan = Command::new("ssh-keyscan")
         .args(["-T", "5", "-p", &port.to_string(), host])
@@ -229,37 +256,39 @@ fn pin_host_key(host: &str, port: u16, known_hosts: &std::path::Path, expected: 
             "ssh-keyscan captured no host key for {host}:{port} (is sshd reachable?)"
         )));
     }
-    // Fingerprint the captured key(s) via ssh-keygen.
-    let mut kg = Command::new("ssh-keygen")
-        .args(["-l", "-f", "-"])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| OuroError::Validation(format!("ssh-keygen failed to run: {e}")))?;
-    kg.stdin.take().unwrap().write_all(scanned.as_bytes())?;
-    let fp_out = kg.wait_with_output()?;
-    let fingerprints = String::from_utf8_lossy(&fp_out.stdout);
-    // "256 SHA256:abc… host (ED25519)" -> pull the SHA256:… token(s).
-    let fps: Vec<&str> = fingerprints
-        .split_whitespace()
-        .filter(|t| t.starts_with("SHA256:"))
-        .collect();
-    let primary = fps.first().copied().unwrap_or("unknown").to_string();
+    let norm = |s: &str| s.trim().trim_start_matches("SHA256:").trim_start_matches("sha256:").to_string();
 
+    // Fingerprint each entry INDEPENDENTLY; when an expected fingerprint is given, KEEP ONLY the
+    // entries whose own fingerprint matches it. A MITM presenting the genuine key alongside an
+    // extra attacker key therefore cannot get the attacker key pinned.
+    let mut kept: Vec<(&str, String)> = Vec::new();
+    let mut seen_fps: Vec<String> = Vec::new();
+    for e in &entries {
+        let Some(fp) = fingerprint_of(e) else { continue };
+        seen_fps.push(fp.clone());
+        match expected {
+            Some(exp) if norm(&fp) == norm(exp) => kept.push((*e, fp)),
+            Some(_) => {}       // non-matching key type — do NOT pin it
+            None => kept.push((*e, fp)), // no expected fingerprint => TOFU: pin what was offered
+        }
+    }
     if let Some(exp) = expected {
-        let norm = |s: &str| s.trim().trim_start_matches("SHA256:").trim_start_matches("sha256:").to_string();
-        let want = norm(exp);
-        let ok = fps.iter().any(|f| norm(f) == want);
-        if !ok {
+        if kept.is_empty() {
             return Err(OuroError::Validation(format!(
                 "host key fingerprint mismatch for {host}:{port} — expected {exp}, got {}. \
                  REFUSING to pin (possible MITM).",
-                fps.join(", ")
+                seen_fps.join(", ")
             )));
         }
     }
+    if kept.is_empty() {
+        return Err(OuroError::Validation(format!(
+            "could not fingerprint any host key for {host}:{port}"
+        )));
+    }
+    let primary = kept[0].1.clone();
 
-    // Idempotent write: drop any prior entry for this host, then append the freshly scanned key.
+    // Idempotent write: drop any prior entry for this host, then append only the kept key(s).
     if let Some(parent) = known_hosts.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -274,7 +303,7 @@ fn pin_host_key(host: &str, port: u16, known_hosts: &std::path::Path, expected: 
     if !existing.is_empty() && !existing.ends_with('\n') {
         existing.push('\n');
     }
-    for e in &entries {
+    for (e, _) in &kept {
         existing.push_str(e);
         existing.push('\n');
     }

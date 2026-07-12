@@ -39,7 +39,7 @@ if [ "$NODE_HOST" = 1 ]; then
   # cardano-cli lives INSIDE the container, so the host-side tip pre-check below would
   # spuriously fail — the container branch does its own convergence verification instead.
   if [ -f "$MARKER" ]; then
-    ouro_emit_ok false "node already rolling-upgraded"
+    ouro_emit_ok false "node already rolling-upgraded"; exit 0
   fi
   PRE_PID="$(ouro_node_pid)"
   [ -n "$PRE_PID" ] || ouro_emit_error 30 "node_not_running" "expected a running node on $MACHINE before upgrade"
@@ -50,7 +50,9 @@ if [ "$NODE_HOST" = 1 ]; then
     # Container upgrade = image re-pin + RECREATE from the spec-DECLARED image (a host-binary
     # swap under a container is a silent no-op). Compose-managed containers converge the
     # compose file (the deployment's source of truth — else the next `up` rolls the node
-    # back); plain-run containers fail closed inside ouro_node_upgrade_container.
+    # back); plain-run containers fail closed inside ouro_node_upgrade_container. This branch
+    # is TERMINAL — it must exit, NOT fall through to the bare/systemd path below (whose
+    # host-side cardano-cli precheck would spuriously fail on a container host).
     WANT="$(python3 - "$SPEC" "$MACHINE" <<'PY' 2>/dev/null || true
 import yaml,sys
 s=yaml.safe_load(open(sys.argv[1])); mid=sys.argv[2]
@@ -65,7 +67,7 @@ PY
     # Idempotency by ground truth: already running the declared image's content id => no-op.
     if [ -n "$(ouro_image_id_of "$MODE" "$WANT")" ] \
        && [ "$(ouro_container_image_id "$MODE" "$CID")" = "$(ouro_image_id_of "$MODE" "$WANT")" ]; then
-      ouro_emit_ok false "node container already on declared image $WANT"
+      ouro_emit_ok false "node container already on declared image $WANT"; exit 0
     fi
     ouro_node_upgrade_container "$MODE" "$CID" "$WANT"
     sleep 2
@@ -74,6 +76,7 @@ PY
     [ "$NEW_PID" != "$PRE_PID" ] || ouro_emit_error 30 "container_not_recreated" "node PID unchanged after container upgrade on $MACHINE"
     mkdir -p "$STATE_DIR"; touch "$MARKER"
     ouro_emit_ok true "node container recreated onto declared image $WANT (pid $PRE_PID->$NEW_PID)"
+    exit 0
   fi
 
   # bare/systemd: the new binary is already staged on the host — record the pre-restart
