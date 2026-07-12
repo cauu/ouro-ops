@@ -353,7 +353,7 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   生成命令 + 每二进制 golden test;脚本离线可跑;对 bed(cold 同机)验证整条往返
 - [x] p4-6 (new) **真 KES generate/export/push 前置**(替换占位):目标侧真 `key-gen-KES` + `kes.skey` 原子保留 +
   真 `kes.vkey` 认证导出 + 真 opcert 格式/哈希解析校验 + 目标侧安装 `node.cert` + 托管感知 restart + rollback
-- [ ] p4-7 (new) **冷 counter 权威 + 恢复语义**:文件格式/属主/锁/原子备份/期望前后值/断电后恢复;在线 bundle
+- [x] p4-7 (new) **冷 counter 权威 + 恢复语义**:文件格式/属主/锁/原子备份/期望前后值/断电后恢复;在线 bundle
   含 genesis hash/tip slot/slotsPerKESPeriod/period/采集时间/最大年龄;安装前重查链校验单调
 - [ ] p4-8 (new) **签名 bundle 协议**:发布签名+版本 pin 的不可变模板独立装冷机 + 签名 manifest 公开数据 +
   独立信道摘要核对 + 人工 view/审读 + 断网 confinement + 全新输出目录 + 回传文件白名单
@@ -405,6 +405,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-12T21:20+08:00 p4-7 completed(冷 counter 权威 + period 时效防护,克制版):三处硬化——① KES 冷签脚本
+  (p4-1 生成器)在 issue-op-cert **前**原子备份 counter(`$COUNTER.ouro-bak`,断电/中断可恢复),证书写
+  `$OUT.ouro-partial` 再 `mv` 原子落地,签后校验 counter **确已前进**(未进则还原备份并 abort)。② generate-offline
+  盖**时效 bundle**(`kes.bundle.json`:period/tip_slot/slots_per_kes_period/genesis 指纹/collected_at/
+  max_age_periods)。③ push-offline **装前重查链**算当前 period,超 `max_age_periods` 窗口即拒(`kes_period_stale`,
+  链回退到 period 下方则 `kes_period_future`)——把"陈旧 opcert 装上去节点不出块"挡在破坏性安装**之前**。
+  **克制说明:** counter 文件格式/属主/并发锁不重造(cardano-cli 自管 + 单操作员),只做真正防重放/防陈旧的备份+时效
+  ——符合"不为极小概率过度防御"。确定性桩测 + 真 bed 往返双证。
 - 2026-07-12T20:55+08:00 p4-5 completed(cardano-cli 版本 pin + era 纪律 golden 闸,克制不过度):`detect/cardano-cli.sh`
   只读探测(闭合投影:present/version/major.minor.patch/supported/validated_version;pin `SUPPORTED_MAJOR_MIN=10`
   + `VALIDATED_VERSION=10.14.0.0`)供 agent 操作前预检目标 cardano-cli。`test_cardano_cli_matrix.py` golden 冻结**CLI
@@ -652,6 +660,12 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p4-7 | stack: python | command: python3 tests/test_kes_period_staleness.py | result: pass | note: 确定性——老 period
+  bundle + 桩链 tip 领先 → push-offline 装前拒(exit 30 `kes_period_stale`)、live opcert **未动**;已核可证伪。
+- p4-7 | stack: rust | command: cargo test -q cold_sign | result: pass | note: 生成器新单测断言 counter 原子备份 +
+  `$OUT_TMP`→`mv` 原子落地 + 签后 counter-前进校验;共 8 pass。
+- p4-7 | stack: e2e | command: make e2e-t2-offline-rotation | result: pass | note: 真 bed 往返在 counter 备份 +
+  时效 bundle + 装前重查下仍全绿(period 新鲜→ok→装,counter 前进,节点重启出块)。
 - p4-5 | stack: python | command: python3 tests/test_cardano_cli_matrix.py | result: pass | note: golden——opcert
   era-neutral(kes 冷签脚本 + rotate/generate-offline/push-offline 均不 era-前缀 issue-op-cert)/ tx era-scoped
   (deploy 冷签脚本 `conway transaction witness`;register-build pin `cardano-cli conway`)/ 版本 pin 存在。

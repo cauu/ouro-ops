@@ -49,6 +49,20 @@ mv -f "$STAGE/kes.skey.staged.tmp" "$STAGE/kes.skey.staged"
 # Record the period this staged key targets, so push-offline can flag a stale hand-off.
 printf '%s' "$PERIOD" > "$STAGE/kes.period.staged"
 
+# p4-7 freshness bundle: the online snapshot the period was computed against. push-offline
+# re-queries the chain and refuses to install if the period has since gone stale (the node would
+# reject a cert issued for a period too far in the past). max_age_periods is the policy window.
+GENESIS_FP="$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$DEVNET/shelley-genesis.json")"
+COLLECTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+MAX_AGE_PERIODS="${OURO_KES_MAX_AGE_PERIODS:-2}"
+python3 - "$STAGE/kes.bundle.json" "$PERIOD" "$SLOT" "$SPK" "$GENESIS_FP" "$COLLECTED_AT" "$MAX_AGE_PERIODS" <<'PY'
+import json, sys
+path, period, slot, spk, gfp, collected_at, max_age = sys.argv[1:8]
+json.dump({"period": int(period), "tip_slot": int(slot), "slots_per_kes_period": int(spk),
+           "genesis_fingerprint": gfp, "collected_at": collected_at,
+           "max_age_periods": int(max_age)}, open(path, "w"))
+PY
+
 # The public vkey content (JSON envelope) + a stable content hash go out in the tool output.
 # This is PUBLIC material — it is what `ouro-ops kes cold-sign-script --kes-vkey` consumes.
 VKEY_CONTENT="$(cat "$STAGE/kes.vkey.staged")"

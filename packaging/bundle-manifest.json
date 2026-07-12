@@ -15,8 +15,8 @@
     "detect/scripts/cardano-cli.sh": "30882b11ba1aab65039a95f0fa52fbbb4a55910b36032693178c1dce631cf195",
     "detect/scripts/runtime.sh": "63106a5b42fa467c60bf7182062d8a4dc9648e002348a13b467a6c01aa4d5940",
     "kes-rotation/SKILL.md": "8ade80d1b68ea8bc802f6c01dd4bb47e37367961de103040f5b593fd49f82797",
-    "kes-rotation/scripts/generate-offline.sh": "9afea9641558b5002e60b48105d71039ca4f108a24e824b1ecb4c6533316a54d",
-    "kes-rotation/scripts/push-offline.sh": "d1b88a3da1749a573702e3bd25e52cae742f626aa468a7bb30e90cf0cf79f66c",
+    "kes-rotation/scripts/generate-offline.sh": "b69b05ee47b795cf1f8bf3fd1905ab774bb8ba9dc574e071e49503dfc723b02c",
+    "kes-rotation/scripts/push-offline.sh": "26a9243b9b6ed5e9632bc36755ae1885f5f9a91c184c209f6ef016970fc77e89",
     "kes-rotation/scripts/rotate.sh": "9a6a39d6c8022262be909cfe0866443f1caf93d4ac70205047d9d2efa6c38a6c",
     "lib/ouro-lib.sh": "a0d4b56879e33e5b473f1395f0ef0171f8ca1f6ede0a1fc65c84d56e32527aca",
     "observability/SKILL.md": "5304d5311eda7fe4feb9588167e1d11adb3a275c6738708b6a464e2cab81d61e",
@@ -38,10 +38,10 @@
     "upgrade/scripts/verify.sh": "87cead3bbee5f8427210237240580ddcf6bc2c4d721868a283d133cfe4d2e7d1"
   },
   "decision_hash": "624e2edaf3e3461ee3aed68b2ab001c978523fd30dc59c5eb8f40edc0067f697",
-  "embedded_digest": "3dd5e2b59b19612f0906be54dff90b04578f40d3bcc649ab27c7c54bb4a307e6",
+  "embedded_digest": "2952c86113969074e670afa7bf86375d9bab6829541790b11ca866507becf744",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
   "schema_hash": "064373a060a04b84cdaf0b7f0f44a78e2d6731436116236e80a42c8976972125",
-  "skills_hash": "4a90288b740278ca146549b5a80057895b5c11d4fb9fff82290fe91f4224bc4b"
+  "skills_hash": "10cf36193d64c1cdb0652b4bed5aead4f0e0f43469446fb6dc60d45f000ebc02"
 }

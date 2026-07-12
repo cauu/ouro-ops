@@ -92,15 +92,28 @@ cat > "$VKEY" <<'OURO_KES_VKEY'
 {kes_vkey}
 OURO_KES_VKEY
 
-# issue-op-cert consumes the counter and writes counter+1 back (persisted, monotonic).
+# Counter authority + recovery (p4-7): the opcert issue counter is the anti-replay authority and
+# lives here with the cold key. Back it up BEFORE issuing so a crash mid-write is recoverable, and
+# confirm afterwards that it actually advanced (issue-op-cert consumes it and writes counter+1).
+cp -f "$COUNTER" "$COUNTER.ouro-bak"
+BEFORE="$(cat "$COUNTER")"
+
+# Write the certificate to a temp path then atomically rename — never a half-written $OUT.
+OUT_TMP="$OUT.ouro-partial"
 "$CARDANO_CLI" node issue-op-cert \
   --kes-verification-key-file "$VKEY" \
   --cold-signing-key-file "$COLD_SKEY" \
   --operational-certificate-issue-counter-file "$COUNTER" \
   --kes-period "$KES_PERIOD" \
-  --out-file "$OUT"
+  --out-file "$OUT_TMP"
 
-echo "Wrote operational certificate: $OUT"
+if [ "$(cat "$COUNTER")" = "$BEFORE" ]; then
+  echo "counter did not advance; restoring backup and aborting" >&2
+  cp -f "$COUNTER.ouro-bak" "$COUNTER"; rm -f "$OUT_TMP"; exit 1
+fi
+mv -f "$OUT_TMP" "$OUT"
+
+echo "Wrote operational certificate: $OUT (counter advanced; backup at $COUNTER.ouro-bak)"
 echo "Bring $OUT back online and install it with: ouro-ops kes push"
 "#,
         kes_period = kes_period,
@@ -274,6 +287,17 @@ mod tests {
         assert!(s.contains("KesVerificationKey_ed25519_kes"));
         // cold.skey is referenced by PATH, read in place — never copied/moved
         assert!(s.contains("$COLD_SKEY") && !s.contains("cp \"$COLD_SKEY\""));
+    }
+
+    #[test]
+    fn kes_script_backs_up_counter_and_writes_atomically() {
+        // p4-7: the counter (anti-replay authority) is backed up before issuing and the cert is
+        // written to a temp path then renamed — never a half-written $OUT, and recoverable on crash.
+        let s = kes_cold_sign_script(REAL_VKEY, 5, "cardano-cli", "T").unwrap();
+        assert!(s.contains("cp -f \"$COUNTER\" \"$COUNTER.ouro-bak\""), "counter not backed up");
+        assert!(s.contains("--out-file \"$OUT_TMP\"") && s.contains("mv -f \"$OUT_TMP\" \"$OUT\""),
+                "cert not written atomically via temp + rename");
+        assert!(s.contains("counter did not advance"), "no post-issue counter-advance check");
     }
 
     #[test]

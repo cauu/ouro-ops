@@ -43,6 +43,32 @@ try: print(json.load(sys.stdin).get("block",-1))
 except: print(-1)' 2>/dev/null || echo -1
 }
 
+# p4-7 staleness guard: re-query the chain and refuse a cert whose target period has gone stale
+# since generate-offline captured it (a cert issued for a period too far in the past will not let
+# the node forge). Uses the freshness bundle generate-offline staged.
+if [ -s "$STAGE/kes.bundle.json" ]; then
+  CUR_SLOT=$(cardano-cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin)["slot"])
+except: print(-1)' 2>/dev/null || echo -1)
+  STALE=$(python3 - "$STAGE/kes.bundle.json" "$CUR_SLOT" <<'PY'
+import json, sys
+b = json.load(open(sys.argv[1])); cur = int(sys.argv[2])
+spk = int(b["slots_per_kes_period"]); per = int(b["period"]); maxage = int(b["max_age_periods"])
+if cur < 0 or spk <= 0:
+    print("unknown"); sys.exit(0)
+cur_period = cur // spk
+if cur_period < per:            print("future")     # chain rolled back below the issued period
+elif cur_period - per > maxage: print("stale")      # too old to install
+else:                           print("ok")
+PY
+)
+  case "$STALE" in
+    stale)   ouro_emit_error 30 "kes_period_stale" "staged opcert period is stale vs current chain period; regenerate" ;;
+    future)  ouro_emit_error 30 "kes_period_future" "current chain period is below the issued period; refusing" ;;
+    unknown) ouro_emit_error 30 "kes_precheck_failed" "could not re-query the chain period for the staleness check" ;;
+  esac
+fi
+
 BEFORE=$(ondisk_counter "$POOL/opcert.cert")
 # The pre-install ground-truth read MUST succeed, else "AFTER > BEFORE" could false-pass.
 [ "${BEFORE:--1}" -ge 0 ] 2>/dev/null || ouro_emit_error 30 "kes_precheck_failed" "could not read on-disk opcert counter before install"
