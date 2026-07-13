@@ -12,9 +12,12 @@ MARKER="$STATE_DIR/synced-$MACHINE"
 
 MODE="$(python3 - "$SPEC" <<'PY'
 import sys, yaml
-print(yaml.safe_load(open(sys.argv[1]))["sync"]["mode"])
+print((yaml.safe_load(open(sys.argv[1])).get("sync") or {}).get("mode") or "")
 PY
 )"
+# p5-12: sync is operation-scoped/optional in the spec — this script is its consumer, so an
+# absent block fails closed HERE with an actionable message instead of a KeyError.
+[ -n "$MODE" ] || ouro_emit_error 10 "spec_sync_missing" "deploy/sync requires sync.mode in the spec (it is optional for other operations) — add sync: {mode: genesis|mithril}"
 
 if [[ "$MODE" == "mithril" ]]; then
   DIGEST="${OURO_MITHRIL_DIGEST:-}"

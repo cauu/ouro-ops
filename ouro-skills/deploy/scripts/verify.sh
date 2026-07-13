@@ -28,7 +28,13 @@ def add(name, passed, severity="critical", exit_class=30, rollback_safe=False, d
 
 expected_magic = spec["pool"]["network_magic"]
 expected_genesis = spec["pool"]["genesis_hashes"]["shelley"]
-expected_version = spec["node_version"]
+# p5-12: node_version/sync are operation-scoped — deploy verify consumes them, so a deploy
+# spec that omits them fails closed here (they are optional only for non-deploy operations).
+expected_version = spec.get("node_version")
+if not expected_version:
+    print(json.dumps({"status": "error", "exit_class": 10, "error": "spec_node_version_missing",
+                      "detail": "deploy/verify requires node_version in the spec"}))
+    sys.exit(10)
 topology_mode = spec["topology_mode"]
 machines = snapshot["machines"]
 
@@ -72,7 +78,7 @@ for machine in machines:
         add(f"{mid}.forging", machine.get("forging_enabled") is True, detail="forging enabled")
         add(f"{mid}.kes_remaining", kes.get("remaining_periods", 0) > 30, "warning", 20, True, "KES remaining periods above threshold")
 
-if spec["sync"]["mode"] == "mithril":
+if (spec.get("sync") or {}).get("mode") == "mithril":
     mithril = snapshot.get("mithril", {})
     add("mithril.digest", bool(mithril.get("snapshot_digest")), detail="Mithril snapshot digest recorded")
     add("mithril.certificate_chain", mithril.get("certificate_chain_valid") is True, detail="Mithril certificate chain valid")

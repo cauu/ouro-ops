@@ -9,21 +9,36 @@ pub struct PoolSpec {
     pub spec_version: u8,
     pub pool: Pool,
     pub topology_mode: TopologyMode,
-    pub node_version: String,
+    /// S0017 p5-12 — operation-scoped: only config render and the upgrade flow consume it.
+    /// Absent means "not stated"; the operations that need it fail closed at their entry
+    /// (`require_node_version`) instead of the generator inventing a placeholder that a later
+    /// upgrade would treat as a target version.
+    #[serde(default)]
+    pub node_version: Option<String>,
     pub machines: Vec<Machine>,
-    pub sync: Sync,
+    /// S0017 p5-12 — operation-scoped: only deploy/sync (and its verify) consume it.
+    #[serde(default)]
+    pub sync: Option<Sync>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Pool {
-    pub ticker: String,
+    /// S0017 p5-12 — ticker/metadata/economics are registration-only; optional so specs for
+    /// other operations omit them instead of carrying misleading placeholders. Registration
+    /// fails closed via `registration_fields` when they are absent.
+    #[serde(default)]
+    pub ticker: Option<String>,
     pub network: Network,
     pub network_magic: u64,
     pub genesis_hashes: GenesisHashes,
-    pub metadata_url: String,
-    pub pledge_lovelace: u64,
-    pub margin: f64,
-    pub cost_lovelace: u64,
+    #[serde(default)]
+    pub metadata_url: Option<String>,
+    #[serde(default)]
+    pub pledge_lovelace: Option<u64>,
+    #[serde(default)]
+    pub margin: Option<f64>,
+    #[serde(default)]
+    pub cost_lovelace: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -170,25 +185,33 @@ impl PoolSpec {
             )));
         }
         self.pool.genesis_hashes.validate()?;
-        if self.pool.ticker.len() < 3 || self.pool.ticker.len() > 5 {
-            return Err(OuroError::Validation(
-                "pool ticker must be 3-5 characters".to_string(),
-            ));
-        }
         // S0016 p4-1 — content validation of every field the target L2 scripts interpolate.
         // Defense in depth over S0015 shell-quoting: a crafted spec is rejected at validate()
         // time, so a hostile value never reaches a rendered config, a topology file, or a
         // shell. (schema only bounds these by minLength:1 — the real gate is here.)
-        if !self.pool.ticker.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
-            return Err(OuroError::Validation(
-                "pool ticker must be uppercase alphanumeric [A-Z0-9]".to_string(),
-            ));
+        // p5-12: these fields are optional (registration-only); when PRESENT they are still
+        // fully validated — optional never means unchecked.
+        if let Some(ticker) = &self.pool.ticker {
+            if ticker.len() < 3 || ticker.len() > 5 {
+                return Err(OuroError::Validation(
+                    "pool ticker must be 3-5 characters".to_string(),
+                ));
+            }
+            if !ticker.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
+                return Err(OuroError::Validation(
+                    "pool ticker must be uppercase alphanumeric [A-Z0-9]".to_string(),
+                ));
+            }
         }
-        reject_unsafe_url("pool.metadata_url", &self.pool.metadata_url)?;
-        if !(0.0..=1.0).contains(&self.pool.margin) {
-            return Err(OuroError::Validation(
-                "pool margin must be between 0 and 1".to_string(),
-            ));
+        if let Some(url) = &self.pool.metadata_url {
+            reject_unsafe_url("pool.metadata_url", url)?;
+        }
+        if let Some(margin) = self.pool.margin {
+            if !(0.0..=1.0).contains(&margin) {
+                return Err(OuroError::Validation(
+                    "pool margin must be between 0 and 1".to_string(),
+                ));
+            }
         }
         let mut ids = BTreeSet::new();
         let mut bp_count = 0;
@@ -265,12 +288,45 @@ impl PoolSpec {
                 "at least one relay machine is required".to_string(),
             ));
         }
-        if self.sync.mode == SyncMode::Mithril && self.sync.mithril.is_none() {
-            return Err(OuroError::Validation(
-                "mithril sync requires mithril config".to_string(),
-            ));
+        if let Some(sync) = &self.sync {
+            if sync.mode == SyncMode::Mithril && sync.mithril.is_none() {
+                return Err(OuroError::Validation(
+                    "mithril sync requires mithril config".to_string(),
+                ));
+            }
         }
         Ok(())
+    }
+
+    /// p5-12 — registration is the only consumer of ticker/metadata/economics; absent fields
+    /// fail closed HERE, at the operation that needs them, with an actionable message.
+    pub fn registration_fields(&self) -> Result<(&str, &str, u64, f64, u64)> {
+        match (
+            self.pool.ticker.as_deref(),
+            self.pool.metadata_url.as_deref(),
+            self.pool.pledge_lovelace,
+            self.pool.margin,
+            self.pool.cost_lovelace,
+        ) {
+            (Some(t), Some(u), Some(p), Some(m), Some(c)) => Ok((t, u, p, m, c)),
+            _ => Err(OuroError::Validation(
+                "pool registration requires pool.ticker, metadata_url, pledge_lovelace, margin \
+                 and cost_lovelace in the spec — this spec omits them (they are optional for \
+                 non-registration operations)"
+                    .to_string(),
+            )),
+        }
+    }
+
+    /// p5-12 — node_version is consumed by config render and the upgrade flow only.
+    pub fn require_node_version(&self) -> Result<&str> {
+        self.node_version.as_deref().ok_or_else(|| {
+            OuroError::Validation(
+                "this operation requires node_version in the spec — it is optional for \
+                 operations that neither render configs nor upgrade"
+                    .to_string(),
+            )
+        })
     }
 
     pub fn resolved_non_secret_plan(&self) -> serde_json::Value {
@@ -310,10 +366,10 @@ impl PoolSpec {
                 "relays": relays,
                 "count": self.machines.len()
             },
-            "sync": {
-                "mode": self.sync.mode,
-                "mithril_enabled": self.sync.mode == SyncMode::Mithril
-            },
+            "sync": self.sync.as_ref().map(|sync| json!({
+                "mode": sync.mode,
+                "mithril_enabled": sync.mode == SyncMode::Mithril
+            })),
             "secrets": {
                 "policy": "redacted",
                 "credential_refs_present": self.credential_ref_count()
@@ -323,7 +379,8 @@ impl PoolSpec {
 
     fn credential_ref_count(&self) -> usize {
         let ssh_refs = self.machines.len();
-        let mithril_refs = usize::from(self.sync.mithril.is_some());
+        let mithril_refs =
+            usize::from(self.sync.as_ref().is_some_and(|sync| sync.mithril.is_some()));
         ssh_refs + mithril_refs
     }
 }
@@ -427,11 +484,11 @@ mod tests {
         }
 
         let mut s = valid_spec();
-        s.pool.metadata_url = "https://x/`reboot`.json".to_string();
+        s.pool.metadata_url = Some("https://x/`reboot`.json".to_string());
         assert!(s.validate().is_err(), "backtick in metadata_url rejected");
 
         let mut s = valid_spec();
-        s.pool.metadata_url = "file:///etc/passwd".to_string();
+        s.pool.metadata_url = Some("file:///etc/passwd".to_string());
         assert!(s.validate().is_err(), "non-http(s) metadata_url rejected");
 
         let mut s = valid_spec();
@@ -439,8 +496,22 @@ mod tests {
         assert!(s.validate().is_err(), "space/metachar in machine id rejected");
 
         let mut s = valid_spec();
-        s.pool.ticker = "ab;".to_string();
+        s.pool.ticker = Some("ab;".to_string());
         assert!(s.validate().is_err(), "non-alnum ticker rejected");
+
+        // p5-12: optional never means unchecked — but ABSENT is valid: a spec that omits the
+        // registration-only fields (and node_version/sync) still validates.
+        let mut s = valid_spec();
+        s.pool.ticker = None;
+        s.pool.metadata_url = None;
+        s.pool.pledge_lovelace = None;
+        s.pool.margin = None;
+        s.pool.cost_lovelace = None;
+        s.node_version = None;
+        s.sync = None;
+        assert!(s.validate().is_ok(), "operation-scoped fields may be omitted");
+        assert!(s.registration_fields().is_err(), "registration fails closed without them");
+        assert!(s.require_node_version().is_err(), "render/upgrade fails closed without it");
     }
 
     #[test]

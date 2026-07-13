@@ -102,13 +102,17 @@ impl StatusSnapshot {
                     actual: json!(machine.genesis_hash),
                 });
             }
-            if machine.sync_mode != spec.sync.mode {
-                diffs.push(SpecDiff {
-                    machine: machine.id.clone(),
-                    field: "sync_mode".to_string(),
-                    expected: json!(spec.sync.mode),
-                    actual: json!(machine.sync_mode),
-                });
+            // p5-12: sync is operation-scoped — a spec that omits it states nothing about
+            // sync mode, so there is nothing to diff against (absent ≠ mismatch).
+            if let Some(sync) = &spec.sync {
+                if machine.sync_mode != sync.mode {
+                    diffs.push(SpecDiff {
+                        machine: machine.id.clone(),
+                        field: "sync_mode".to_string(),
+                        expected: json!(sync.mode),
+                        actual: json!(machine.sync_mode),
+                    });
+                }
             }
         }
         diffs

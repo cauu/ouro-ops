@@ -66,10 +66,12 @@ pub fn generate_vkey(
         ));
     }
     fs::create_dir_all(out_dir)?;
+    // p5-12: node_version is optional — it only seasons this local metadata hash, so an
+    // omitted value is a stable sentinel, not an error.
     let vkey_hash = stable_hash(&format!(
         "{}:{}:{}",
         spec.pool.network.as_str(),
-        spec.node_version,
+        spec.node_version.as_deref().unwrap_or("unspecified"),
         machine_id
     ));
     let vkey_path = out_dir.join(format!("{machine_id}.kes.vkey.json"));

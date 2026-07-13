@@ -30,6 +30,9 @@ pub fn render_machine(
         .iter()
         .find(|candidate| candidate.id == machine_id)
         .ok_or_else(|| OuroError::Validation(format!("unknown machine {machine_id}")))?;
+    // p5-12: config render consumes node_version — fail closed before writing anything
+    // (json! would silently render it as null).
+    spec.require_node_version()?;
     let output_dir = output_root.join(machine_id);
     fs::create_dir_all(&output_dir)?;
 

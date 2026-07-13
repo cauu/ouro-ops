@@ -35,6 +35,9 @@ pub fn build_register_tx(
     out_dir: &Path,
     audit_store: &AuditStore,
 ) -> Result<RegisterTxReport> {
+    // p5-12: registration is the consumer of the optional ticker/metadata/economics — fail
+    // closed here (json! would otherwise serialize absent fields as null into the manifest).
+    spec.registration_fields()?;
     fs::create_dir_all(out_dir)?;
     let audit_id = audit_store.begin_invocation("pool/register-tx", None)?;
     let tx_hash = stable_hash(&serde_json::to_string(&spec.resolved_non_secret_plan())?);

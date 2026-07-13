@@ -707,20 +707,24 @@ function yaml(d) {
       "  genesis_hashes:",`    shelley: "${d.genesis}"`,
       `  metadata_url: "${d.meta}"`,`  pledge_lovelace: ${d.pledge}`,`  margin: ${d.margin}`,`  cost_lovelace: ${d.cost}`);
   } else {
-    // network / magic / genesis are real (derived); ticker + metadata + economics are unused here.
+    // p5-12 operation-scoped spec: registration-only fields (ticker/metadata/economics),
+    // node_version, sync and upgrade are OMITTED unless this operation consumes them — the
+    // binary fails closed at the operation that needs a missing field, so no placeholder
+    // value can ever leak into a later action.
     L.push(`  network: ${d.network}`,`  network_magic: ${d.magic}`,
-      "  genesis_hashes:",`    shelley: "${d.genesis}"`,
-      `  # placeholders — not used by ${d.op} (only registration/deploy reads these):`,
-      `  ticker: ${d.ticker}`,`  metadata_url: "${d.meta}"`,
-      `  pledge_lovelace: ${d.pledge}`,`  margin: ${d.margin}`,`  cost_lovelace: ${d.cost}`);
+      "  genesis_hashes:",`    shelley: "${d.genesis}"`);
   }
-  L.push("topology_mode: p2p",`node_version: "${d.nodever}"`,"machines:");
+  L.push("topology_mode: p2p");
+  const isUpgrade = d.op === "upgrade";
+  if (isDeploy || isUpgrade) L.push(`node_version: "${d.nodever}"`);
+  L.push("machines:");
   for (const m of d.machines) {
     L.push(`  - id: ${m.id}`,`    role: ${m.role}`);
     if (m.role==="relay") L.push(`    public_endpoint: { host: ${m.host}, port: ${m.port} }`);
     L.push(`    ssh: { host: ${m.host}, port: 22, user: ouro-exec, key_ref: "creds://${m.id}" }`);
   }
-  L.push("upgrade:",`  min_online_relays: ${d.quorum}`,"sync:",`  mode: ${d.sync}`);
+  if (isUpgrade) L.push("upgrade:",`  min_online_relays: ${d.quorum}`);
+  if (isDeploy) L.push("sync:",`  mode: ${d.sync}`);
   return L.join("\n")+"\n";
 }
 function prompt(d) {
@@ -750,8 +754,9 @@ function prompt(d) {
 `   before executing. Procedures come from skill show; this message supplies only the operation`,
 `   above and the data below.`,
 `2. Write the spec below to pool-spec.yaml. It DESCRIBES my existing pool so ouro-ops can address`,
-`   the machines; it is not a list of actions to perform (e.g. its sync/version fields are current`,
-`   state, not requests). Only step 3 acts, and only for the operation above.`,
+`   the machines; it is not a list of actions to perform, and it contains ONLY the fields this`,
+`   operation consumes (anything another operation would need is omitted on purpose). Only step 3`,
+`   acts, and only for the operation above.`,
 `---`, yaml(d).trimEnd(), `---`,
 `3. ${cmd}`,
 `   All writes go through 'ouro-ops tool run' (audited); never run node or host commands directly.`,

@@ -481,7 +481,20 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   and get their explicit go-ahead"。与 p5-10 prompt 的"token 先问人"两面一致。regen bundle-manifest;全部 python 闸 +
   69 rust 测试绿。
 
-## 4. Test and Acceptance Criteria
+- [x] p5-12 (new) **spec 字段操作域化:无关字段可省略,占位值地雷结构性消灭**(用户测 observability 时问:生成的 spec
+  与实际节点不一致有无副作用?无关字段能否省略?):核对消费图——observability 路径只消费 `machines[].ssh`,错配的
+  node_version/sync/economics 本次无副作用,**但文件活得比操作长**:遗留占位 `node_version` 会被日后 upgrade 当目标版本、
+  `min_online_relays: 0` 取消 quorum 保护、`sync: genesis` 被 deploy/sync 当动作。修法(操作域可选 + 用时缺失即
+  fail-closed):① domain.rs:ticker/metadata_url/pledge/margin/cost(仅注册消费)、node_version(仅 render/upgrade)、
+  sync(仅 deploy/sync)改 `Option` + serde default,**present 时仍全量校验**(可选≠不校验);新增 `registration_fields()`
+  / `require_node_version()` 在消费操作入口给可行动报错;② 消费点:pool.rs 注册前置 require(json! 会把 None 静默序列化
+  成 null,必须显式门);render.rs 渲染前 require;status.rs diff 只在 sync 声明时比较(absent≠mismatch);kes.rs 本地
+  元数据哈希用 "unspecified" 哨兵;③ 脚本:deploy/sync.sh 缺 sync 报 `spec_sync_missing`(exit 10),deploy/verify.sh 缺
+  node_version 报 `spec_node_version_missing`,mithril 分支容忍缺失;upgrade run/rollout 本就容忍(默认 quorum=1,
+  **比生成器原来发明的 0 更安全**);④ schema:economics 移出 pool.required,node_version/sync 移出顶层 required;
+  ⑤ web 生成器:非 deploy 操作**省略** economics/node_version/sync/upgrade(upgrade 操作保留 node_version + quorum,
+  deploy 保留全量),不再发明占位值;prompt step 2 改"spec 只含本操作消费的字段,其余刻意省略";⑥ 新 fixture
+  valid-operation-scoped.yaml 进 schema 闸 + domain 单测证"省略可 validate、注册/render 缺字段 fail-closed"。
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
 - TC-1 provisioning Model P:`ouro-ops init` 幂等(重复运行 changed=false)且输出可核对的安装清单。
@@ -526,6 +539,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T19:40+08:00 p5-12 completed(spec 字段操作域化):消费图核对(observability 只用 machines[].ssh,错配字段
+  本次无副作用但为日后 upgrade/deploy 埋雷);economics/node_version/sync 改 Option(present 仍全量校验),消费操作入口
+  fail-closed(registration_fields/require_node_version/spec_sync_missing/spec_node_version_missing),schema required
+  放宽,生成器按操作裁剪不再发明占位值。省略字段 spec 实测 validate 通过、config render 实测 exit 10 可行动报错;全部
+  python 闸 + 69 rust 测试绿,bundle-manifest 重生成。
 - 2026-07-13T18:40+08:00 p5-11 completed(confirm token 归位为运维方批准):排查出 kes×2/deploy×1 的 SKILL 自助铸 token、
   runtime SKILL 漏 token 步骤、CLI 拒绝文本教自助三处架空点,统一为 detect→告知→等显式批准→create;CLI 文本同改。
   bundle-manifest 重生成,python + rust 全绿。
@@ -871,6 +889,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-12 | stack: rust | command: cargo test(69 passed); ouro-ops spec validate --spec
+  tests/fixtures/pool-spec/valid-operation-scoped.yaml(valid:true); ouro-ops config render --spec <同上>(exit 10
+  "requires node_version… optional for operations that neither render configs nor upgrade")| result: pass | note:
+  省略 economics/node_version/sync 的 spec 通过 validate + schema 闸;消费操作 fail-closed 且报错可行动;25 个 python 闸
+  全绿(含 pool_spec_schema 新 fixture、web_generator、deploy_scripts)。
 - p5-11 | stack: python | command: 全部 25 个 tests/test_*.py; cargo test(69 passed)| result: pass | note: 四个 SKILL
   的 confirm 步骤均含"WAIT for their explicit go-ahead / Never mint a token the operator did not just approve";runtime
   SKILL 补齐 detect→approve→create→--confirm-token 三步;CLI 拒绝文本含 "OPERATOR'S approval";skill-docs 禁词闸 +
