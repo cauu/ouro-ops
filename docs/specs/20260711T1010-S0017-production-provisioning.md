@@ -529,6 +529,8 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   THIS ouro-ops v<ver>")+ 指引("If this error came from a dispatched run, the TARGET's installed ouro-ops predates
   the tool — re-run `ouro-ops init` with a newer --ouro-binary")。本地验证:控制机 health 正常解析执行(排除本地);
   改后报错文本实测含版本 + 指引。
+
+## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
 - TC-1 provisioning Model P:`ouro-ops init` 幂等(重复运行 changed=false)且输出可核对的安装清单。
