@@ -10,6 +10,7 @@ Deploy or take over one pool from a validated `pool-spec.yaml`.
 ## Decision Tree
 - PREREQUISITE — every `--dispatch` step below needs the target ONBOARDED (the confined `ouro-exec`
   principal + tool-run wrapper). If a dispatch cannot connect, onboard first: `ouro-ops skill show onboard`.
+  If you lack the target host/machine id or the operator's access, ASK the operator before dispatching.
 - New machine path: `ouro-ops spec validate` -> `deploy/preflight` -> `deploy/provision` -> `deploy/sync` -> `deploy/start` -> `deploy/verify`.
 - Existing node takeover path: `ouro-ops spec validate` -> `deploy/preflight` -> `deploy/takeover` -> `deploy/takeover-verify` -> `deploy/start` -> `deploy/verify`.
 - Mithril sync requires snapshot digest and certificate-chain evidence before `deploy/sync` may pass.

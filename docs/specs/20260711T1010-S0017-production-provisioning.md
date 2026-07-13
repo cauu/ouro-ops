@@ -439,6 +439,12 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   运维方的钥**(导出其公钥作 --control-pubkey,私钥置于 `creds://<name>` 且 `ssh.key_ref` 指向同一凭据,一钥兼 bootstrap+
   dispatch);**连不上就停下问运维方/引导其配好访问,绝不代其造钥**(新增停机条件)。init `--help` 用法同步更正。
 
+- [x] p5-7 (new) **把"先向运维方征求接入信息"设为决策树显式第一步**(用户:接入前 agent 该主动问 SSH 用户名等):
+  onboard 决策树加 **STEP 0 — ASK THE OPERATOR FIRST**:接入需要的、不在 spec 里的信息(target host、**bootstrap 账户名**
+  =运维方已有特权账户,区别于 init 创建的 ouro-exec、其凭据置于 `creds://<name>`、可选带外 host-key 指纹),缺任何一项就
+  **一次性问运维方**,答案当**数据**处理,绝不猜用户名/造钥/无凭据硬上。deploy/kes-rotation/runtime 决策树前置行也加
+  "缺 host/machine 或访问就先问运维方"。regen bundle-manifest,skill-docs 闸 + drift 全绿。
+
 ## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
@@ -484,6 +490,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T08:15+08:00 p5-7 completed(接入"先问运维方"入决策树):onboard 加 STEP 0(问 host/bootstrap 账户名/凭据/
+  可选 host-key 指纹,答案当数据),3 个 dispatch 操作决策树前置行加"缺访问就先问"。承接 p5-6 的对话式访问模型,把"先问后做"
+  变成契约显式步骤。skill-docs + drift + 全 python 绿。
 - 2026-07-13T07:50+08:00 p5-6 completed(修正 p5-5 控制密钥=撤销工具内生成,改用运维方钥 + agent 对话):用户指出
   p5-5 的 init 自动 ssh-keygen 是错的(循环依赖 + 责任错层)。撤销之:--control-pubkey 恢复必需 + 缺失报可执行指引且
   零生成;onboard 决策树改为"用运维方已有登录、复用其钥、连不上问运维方、绝不代造钥"。smoke 证 init 缺 --control-pubkey
@@ -812,6 +821,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-7 | stack: python | command: python3 tests/test_skill_docs.py; cargo test committed_manifest_matches_embedded;
+  ouro-ops skill show onboard | result: pass | note: onboard 决策树含 STEP 0(问 host/账户/凭据/指纹,当数据处理);
+  过 skill-docs 闸;skill show onboard 实测输出 STEP 0;manifest 对齐。
 - p5-6 | stack: rust | command: ouro-ops init(缺 --control-pubkey smoke); cargo test; python3 tests/test_skill_docs.py |
   result: pass | note: init 缺 --control-pubkey→报"传运维方控制公钥/ssh-keygen -y 导出"且 creds 目录**无新密钥**;
   onboard 决策树过 skill-docs 闸(无 ssh/sudo/docker 裸词 + 必备红线);69 cargo + 全 python 绿。p5-5 的自动生成已被本项撤销。

@@ -9,7 +9,8 @@ Apply runtime topology/config changes and verify the node returns healthy.
 
 ## Decision Tree
 - PREREQUISITE — `--dispatch` steps need the target ONBOARDED (`ouro-exec` + tool-run wrapper). If a
-  dispatch cannot connect, onboard first: `ouro-ops skill show onboard`.
+  dispatch cannot connect, onboard first: `ouro-ops skill show onboard`. If you lack the target
+  host/machine id or the operator's access, ASK the operator before dispatching.
 - Validate spec with `ouro-ops spec validate`.
 - Render config with `ouro-ops config render`.
 - Apply topology with `runtime/topology-apply`.

@@ -9,7 +9,8 @@ Rotate KES by generating BP-local KES vkey metadata and installing opcert-only p
 
 ## Decision Tree
 PREREQUISITE — every `--dispatch` step needs the BP ONBOARDED (`ouro-exec` + tool-run wrapper). If a
-dispatch cannot connect, onboard first: `ouro-ops skill show onboard`.
+dispatch cannot connect, onboard first: `ouro-ops skill show onboard`. If you lack the target
+host/machine id or the operator's access, ASK the operator before dispatching.
 
 Production path (cold key kept OFFLINE — preferred):
 - Validate spec with `ouro-ops spec validate`.
