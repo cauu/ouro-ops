@@ -179,7 +179,6 @@ fn run_init(args: &[String]) -> Result<()> {
         )));
     }
     let key_ref = CredentialRef::parse(flag_value(args, "--bootstrap-key")?)?;
-    let machine_id = optional_flag_value(args, "--machine");
     let dry_run = args.iter().any(|a| a == "--dry-run");
     let host_key = match optional_flag_value(args, "--host-key") {
         Some("yes") => HostKeyCheck::Yes,
@@ -195,34 +194,20 @@ fn run_init(args: &[String]) -> Result<()> {
             key_ref.as_str()
         )));
     }
-    // Control key: if --control-pubkey is given, use it (operator manages the private half).
-    // Otherwise AUTO-PROVISION a keypair at creds://<machine> — the exact path dispatch resolves
-    // from the spec's ssh.key_ref — so the agent never places a key by hand (zero-touch onboarding).
-    let mut auto_control_key: Option<String> = None;
+    // The control key is the operator's — the agent supplies its PUBLIC half (to authorize for
+    // `ouro-exec`); the tool NEVER generates a key. Reuse the operator's existing SSH key: derive
+    // the public half of the bootstrap key with `ssh-keygen -y -f <key>`, or pass a chosen key via
+    // `--control-pubkey`. If neither is available the agent must ask the operator (see skill onboard).
     let control_pubkey = match optional_flag_value(args, "--control-pubkey") {
         Some(p) => std::fs::read_to_string(p)
             .map_err(|e| OuroError::Validation(format!("cannot read --control-pubkey {p}: {e}")))?,
-        None if dry_run => "ssh-ed25519 AAAADRYRUNPLACEHOLDER ouro-control".to_string(),
         None => {
-            let machine = machine_id.ok_or_else(|| OuroError::Validation(
-                "provide --control-pubkey, or --machine to auto-provision the control key at creds://<machine>".to_string()))?;
-            let key = paths.credentials_dir.join(machine);
-            let pub_path = paths.credentials_dir.join(format!("{machine}.pub"));
-            if !key.is_file() {
-                std::fs::create_dir_all(&paths.credentials_dir)?;
-                let status = Command::new("ssh-keygen")
-                    .args(["-t", "ed25519", "-N", "", "-q", "-C", &format!("ouro-control@{machine}"), "-f"])
-                    .arg(&key)
-                    .status()
-                    .map_err(|e| OuroError::Validation(format!("could not run ssh-keygen to auto-provision the control key: {e}")))?;
-                if !status.success() {
-                    return Err(OuroError::Validation("ssh-keygen failed to generate the control key".to_string()));
-                }
-                auto_control_key = Some(key.display().to_string());
-            }
-            std::fs::read_to_string(&pub_path).map_err(|e| {
-                OuroError::Validation(format!("cannot read the control pubkey {}: {e}", pub_path.display()))
-            })?
+            return Err(OuroError::Validation(
+                "missing --control-pubkey: pass the operator's control public key to authorize for \
+                 ouro-exec (derive it with `ssh-keygen -y -f <the operator's key>`, or use their \
+                 existing *.pub). See `ouro-ops skill show onboard`."
+                    .to_string(),
+            ));
         }
     };
     let ouro_binary = match optional_flag_value(args, "--ouro-binary") {
@@ -298,7 +283,6 @@ fn run_init(args: &[String]) -> Result<()> {
         "pinned_host_key": pinned_fp,
         "declared_runtime": declared_runtime,
         "target_facts": target_facts,
-        "control_key": auto_control_key,
         "security_note": "bootstrap credential is NOT mechanism-isolated from the agent \
             (convenience mode, P0-1); a poisoned prompt could invoke init via the agent. \
             Relies on upstream control-machine / agent-runtime security.",
@@ -1175,10 +1159,10 @@ fn print_help() {
 /// One-line usage for `<command> --help`. Covers the agent-facing surface; None → fall through.
 fn command_usage(command: &str) -> Option<&'static str> {
     Some(match command {
-        "init" => "ouro-ops init --host <target> [--port 22] --bootstrap-user <sudo-account> \
-                   --bootstrap-key creds://<name> --ouro-binary <target-arch ouro-ops> \
-                   --spec <pool-spec> --machine <id> [--control-pubkey <pub>] [--expected-host-key <sha256>]\n  \
-                   Onboards a target. Omit --control-pubkey to auto-provision the control key at creds://<id>. \
+        "init" => "ouro-ops init --host <target> [--port 22] --bootstrap-user <account> \
+                   --bootstrap-key creds://<name> --control-pubkey <operator-pub> \
+                   --ouro-binary <target-arch ouro-ops> --spec <pool-spec> --machine <id> [--expected-host-key <sha256>]\n  \
+                   Onboards a target using the operator's OWN SSH access (never generates a key). \
                    See `ouro-ops skill show onboard`.",
         "deinit" => "ouro-ops deinit --host <target> [--port 22] --bootstrap-user <account> \
                      --bootstrap-key creds://<name> [--force] [--remove-node]\n  Reverses onboarding (refuses while a node runs).",

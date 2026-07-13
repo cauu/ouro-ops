@@ -14,20 +14,24 @@ tool-run wrapper on it yet).
 Before any `--dispatch` operation, confirm the target is ONBOARDED. If a read-only probe
 (`ouro-ops tool run detect/runtime --dispatch <id> --spec pool-spec.yaml`) cannot connect as
 `ouro-exec`, the target is NOT onboarded — onboard it first:
-- Prerequisites the operator supplies (convenience mode, S0017 P0-1 — the bootstrap credential is
-  NOT mechanism-isolated from the agent; this is documented, relied on for upstream security):
-  - an existing privileged (root-capable) account on the target + its key, referenced as
-    `creds://<name>` (a name under the local credentials dir — never an inline key);
-  - an `ouro-ops` binary matching the target's OS/arch (init probes the target and REFUSES a
-    mismatched binary before writing anything).
-- The control key is handled FOR you: when you pass `--machine <id>` and omit `--control-pubkey`,
-  init AUTO-PROVISIONS a keypair at `creds://<id>` — the exact path dispatch resolves from the
-  spec's `ssh.key_ref: creds://<id>` — and authorizes its public half for `ouro-exec`. Zero key
-  handling. (To supply your own instead: pass `--control-pubkey <pub>` and place its PRIVATE half at
-  `creds://<id>` yourself, matching `ssh.key_ref`.)
+- ACCESS IS THE OPERATOR'S — you never generate keys. Use the operator's EXISTING login to the
+  target (the account + key they already sign in with). Referenced as `creds://<name>`: the
+  operator's private key placed under the local credentials dir (never an inline key). If you do not
+  have a working credential for the target, ASK the operator to supply it (place their key at
+  `creds://<name>`) or to fix their access — do NOT invent one.
+- Convenience mode (S0017 P0-1): the bootstrap credential is NOT mechanism-isolated from the agent;
+  documented, relied on for upstream security.
+- Other prerequisites: an `ouro-ops` binary matching the target's OS/arch (init probes the target
+  and REFUSES a mismatched binary before writing anything).
+- Control key for ongoing dispatch (reuse the operator's key — do NOT generate one): pass the
+  operator's PUBLIC key as `--control-pubkey` (derive it from their key with
+  `ssh-keygen -y -f <their-key>`, or use their existing `<key>.pub`); it is authorized for the
+  confined `ouro-exec`. Set the spec's `ssh.key_ref` to the credential holding the matching PRIVATE
+  key so dispatch reuses it (simplest: point `ssh.key_ref` at the SAME `creds://<name>` as the
+  bootstrap key — one key does bootstrap + dispatch).
 - Onboard: `ouro-ops init --host <target> --port <ssh-port> --bootstrap-user <account>
-  --bootstrap-key creds://<name> --ouro-binary <target-arch ouro-ops> --spec pool-spec.yaml
-  --machine <id> [--expected-host-key <sha256>]` (`--port` defaults to 22). It installs the confined `ouro-exec` principal +
+  --bootstrap-key creds://<name> --control-pubkey <operator-pub> --ouro-binary <target-arch ouro-ops>
+  --spec pool-spec.yaml --machine <id> [--expected-host-key <sha256>]` (`--port` defaults to 22). It installs the confined `ouro-exec` principal +
   the fixed tool-run wrapper + the command allowlist, returns an auditable install manifest, pins
   the target host key (with `--expected-host-key` it verifies out-of-band and refuses a mismatch
   BEFORE any write), and records the declared runtime for later detected↔declared cross-check.
@@ -37,6 +41,9 @@ Before any `--dispatch` operation, confirm the target is ONBOARDED. If a read-on
   removes only ouro-created principals).
 
 ## Stop Conditions
+- Stop and ASK the operator if you cannot connect to the target with their credential (wrong
+  account, missing/rejected key, host unreachable) — guide them to fix access or supply the key.
+  NEVER generate a key or fabricate access on their behalf.
 - Stop if the bootstrap account/key is absent, or the target host key does not match an
   out-of-band `--expected-host-key` — a first-connect interception is refused with ZERO writes.
 - Stop if the `ouro-ops` binary does not match the target OS/arch (init refuses it, no writes).

@@ -431,6 +431,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   分组)+ 每命令 `<cmd> --help` 用法。④ **[中]`kes counter status`** 无 `--state` 会报错——决策树改为经 dispatched
   `deploy/status` 读活节点 counter,并注明 `--state` 是离线文件。⑤ 网页 prompt/init 示例带 `--port`。
 
+- [x] p5-6 (new) **修正 p5-5 的控制密钥处理:工具不生成密钥,用运维方自己的 SSH 访问 + agent 对话兜底**(用户反馈:
+  自动生成逻辑有问题——循环依赖:要把生成的公钥装到远端,init 本就得先能 SSH 上去;既然能上去就该用已有的钥,而非再
+  造一把;且密钥/访问该由 user+agent 对话解决,不该内置进工具脚本)。撤销 p5-5 里 `ouro-ops init` 的 `ssh-keygen`
+  自动生成:`--control-pubkey` 恢复必需,缺失时**报可执行错误**("传运维方的控制公钥;用 `ssh-keygen -y -f <其钥>` 导出;
+  见 skill show onboard")且**不生成任何密钥**。onboard 决策树改写为正确模型:**用运维方已有的登录凭据**;控制钥=**复用
+  运维方的钥**(导出其公钥作 --control-pubkey,私钥置于 `creds://<name>` 且 `ssh.key_ref` 指向同一凭据,一钥兼 bootstrap+
+  dispatch);**连不上就停下问运维方/引导其配好访问,绝不代其造钥**(新增停机条件)。init `--help` 用法同步更正。
+
 ## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
@@ -476,6 +484,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T07:50+08:00 p5-6 completed(修正 p5-5 控制密钥=撤销工具内生成,改用运维方钥 + agent 对话):用户指出
+  p5-5 的 init 自动 ssh-keygen 是错的(循环依赖 + 责任错层)。撤销之:--control-pubkey 恢复必需 + 缺失报可执行指引且
+  零生成;onboard 决策树改为"用运维方已有登录、复用其钥、连不上问运维方、绝不代造钥"。smoke 证 init 缺 --control-pubkey
+  时报错且不落任何密钥;skill-docs 闸(去掉 SSH 裸词)+ 全量 69 cargo + python 全绿;init e2e(显式 --control-pubkey)不受影响。
 - 2026-07-13T07:10+08:00 p5-5 completed(修子代理端到端发现的缺口):subagent 扮演 agent 真跑两条旗舰流程均端到端成功,
   但报出 5 处 agent 体验缺口(#1 控制私钥位置=零触达真阻塞、#2 KES 单操作路径缺确认门、#3 --help 缺命令面、#4 counter
   status 需 --state、#5 --port)。全部修:init 省略 --control-pubkey 时自动生成 creds://<machine> 密钥(smoke 证已生成
@@ -800,6 +812,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-6 | stack: rust | command: ouro-ops init(缺 --control-pubkey smoke); cargo test; python3 tests/test_skill_docs.py |
+  result: pass | note: init 缺 --control-pubkey→报"传运维方控制公钥/ssh-keygen -y 导出"且 creds 目录**无新密钥**;
+  onboard 决策树过 skill-docs 闸(无 ssh/sudo/docker 裸词 + 必备红线);69 cargo + 全 python 绿。p5-5 的自动生成已被本项撤销。
 - p5-5 | stack: rust+e2e | command: cargo test; ouro-ops init(自动生成 smoke); ouro-ops --help / init --help; make e2e-t2-init
   | result: pass | note: init 省 --control-pubkey→自动生成 creds://bp1(私钥 0600 + .pub)已 smoke;--help 列全 agent 命令面
   + init/tool/confirm/kes 等 per-command 用法;onboard/kes-rotation 决策树补密钥位置/确认门/counter;真裸机 onboard e2e 无回归。
