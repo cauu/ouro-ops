@@ -108,6 +108,13 @@ impl SshRunner {
             shell_quote(machine),
             "--spec".to_string(),
             shell_quote(remote_spec),
+            // S0017 p5-17: skill-pack parity — the TARGET compares this against its own
+            // embedded digest BEFORE executing and fails closed on a mismatch (a stale
+            // target binary would otherwise silently run outdated tool logic). Old target
+            // binaries ignore the unknown flag (protection is forward-looking; p5-16's
+            // missing-tool error covers the stale-target case for new tools).
+            "--expect-embedded".to_string(),
+            shell_quote(&crate::skills::embedded_digest()),
         ]
     }
 

@@ -530,6 +530,15 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   the tool — re-run `ouro-ops init` with a newer --ouro-binary")。本地验证:控制机 health 正常解析执行(排除本地);
   改后报错文本实测含版本 + 指引。
 
+- [x] p5-17 (new) **dispatch 两端 skill 包摘要一致性校验(fail-closed)**(用户设计追问:"relay 上的 ouro-cli 应该
+  校验二进制/hash 是否一致再决定替换吧?"——init 侧查实为无条件原子覆盖故重跑即更新,无需比对;但暴露真缺口:dispatch
+  时无任何两端一致性校验,目标机工具**存在但内容旧**时会静默执行旧逻辑,这次 relay1 只是运气好撞上"工具缺失"这种会
+  报错的形态):控制端 dispatch argv 追加 `--expect-embedded <控制端嵌入摘要>`(shell-quoted),目标端 tool run 在
+  version gate/audit/extraction **之前**比对自身嵌入摘要,不一致 exit 10 fail-closed,报错含双方摘要 + "re-run init
+  with a newer --ouro-binary"指引。受限通道约束了设计:ouro-exec 只能经 wrapper 跑 tool run,控制端无法远程跑
+  manifest show 比对,故校验只能随请求下行、由目标端自证。诚实边界:旧版目标二进制会忽略未知参数,保护**从本代起
+  前向生效**,存量旧目标由 p5-16 缺失报错兜底。双向实测:错摘要拒绝 + 正确摘要放行。
+
 ## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
@@ -575,6 +584,8 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T23:00+08:00 p5-17 completed(dispatch skill 包摘要一致性):控制端 argv 加 --expect-embedded,目标端
+  执行前比对、不一致 fail-closed 带 re-init 指引;错/对摘要双向实测;69 rust + 全 python 绿,manifest 重生成。
 - 2026-07-13T22:20+08:00 p5-16 completed(工具缺失报错自证版本 + 目标机过旧指引):真机验收 relay1 旧二进制误导 agent
   判"本地安装损坏";报错文本加 THIS ouro-ops v<ver> + re-init 指引;69 rust + 全 python 绿。
 - 2026-07-13T21:30+08:00 p5-15 completed(observability 重定义为 agent 读健康报结论):新增 observability/health 只读
@@ -936,6 +947,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-17 | stack: rust | command: cargo test(69 passed); tool run --expect-embedded deadbeef(exit 10,报错含双方
+  摘要 + re-init 指引); tool run --expect-embedded <正确摘要>(正常执行)| result: pass | note: 校验位于 version
+  gate/audit/extraction 之前,零副作用拒绝;全 python 闸绿;manifest drift 对齐。
 - p5-16 | stack: rust | command: cargo test(69 passed); ouro-ops tool run observability/nonexistent(报错含
   "in THIS ouro-ops v0.1.0" + "re-run `ouro-ops init` with a newer --ouro-binary"); ouro-ops tool run
   observability/health --machine bp1(本地正常解析执行,exit 20 诚实报 down)| result: pass | note: 全 python 闸绿;

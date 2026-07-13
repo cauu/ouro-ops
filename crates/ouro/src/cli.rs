@@ -852,6 +852,20 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
     // The (untrusted) min_ouro_version a pasted prompt may carry — it can only RAISE the
     // requirement, never lower it (S0016 p3-2 / R2 P0-2).
     let min_ouro = optional_flag_value(args, "--min-ouro");
+    // S0017 p5-17: skill-pack parity — a dispatching control machine sends its embedded
+    // digest; if THIS binary embeds a different pack, executing would silently run outdated
+    // tool logic, so fail closed BEFORE any gate/audit/extraction with the recovery path.
+    if let Some(expected) = optional_flag_value(args, "--expect-embedded") {
+        let actual = crate::skills::embedded_digest();
+        if expected != actual {
+            return Err(OuroError::Validation(format!(
+                "skill-pack digest mismatch: the control machine expects {expected} but THIS \
+                 ouro-ops v{} embeds {actual} — the target's installed binary is out of date; \
+                 re-run `ouro-ops init` with a newer --ouro-binary to update it",
+                env!("CARGO_PKG_VERSION")
+            )));
+        }
+    }
 
     let paths = ConfigPaths::discover();
     // Version gate BEFORE any execution (p3-2/p3-3): required = max(prompt, embedded,
