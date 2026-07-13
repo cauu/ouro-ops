@@ -20,7 +20,8 @@ Before any `--dispatch` operation, confirm the target is ONBOARDED. If a read-on
   - the target host/address (the spec may already have it);
   - the BOOTSTRAP account username on the target — an existing privileged (root-capable) account
     they already sign in with (this is `--bootstrap-user`; it is NOT `ouro-exec`, which init creates);
-  - their credential for it, placed at `creds://<name>` (a name under the local credentials dir);
+  - which EXISTING private key to use — ask the operator to NAME the key file (e.g. their usual
+    `~/.ssh/id_ed25519`); the choice of key is the OPERATOR'S decision, never yours;
   - optionally, an out-of-band host-key fingerprint (`--expected-host-key`) to defeat a first-connect
     interception.
   Never guess a username, fabricate a key, or proceed without a working credential.
@@ -29,6 +30,12 @@ Before any `--dispatch` operation, confirm the target is ONBOARDED. If a read-on
   operator's private key placed under the local credentials dir (never an inline key). If you do not
   have a working credential for the target, ASK the operator to supply it (place their key at
   `creds://<name>`) or to fix their access — do NOT invent one.
+- Registering the credential (the mechanical step is yours; the CHOICE of key is not): once the
+  operator has NAMED their key, register that exact path into the closed namespace with a symlink —
+  no copy, the key stays where it lives: `ln -sf <the key the operator named>
+  ~/.ouro/credentials/<name>` (then `creds://<name>` resolves to it). Touch only the PATH: never
+  read or print the key's contents, and NEVER enumerate the operator's key directory or register a
+  key they did not explicitly name.
 - Convenience mode (S0017 P0-1): the bootstrap credential is NOT mechanism-isolated from the agent;
   documented, relied on for upstream security.
 - Other prerequisites: an `ouro-ops` binary matching the target's OS/arch (init probes the target
@@ -43,7 +50,10 @@ Before any `--dispatch` operation, confirm the target is ONBOARDED. If a read-on
   --bootstrap-key creds://<name> --control-pubkey <operator-pub> --ouro-binary <target-arch ouro-ops>
   [--expected-host-key <sha256>]`. `--spec`/`--machine` are OPTIONAL — they only RECORD the declared
   runtime; onboarding does NOT need them, so OMIT them (passing `--spec` runs FULL pool validation,
-  which requires ≥1 relay, and would block onboarding a lone box). Concrete one-key example:
+  which requires ≥1 relay, and would block onboarding a lone box). Concrete one-key example
+  (operator named `~/.ssh/id_ed25519` — register it, derive its pubkey, onboard):
+  `ln -sf ~/.ssh/id_ed25519 ~/.ouro/credentials/opkey`, then
+  `ssh-keygen -y -f ~/.ouro/credentials/opkey > ~/.ouro/credentials/opkey.pub`, then
   `ouro-ops init --host 10.0.0.10 --bootstrap-user ubuntu --bootstrap-key creds://opkey
   --control-pubkey ~/.ouro/credentials/opkey.pub --ouro-binary ./ouro-ops-linux` (then set every
   machine's `ssh.key_ref: creds://opkey` in the spec). It installs the confined `ouro-exec` principal +
@@ -71,6 +81,8 @@ Before any `--dispatch` operation, confirm the target is ONBOARDED. If a read-on
   mode); a poisoned prompt could invoke init via the agent. Relies on upstream control-machine
   security. Do not claim it is isolated.
 - No cold, KES secret, or VRF material is requested, printed, or handled during onboarding.
+- The credential choice is the operator's: never enumerate their key store or use/register a key
+  they did not explicitly name; credential registration handles paths only, never key contents.
 - L3 diagnostics are read-only and have no secret directory access.
 - On exit 30, use the rollback-capable path before continuing; on exit 40, stop all writes and
   require human intervention.

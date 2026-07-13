@@ -452,6 +452,13 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   counter 前进由 rotate 自身 `opcert_counter_incremented` 证。子代理复跑判定:**web→agent→done 死板照决策树可跑通,
   #1/#2/#3 闭合、#4 不卡**;本项清掉剩余措辞/可选性 friction。
 
+- [x] p5-9 (new) **凭据登记职责划分:选钥是运维方的,登记动作 agent 可代劳(symlink,不碰内容)**(用户确认流程后要求补):
+  onboard STEP 0 凭据项改为"问运维方**指名**用哪把已有私钥(如 `~/.ssh/id_ed25519`)——选钥权在运维方,绝不代选";新增
+  登记步骤:运维方指名后,agent 用 **symlink** 把该路径登记进封闭命名空间(`ln -sf <指名的钥> ~/.ouro/credentials/<name>`,
+  不复制、钥留原处,`creds://<name>` 即解析到它),**只碰路径**:不读/不打印钥匙内容、绝不枚举运维方钥匙目录或登记未被指名
+  的钥;一钥示例改为自洽三步(symlink → `ssh-keygen -y` 派生 pubkey → init);新增红线"凭据选择权属运维方——不枚举其钥匙库、
+  不用未指名的钥,登记只处理路径不处理内容"。诚实边界:此为行为约束(skill 红线)非机制隔离,与 P0-1 便利模式定位一致。
+
 ## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
@@ -497,6 +504,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T16:30+08:00 p5-9 completed(凭据登记职责划分入 onboard 决策树):STEP 0 凭据项改"问运维方指名已有私钥";
+  新增 symlink 登记步骤(agent 代劳机械动作、只碰路径,选钥权在运维方);一钥示例改自洽三步;新增"不枚举钥匙库/不用
+  未指名钥"红线。regen bundle-manifest;skill-docs + drift + 全部 25 个 python 闸全绿。
 - 2026-07-13T09:00+08:00 p5-8 completed(修子代理复跑残余缺口):第二次子代理端到端复跑确认 p5-5/p5-6/p5-7 修复生效
   (#1 私钥位置、#2 KES 确认门、#3 --help 全 CLOSED,#4 不卡),再挖出两处文档 friction:onboard init 的 --spec/--machine
   应标可选并 omit(否则单-BP 触发 relay-required 校验)、kes 的 deploy/status counter 措辞夸大。均修:标注可选 + 一钥示例 +
@@ -832,6 +842,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-9 | stack: python | command: python3 tests/test_skill_docs.py(+全部 25 个 tests/test_*.py); cargo test
+  committed_manifest_matches_embedded | result: pass | note: onboard 决策树含"指名钥 + symlink 登记(只碰路径)"步骤与
+  对应红线;一钥示例自洽(symlink→derive→init);过 skill-docs 禁词闸;bundle-manifest 重生成后 drift 对齐。
 - p5-8 | stack: python | command: python3 tests/test_skill_docs.py; cargo test committed_manifest_matches_embedded |
   result: pass | note: onboard init 标 --spec/--machine 可选 + 一钥示例;kes deploy/status counter 措辞改准;过 skill-docs
   闸 + manifest 对齐 + 全 python。第二次子代理复跑:两条旗舰流程死板 agent 可完成,#1/#2/#3 CLOSED、#4 不卡。
