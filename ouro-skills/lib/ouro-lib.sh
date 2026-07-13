@@ -529,3 +529,28 @@ ouro_node_restart_mode() {
     *)       ouro_node_restart ;;   # bare — unchanged
   esac
 }
+
+# --- network selection (S0017 p5-14) -------------------------------------------------------
+# cardano-cli network args from the SPEC — the single source of truth. (The old
+# OURO_NETWORK_MAGIC env was never in the tool run env allowlist, so dispatched scripts
+# silently pinned every query to --testnet-magic 1, and no script had a mainnet branch.)
+# Prints "--mainnet" or "--testnet-magic <N>"; callers expand UNQUOTED so it word-splits
+# into arguments: `ouro_cardano_cli query tip $NET`. Falls back to --testnet-magic 1 when
+# no spec is available (local test beds).
+ouro_network_args() {
+  local spec="${OURO_SPEC:-}" net="" magic=""
+  if [ -n "$spec" ] && [ -f "$spec" ]; then
+    read -r net magic < <(python3 - "$spec" <<'PY' 2>/dev/null
+import yaml, sys
+pool = (yaml.safe_load(open(sys.argv[1])) or {}).get("pool") or {}
+print(pool.get("network", "") or "-", pool.get("network_magic", "") or "-")
+PY
+) || true
+  fi
+  if [ "$net" = "mainnet" ]; then
+    printf -- '--mainnet'
+  else
+    [ "$magic" = "-" ] && magic=""
+    printf -- '--testnet-magic %s' "${magic:-1}"
+  fi
+}

@@ -21,15 +21,15 @@ fi
 DEVNET="${OURO_DEVNET_DIR:-/opt/devnet}"
 SOCK="$(ouro_node_socket)"
 SPEC="${OURO_SPEC:-}"
-ROLE=""; MAGIC=1
+ROLE=""
+NET="$(ouro_network_args)"   # p5-14: network from the spec (mainnet-aware)
 if [ -n "$SPEC" ]; then
-  read -r ROLE MAGIC < <(python3 - "$SPEC" "$MACHINE" <<'PY'
+  ROLE="$(python3 - "$SPEC" "$MACHINE" <<'PY'
 import yaml,sys
 s=yaml.safe_load(open(sys.argv[1])); mid=sys.argv[2]
-role=next((m["role"] for m in s["machines"] if m["id"]==mid),"")
-print(role or "-", s["pool"]["network_magic"])
+print(next((m["role"] for m in s["machines"] if m["id"]==mid),""))
 PY
-) || true
+)" || true
 fi
 
 # Real node host if a node is running/socketed, OR role=bp on a node-provisioned host
@@ -49,7 +49,7 @@ if [ -S "$SOCK" ] || ouro_node_running || { [ "$ROLE" = "bp" ] && [ -f "$DEVNET/
   fi
   found=0
   for _ in $(seq 1 40); do
-    blk=$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
+    blk=$(ouro_cardano_cli query tip $NET 2>/dev/null \
           | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))
 except: print(-1)' 2>/dev/null || echo -1)

@@ -17,7 +17,7 @@ ouro_require_audit_context
 MACHINE="${OURO_MACHINE:?OURO_MACHINE required}"
 DEVNET="${OURO_DEVNET_DIR:-/opt/devnet}"
 SOCK="$DEVNET/node.socket"
-MAGIC="${OURO_NETWORK_MAGIC:-1}"
+NET="$(ouro_network_args)"   # p5-14: network from the spec (mainnet-aware); OURO_NETWORK_MAGIC was never set
 STAGE="$DEVNET/deploy-stage"
 UTXO="$DEVNET/utxo-keys/utxo1"
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
@@ -39,7 +39,7 @@ except Exception: pass
 print(int(p.get("pledge",0)), int(p.get("cost",340000000)), p.get("margin",0.05))')
 
 # stake registration deposit from live protocol params (avoid a hardcoded amount).
-DEP=$("${CLI[@]}" query protocol-parameters --testnet-magic "$MAGIC" 2>/dev/null \
+DEP=$("${CLI[@]}" query protocol-parameters $NET 2>/dev/null \
   | python3 -c 'import json,sys;print(json.load(sys.stdin)["stakeAddressDeposit"])') \
   || ouro_emit_error 30 "protocol_params_failed" "could not read protocol parameters"
 
@@ -50,13 +50,13 @@ DEP=$("${CLI[@]}" query protocol-parameters --testnet-magic "$MAGIC" 2>/dev/null
   --pool-pledge "$PLEDGE" --pool-cost "$COST" --pool-margin "$MARGIN" \
   --pool-reward-account-verification-key-file stake.vkey \
   --pool-owner-stake-verification-key-file stake.vkey \
-  --testnet-magic "$MAGIC" --out-file pool.reg.cert
+  $NET --out-file pool.reg.cert
 
 # Funding: derive the utxo address and pick a tx-in.
 "${CLI[@]}" address build --payment-verification-key-file "$UTXO/utxo.vkey" \
-  --testnet-magic "$MAGIC" --out-file u1.addr
+  $NET --out-file u1.addr
 ADDR="$(cat u1.addr)"
-TXIN=$("${CLI[@]}" query utxo --address "$ADDR" --testnet-magic "$MAGIC" --out-file /dev/stdout 2>/dev/null \
+TXIN=$("${CLI[@]}" query utxo --address "$ADDR" $NET --out-file /dev/stdout 2>/dev/null \
   | python3 -c 'import json,sys
 u=json.load(sys.stdin)
 print(sorted(u, key=lambda k:-u[k]["value"]["lovelace"])[0] if u else "")')
@@ -66,15 +66,15 @@ print(sorted(u, key=lambda k:-u[k]["value"]["lovelace"])[0] if u else "")')
 "${CLI[@]}" transaction build \
   --tx-in "$TXIN" --change-address "$ADDR" \
   --certificate-file stake.reg.cert --certificate-file pool.reg.cert \
-  --witness-override 3 --testnet-magic "$MAGIC" --out-file tx.raw >/dev/null \
+  --witness-override 3 $NET --out-file tx.raw >/dev/null \
   || ouro_emit_error 30 "tx_build_failed" "transaction build failed"
 [ -s tx.raw ] || ouro_emit_error 30 "tx_build_failed" "no unsigned tx produced"
 
 # Online witnesses: payment (funds) + owner stake. The COLD witness is produced offline.
 "${CLI[@]}" transaction witness --tx-body-file tx.raw --signing-key-file "$UTXO/utxo.skey" \
-  --testnet-magic "$MAGIC" --out-file w.pay
+  $NET --out-file w.pay
 "${CLI[@]}" transaction witness --tx-body-file tx.raw --signing-key-file stake.skey \
-  --testnet-magic "$MAGIC" --out-file w.stake
+  $NET --out-file w.stake
 
 POOLID=$("${CLI[@]}" stake-pool id --cold-verification-key-file cold.vkey)
 

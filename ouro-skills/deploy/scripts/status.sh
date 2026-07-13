@@ -23,8 +23,9 @@ export CARDANO_NODE_SOCKET_PATH="$SOCK"
 # `query tip` fail → node_query_failed, which IS the "wrong network fails" behavior).
 MAGIC="$(python3 -c 'import yaml,sys; print(yaml.safe_load(open(sys.argv[1]))["pool"]["network_magic"])' "$SPEC" 2>/dev/null || echo "")"
 [ -n "$MAGIC" ] || ouro_emit_error 20 "spec_magic_missing" "pool.network_magic not in spec"
+NET="$(ouro_network_args)"   # p5-14: mainnet-aware network args (MAGIC kept for reporting)
 
-query_tip() { ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null; }
+query_tip() { ouro_cardano_cli query tip $NET 2>/dev/null; }
 TIP1="$(query_tip)" || true
 if [ -z "$TIP1" ] || ! printf '%s' "$TIP1" | grep -q '"block"'; then
   ouro_emit_error 30 "node_query_failed" "ouro_cardano_cli query tip failed (socket $SOCK, magic $MAGIC) — node down or wrong network"

@@ -22,7 +22,7 @@ MACHINE="${OURO_MACHINE:?OURO_MACHINE required}"
 DEVNET="${OURO_DEVNET_DIR:-/opt/devnet}"
 POOL="$(ouro_node_pool_dir)"
 SOCK="$(ouro_node_socket)"
-MAGIC="${OURO_NETWORK_MAGIC:-1}"
+NET="$(ouro_network_args)"   # p5-14: network from the spec (mainnet-aware); OURO_NETWORK_MAGIC was never set
 STAGE="$POOL/offline-stage"
 SIGNED="$STAGE/node.cert.signed"
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
@@ -34,11 +34,11 @@ ouro_cardano_cli_available || ouro_emit_error 20 "no_cardano_cli" "ouro_cardano_
 
 # On-disk opcert counter from the live node (kes-period-info prints "✓ …" lines before the JSON).
 ondisk_counter() {
-  ouro_cardano_cli query kes-period-info --op-cert-file "$1" --testnet-magic "$MAGIC" 2>/dev/null \
+  ouro_cardano_cli query kes-period-info --op-cert-file "$1" $NET 2>/dev/null \
     | python3 -c 'import json,sys; s=sys.stdin.read(); i=s.find("{"); print(json.loads(s[i:]).get("qKesOnDiskOperationalCertificateNumber",-1) if i>=0 else -1)' 2>/dev/null || echo -1
 }
 tip_block() {
-  ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys
+  ouro_cardano_cli query tip $NET 2>/dev/null | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))
 except: print(-1)' 2>/dev/null || echo -1
 }
@@ -47,7 +47,7 @@ except: print(-1)' 2>/dev/null || echo -1
 # since generate-offline captured it (a cert issued for a period too far in the past will not let
 # the node forge). Uses the freshness bundle generate-offline staged.
 if [ -s "$STAGE/kes.bundle.json" ]; then
-  CUR_SLOT=$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys
+  CUR_SLOT=$(ouro_cardano_cli query tip $NET 2>/dev/null | python3 -c 'import json,sys
 try: print(json.load(sys.stdin)["slot"])
 except: print(-1)' 2>/dev/null || echo -1)
   STALE=$(python3 - "$STAGE/kes.bundle.json" "$CUR_SLOT" <<'PY'

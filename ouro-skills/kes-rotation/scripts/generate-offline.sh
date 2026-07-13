@@ -18,7 +18,7 @@ MACHINE="${OURO_MACHINE:?OURO_MACHINE required}"
 POOL="$(ouro_node_pool_dir)"
 SOCK="$(ouro_node_socket)"
 GENESIS="$(ouro_node_genesis_shelley)"
-MAGIC="${OURO_NETWORK_MAGIC:-1}"
+NET="$(ouro_network_args)"   # p5-14: network from the spec (mainnet-aware); OURO_NETWORK_MAGIC was never set
 STAGE="$POOL/offline-stage"
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
 
@@ -26,7 +26,7 @@ ouro_cardano_cli_available || ouro_emit_error 20 "no_cardano_cli" "ouro_cardano_
 
 # Target KES period = tip slot / slotsPerKESPeriod (the same computation rotate.sh uses).
 SPK=$(python3 -c 'import json;print(json.load(open("'"$GENESIS"'"))["slotsPerKESPeriod"])' 2>/dev/null || echo 0)
-SLOT=$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys
+SLOT=$(ouro_cardano_cli query tip $NET 2>/dev/null | python3 -c 'import json,sys
 try: print(json.load(sys.stdin)["slot"])
 except: print(-1)' 2>/dev/null || echo -1)
 [ "${SPK:-0}" -gt 0 ] 2>/dev/null || ouro_emit_error 30 "kes_precheck_failed" "could not read slotsPerKESPeriod"

@@ -14,7 +14,7 @@ ouro_require_audit_context
 MACHINE="${OURO_MACHINE:?OURO_MACHINE required}"
 DEVNET="${OURO_DEVNET_DIR:-/opt/devnet}"
 SOCK="$DEVNET/node.socket"
-MAGIC="${OURO_NETWORK_MAGIC:-1}"
+NET="$(ouro_network_args)"   # p5-14: network from the spec (mainnet-aware); OURO_NETWORK_MAGIC was never set
 STAGE="$DEVNET/deploy-stage"
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
 CLI=(ouro_cardano_cli conway)
@@ -28,7 +28,7 @@ cd "$STAGE"
 POOLID=$("${CLI[@]}" stake-pool id --cold-verification-key-file cold.vkey)
 
 # Idempotency / replay guard: if the pool is ALREADY registered, do not resubmit.
-already() { "${CLI[@]}" query stake-pools --testnet-magic "$MAGIC" 2>/dev/null \
+already() { "${CLI[@]}" query stake-pools $NET 2>/dev/null \
   | python3 -c 'import json,sys;print("yes" if sys.argv[1] in json.load(sys.stdin) else "no")' "$POOLID" 2>/dev/null || echo no; }
 if [ "$(already)" = yes ]; then
   ouro_emit_error 20 "already_registered" "pool $POOLID already registered on chain"
@@ -38,7 +38,7 @@ fi
   --witness-file w.pay --witness-file w.stake --witness-file cold.witness --out-file tx.signed \
   || ouro_emit_error 30 "assemble_failed" "could not assemble witnessed tx"
 TXHASH=$("${CLI[@]}" transaction txid --tx-file tx.signed 2>/dev/null || echo "")
-"${CLI[@]}" transaction submit --tx-file tx.signed --testnet-magic "$MAGIC" >/dev/null \
+"${CLI[@]}" transaction submit --tx-file tx.signed $NET >/dev/null \
   || ouro_emit_error 30 "submit_failed" "node rejected the registration tx"
 
 # Ground-truth: the pool id must appear in the ledger's stake-pool set.

@@ -19,7 +19,7 @@ MACHINE="${OURO_MACHINE:?OURO_MACHINE required}"
 POOL="$(ouro_node_pool_dir)"
 SOCK="$(ouro_node_socket)"
 GENESIS="$(ouro_node_genesis_shelley)"
-MAGIC="${OURO_NETWORK_MAGIC:-1}"
+NET="$(ouro_network_args)"   # p5-14: network from the spec (mainnet-aware); OURO_NETWORK_MAGIC was never set
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
 
 ouro_cardano_cli_available || ouro_emit_error 20 "no_cardano_cli" "ouro_cardano_cli not on target"
@@ -27,13 +27,13 @@ ouro_cardano_cli_available || ouro_emit_error 20 "no_cardano_cli" "ouro_cardano_
 
 # Current KES period = tip slot / slotsPerKESPeriod.
 SPK=$(python3 -c 'import json;print(json.load(open("'"$GENESIS"'"))["slotsPerKESPeriod"])')
-SLOT=$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["slot"])')
+SLOT=$(ouro_cardano_cli query tip $NET 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["slot"])')
 PERIOD=$(( SLOT / SPK ))
 
 # On-disk opcert counter from the live node. `query kes-period-info` prints human-readable
 # "✓ …" lines to stdout BEFORE the JSON, so parse from the first '{'.
 ondisk_counter() {
-  ouro_cardano_cli query kes-period-info --op-cert-file "$1" --testnet-magic "$MAGIC" 2>/dev/null \
+  ouro_cardano_cli query kes-period-info --op-cert-file "$1" $NET 2>/dev/null \
     | python3 -c 'import json,sys; s=sys.stdin.read(); i=s.find("{"); print(json.loads(s[i:]).get("qKesOnDiskOperationalCertificateNumber",-1) if i>=0 else -1)' 2>/dev/null || echo -1
 }
 BEFORE=$(ondisk_counter "$POOL/opcert.cert")
@@ -42,7 +42,7 @@ BEFORE=$(ondisk_counter "$POOL/opcert.cert")
 # post-restart check proves a genuine restart + NEW forging (not a stale db replay).
 [ "${BEFORE:--1}" -ge 0 ] 2>/dev/null || ouro_emit_error 30 "kes_precheck_failed" "could not read on-disk opcert counter before rotation"
 PRE_PID="$(ouro_node_pid)"
-PRE_BLOCK="$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
+PRE_BLOCK="$(ouro_cardano_cli query tip $NET 2>/dev/null \
   | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))
 except: print(-1)' 2>/dev/null || echo -1)"
@@ -79,7 +79,7 @@ fi
 FORGED=0
 for _ in $(seq 1 40); do
   sleep 3
-  BLK=$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
+  BLK=$(ouro_cardano_cli query tip $NET 2>/dev/null \
         | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))
 except: print(-1)' 2>/dev/null || echo -1)

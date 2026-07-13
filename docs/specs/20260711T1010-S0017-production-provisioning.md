@@ -556,6 +556,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T20:40+08:00 p5-14 completed(网络参数 spec 单一来源 + mainnet 支持):ouro-lib 增 ouro_network_args,
+  10 脚本换用(kes×3、deploy×4、runtime/verify、upgrade×2),死 env 默认与零 mainnet 分支两个缺陷一并清除;助手三态
+  直测(preprod→--testnet-magic 1、无 spec→回退 1、mainnet→--mainnet);全部 python 闸 + 69 rust 测试绿,manifest 重生成。
 - 2026-07-13T20:10+08:00 p5-13 completed(runtime render 步骤操作域化):决策树 render 步骤加"仅当改渲染配置(需
   node_version)"限定,纯 topology/restart 跳过;skill-docs + drift 绿。
 - 2026-07-13T19:40+08:00 p5-12 completed(spec 字段操作域化):消费图核对(observability 只用 machines[].ssh,错配字段
@@ -908,6 +911,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-14 | stack: python | command: 全部 25 个 tests/test_*.py; cargo test(69 passed); source ouro-lib.sh +
+  ouro_network_args 三态直测 | result: pass | note: preprod spec→"--testnet-magic 1"、无 spec→回退 1、mainnet spec→
+  "--mainnet";10 脚本 bash -n 全过;kes 离线回滚/period 闸、cardano-cli 适配器/矩阵闸不回归;manifest drift 对齐。
 - p5-13 | stack: python | command: python3 tests/test_skill_docs.py; cargo test committed_manifest_matches_embedded |
   result: pass | note: runtime 决策树 render 步骤含"ONLY when…requires node_version…SKIP"限定;禁词闸 + drift 对齐。
 - p5-12 | stack: rust | command: cargo test(69 passed); ouro-ops spec validate --spec

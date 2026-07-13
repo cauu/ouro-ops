@@ -13,16 +13,16 @@ SPEC="${OURO_SPEC:-}"
 
 # Role from the SPEC, not a runtime process scan — a role=bp host with a DEAD node must still take the
 # REAL path (a dead node cannot be silently treated as a relay and marker-passed). Magic also
-# from the spec (OURO_NETWORK_MAGIC is not in the ouro-ops tool run env allowlist).
-ROLE=""; MAGIC=1
+# from the spec via ouro_network_args (OURO_NETWORK_MAGIC is not in the tool run env allowlist).
+ROLE=""
+NET="$(ouro_network_args)"   # p5-14: network from the spec (mainnet-aware)
 if [ -n "$SPEC" ]; then
-  read -r ROLE MAGIC < <(python3 - "$SPEC" "$MACHINE" <<'PY'
+  ROLE="$(python3 - "$SPEC" "$MACHINE" <<'PY'
 import yaml,sys
 s=yaml.safe_load(open(sys.argv[1])); mid=sys.argv[2]
-role=next((m["role"] for m in s["machines"] if m["id"]==mid),"")
-print(role or "-", s["pool"]["network_magic"])
+print(next((m["role"] for m in s["machines"] if m["id"]==mid),""))
 PY
-) || true
+)" || true
 fi
 # A host is a real node host if a node is running, OR the spec says role=bp AND this host is
 # provisioned as a node ($DEVNET/config.json exists — a container-only path, absent on the dev
@@ -84,7 +84,7 @@ PY
   # (block strictly advances). Keep the db (wiping it re-triggers the p2-0 cold-start).
   SOCK="$DEVNET/node.socket"
   export CARDANO_NODE_SOCKET_PATH="$SOCK"
-  PRE_BLOCK="$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null \
+  PRE_BLOCK="$(ouro_cardano_cli query tip $NET 2>/dev/null \
     | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("block",-1))
 except: print(-1)' 2>/dev/null || echo -1)"
