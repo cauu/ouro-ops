@@ -7,9 +7,9 @@ fn main() {
         Err(error) => {
             let code = error.exit_code();
             let output = ToolOutput::failure("ouro", format!("exit_{code}"), error.to_string());
-            match serde_json::to_string(&output) {
-                Ok(line) => println!("{line}"),
-                Err(_) => eprintln!("{error}"),
+            // TTY-aware like every other emit (p5-2): human on a terminal, JSON when captured.
+            if ouro::output::print_json(&output).is_err() {
+                eprintln!("{error}");
             }
             code
         }

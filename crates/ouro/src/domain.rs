@@ -146,7 +146,9 @@ pub struct MithrilSync {
 
 impl PoolSpec {
     pub fn from_file(path: &Path) -> Result<Self> {
-        let text = fs::read_to_string(path)?;
+        let text = fs::read_to_string(path).map_err(|e| {
+            OuroError::Validation(format!("cannot read pool spec {}: {e}", path.display()))
+        })?;
         let spec: PoolSpec = match path.extension().and_then(|ext| ext.to_str()) {
             Some("yaml" | "yml") => serde_yaml::from_str(&text).map_err(|err| {
                 OuroError::Validation(format!("pool spec yaml parse failed: {err}"))
