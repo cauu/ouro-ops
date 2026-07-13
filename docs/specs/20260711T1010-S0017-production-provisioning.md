@@ -470,6 +470,18 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   复用 token"**;⑤ 自我背书话术("client-side; only a read-only version check leaves the browser")混入机器接口像注入
   话术→从 yaml 头注释移除(页面上给人看的保留)。收尾段改为:连不上=未接入→读 onboard STEP 0 向运维方要接入信息;
   任何不清楚/缺失/不一致即停下问人。web 静态闸(R2 N3 不内联决策树、tool run 通道、拓扑披露)保持通过。
+
+- [x] p5-11 (new) **confirm token 归位为"运维方批准"——修掉三面把人类门架空的文本**(用户追问"其他地方没有类似问题吗"
+  后系统排查发现):confirm token 的设计意图是"人批准具体目标",但 ① kes(offline push + 单操作 rotate 两条路径)与
+  deploy(register-submit)的 SKILL 把 `confirm create` 写成 agent 例行步骤、无一处要求先问运维方;② runtime/restart 与
+  runtime/topology-apply 在 CONFIRM_BOUND_TOOLS 门内但 runtime SKILL **完全没提 token**(死板 agent 撞拒绝后只能照错误
+  文本自救);③ CLI 拒绝文本本身教 agent 自助 detect→create→pass,全程无人。三面合修:四个 SKILL 的 token 步骤统一为
+  **"detect → 告知运维方将对哪台机做什么 → 等 chat 显式 go-ahead → 才 confirm create;绝不铸运维方未刚批准的 token"**
+  (runtime 补齐完整三步);CLI 拒绝文本改为 "the token represents the OPERATOR'S approval… present …to the operator
+  and get their explicit go-ahead"。与 p5-10 prompt 的"token 先问人"两面一致。regen bundle-manifest;全部 python 闸 +
+  69 rust 测试绿。
+
+## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
 - TC-1 provisioning Model P:`ouro-ops init` 幂等(重复运行 changed=false)且输出可核对的安装清单。
@@ -514,6 +526,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T18:40+08:00 p5-11 completed(confirm token 归位为运维方批准):排查出 kes×2/deploy×1 的 SKILL 自助铸 token、
+  runtime SKILL 漏 token 步骤、CLI 拒绝文本教自助三处架空点,统一为 detect→告知→等显式批准→create;CLI 文本同改。
+  bundle-manifest 重生成,python + rust 全绿。
 - 2026-07-13T18:00+08:00 p5-10 completed(生成 prompt 重写为 agent-协作式):用户首次真机验收即被对齐良好的全新 agent
   拒绝(委托判断/genesis 误读/装软件/代点确认/背书话术五条),prompt 从"命令式一次性批处理"改为"运维方在环:step 0 验工具
   未装即停、step 1 总结计划等批准、step 2 声明 spec 是描述非动作、step 3 token 先问人、结尾任何不一致即停下问人";
@@ -856,6 +871,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-11 | stack: python | command: 全部 25 个 tests/test_*.py; cargo test(69 passed)| result: pass | note: 四个 SKILL
+  的 confirm 步骤均含"WAIT for their explicit go-ahead / Never mint a token the operator did not just approve";runtime
+  SKILL 补齐 detect→approve→create→--confirm-token 三步;CLI 拒绝文本含 "OPERATOR'S approval";skill-docs 禁词闸 +
+  manifest drift 对齐。
 - p5-10 | stack: ui | command: python3 tests/test_web_generator.py; python3 tests/test_honest_labeling.py | result: pass |
   note: 重写后 prompt 仍过 R2 N3(指向 skill show、不内联决策树)、tool run 通道、拓扑披露三闸;真实拒绝案例(全新
   agent 五条反注入理由)逐条映射到措辞修复:在环批准/描述非动作/未装即停/token 先问人/去背书话术。

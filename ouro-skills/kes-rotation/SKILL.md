@@ -30,9 +30,11 @@ Production path (cold key kept OFFLINE — preferred):
   and the opcert counter IN PLACE (paths set via `COLD_SKEY=`/`COUNTER=`/`OUT=`) and issues
   `node.cert`. cold.skey never moves; only the public `node.cert` comes back.
 - Place the returned `node.cert` on the BP at the staging path (`<pool-keys>/offline-stage/node.cert.signed`).
-- Request an evidence-bound confirmation: detect the live target with `ouro-ops tool run
-  detect/runtime --dispatch <bp>`, then `ouro-ops confirm create --action kes-rotation/push-offline
-  --machine <bp> --runtime-evidence <evidence_hash>`.
+- Request an evidence-bound confirmation — the token represents the OPERATOR'S approval, so ask
+  them first: detect the live target with `ouro-ops tool run detect/runtime --dispatch <bp>`, tell
+  the operator what will be installed on which machine and WAIT for their explicit go-ahead in
+  chat, then `ouro-ops confirm create --action kes-rotation/push-offline --machine <bp>
+  --runtime-evidence <evidence_hash>`. Never mint a token the operator did not just approve.
 - Install with `ouro-ops tool run kes-rotation/push-offline --dispatch <bp> --spec <pool-spec>
   --confirm-token <tok>`. It promotes the staged KES key + the cold-signed opcert together, restarts
   onto them, and rolls back to the previous pair if the node does not restart, forge, and advance
@@ -46,8 +48,10 @@ as one audited, dispatched operation. `rotate` is destructive, so it REQUIRES a 
 confirmation token — dispatch it in three steps:
 - Detect the live target fingerprint: `ouro-ops tool run detect/runtime --dispatch <bp> --spec <pool-spec>`
   (read `data.evidence_hash` from the output).
-- Mint a one-time token bound to it: `ouro-ops confirm create --action kes-rotation/rotate
-  --machine <bp> --runtime-evidence <evidence_hash>` (read `data.token`).
+- Tell the operator what will run against which machine and WAIT for their explicit go-ahead in
+  chat — the token represents the operator's approval — then mint a one-time token bound to it:
+  `ouro-ops confirm create --action kes-rotation/rotate --machine <bp> --runtime-evidence
+  <evidence_hash>` (read `data.token`). Never mint a token the operator did not just approve.
 - Run with the token: `ouro-ops tool run kes-rotation/rotate --dispatch <bp> --spec <pool-spec>
   --confirm-token <token>`. (Without the token the run is refused, fail-closed.)
 - Then confirm the node resumed producing blocks (e.g. `ouro-ops tool run deploy/status --dispatch <bp>`).

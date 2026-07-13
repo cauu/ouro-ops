@@ -13,6 +13,13 @@ Apply runtime topology/config changes and verify the node returns healthy.
   host/machine id or the operator's access, ASK the operator before dispatching.
 - Validate spec with `ouro-ops spec validate`.
 - Render config with `ouro-ops config render`.
+- `runtime/topology-apply` and `runtime/restart` are target-disruptive and REQUIRE an
+  evidence-bound confirm token; the token represents the OPERATOR'S approval. For each: detect the
+  live target (`ouro-ops tool run detect/runtime --dispatch <m> --spec <spec>`, read
+  `data.evidence_hash`), tell the operator what will run against which machine and WAIT for their
+  explicit go-ahead in chat, then `ouro-ops confirm create --action runtime/<tool> --machine <m>
+  --runtime-evidence <hash>` and pass `--confirm-token <token>`. Never mint a token the operator
+  did not just approve.
 - Apply topology with `runtime/topology-apply`.
 - Restart only with `runtime/restart`.
 - Verify with `runtime/verify`.

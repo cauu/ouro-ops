@@ -799,10 +799,12 @@ fn run_tool_dispatch(args: &[String]) -> Result<()> {
     if CONFIRM_BOUND_TOOLS.contains(&tool_name.as_str()) {
         let token = optional_flag_value(args, "--confirm-token").ok_or_else(|| {
             OuroError::Validation(format!(
-                "{tool_name} on {machine_id} requires a target-bound confirmation token: run \
-                 `ouro-ops tool run detect/runtime --dispatch {machine_id} --spec <spec>`, review \
-                 data.evidence_hash, then `ouro-ops confirm create --action {tool_name} --machine \
-                 {machine_id} --runtime-evidence <hash>` and pass --confirm-token"
+                "{tool_name} on {machine_id} requires a target-bound confirmation token — the \
+                 token represents the OPERATOR'S approval: run `ouro-ops tool run detect/runtime \
+                 --dispatch {machine_id} --spec <spec>`, present data.evidence_hash and the \
+                 pending action to the operator and get their explicit go-ahead, then `ouro-ops \
+                 confirm create --action {tool_name} --machine {machine_id} --runtime-evidence \
+                 <hash>` and pass --confirm-token"
             ))
         })?;
         let live_fp =

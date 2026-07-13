@@ -27,8 +27,11 @@ Pool registration (cold key kept OFFLINE — staged cold-sign):
   (or `--mainnet`). It embeds ONLY the public tx body; it contains NO private key. Hand it to the operator.
 - The operator runs it on the AIR-GAPPED machine; it witnesses with the pool cold key IN PLACE
   (`COLD_SKEY=`) and returns the public `cold.witness`, placed on the BP at the staging path.
-- Request an evidence-bound confirmation (`ouro-ops tool run detect/runtime --dispatch <bp>` then
-  `ouro-ops confirm create --action deploy/register-submit --machine <bp> --runtime-evidence <hash>`).
+- Request an evidence-bound confirmation — the token represents the OPERATOR'S approval of this
+  irreversible on-chain submission, so tell them what will be submitted for which pool/target and
+  WAIT for their explicit go-ahead in chat first (`ouro-ops tool run detect/runtime --dispatch <bp>`
+  then `ouro-ops confirm create --action deploy/register-submit --machine <bp> --runtime-evidence
+  <hash>`). Never mint a token the operator did not just approve.
 - Submit with `ouro-ops tool run deploy/register-submit --dispatch <bp> --spec <pool-spec>
   --confirm-token <tok>`. It assembles the online + cold witnesses, submits, and ground-truths the
   pool id is registered on chain. It refuses to resubmit an already-registered pool.
