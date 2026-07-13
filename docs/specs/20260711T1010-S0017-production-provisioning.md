@@ -495,6 +495,23 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   ⑤ web 生成器:非 deploy 操作**省略** economics/node_version/sync/upgrade(upgrade 操作保留 node_version + quorum,
   deploy 保留全量),不再发明占位值;prompt step 2 改"spec 只含本操作消费的字段,其余刻意省略";⑥ 新 fixture
   valid-operation-scoped.yaml 进 schema 闸 + domain 单测证"省略可 validate、注册/render 缺字段 fail-closed"。
+
+- [x] p5-13 (new) **runtime 决策树 render 步骤操作域化**(用户要求核对其他操作是否遵循 p5-12 原则,矩阵审计发现 #1):
+  runtime 决策树把 `ouro-ops config render` 列为无条件步骤,但 render 经 p5-12 require node_version,而 runtime 操作的
+  operation-scoped spec 刻意省略它——死板 agent 做纯 restart/topology 会在 render 步撞 fail-closed,而 dispatched 路径
+  根本不消费 render 产物(topology-apply 自己从 spec 的 relay endpoints 渲染拓扑)。改:render 仅在"改节点渲染配置"时
+  执行(需 spec 含 node_version),纯 topology/restart 操作跳过。
+
+- [x] p5-14 (new) **cardano-cli 网络参数统一从 spec 取 + mainnet 支持**(矩阵审计发现 #2,严重):10 个 dispatched 脚本
+  用 `MAGIC="${OURO_NETWORK_MAGIC:-1}"` 或各自读 spec,但 **无任何地方设置该 env**(upgrade-one 注释自证"not in the
+  tool run env allowlist")→ kes 三脚本 + deploy 注册两脚本 dispatched 时永远落默认 preprod magic=1,容器床(magic=1)
+  恰好掩住;且**全部脚本只会发 `--testnet-magic`,零 mainnet 分支**——主网 BP 上 kes rotate/注册/status 全部失败
+  (fail-closed 方向,不毁东西,但操作不可用)。修:ouro-lib.sh 新增 `ouro_network_args`(spec 单一来源:
+  `pool.network==mainnet` → `--mainnet`,否则 `--testnet-magic <spec magic>`,无 spec 回退 1 保床兼容),
+  kes-rotation×3、deploy×4(register-build/submit、status、takeover-verify)、runtime/verify、upgrade×2
+  (upgrade-one/verify)共 10 脚本全部换用;spec 的 network/network_magic 恒必填,与 p5-12 操作域原则一致。
+
+## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
 - TC-1 provisioning Model P:`ouro-ops init` 幂等(重复运行 changed=false)且输出可核对的安装清单。
@@ -539,6 +556,8 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T20:10+08:00 p5-13 completed(runtime render 步骤操作域化):决策树 render 步骤加"仅当改渲染配置(需
+  node_version)"限定,纯 topology/restart 跳过;skill-docs + drift 绿。
 - 2026-07-13T19:40+08:00 p5-12 completed(spec 字段操作域化):消费图核对(observability 只用 machines[].ssh,错配字段
   本次无副作用但为日后 upgrade/deploy 埋雷);economics/node_version/sync 改 Option(present 仍全量校验),消费操作入口
   fail-closed(registration_fields/require_node_version/spec_sync_missing/spec_node_version_missing),schema required
@@ -889,6 +908,8 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-13 | stack: python | command: python3 tests/test_skill_docs.py; cargo test committed_manifest_matches_embedded |
+  result: pass | note: runtime 决策树 render 步骤含"ONLY when…requires node_version…SKIP"限定;禁词闸 + drift 对齐。
 - p5-12 | stack: rust | command: cargo test(69 passed); ouro-ops spec validate --spec
   tests/fixtures/pool-spec/valid-operation-scoped.yaml(valid:true); ouro-ops config render --spec <同上>(exit 10
   "requires node_version… optional for operations that neither render configs nor upgrade")| result: pass | note:

@@ -12,7 +12,10 @@ Apply runtime topology/config changes and verify the node returns healthy.
   dispatch cannot connect, onboard first: `ouro-ops skill show onboard`. If you lack the target
   host/machine id or the operator's access, ASK the operator before dispatching.
 - Validate spec with `ouro-ops spec validate`.
-- Render config with `ouro-ops config render`.
+- Render config with `ouro-ops config render` ONLY when the operation changes the node's rendered
+  config — it requires `node_version` in the spec and fails closed without it. Plain topology or
+  restart operations SKIP this step: `runtime/topology-apply` renders the topology itself from the
+  spec's relay endpoints, and an operation-scoped spec omits `node_version` on purpose.
 - `runtime/topology-apply` and `runtime/restart` are target-disruptive and REQUIRE an
   evidence-bound confirm token; the token represents the OPERATOR'S approval. For each: detect the
   live target (`ouro-ops tool run detect/runtime --dispatch <m> --spec <spec>`, read
