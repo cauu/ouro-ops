@@ -511,7 +511,17 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   kes-rotation×3、deploy×4(register-build/submit、status、takeover-verify)、runtime/verify、upgrade×2
   (upgrade-one/verify)共 10 脚本全部换用;spec 的 network/network_magic 恒必填,与 p5-12 操作域原则一致。
 
-## 4. Test and Acceptance Criteria
+- [x] p5-15 (new) **observability 从"装桩网关"重定义为"agent 读健康、报结论、BP 一等公民"**(用户真机验收后指出:机制
+  跑通但看不出解决什么问题;真需求是 agent 读到指标后给结论——"该轮换 KES 了"/"节点故障了"——且必须覆盖 BP):
+  ① 新增只读 `observability/health`(role 无关,BP + relay 同一探针):进程/检测模式、tip(块高/纪元/同步%)、两次采样
+  证 tip 推进、KES 剩余期数(经 PUBLIC opcert 的 kes-period-info,relay 无 opcert 属正常)、chain-db 磁盘水位(路径来自
+  p5-3 节点 argv 发现);封闭类型投影,节点宕机不是脚本失败而是**要报告的事实**(node_running=false + exit 20);
+  ② SKILL 决策树重写:对 spec 每台机(含 BP)跑 health → **解读表**(down→建议 troubleshooting;tip 不推进→疑似故障,
+  未经运维方同意不重启;sync<99.99→在同步;KES 剩余≤30→建议启动 kes-rotation;BP 无 opcert→无法出块,直接上报;
+  磁盘≥90%→扩容预警)→ 按机汇总、最坏发现在前、全过也要报具体数字不说空话;gateway 降级为"relay 可选的外部监控出口";
+  ③ 新红线:**BP 永不安装公网 telemetry 端点**,BP 健康只经受限 dispatch 读(这是设计路径不是限制);④ 网页 prompt 的
+  observability 命令改为对每台机跑 health;⑤ 测试:无节点主机上 health 必须诚实报 down(exit 20 + schema 合规 +
+  node_running=false),防伪通过。
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
 - TC-1 provisioning Model P:`ouro-ops init` 幂等(重复运行 changed=false)且输出可核对的安装清单。
@@ -556,6 +566,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T21:30+08:00 p5-15 completed(observability 重定义为 agent 读健康报结论):新增 observability/health 只读
+  探针(BP+relay 同探针:进程/tip 推进/同步/KES 剩余期/磁盘),SKILL 决策树重写为健康巡检 + 解读表 + 按机结论汇报,
+  gateway 降为 relay 可选项,新红线"BP 永不装公网端点";网页 prompt 命令同步;无节点主机诚实报 down 用例入闸;全部
+  python + 69 rust 绿,manifest 重生成。
 - 2026-07-13T20:40+08:00 p5-14 completed(网络参数 spec 单一来源 + mainnet 支持):ouro-lib 增 ouro_network_args,
   10 脚本换用(kes×3、deploy×4、runtime/verify、upgrade×2),死 env 默认与零 mainnet 分支两个缺陷一并清除;助手三态
   直测(preprod→--testnet-magic 1、无 spec→回退 1、mainnet→--mainnet);全部 python 闸 + 69 rust 测试绿,manifest 重生成。
@@ -911,6 +925,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-15 | stack: python | command: python3 tests/test_runtime_observability_scripts.py(含新 health 用例);
+  python3 tests/test_skill_docs.py; cargo test(69 passed)| result: pass | note: 无节点主机 health exit 20、
+  data.node_running=false、bp1.node_running check fail、tool-output schema 合规;重写 SKILL 过禁词闸 + 必备红线;
+  manifest drift 对齐;script-pairing 闸(health.sh 含 audit gate + strict mode)通过。
 - p5-14 | stack: python | command: 全部 25 个 tests/test_*.py; cargo test(69 passed); source ouro-lib.sh +
   ouro_network_args 三态直测 | result: pass | note: preprod spec→"--testnet-magic 1"、无 spec→回退 1、mainnet spec→
   "--mainnet";10 脚本 bash -n 全过;kes 离线回滚/period 闸、cardano-cli 适配器/矩阵闸不回归;manifest drift 对齐。

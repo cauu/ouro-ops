@@ -36,6 +36,16 @@ def main():
     assert run("observability/rollback", obs_state, machine="gateway")[1]["changed"] is True
     failed = run("observability/verify", obs_state, machine="gateway", check=False)
     assert failed[0].returncode == 20
+
+    # p5-15 health probe: on a host with NO node it must report the truth (node_running=false,
+    # exit 20 = "findings to report") in a schema-valid closed projection — never a fake pass.
+    health = run("observability/health", obs_state, machine="bp1", check=False)
+    assert health[0].returncode == 20, f"health on nodeless host should exit 20, got {health[0].returncode}"
+    payload = health[1]
+    assert payload["changed"] is False
+    assert payload["data"]["node_running"] is False
+    names = {c["name"]: c["pass"] for c in payload["checks"]}
+    assert names.get("bp1.node_running") is False
     print("runtime and observability scripts passed")
 
 
