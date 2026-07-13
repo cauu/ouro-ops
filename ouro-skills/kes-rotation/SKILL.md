@@ -13,7 +13,9 @@ dispatch cannot connect, onboard first: `ouro-ops skill show onboard`.
 
 Production path (cold key kept OFFLINE — preferred):
 - Validate spec with `ouro-ops spec validate`.
-- Inspect counters with `ouro-ops kes counter status`.
+- Inspect the live opcert counter via a read-only dispatch: `ouro-ops tool run deploy/status
+  --dispatch <bp> --spec <pool-spec>` (reports the node's on-disk counter). (`ouro-ops kes counter
+  status --state <counter-state.json>` reads a LOCAL offline counter-state file, not the live node.)
 - Generate + stage a fresh KES key on the BP with
   `ouro-ops tool run kes-rotation/generate-offline --dispatch <bp> --spec <pool-spec>`. The new KES
   signing key is STAGED on the BP (the running node keeps forging on the old key); the tool returns
@@ -37,8 +39,14 @@ Production path (cold key kept OFFLINE — preferred):
 Single-operation path (managed node where the cold key is co-located, e.g. the containerized
 bed): the whole lifecycle — new KES key, opcert issuance with the INCREMENTED counter, install,
 node restart, and forging ground-truth (`query kes-period-info` + tip advancing) — is performed
-as one audited, dispatched operation:
-- `ouro-ops tool run kes-rotation/rotate --dispatch <bp> --spec <pool-spec>`.
+as one audited, dispatched operation. `rotate` is destructive, so it REQUIRES a target-bound
+confirmation token — dispatch it in three steps:
+- Detect the live target fingerprint: `ouro-ops tool run detect/runtime --dispatch <bp> --spec <pool-spec>`
+  (read `data.evidence_hash` from the output).
+- Mint a one-time token bound to it: `ouro-ops confirm create --action kes-rotation/rotate
+  --machine <bp> --runtime-evidence <evidence_hash>` (read `data.token`).
+- Run with the token: `ouro-ops tool run kes-rotation/rotate --dispatch <bp> --spec <pool-spec>
+  --confirm-token <token>`. (Without the token the run is refused, fail-closed.)
 - Then confirm the node resumed producing blocks (e.g. `ouro-ops tool run deploy/status --dispatch <bp>`).
 Prefer the offline production path whenever the cold key can be kept off the block producer.
 

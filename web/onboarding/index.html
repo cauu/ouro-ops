@@ -731,7 +731,7 @@ function prompt(d) {
   const cmd = {
     deploy:          `ouro-ops tool run <skill>/<script> --dispatch <machine> --spec pool-spec.yaml   # follow the steps 'ouro-ops skill show deploy' gives`,
     upgrade:         `ouro-ops tool run upgrade/rollout --spec pool-spec.yaml   # relays-first, BP-last (target version is in the spec)`,
-    "kes-rotation":  `ouro-ops tool run kes-rotation/rotate --dispatch ${bp} --spec pool-spec.yaml`,
+    "kes-rotation":  `ouro-ops tool run kes-rotation/rotate --dispatch ${bp} --spec pool-spec.yaml   # destructive: needs an evidence-bound confirm token — 'ouro-ops skill show kes-rotation' has the detect->confirm->token steps`,
     runtime:         `ouro-ops tool run runtime/restart --dispatch <the machine you're operating> --spec pool-spec.yaml   # or runtime/topology-apply`,
     observability:   `ouro-ops tool run observability/install-gateway --dispatch <a relay> --spec pool-spec.yaml`,
     troubleshooting: `ouro-ops tool run troubleshooting/<script> --dispatch <the machine> --spec pool-spec.yaml   # read-only`,

@@ -421,6 +421,16 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   skill-docs 闸(禁裸 ssh/sudo/docker 词 + 必备红线)+ web 生成器闸;regen bundle-manifest。至此 agent 拿 prompt 能读到
   完整链:skill show <op>(含接入前置)→ skill show onboard → init → dispatch → confirm。
 
+- [x] p5-5 (new) **修复子代理端到端评审发现的 agent 体验缺口**(subagent 扮演 agent 真跑 onboard + KES 轮换,两条
+  旗舰流程都通,但零触达有卡点):① **[高]控制私钥位置**——dispatch 按 spec `ssh.key_ref: creds://<id>` 找私钥,原
+  onboard 文档只说"控制密钥对"→ agent 易存成 `creds://control` 致 `--dispatch <id>` 找不到。修:`ouro-ops init` 省略
+  `--control-pubkey` 时**自动在 `creds://<machine>` 生成密钥对**(ssh-keygen ed25519,私钥 0600),公钥授权给 ouro-exec
+  →**零密钥管理**;onboard 决策树写明此约定 + `--port` 默认 22。② **[高]KES 单操作路径缺确认门**——决策树/网页 prompt
+  只给 `rotate --dispatch`,但 rotate 硬需证据绑定 token;修:单操作路径补 detect→`confirm create`→`--confirm-token`
+  三步,网页 prompt 加确认说明。③ **[中]`--help` 缺 agent 命令面**——重写 `--help` 列全命令(onboard/operate/read-only
+  分组)+ 每命令 `<cmd> --help` 用法。④ **[中]`kes counter status`** 无 `--state` 会报错——决策树改为经 dispatched
+  `deploy/status` 读活节点 counter,并注明 `--state` 是离线文件。⑤ 网页 prompt/init 示例带 `--port`。
+
 ## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
@@ -466,6 +476,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T07:10+08:00 p5-5 completed(修子代理端到端发现的缺口):subagent 扮演 agent 真跑两条旗舰流程均端到端成功,
+  但报出 5 处 agent 体验缺口(#1 控制私钥位置=零触达真阻塞、#2 KES 单操作路径缺确认门、#3 --help 缺命令面、#4 counter
+  status 需 --state、#5 --port)。全部修:init 省略 --control-pubkey 时自动生成 creds://<machine> 密钥(smoke 证已生成
+  0600 私钥+公钥)+ onboard/kes 决策树补齐 + --help 重写含 per-command 用法 + 网页 prompt 更新。69 cargo + python 全绿。
 - 2026-07-13T06:30+08:00 p5-4 completed(接入纳入 agent 契约):见交付。核心把"agent 照 skill show 做但决策树没接入步"
   这个端到端断点补上——新 onboard 决策树 + 3 个 dispatch 操作决策树前置 onboard 引用 + 网页 prompt 页脚指向
   skill show onboard。skill-docs 闸(onboard 过 forbidden-words + 必备红线)+ web 闸 + manifest drift 全绿;
@@ -786,6 +800,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-5 | stack: rust+e2e | command: cargo test; ouro-ops init(自动生成 smoke); ouro-ops --help / init --help; make e2e-t2-init
+  | result: pass | note: init 省 --control-pubkey→自动生成 creds://bp1(私钥 0600 + .pub)已 smoke;--help 列全 agent 命令面
+  + init/tool/confirm/kes 等 per-command 用法;onboard/kes-rotation 决策树补密钥位置/确认门/counter;真裸机 onboard e2e 无回归。
 - p5-4 | stack: rust+python | command: cargo test committed_manifest_matches_embedded; python3 tests/test_skill_docs.py;
   python3 tests/test_web_generator.py; ouro-ops skill show onboard | result: pass | note: onboard SKILL 入内嵌 bundle +
   过 skill-docs 闸(无裸 ssh/sudo/docker + 必备红线)+ web 生成器闸;skill show onboard 返回决策树;69 cargo + python 全绿。

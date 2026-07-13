@@ -18,13 +18,16 @@ Before any `--dispatch` operation, confirm the target is ONBOARDED. If a read-on
   NOT mechanism-isolated from the agent; this is documented, relied on for upstream security):
   - an existing privileged (root-capable) account on the target + its key, referenced as
     `creds://<name>` (a name under the local credentials dir — never an inline key);
-  - a control key PAIR whose PUBLIC half will be authorized for `ouro-exec` (the matching private
-    half stays local and is what later dispatch uses);
   - an `ouro-ops` binary matching the target's OS/arch (init probes the target and REFUSES a
     mismatched binary before writing anything).
-- Onboard: `ouro-ops init --host <target> --bootstrap-user <account> --bootstrap-key creds://<name>
-  --control-pubkey <control-pub> --ouro-binary <target-arch ouro-ops> --spec pool-spec.yaml
-  --machine <id> [--expected-host-key <sha256>]`. It installs the confined `ouro-exec` principal +
+- The control key is handled FOR you: when you pass `--machine <id>` and omit `--control-pubkey`,
+  init AUTO-PROVISIONS a keypair at `creds://<id>` — the exact path dispatch resolves from the
+  spec's `ssh.key_ref: creds://<id>` — and authorizes its public half for `ouro-exec`. Zero key
+  handling. (To supply your own instead: pass `--control-pubkey <pub>` and place its PRIVATE half at
+  `creds://<id>` yourself, matching `ssh.key_ref`.)
+- Onboard: `ouro-ops init --host <target> --port <ssh-port> --bootstrap-user <account>
+  --bootstrap-key creds://<name> --ouro-binary <target-arch ouro-ops> --spec pool-spec.yaml
+  --machine <id> [--expected-host-key <sha256>]` (`--port` defaults to 22). It installs the confined `ouro-exec` principal +
   the fixed tool-run wrapper + the command allowlist, returns an auditable install manifest, pins
   the target host key (with `--expected-host-key` it verifies out-of-band and refuses a mismatch
   BEFORE any write), and records the declared runtime for later detected↔declared cross-check.

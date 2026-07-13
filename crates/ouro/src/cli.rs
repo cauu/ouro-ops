@@ -20,6 +20,16 @@ use crate::{
 
 pub fn run(args: Vec<String>) -> Result<()> {
     let command = args.get(1).map(String::as_str).unwrap_or("help");
+    // `<command> --help` / `-h` prints that command's usage instead of running it (agent
+    // discoverability). The bare `help`/`--help`/`-h` command falls through to the full list.
+    if !matches!(command, "help" | "--help" | "-h")
+        && args.iter().skip(2).any(|a| a == "--help" || a == "-h")
+    {
+        if let Some(usage) = command_usage(command) {
+            println!("{usage}");
+            return Ok(());
+        }
+    }
     match command {
         "help" | "--help" | "-h" => print_help(),
         "--version" | "version" => {
@@ -169,7 +179,7 @@ fn run_init(args: &[String]) -> Result<()> {
         )));
     }
     let key_ref = CredentialRef::parse(flag_value(args, "--bootstrap-key")?)?;
-    let pubkey_path = PathBuf::from(flag_value(args, "--control-pubkey")?);
+    let machine_id = optional_flag_value(args, "--machine");
     let dry_run = args.iter().any(|a| a == "--dry-run");
     let host_key = match optional_flag_value(args, "--host-key") {
         Some("yes") => HostKeyCheck::Yes,
@@ -185,9 +195,36 @@ fn run_init(args: &[String]) -> Result<()> {
             key_ref.as_str()
         )));
     }
-    let control_pubkey = std::fs::read_to_string(&pubkey_path).map_err(|e| {
-        OuroError::Validation(format!("cannot read --control-pubkey {}: {e}", pubkey_path.display()))
-    })?;
+    // Control key: if --control-pubkey is given, use it (operator manages the private half).
+    // Otherwise AUTO-PROVISION a keypair at creds://<machine> — the exact path dispatch resolves
+    // from the spec's ssh.key_ref — so the agent never places a key by hand (zero-touch onboarding).
+    let mut auto_control_key: Option<String> = None;
+    let control_pubkey = match optional_flag_value(args, "--control-pubkey") {
+        Some(p) => std::fs::read_to_string(p)
+            .map_err(|e| OuroError::Validation(format!("cannot read --control-pubkey {p}: {e}")))?,
+        None if dry_run => "ssh-ed25519 AAAADRYRUNPLACEHOLDER ouro-control".to_string(),
+        None => {
+            let machine = machine_id.ok_or_else(|| OuroError::Validation(
+                "provide --control-pubkey, or --machine to auto-provision the control key at creds://<machine>".to_string()))?;
+            let key = paths.credentials_dir.join(machine);
+            let pub_path = paths.credentials_dir.join(format!("{machine}.pub"));
+            if !key.is_file() {
+                std::fs::create_dir_all(&paths.credentials_dir)?;
+                let status = Command::new("ssh-keygen")
+                    .args(["-t", "ed25519", "-N", "", "-q", "-C", &format!("ouro-control@{machine}"), "-f"])
+                    .arg(&key)
+                    .status()
+                    .map_err(|e| OuroError::Validation(format!("could not run ssh-keygen to auto-provision the control key: {e}")))?;
+                if !status.success() {
+                    return Err(OuroError::Validation("ssh-keygen failed to generate the control key".to_string()));
+                }
+                auto_control_key = Some(key.display().to_string());
+            }
+            std::fs::read_to_string(&pub_path).map_err(|e| {
+                OuroError::Validation(format!("cannot read the control pubkey {}: {e}", pub_path.display()))
+            })?
+        }
+    };
     let ouro_binary = match optional_flag_value(args, "--ouro-binary") {
         Some(p) => PathBuf::from(p),
         None => std::env::current_exe()
@@ -261,6 +298,7 @@ fn run_init(args: &[String]) -> Result<()> {
         "pinned_host_key": pinned_fp,
         "declared_runtime": declared_runtime,
         "target_facts": target_facts,
+        "control_key": auto_control_key,
         "security_note": "bootstrap credential is NOT mechanism-isolated from the agent \
             (convenience mode, P0-1); a poisoned prompt could invoke init via the agent. \
             Relies on upstream control-machine / agent-runtime security.",
@@ -1114,7 +1152,55 @@ fn run_status(args: &[String]) -> Result<()> {
 
 fn print_help() {
     println!("ouro-ops: deterministic Cardano stake pool operations CLI");
-    println!("commands: version, paths, contract, spec validate --spec <path>, config render/apply, audit init, legacy inspect --db <path>");
+    println!("  Agent contract: read the procedure for any operation with `ouro-ops skill show <skill>`;");
+    println!("  run `<command> --help` for a command's usage.\n");
+    println!("Onboarding (once per target):");
+    println!("  init      onboard a target (installs the confined ouro-exec dispatch principal)");
+    println!("  deinit    reverse onboarding (restores the box)");
+    println!("Operate (via the agent):");
+    println!("  skill     show|list — the authoritative decision trees + red lines");
+    println!("  tool      run <skill>/<script> [--dispatch <machine>] — the ONLY audited write path");
+    println!("  confirm   create — mint a target-bound one-time token for a destructive op");
+    println!("  kes       cold-sign-script | counter status | generate | push");
+    println!("  deploy    cold-sign-script — offline tx witnessing");
+    println!("  pool      overview | register-tx");
+    println!("  rollback  roll back a prior change");
+    println!("  self-update  --check");
+    println!("Read-only / meta:");
+    println!("  status    node status from a snapshot | spec validate | detect (via tool run detect/*)");
+    println!("  version | paths | contract | manifest show|verify | config render|apply | audit init|log");
+    println!("\nOutput is single-line JSON when captured (agents/pipes/dispatch); human-readable on a TTY (force JSON: --json).");
+}
+
+/// One-line usage for `<command> --help`. Covers the agent-facing surface; None → fall through.
+fn command_usage(command: &str) -> Option<&'static str> {
+    Some(match command {
+        "init" => "ouro-ops init --host <target> [--port 22] --bootstrap-user <sudo-account> \
+                   --bootstrap-key creds://<name> --ouro-binary <target-arch ouro-ops> \
+                   --spec <pool-spec> --machine <id> [--control-pubkey <pub>] [--expected-host-key <sha256>]\n  \
+                   Onboards a target. Omit --control-pubkey to auto-provision the control key at creds://<id>. \
+                   See `ouro-ops skill show onboard`.",
+        "deinit" => "ouro-ops deinit --host <target> [--port 22] --bootstrap-user <account> \
+                     --bootstrap-key creds://<name> [--force] [--remove-node]\n  Reverses onboarding (refuses while a node runs).",
+        "tool" => "ouro-ops tool run <skill>/<script> [--dispatch <machine>] --spec <pool-spec> \
+                   [--machine <id>] [--confirm-token <tok>]\n  The sole audited write path. Read the steps from `ouro-ops skill show <skill>`.",
+        "confirm" => "ouro-ops confirm create --action <skill>/<script> --machine <id> --runtime-evidence <hash>\n  \
+                      Mints a one-time token bound to the live target fingerprint (from `tool run detect/runtime`).",
+        "kes" => "ouro-ops kes cold-sign-script --kes-vkey <pub> --kes-period <n> | counter status --state <json> \
+                  | generate | push\n  Rotations run via `tool run kes-rotation/*` — see `ouro-ops skill show kes-rotation`.",
+        "deploy" => "ouro-ops deploy cold-sign-script --tx-body <path> --cold-key <role> [--cold-key <role>...] \
+                     [--era conway] [--testnet-magic <n>|--mainnet]",
+        "pool" => "ouro-ops pool overview --spec <pool-spec> [--snapshot <json>] | register-tx --spec <pool-spec>",
+        "skill" => "ouro-ops skill list | show <skill>   (skills: deploy, detect, kes-rotation, observability, runtime, troubleshooting, upgrade, onboard)",
+        "spec" => "ouro-ops spec validate --spec <pool-spec>",
+        "status" => "ouro-ops status --snapshot <json> [--diff-spec --spec <pool-spec>]",
+        "manifest" => "ouro-ops manifest show | verify",
+        "config" => "ouro-ops config render --spec <pool-spec> --machine <id> [--out <dir>] | apply ...",
+        "audit" => "ouro-ops audit init | log",
+        "rollback" => "ouro-ops rollback --spec <pool-spec> ...",
+        "self-update" => "ouro-ops self-update --check [--against <signed-metadata>]",
+        _ => return None,
+    })
 }
 
 fn run_config(args: &[String]) -> Result<()> {
