@@ -523,7 +523,12 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   observability 命令改为对每台机跑 health;⑤ 测试:无节点主机上 health 必须诚实报 down(exit 20 + schema 合规 +
   node_running=false),防伪通过。
 
-## 4. Test and Acceptance Criteria
+- [x] p5-16 (new) **工具缺失报错指明"哪个二进制缺"+ 目标机过旧的自救指引**(真机验收:relay1 上旧二进制报
+  `no such tool script: observability/scripts/health.sh`,agent 误判为本地安装损坏并正确地拒绝自己造脚本——错误文本
+  没有给任何"这是 dispatched 目标机的二进制过旧"的线索):报错加上本二进制版本号("neither on disk nor embedded in
+  THIS ouro-ops v<ver>")+ 指引("If this error came from a dispatched run, the TARGET's installed ouro-ops predates
+  the tool — re-run `ouro-ops init` with a newer --ouro-binary")。本地验证:控制机 health 正常解析执行(排除本地);
+  改后报错文本实测含版本 + 指引。
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
 - TC-1 provisioning Model P:`ouro-ops init` 幂等(重复运行 changed=false)且输出可核对的安装清单。
@@ -568,6 +573,8 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T22:20+08:00 p5-16 completed(工具缺失报错自证版本 + 目标机过旧指引):真机验收 relay1 旧二进制误导 agent
+  判"本地安装损坏";报错文本加 THIS ouro-ops v<ver> + re-init 指引;69 rust + 全 python 绿。
 - 2026-07-13T21:30+08:00 p5-15 completed(observability 重定义为 agent 读健康报结论):新增 observability/health 只读
   探针(BP+relay 同探针:进程/tip 推进/同步/KES 剩余期/磁盘),SKILL 决策树重写为健康巡检 + 解读表 + 按机结论汇报,
   gateway 降为 relay 可选项,新红线"BP 永不装公网端点";网页 prompt 命令同步;无节点主机诚实报 down 用例入闸;全部
@@ -927,6 +934,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-16 | stack: rust | command: cargo test(69 passed); ouro-ops tool run observability/nonexistent(报错含
+  "in THIS ouro-ops v0.1.0" + "re-run `ouro-ops init` with a newer --ouro-binary"); ouro-ops tool run
+  observability/health --machine bp1(本地正常解析执行,exit 20 诚实报 down)| result: pass | note: 全 python 闸绿;
+  误判场景(远端旧二进制)有了可行动线索。
 - p5-15 | stack: python | command: python3 tests/test_runtime_observability_scripts.py(含新 health 用例);
   python3 tests/test_skill_docs.py; cargo test(69 passed)| result: pass | note: 无节点主机 health exit 20、
   data.node_running=false、bp1.node_running check fail、tool-output schema 合规;重写 SKILL 过禁词闸 + 必备红线;

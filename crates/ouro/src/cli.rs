@@ -687,9 +687,16 @@ fn resolve_skill_script(tool_name: &str, label: &str) -> Result<(PathBuf, Option
     }
     // Installed-binary path: extract the embedded skill's shell assets to a fresh temp base.
     if crate::skills::script(skill, script).is_none() {
+        // p5-16: name WHICH binary is missing the tool — when this fires on a dispatched
+        // TARGET, the operator sees it via the control machine and easily misreads it as a
+        // local install problem (real acceptance case: a stale target binary predating a
+        // newly added tool).
         return Err(OuroError::Validation(format!(
-            "no such tool script: {}/scripts/{}.sh (neither on disk nor embedded)",
-            skill, script
+            "no such tool script: {skill}/scripts/{script}.sh (neither on disk nor embedded \
+             in THIS ouro-ops v{}). If this error came from a dispatched run, the TARGET's \
+             installed ouro-ops predates the tool — re-run `ouro-ops init` with a newer \
+             --ouro-binary to update it.",
+            env!("CARGO_PKG_VERSION")
         )));
     }
     // p1-6: per-invocation, audit-id-namespaced scratch (traceable + GC-visible via the
