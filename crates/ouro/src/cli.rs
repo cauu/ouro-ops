@@ -795,7 +795,7 @@ fn run_tool_dispatch(args: &[String]) -> Result<()> {
         machine_id,
         remote_spec,
     )?;
-    std::io::stdout().write_all(outcome.stdout.as_bytes())?;
+    output::forward_tool_stdout(outcome.stdout.as_bytes())?;
     std::io::stdout().flush()?;
     if !outcome.stderr.is_empty() {
         std::io::stderr().write_all(outcome.stderr.as_bytes())?;
@@ -897,8 +897,8 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
             eprintln!("ouro: could not remove run scratch {}: {e}", base.display());
         }
     }
-    // Forward the child's stdout (the single-line JSON contract) to our caller.
-    std::io::stdout().write_all(&output.stdout)?;
+    // Forward the child's stdout: single-line JSON when captured, human-readable on a TTY.
+    crate::output::forward_tool_stdout(&output.stdout)?;
     std::io::stdout().flush()?;
 
     match output.status.code() {

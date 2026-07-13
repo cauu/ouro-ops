@@ -396,6 +396,13 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   socket 在 host↔容器**同路径 bind-mount**,故文件参数与 socket 两侧一致)。30 处调用全改走适配器 + detect/cardano-cli
   版本探测也按模式探容器内 cli。加**静态闸** `test_cardano_cli_gate.py`(禁 adapter 外裸 cardano-cli,已探针证伪)。
 
+- [x] p5-2 (new) **人类可读 TTY 输出**(用户反馈 JSON 难读):`output.rs` 按 `stdout().is_terminal()` 自动切换——
+  **交互终端**渲染可读摘要(`✓/✗ tool status` + checks + data 嵌套 key:value + error/hint),**被捕获**(管道/重定向/
+  SSH dispatch/测试/agent)仍是单行 JSON(机器契约不变);`--json`/`OURO_JSON=1` 可在 TTY 上强制 JSON。`tool run`
+  转发同规则(`forward_tool_stdout`:TTY 渲染、否则原样透传字节)。3 单测(force_json 真值表 + render_human 可读非
+  JSON + checks/error 渲染);全量 69 cargo + python 闸(均经 subprocess=非 TTY→JSON)无回归;PTY 实测 version/skill/
+  spec 可读。**克制/极简:无 ANSI 颜色。**
+
 ## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
@@ -441,6 +448,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T04:10+08:00 p5-2 completed(人类可读 TTY 输出——用户反馈 version/skill 输出 JSON 难读):`print_json`
+  与 `tool run` 转发改为 TTY 感知——`is_terminal()` 为真渲染可读摘要,否则(捕获/管道/dispatch/测试/agent)原样单行
+  JSON。`--json`/`OURO_JSON=1` 可强制。机器契约完全不变(所有测试经 subprocess=非 TTY 仍拿 JSON,69 cargo + python
+  全绿);PTY 实测人读输出正常。无 ANSI(克制/极简)。output.rs 纯 Rust,不动内嵌 skills,manifest 不变。
 - 2026-07-13T03:30+08:00 p5-1 completed(cardano-cli 托管适配器——用户提出容器缺口后补):核实 11 脚本 30 处裸调
   cardano-cli 全假设 host,容器化 node 必断。ouro-lib.sh 加 `ouro_cardano_cli`/`_available`/`_resolve`(模式分发 +
   缓存 + docker/podman exec + socket 转发 + 同路径 mount 约定);30 处调用 + detect/cardano-cli 版本探测全改走适配器。
@@ -749,6 +760,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-2 | stack: rust | command: cargo test -q output:: | result: pass | note: force_json 真值表(捕获→JSON、TTY→人读、
+  --json/env 强制 JSON)+ render_human 可读非 JSON + checks/error 渲染;3 pass。全量 69 cargo + python 闸无回归
+  (均经 subprocess=非 TTY→JSON)。PTY 实测 version/skill/spec 人读输出正常。
 - p5-1 | stack: python | command: python3 tests/test_cardano_cli_gate.py ; python3 tests/test_cardano_cli_adapter.py |
   result: pass | note: 静态闸(禁 adapter 外裸 cardano-cli,注入探针即 FAIL)+ 确定性分发(docker→`docker exec -e
   CARDANO_NODE_SOCKET_PATH <cid[:12]> cardano-cli …`、可用性走容器内、bare→host 且不碰 docker/podman)。
