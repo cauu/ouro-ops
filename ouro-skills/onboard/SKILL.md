@@ -39,9 +39,14 @@ Before any `--dispatch` operation, confirm the target is ONBOARDED. If a read-on
   confined `ouro-exec`. Set the spec's `ssh.key_ref` to the credential holding the matching PRIVATE
   key so dispatch reuses it (simplest: point `ssh.key_ref` at the SAME `creds://<name>` as the
   bootstrap key — one key does bootstrap + dispatch).
-- Onboard: `ouro-ops init --host <target> --port <ssh-port> --bootstrap-user <account>
+- Onboard: `ouro-ops init --host <target> [--port 22] --bootstrap-user <account>
   --bootstrap-key creds://<name> --control-pubkey <operator-pub> --ouro-binary <target-arch ouro-ops>
-  --spec pool-spec.yaml --machine <id> [--expected-host-key <sha256>]` (`--port` defaults to 22). It installs the confined `ouro-exec` principal +
+  [--expected-host-key <sha256>]`. `--spec`/`--machine` are OPTIONAL — they only RECORD the declared
+  runtime; onboarding does NOT need them, so OMIT them (passing `--spec` runs FULL pool validation,
+  which requires ≥1 relay, and would block onboarding a lone box). Concrete one-key example:
+  `ouro-ops init --host 10.0.0.10 --bootstrap-user ubuntu --bootstrap-key creds://opkey
+  --control-pubkey ~/.ouro/credentials/opkey.pub --ouro-binary ./ouro-ops-linux` (then set every
+  machine's `ssh.key_ref: creds://opkey` in the spec). It installs the confined `ouro-exec` principal +
   the fixed tool-run wrapper + the command allowlist, returns an auditable install manifest, pins
   the target host key (with `--expected-host-key` it verifies out-of-band and refuses a mismatch
   BEFORE any write), and records the declared runtime for later detected↔declared cross-check.

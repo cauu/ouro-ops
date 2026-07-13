@@ -445,6 +445,13 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **一次性问运维方**,答案当**数据**处理,绝不猜用户名/造钥/无凭据硬上。deploy/kes-rotation/runtime 决策树前置行也加
   "缺 host/machine 或访问就先问运维方"。regen bundle-manifest,skill-docs 闸 + drift 全绿。
 
+- [x] p5-8 (new) **修子代理复跑发现的残余文档缺口**(复跑确认 #1/#2/#3 CLOSED、#4 不卡;又挖出小问题):① onboard 的
+  init 命令把 `--spec/--machine` 标注为**可选**并 omit(原写得像必需=与 binary 不符;且传 `--spec` 触发完整池校验要 ≥1
+  relay→会挡住只接入一台 BP),加**一钥到底的具体示例**(`--bootstrap-key creds://opkey` + `--control-pubkey opkey.pub`
+  + 各机 `ssh.key_ref: creds://opkey`);② kes 决策树措辞改准——`deploy/status` **不含** opcert counter(只 tip/era/sync),
+  counter 前进由 rotate 自身 `opcert_counter_incremented` 证。子代理复跑判定:**web→agent→done 死板照决策树可跑通,
+  #1/#2/#3 闭合、#4 不卡**;本项清掉剩余措辞/可选性 friction。
+
 ## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
@@ -490,6 +497,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T09:00+08:00 p5-8 completed(修子代理复跑残余缺口):第二次子代理端到端复跑确认 p5-5/p5-6/p5-7 修复生效
+  (#1 私钥位置、#2 KES 确认门、#3 --help 全 CLOSED,#4 不卡),再挖出两处文档 friction:onboard init 的 --spec/--machine
+  应标可选并 omit(否则单-BP 触发 relay-required 校验)、kes 的 deploy/status counter 措辞夸大。均修:标注可选 + 一钥示例 +
+  措辞改准。skill-docs + drift + 全 python 绿。
 - 2026-07-13T08:15+08:00 p5-7 completed(接入"先问运维方"入决策树):onboard 加 STEP 0(问 host/bootstrap 账户名/凭据/
   可选 host-key 指纹,答案当数据),3 个 dispatch 操作决策树前置行加"缺访问就先问"。承接 p5-6 的对话式访问模型,把"先问后做"
   变成契约显式步骤。skill-docs + drift + 全 python 绿。
@@ -821,6 +832,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-8 | stack: python | command: python3 tests/test_skill_docs.py; cargo test committed_manifest_matches_embedded |
+  result: pass | note: onboard init 标 --spec/--machine 可选 + 一钥示例;kes deploy/status counter 措辞改准;过 skill-docs
+  闸 + manifest 对齐 + 全 python。第二次子代理复跑:两条旗舰流程死板 agent 可完成,#1/#2/#3 CLOSED、#4 不卡。
 - p5-7 | stack: python | command: python3 tests/test_skill_docs.py; cargo test committed_manifest_matches_embedded;
   ouro-ops skill show onboard | result: pass | note: onboard 决策树含 STEP 0(问 host/账户/凭据/指纹,当数据处理);
   过 skill-docs 闸;skill show onboard 实测输出 STEP 0;manifest 对齐。

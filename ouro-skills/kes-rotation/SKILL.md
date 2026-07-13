@@ -14,9 +14,11 @@ host/machine id or the operator's access, ASK the operator before dispatching.
 
 Production path (cold key kept OFFLINE — preferred):
 - Validate spec with `ouro-ops spec validate`.
-- Inspect the live opcert counter via a read-only dispatch: `ouro-ops tool run deploy/status
-  --dispatch <bp> --spec <pool-spec>` (reports the node's on-disk counter). (`ouro-ops kes counter
-  status --state <counter-state.json>` reads a LOCAL offline counter-state file, not the live node.)
+- Check node health with a read-only dispatch: `ouro-ops tool run deploy/status --dispatch <bp>
+  --spec <pool-spec>` (tip/era/sync/forging — it does NOT surface the opcert counter). The rotation
+  itself proves the on-disk counter advanced via its own `opcert_counter_incremented` check.
+  (`ouro-ops kes counter status --state <counter-state.json>` reads a LOCAL offline counter-state
+  file, not the live node.)
 - Generate + stage a fresh KES key on the BP with
   `ouro-ops tool run kes-rotation/generate-offline --dispatch <bp> --spec <pool-spec>`. The new KES
   signing key is STAGED on the BP (the running node keeps forging on the old key); the tool returns
