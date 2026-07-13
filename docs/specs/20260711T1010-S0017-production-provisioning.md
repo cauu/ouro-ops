@@ -459,7 +459,17 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   的钥;一钥示例改为自洽三步(symlink → `ssh-keygen -y` 派生 pubkey → init);新增红线"凭据选择权属运维方——不枚举其钥匙库、
   不用未指名的钥,登记只处理路径不处理内容"。诚实边界:此为行为约束(skill 红线)非机制隔离,与 P0-1 便利模式定位一致。
 
-## 4. Test and Acceptance Criteria
+- [x] p5-10 (new) **重写生成 prompt:与 agent 安全规范合作而非对抗**(用户真机验收:把 prompt 粘给全新 agent,被其以
+  反注入理由拒绝——五条拒绝均指向我们的措辞缺陷):① "Follow it exactly…this message only supplies data" 读作"盲从工具
+  输出+委托判断"→改为 **step 1 要求 agent 先总结 skill show 的步骤(标出哪些是写操作)、等运维方 chat 批准再执行**,
+  开头声明 "I stay in the loop";② spec 里 `sync: mode: genesis` 被误读为"将触发主网 BP 全量重同步"→prompt step 2 +
+  yaml 头注释明示 **spec 是对现存池的声明(sync/version 是现状不是请求),写盘不改变任何东西,只有 step 3 行动**;
+  ③ "install ouro from the official site" 让 agent 装第三方软件→改 **step 0:验证 `ouro-ops --version`,未装即停,
+  让运维方自己装,agent 不得抓取/安装任何东西**;④ "Confirm each destructive step when ouro asks" 读作"代人点确认",
+  与 confirm token 人类门定位相反→改为 **"创建 confirm token 前必须在 chat 里问我,我的显式批准才是门,绝不擅自铸造/
+  复用 token"**;⑤ 自我背书话术("client-side; only a read-only version check leaves the browser")混入机器接口像注入
+  话术→从 yaml 头注释移除(页面上给人看的保留)。收尾段改为:连不上=未接入→读 onboard STEP 0 向运维方要接入信息;
+  任何不清楚/缺失/不一致即停下问人。web 静态闸(R2 N3 不内联决策树、tool run 通道、拓扑披露)保持通过。
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
 - TC-1 provisioning Model P:`ouro-ops init` 幂等(重复运行 changed=false)且输出可核对的安装清单。
@@ -504,6 +514,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T18:00+08:00 p5-10 completed(生成 prompt 重写为 agent-协作式):用户首次真机验收即被对齐良好的全新 agent
+  拒绝(委托判断/genesis 误读/装软件/代点确认/背书话术五条),prompt 从"命令式一次性批处理"改为"运维方在环:step 0 验工具
+  未装即停、step 1 总结计划等批准、step 2 声明 spec 是描述非动作、step 3 token 先问人、结尾任何不一致即停下问人";
+  yaml 头注释去背书改中性声明。test_web_generator + honest-labeling 闸绿。
 - 2026-07-13T16:30+08:00 p5-9 completed(凭据登记职责划分入 onboard 决策树):STEP 0 凭据项改"问运维方指名已有私钥";
   新增 symlink 登记步骤(agent 代劳机械动作、只碰路径,选钥权在运维方);一钥示例改自洽三步;新增"不枚举钥匙库/不用
   未指名钥"红线。regen bundle-manifest;skill-docs + drift + 全部 25 个 python 闸全绿。
@@ -842,6 +856,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-10 | stack: ui | command: python3 tests/test_web_generator.py; python3 tests/test_honest_labeling.py | result: pass |
+  note: 重写后 prompt 仍过 R2 N3(指向 skill show、不内联决策树)、tool run 通道、拓扑披露三闸;真实拒绝案例(全新
+  agent 五条反注入理由)逐条映射到措辞修复:在环批准/描述非动作/未装即停/token 先问人/去背书话术。
 - p5-9 | stack: python | command: python3 tests/test_skill_docs.py(+全部 25 个 tests/test_*.py); cargo test
   committed_manifest_matches_embedded | result: pass | note: onboard 决策树含"指名钥 + symlink 登记(只碰路径)"步骤与
   对应红线;一钥示例自洽(symlink→derive→init);过 skill-docs 禁词闸;bundle-manifest 重生成后 drift 对齐。
