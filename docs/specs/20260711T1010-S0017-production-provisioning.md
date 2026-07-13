@@ -522,6 +522,8 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   ③ 新红线:**BP 永不安装公网 telemetry 端点**,BP 健康只经受限 dispatch 读(这是设计路径不是限制);④ 网页 prompt 的
   observability 命令改为对每台机跑 health;⑤ 测试:无节点主机上 health 必须诚实报 down(exit 20 + schema 合规 +
   node_running=false),防伪通过。
+
+## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
 - TC-1 provisioning Model P:`ouro-ops init` 幂等(重复运行 changed=false)且输出可核对的安装清单。
