@@ -1,6 +1,6 @@
 {
   "assets": {
-    "deploy/SKILL.md": "97b38536907694d156763b001af89c1d1d8c0e7f439108afa6d54d607bb5e2e8",
+    "deploy/SKILL.md": "69fc646d47f993321ff238553b51d31ab0e6644b6c048fe21caca9fecf8d8261",
     "deploy/scripts/preflight.sh": "4827982c84c48d207c9c8ffecd5cdf76a3b5144b2a69dc886f7e56a55aa66a5d",
     "deploy/scripts/provision.sh": "4e77fd0dcbe695cc09c4c97d610d8f387625c0bb2446c600d27e4cf062271a58",
     "deploy/scripts/register-build.sh": "44a982db37c176820a5548a31c76d6bdda990a14c9a4060cf29720f556887a29",
@@ -14,7 +14,7 @@
     "detect/SKILL.md": "c48098f35ea5a9e0bacee8e3e364b6a3c167f9ae3fd62bc4100b8e7edca1e85e",
     "detect/scripts/cardano-cli.sh": "36120545ca8fa765e0005b5a10de0f4744dbb9de5bae4badba0f770bd33505c9",
     "detect/scripts/runtime.sh": "63106a5b42fa467c60bf7182062d8a4dc9648e002348a13b467a6c01aa4d5940",
-    "kes-rotation/SKILL.md": "8ade80d1b68ea8bc802f6c01dd4bb47e37367961de103040f5b593fd49f82797",
+    "kes-rotation/SKILL.md": "b91e62ac93c4e52befe253494990aaff8982bc52e0405df0203d7de3ee702408",
     "kes-rotation/scripts/generate-offline.sh": "3f4eb8b3616bc96acf3ddb2c91b0a665bdfdb1a48f5556abaa69023c83b61dd9",
     "kes-rotation/scripts/push-offline.sh": "b66d5d5e635ceca03d45aed2f7d983d7408c9bef2573a457c29e306150fd7add",
     "kes-rotation/scripts/rotate.sh": "f1bb65cbb070dfe3a1c60325f39e763e54350b3477331662339cb7323a11a078",
@@ -23,7 +23,8 @@
     "observability/scripts/install-gateway.sh": "8be5e1f07516aa6a08bc44699b37e2f7a927aa456223a329dd25b4db9ef82c15",
     "observability/scripts/rollback.sh": "74a7182079d42080e105a5c14a22a5cd7054337ca09e20c31e0e15c59b6ad468",
     "observability/scripts/verify.sh": "924fea543b05a321bea8d1319b82e01900dce28b146d21f075602cb56d23eca5",
-    "runtime/SKILL.md": "bff5cabb2f46bd0b960e1be1266356cb09bdb8a415d98c649091cb7a5c7fd8ad",
+    "onboard/SKILL.md": "54cb2999602abbee0e96bb4ca4ce48ebf241f54ba2c2303ef3eb219c463688dd",
+    "runtime/SKILL.md": "686428d1b55d434362f6f4f205abac54cfb365bb9b30e08f7ec4a54c9a4894d3",
     "runtime/scripts/restart.sh": "3757f89a98385fd797d7d323b82296a6eb67d16785a5776fc385ecc45f80b8dc",
     "runtime/scripts/topology-apply.sh": "95cea9a21eb93eca7de8db72849d9c3a0f9054ac02e9a3b29825be633980aa64",
     "runtime/scripts/verify.sh": "46162d62fe6b028aec94b5ec9d240c0383aabfdfc199d9019723912e4a732132",
@@ -37,8 +38,8 @@
     "upgrade/scripts/upgrade-one.sh": "85884c517bf2e02e6174b387a4cead5c88c095b2cb1d3c12ac3da95ac19b4f23",
     "upgrade/scripts/verify.sh": "0c336f0f1674cb61308dae2a08ea70367d32cc5859f494da214a1d533f54d3ac"
   },
-  "decision_hash": "91d51562e8e786a31f62750770137e2761b5adced1b0a796cfc53ad5c9824572",
-  "embedded_digest": "5c7a5cd119b4a1a4329d2efd01890f8a83ee673504856fadba8d31df422b3a1f",
+  "decision_hash": "09cf61e86a035116f1a0465f598ad6c18bbac9da6b99162b84f75ae4316b48a9",
+  "embedded_digest": "98be0faf2ae7da3c6898f0c2a0df947914573025e4fac532ad50ba3de92a108f",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",

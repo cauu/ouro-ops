@@ -413,6 +413,14 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   单测(注入 /proc argv→发现 socket/pool/genesis,无节点→fallback)+ 真 bed:调试确认真节点上发现路径正确、KES 轮换
   e2e(rotate 用发现 + 捕获-argv 重启)counter 0→1→2 全绿。
 
+- [x] p5-4 (new) **接入纳入 agent 契约**(用户:真实用法是"网页→prompt→agent 自主搞定",不是手敲脚本):原缺口——
+  决策树(agent 唯一取步骤处)不含 `init`/接入,agent 照 `skill show` 做会在首次 `--dispatch` 直接卡死。补:新
+  `ouro-skills/onboard/SKILL.md` 决策树(前置条件/`ouro-ops init` 命令/host-key pin/验证/deinit 逆转;便利模式诚实
+  标注;红线齐备)——`ouro-ops skill show onboard` 可读;deploy/kes-rotation/runtime 决策树**前置**"未接入先 onboard"
+  一行 + 指向 `skill show onboard`;网页生成的 agent prompt 页脚改为"先 `skill show onboard` 再 dispatch"。加入
+  skill-docs 闸(禁裸 ssh/sudo/docker 词 + 必备红线)+ web 生成器闸;regen bundle-manifest。至此 agent 拿 prompt 能读到
+  完整链:skill show <op>(含接入前置)→ skill show onboard → init → dispatch → confirm。
+
 ## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
@@ -458,6 +466,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T06:30+08:00 p5-4 completed(接入纳入 agent 契约):见交付。核心把"agent 照 skill show 做但决策树没接入步"
+  这个端到端断点补上——新 onboard 决策树 + 3 个 dispatch 操作决策树前置 onboard 引用 + 网页 prompt 页脚指向
+  skill show onboard。skill-docs 闸(onboard 过 forbidden-words + 必备红线)+ web 闸 + manifest drift 全绿;
+  `ouro-ops skill show onboard` 实测可读。
 - 2026-07-13T05:20+08:00 p5-3 completed(节点布局自动发现——符合"AI 自主判断环境/参数"):见交付。核心把"硬编码
   /opt/devnet"换成"从跑着的节点 argv 发现路径"+ 重启改为"捕获-argv 原样重放"。真节点调试确认发现的 socket/pool/
   config/genesis 全对(bed=/opt/devnet,真机=真路径)。KES e2e 复跑全绿(一次因并发调试压床 flake,清跑即过)。
@@ -774,6 +786,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-4 | stack: rust+python | command: cargo test committed_manifest_matches_embedded; python3 tests/test_skill_docs.py;
+  python3 tests/test_web_generator.py; ouro-ops skill show onboard | result: pass | note: onboard SKILL 入内嵌 bundle +
+  过 skill-docs 闸(无裸 ssh/sudo/docker + 必备红线)+ web 生成器闸;skill show onboard 返回决策树;69 cargo + python 全绿。
 - p5-3 | stack: python | command: python3 tests/test_node_layout_discovery.py | result: pass | note: 注入 /proc argv →
   发现 socket=/run/cardano/node.socket、pool=/keys/pool、genesis(从 config 相对路径解析);无节点→/opt/devnet fallback。
 - p5-3 | stack: e2e+debug | command: make e2e-t2-kes; 真节点调试 | result: pass | note: 真 bp1 节点 argv 发现的

@@ -748,8 +748,10 @@ function prompt(d) {
 `3. ${cmd}`,
 `   Never run node commands directly; only ouro-ops tool run. Stop on exit 30 (rollback) or 40 (human).`,
 ``,
-`Setup (once, if not already done): install ouro from the official site and verify its signature;`,
-`provision each target with 'ouro-ops init' (S0017). Confirm each destructive step when ouro asks.`,
+`Setup (once, if not already done): install ouro from the official site and verify its signature.`,
+`Then ONBOARD each un-managed target before dispatching to it — read the exact procedure from my`,
+`verified binary: 'ouro-ops skill show onboard', and follow it (it uses 'ouro-ops init'). Confirm`,
+`each destructive step when ouro asks.`,
   ].join("\n") + "\n";
 }
 // One-time setup, per OS (hero terminal). mac = signed Homebrew tap; linux = the official

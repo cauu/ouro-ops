@@ -12,6 +12,7 @@ SKILLS = [
     ROOT / "ouro-skills/kes-rotation/SKILL.md",
     ROOT / "ouro-skills/troubleshooting/SKILL.md",
     ROOT / "ouro-skills/detect/SKILL.md",
+    ROOT / "ouro-skills/onboard/SKILL.md",
 ]
 FORBIDDEN = [" ssh ", " scp ", " docker ", " bash ", "sudo ", "rsync "]
 REQUIRED_RED_LINES = [
