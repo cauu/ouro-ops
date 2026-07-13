@@ -403,6 +403,16 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   JSON + checks/error 渲染);全量 69 cargo + python 闸(均经 subprocess=非 TTY→JSON)无回归;PTY 实测 version/skill/
   spec 可读。**克制/极简:无 ANSI 颜色。**
 
+- [x] p5-3 (new) **节点布局自动发现**(用户提出:环境/参数应由 AI 自主获取,不手写路径):原状——脚本把 socket/
+  pool-keys/genesis 硬编码 `/opt/devnet`(env 覆盖被 env_clear 剥、spec 无路径字段)→ 真机跑不了。补 ouro-lib.sh:
+  `ouro_node_socket/pool_dir/config_path/genesis_shelley` 从**正在跑的 `cardano-node` 进程自己的 argv**发现路径
+  (`--socket-path`/`--config`/`--database-path`/`--shelley-kes-key`;genesis 从 config 的 ShelleyGenesisFile 解析),
+  任意布局零配置;无节点时 fallback `/opt/devnet`(测试床仍绿)。`ouro_node_restart` 改为**捕获运行中节点的完整
+  argv → 停 → 原样重放**(不再用硬编码重建命令,任意布局正确重启)。status/rotate/generate-offline/push-offline/
+  runtime-verify/upgrade-verify 6 脚本改用发现助手。容器同理:host /proc 看得到容器进程,配 p5-1 同路径挂载即对上。
+  单测(注入 /proc argv→发现 socket/pool/genesis,无节点→fallback)+ 真 bed:调试确认真节点上发现路径正确、KES 轮换
+  e2e(rotate 用发现 + 捕获-argv 重启)counter 0→1→2 全绿。
+
 ## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
@@ -448,6 +458,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-13T05:20+08:00 p5-3 completed(节点布局自动发现——符合"AI 自主判断环境/参数"):见交付。核心把"硬编码
+  /opt/devnet"换成"从跑着的节点 argv 发现路径"+ 重启改为"捕获-argv 原样重放"。真节点调试确认发现的 socket/pool/
+  config/genesis 全对(bed=/opt/devnet,真机=真路径)。KES e2e 复跑全绿(一次因并发调试压床 flake,清跑即过)。
+  6 脚本改用助手;fallback 保留使 bed 回归安全;单测覆盖发现 + fallback。
 - 2026-07-13T04:10+08:00 p5-2 completed(人类可读 TTY 输出——用户反馈 version/skill 输出 JSON 难读):`print_json`
   与 `tool run` 转发改为 TTY 感知——`is_terminal()` 为真渲染可读摘要,否则(捕获/管道/dispatch/测试/agent)原样单行
   JSON。`--json`/`OURO_JSON=1` 可强制。机器契约完全不变(所有测试经 subprocess=非 TTY 仍拿 JSON,69 cargo + python
@@ -760,6 +774,11 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-3 | stack: python | command: python3 tests/test_node_layout_discovery.py | result: pass | note: 注入 /proc argv →
+  发现 socket=/run/cardano/node.socket、pool=/keys/pool、genesis(从 config 相对路径解析);无节点→/opt/devnet fallback。
+- p5-3 | stack: e2e+debug | command: make e2e-t2-kes; 真节点调试 | result: pass | note: 真 bp1 节点 argv 发现的
+  socket/pool/config/genesis 全对(/opt/devnet);KES 轮换经发现助手 + 捕获-argv 重启,counter 0→1→2、节点重启出块全绿。
+  full 66 cargo + python 闸(含新发现单测)无回归。
 - p5-2 | stack: rust | command: cargo test -q output:: | result: pass | note: force_json 真值表(捕获→JSON、TTY→人读、
   --json/env 强制 JSON)+ render_human 可读非 JSON + checks/error 渲染;3 pass。全量 69 cargo + python 闸无回归
   (均经 subprocess=非 TTY→JSON)。PTY 实测 version/skill/spec 人读输出正常。

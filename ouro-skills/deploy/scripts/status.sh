@@ -15,8 +15,8 @@ source "$ROOT/ouro-skills/lib/ouro-lib.sh"
 ouro_require_audit_context
 SPEC="${OURO_SPEC:?OURO_SPEC required}"
 MACHINE="${OURO_MACHINE:?OURO_MACHINE required}"
-SOCK="${OURO_NODE_SOCKET:-/opt/devnet/node.socket}"
-GENESIS="${OURO_GENESIS_SHELLEY:-/opt/devnet/shelley-genesis.json}"
+SOCK="$(ouro_node_socket)"
+GENESIS="$(ouro_node_genesis_shelley)"
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
 
 # Expected network magic from the spec (the collector queries with it; a mismatch makes

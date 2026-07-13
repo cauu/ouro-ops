@@ -15,9 +15,9 @@ source "$ROOT/ouro-skills/lib/ouro-lib.sh"
 
 ouro_require_audit_context
 MACHINE="${OURO_MACHINE:?OURO_MACHINE required}"
-DEVNET="${OURO_DEVNET_DIR:-/opt/devnet}"
-POOL="$DEVNET/pools-keys/pool1"
-SOCK="$DEVNET/node.socket"
+POOL="$(ouro_node_pool_dir)"
+SOCK="$(ouro_node_socket)"
+GENESIS="$(ouro_node_genesis_shelley)"
 MAGIC="${OURO_NETWORK_MAGIC:-1}"
 STAGE="$POOL/offline-stage"
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
@@ -25,7 +25,7 @@ export CARDANO_NODE_SOCKET_PATH="$SOCK"
 ouro_cardano_cli_available || ouro_emit_error 20 "no_cardano_cli" "ouro_cardano_cli not on target"
 
 # Target KES period = tip slot / slotsPerKESPeriod (the same computation rotate.sh uses).
-SPK=$(python3 -c 'import json;print(json.load(open("'"$DEVNET"'/shelley-genesis.json"))["slotsPerKESPeriod"])' 2>/dev/null || echo 0)
+SPK=$(python3 -c 'import json;print(json.load(open("'"$GENESIS"'"))["slotsPerKESPeriod"])' 2>/dev/null || echo 0)
 SLOT=$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys
 try: print(json.load(sys.stdin)["slot"])
 except: print(-1)' 2>/dev/null || echo -1)
@@ -52,7 +52,7 @@ printf '%s' "$PERIOD" > "$STAGE/kes.period.staged"
 # p4-7 freshness bundle: the online snapshot the period was computed against. push-offline
 # re-queries the chain and refuses to install if the period has since gone stale (the node would
 # reject a cert issued for a period too far in the past). max_age_periods is the policy window.
-GENESIS_FP="$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$DEVNET/shelley-genesis.json")"
+GENESIS_FP="$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$GENESIS")"
 COLLECTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 MAX_AGE_PERIODS="${OURO_KES_MAX_AGE_PERIODS:-2}"
 python3 - "$STAGE/kes.bundle.json" "$PERIOD" "$SLOT" "$SPK" "$GENESIS_FP" "$COLLECTED_AT" "$MAX_AGE_PERIODS" <<'PY'

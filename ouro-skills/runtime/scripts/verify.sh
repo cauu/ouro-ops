@@ -9,7 +9,7 @@ DEVNET="${OURO_DEVNET_DIR:-/opt/devnet}"
 
 if [ -f "$DEVNET/config.json" ]; then
   # REAL node host: after a restart / topology-apply the node must be running AND forging.
-  SOCK="$DEVNET/node.socket"
+  SOCK="$(ouro_node_socket)"
   MAGIC=1
   [ -n "${OURO_SPEC:-}" ] && MAGIC="$(python3 -c 'import yaml,sys;print(yaml.safe_load(open(sys.argv[1]))["pool"]["network_magic"])' "$OURO_SPEC" 2>/dev/null || echo 1)"
   export CARDANO_NODE_SOCKET_PATH="$SOCK"

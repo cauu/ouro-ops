@@ -16,9 +16,9 @@ source "$ROOT/ouro-skills/lib/ouro-lib.sh"
 
 ouro_require_audit_context
 MACHINE="${OURO_MACHINE:?OURO_MACHINE required}"
-DEVNET="${OURO_DEVNET_DIR:-/opt/devnet}"
-POOL="$DEVNET/pools-keys/pool1"
-SOCK="$DEVNET/node.socket"
+POOL="$(ouro_node_pool_dir)"
+SOCK="$(ouro_node_socket)"
+GENESIS="$(ouro_node_genesis_shelley)"
 MAGIC="${OURO_NETWORK_MAGIC:-1}"
 export CARDANO_NODE_SOCKET_PATH="$SOCK"
 
@@ -26,7 +26,7 @@ ouro_cardano_cli_available || ouro_emit_error 20 "no_cardano_cli" "ouro_cardano_
 [ -f "$POOL/cold.skey" ] || ouro_emit_error 20 "no_cold_key" "pool cold key not present on target"
 
 # Current KES period = tip slot / slotsPerKESPeriod.
-SPK=$(python3 -c 'import json;print(json.load(open("'"$DEVNET"'/shelley-genesis.json"))["slotsPerKESPeriod"])')
+SPK=$(python3 -c 'import json;print(json.load(open("'"$GENESIS"'"))["slotsPerKESPeriod"])')
 SLOT=$(ouro_cardano_cli query tip --testnet-magic "$MAGIC" 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["slot"])')
 PERIOD=$(( SLOT / SPK ))
 

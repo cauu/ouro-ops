@@ -178,6 +178,37 @@ ouro_node_pid()     { ouro_proc_pid "$OURO_NODE_MATCH"; }
 ouro_node_count()   { ouro_proc_count "$OURO_NODE_MATCH"; }
 ouro_node_stop()    { ouro_proc_stop "$OURO_NODE_MATCH" "${1:-2}"; }
 
+# --- node filesystem layout DISCOVERY (S0017 p5-3) --------------------------
+# The node's real paths are DISCOVERED from the running cardano-node's own command line — its args
+# carry --socket-path / --config / --database-path / --shelley-*-key — so any layout works with
+# ZERO config (no hand-declared paths in the spec). In container mode the args are container-
+# internal paths; the p5-1 same-path bind-mount makes them resolve on the host too. Each helper
+# falls back to the OURO_* env / the /opt/devnet bed layout when no node is running.
+ouro_node_cmdline() {
+  local pid; pid="$(ouro_node_pid)"; [ -n "$pid" ] || return 1
+  tr '\0' '\n' < "$(ouro_proc_root)/$pid/cmdline" 2>/dev/null
+}
+# Value of the `--flag <value>` pair in the node's argv (empty if the flag is absent).
+ouro_node_arg() { ouro_node_cmdline 2>/dev/null | awk -v f="$1" 'p{print; exit} $0==f{p=1}'; }
+ouro_node_socket()      { local v; v="$(ouro_node_arg --socket-path)";   printf '%s' "${v:-${OURO_NODE_SOCKET:-/opt/devnet/node.socket}}"; }
+ouro_node_config_path() { local v; v="$(ouro_node_arg --config)";        printf '%s' "${v:-${OURO_DEVNET_DIR:-/opt/devnet}/config.json}"; }
+# Pool key directory = dirname of the running node's KES key (holds kes/vrf/opcert/counter[/cold]).
+ouro_node_pool_dir() {
+  local kes; kes="$(ouro_node_arg --shelley-kes-key)"
+  if [ -n "$kes" ]; then dirname "$kes"; else printf '%s' "${OURO_POOL_DIR:-${OURO_DEVNET_DIR:-/opt/devnet}/pools-keys/pool1}"; fi
+}
+# Shelley genesis file: resolved from the node config's ShelleyGenesisFile (relative → vs config dir).
+ouro_node_genesis_shelley() {
+  local cfg gf; cfg="$(ouro_node_config_path)"
+  gf="$(python3 -c 'import json,sys,os
+try:
+    c=json.load(open(sys.argv[1])); g=c.get("ShelleyGenesisFile","")
+    if g and not os.path.isabs(g): g=os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])),g)
+    print(g)
+except Exception: print("")' "$cfg" 2>/dev/null)"
+  printf '%s' "${gf:-${OURO_GENESIS_SHELLEY:-${OURO_DEVNET_DIR:-/opt/devnet}/shelley-genesis.json}}"
+}
+
 ouro_node_start() {
   local devnet="${OURO_DEVNET_DIR:-/opt/devnet}"
   local pool="$devnet/pools-keys/pool1"
@@ -192,8 +223,19 @@ ouro_node_start() {
     --shelley-operational-certificate "$pool/opcert.cert" --port 3001
 }
 
-# Rolling restart: stop (with settle) then start onto the on-disk config/keys.
-ouro_node_restart() { ouro_node_stop; ouro_node_start; }
+# Rolling restart (bare): capture the running node's EXACT argv, stop, and re-spawn it VERBATIM —
+# so any layout restarts correctly with no reconstructed command. Falls back to ouro_node_start's
+# reconstruction only when no prior argv could be captured (e.g. nothing was running).
+ouro_node_restart() {
+  local argv=() line
+  while IFS= read -r line; do argv+=("$line"); done < <(ouro_node_cmdline 2>/dev/null)
+  ouro_node_stop
+  if [ "${#argv[@]}" -gt 0 ]; then
+    ouro_daemon_spawn /var/log/cardano-node.log "${argv[@]}"
+  else
+    ouro_node_start
+  fi
+}
 
 # --- Supervisor DETECTION (S0017 p2-1) — read-only, closed projection ---------
 # The adapter is the sole supervisor-aware module (p2-8 gate), so read-only mode

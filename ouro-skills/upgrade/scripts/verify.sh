@@ -19,7 +19,7 @@ if [[ -f "$STATE_DIR/__test_inject_unknown__$MACHINE" ]]; then
 fi
 
 DEVNET="${OURO_DEVNET_DIR:-/opt/devnet}"
-SOCK="$DEVNET/node.socket"
+SOCK="$(ouro_node_socket)"
 SPEC="${OURO_SPEC:-}"
 ROLE=""; MAGIC=1
 if [ -n "$SPEC" ]; then
