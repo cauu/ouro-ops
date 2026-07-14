@@ -554,3 +554,50 @@ PY
     printf -- '--testnet-magic %s' "${magic:-1}"
   fi
 }
+
+# --- diagnostics primitives (S0017 p5-18) ---------------------------------------------------
+# Privileged reads for troubleshooting, mode-dispatched. These live in the lib because the
+# supervisor gate confines docker/podman/systemctl/pgrep to this file. Free-form (unprivileged)
+# diagnosis goes through `ouro-ops diag exec` as ouro-diag; only reads that genuinely need
+# supervisor privileges (journal, container logs, restart counters) are exposed here, consumed
+# by the troubleshooting L2 scripts.
+
+# Recent node log lines (bounded). $1 = max lines (default 400). Source by detected mode:
+# systemd → the unit's journal; docker/podman → container logs; bare → the fixed spawn log.
+ouro_node_logs() {
+  local n="${1:-400}" pid mode unit cid rt
+  pid="$(ouro_node_pid)"
+  mode="$(ouro_node_detect_mode 2>/dev/null || echo bare)"
+  case "$mode" in
+    systemd) unit="$(ouro_supervisor_systemd_unit "$pid")"
+             [ -n "$unit" ] && journalctl -u "$unit" --no-pager -n "$n" 2>/dev/null ;;
+    docker|podman)
+             cid="$(ouro_supervisor_container_id "$pid")"
+             rt="$(ouro_supervisor_container_runtime "$pid")"
+             [ -n "$cid" ] && "$rt" logs --tail "$n" "$cid" 2>&1 ;;
+    *)       tail -n "$n" /var/log/cardano-node.log 2>/dev/null ;;
+  esac
+}
+
+# Supervision-layer facts as `key=value` lines: mode, running, pid, uptime_s, restarts,
+# oom_hits (kernel log evidence, bounded scan). Restart counters: systemd NRestarts /
+# container RestartCount; bare has no supervisor, so restarts=-1 (unknown by design).
+ouro_node_service_facts() {
+  local pid mode unit cid rt restarts="-1" uptime_s="" oom=""
+  pid="$(ouro_node_pid)"
+  if [ -n "$pid" ]; then
+    mode="$(ouro_node_detect_mode 2>/dev/null || echo bare)"
+    uptime_s="$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')"
+    case "$mode" in
+      systemd) unit="$(ouro_supervisor_systemd_unit "$pid")"
+               [ -n "$unit" ] && restarts="$(systemctl show -p NRestarts --value "$unit" 2>/dev/null || echo -1)" ;;
+      docker|podman)
+               cid="$(ouro_supervisor_container_id "$pid")"
+               rt="$(ouro_supervisor_container_runtime "$pid")"
+               [ -n "$cid" ] && restarts="$("$rt" inspect --format '{{.RestartCount}}' "$cid" 2>/dev/null || echo -1)" ;;
+    esac
+  fi
+  oom="$( (journalctl -k -n 5000 2>/dev/null || dmesg 2>/dev/null) | grep -ci 'out of memory\|oom-kill' || true)"
+  printf 'mode=%s\nrunning=%s\npid=%s\nuptime_s=%s\nrestarts=%s\noom_hits=%s\n' \
+    "${mode:-none}" "$([ -n "$pid" ] && echo true || echo false)" "${pid:-}" "${uptime_s:-}" "${restarts}" "${oom:-0}"
+}

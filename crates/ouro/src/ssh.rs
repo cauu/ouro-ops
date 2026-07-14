@@ -118,6 +118,57 @@ impl SshRunner {
         ]
     }
 
+    /// S0017 p5-18: free-form READ-ONLY diagnostics argv — ssh as the unprivileged
+    /// `ouro-diag` principal. There is NO sudo anywhere on this argv and ouro-diag has no
+    /// sudoers entry: confinement is the Unix permission model (cannot write node content,
+    /// cannot read 0700 secret dirs), not a command list. The agent-authored command is
+    /// shell-quoted as ONE argument to `sh -c` and bounded by a remote timeout.
+    pub fn diag_exec_argv(
+        target: &SshTarget,
+        key_path: &Path,
+        known_hosts: &Path,
+        command: &str,
+        timeout_s: u32,
+    ) -> Vec<String> {
+        vec![
+            "-p".to_string(),
+            target.port.to_string(),
+            "-i".to_string(),
+            key_path.display().to_string(),
+            "-o".to_string(),
+            "BatchMode=yes".to_string(),
+            "-o".to_string(),
+            format!("UserKnownHostsFile={}", known_hosts.display()),
+            "-o".to_string(),
+            "StrictHostKeyChecking=yes".to_string(),
+            // Always ouro-diag — never the spec's ssh.user (that is ouro-exec, the write
+            // channel). The two principals stay distinguishable in the target's auth log.
+            format!("ouro-diag@{}", target.host),
+            format!("timeout {}s sh -c {}", timeout_s, shell_quote(command)),
+        ]
+    }
+
+    /// Execute a free-form read-only diagnostic command as `ouro-diag` (see `diag_exec_argv`).
+    pub fn diag_exec(
+        &self,
+        target: &SshTarget,
+        key_path: &Path,
+        known_hosts: &Path,
+        command: &str,
+        timeout_s: u32,
+    ) -> Result<SshOutcome> {
+        if self.dry_run {
+            return Ok(SshOutcome { status: 0, stdout: String::new(), stderr: String::new() });
+        }
+        let args = Self::diag_exec_argv(target, key_path, known_hosts, command, timeout_s);
+        let output = Command::new("ssh").args(&args).output()?;
+        Ok(SshOutcome {
+            status: output.status.code().unwrap_or(255),
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        })
+    }
+
     /// Execute the remote `ouro-ops tool run` over SSH and capture its output + exit code.
     /// In dry-run mode returns a no-op success (used where a live target is absent).
     pub fn execute(
@@ -200,6 +251,39 @@ mod tests {
         assert!(!joined.contains("--dispatch"));
         assert!(!joined.contains("creds://"));
         assert!(joined.contains("-i /home/op/.ouro/credentials/relay1"));
+    }
+
+    #[test]
+    fn diag_exec_argv_is_unprivileged_pinned_and_bounded() {
+        // p5-18: the diag channel must carry NO privilege escalation — its confinement is
+        // the OS permission model of the ouro-diag principal, so any `sudo` here would be a
+        // security regression. Host-key pinning and quoting match the tool-run channel.
+        let args = SshRunner::diag_exec_argv(
+            &target(),
+            Path::new("/home/op/.ouro/credentials/relay1"),
+            Path::new("/home/op/.ouro/known_hosts"),
+            "df -h; ss -tn state established",
+            30,
+        );
+        let joined = args.join(" ");
+        assert!(!joined.contains("sudo"), "diag channel must never escalate");
+        assert!(!joined.contains("ouro-tool-run"), "diag is not the write wrapper");
+        assert!(joined.contains("ouro-diag@relay1.example.com"), "always the diag principal");
+        assert!(joined.contains("StrictHostKeyChecking=yes"));
+        assert!(joined.contains("UserKnownHostsFile=/home/op/.ouro/known_hosts"));
+        // Bounded + quoted: the agent-authored command rides as ONE sh -c argument.
+        assert!(joined.contains("timeout 30s sh -c 'df -h; ss -tn state established'"));
+
+        // A crafted command cannot break out of the quoting.
+        let args = SshRunner::diag_exec_argv(
+            &target(),
+            Path::new("/k"),
+            Path::new("/kh"),
+            "x'; rm -rf / #",
+            30,
+        );
+        let last = args.last().unwrap();
+        assert!(last.contains("sh -c 'x'\\''; rm -rf / #'"), "metachars stay quoted: {last}");
     }
 
     #[test]

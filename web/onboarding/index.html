@@ -739,7 +739,7 @@ function prompt(d) {
     "kes-rotation":  `ouro-ops tool run kes-rotation/rotate --dispatch ${bp} --spec pool-spec.yaml   # destructive: needs an evidence-bound confirm token — 'ouro-ops skill show kes-rotation' has the detect->confirm->token steps`,
     runtime:         `ouro-ops tool run runtime/restart --dispatch <the machine you're operating> --spec pool-spec.yaml   # or runtime/topology-apply`,
     observability:   `ouro-ops tool run observability/health --dispatch <each machine, bp included> --spec pool-spec.yaml   # read-only; report conclusions per 'ouro-ops skill show observability'`,
-    troubleshooting: `ouro-ops tool run troubleshooting/<script> --dispatch <the machine> --spec pool-spec.yaml   # read-only`,
+    troubleshooting: `ouro-ops diag exec --dispatch <the machine> --spec pool-spec.yaml -- <your read-only command>   # free-form read-only diagnosis (+ tool run troubleshooting/service|logs) — routes in 'ouro-ops skill show troubleshooting'`,
   }[d.op];
   return [
 `I am the operator of a Cardano stake pool, asking you to run ONE operation for me with the`,

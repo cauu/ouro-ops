@@ -131,7 +131,19 @@ pub fn init_plan(bootstrap_user: &str, ouro_binary: &Path) -> Vec<Step> {
         ),
         run(
             "install control key",
-            "install -m 0600 -o ouro-exec -g ouro-exec /tmp/ouro-init-authkey /home/ouro-exec/.ssh/authorized_keys \
+            "install -m 0600 -o ouro-exec -g ouro-exec /tmp/ouro-init-authkey /home/ouro-exec/.ssh/authorized_keys",
+        ),
+        // p5-18: the SAME control key also authorizes the read-only diagnostics principal.
+        // ouro-diag has NO sudoers entry at all — free-form diagnosis (`ouro-ops diag exec`)
+        // is confined by the Unix permission model (cannot write node content, cannot read
+        // 0700 secret dirs), not by a command list.
+        run(
+            "prepare ouro-diag .ssh",
+            "install -d -m 0700 -o ouro-diag -g ouro-diag /home/ouro-diag/.ssh",
+        ),
+        run(
+            "install diag key",
+            "install -m 0600 -o ouro-diag -g ouro-diag /tmp/ouro-init-authkey /home/ouro-diag/.ssh/authorized_keys \
              && rm -f /tmp/ouro-init-authkey",
         ),
         // Apply the sshd change only after `sshd -t` validates it (never break login on a typo).
@@ -371,6 +383,11 @@ mod tests {
         assert!(pos("create ouro-exec") < pos("install ouro-ops binary"));
         assert!(pos("install sudoers confinement") < pos("validate sudoers"));
         assert!(pos("prepare ouro-exec .ssh") < pos("install control key"));
+        // p5-18: the diag principal is authorized with the SAME control key, right after
+        // ouro-exec — and it must NEVER appear in sudoers (its fence is Unix permissions).
+        assert!(pos("install control key") < pos("prepare ouro-diag .ssh"));
+        assert!(pos("prepare ouro-diag .ssh") < pos("install diag key"));
+        assert!(!SUDOERS.contains("ouro-diag"), "ouro-diag must have no sudoers entry");
         assert!(pos("reload sshd") == descs.len() - 1, "sshd reload must be last");
     }
 

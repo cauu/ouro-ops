@@ -55,6 +55,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "confirm" => run_confirm(&args[2..])?,
         "config" => run_config(&args[2..])?,
         "deploy" => run_deploy(&args[2..])?,
+        "diag" => run_diag(&args[2..])?,
         "kes" => run_kes(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
         "manifest" => run_manifest(&args[2..])?,
@@ -834,6 +835,111 @@ fn run_tool_dispatch(args: &[String]) -> Result<()> {
     std::process::exit(outcome.status);
 }
 
+/// S0017 p5-18 — `ouro-ops diag ...`: free-form READ-ONLY diagnostics channel.
+fn run_diag(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        Some("exec") => run_diag_exec(&args[1..]),
+        _ => Err(OuroError::InvalidArgs(
+            "expected diag exec --dispatch <machine> --spec <spec> [--timeout <s>] -- <command>"
+                .to_string(),
+        )),
+    }
+}
+
+/// `diag exec` — run ONE agent-authored command on the target as the unprivileged
+/// `ouro-diag` principal. The fence is the Unix permission model, not a command list:
+/// ouro-diag has no sudoers entry, cannot write node content, and cannot read 0700 secret
+/// dirs. Every invocation is audited on the control side; output is truncated to a bounded
+/// size so a noisy command cannot flood the agent context. The command's own exit code is
+/// DATA in the payload — a failing probe is still a delivered diagnosis (this tool only
+/// errors on transport failure).
+fn run_diag_exec(args: &[String]) -> Result<()> {
+    let machine_id = flag_value(args, "--dispatch")?;
+    let spec_path = flag_value(args, "--spec")?;
+    let timeout_s: u32 = optional_flag_value(args, "--timeout")
+        .unwrap_or("30")
+        .parse()
+        .map_err(|_| OuroError::InvalidArgs("--timeout must be seconds (max 300)".to_string()))?;
+    let timeout_s = timeout_s.clamp(1, 300);
+    let sep = args
+        .iter()
+        .position(|a| a == "--")
+        .ok_or_else(|| OuroError::InvalidArgs(
+            "missing `--` separator before the diagnostic command".to_string(),
+        ))?;
+    let command = args[sep + 1..].join(" ");
+    if command.trim().is_empty() {
+        return Err(OuroError::InvalidArgs("empty diagnostic command".to_string()));
+    }
+
+    let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
+    spec.validate()?;
+    let machine = spec
+        .machines
+        .iter()
+        .find(|candidate| candidate.id == machine_id)
+        .ok_or_else(|| OuroError::Validation(format!("unknown machine {machine_id}")))?;
+    let paths = ConfigPaths::discover();
+    let key_path = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
+    if !key_path.is_file() {
+        return Err(OuroError::Validation(format!(
+            "credential key not found for {machine_id}: {} (run onboarding)",
+            key_path.display()
+        )));
+    }
+
+    let store = AuditStore::open(&paths.audit_db)?;
+    let audit_id = store.begin_invocation("diag/exec", Some(machine_id))?;
+    let outcome = SshRunner::new(false).diag_exec(
+        &machine.ssh,
+        &key_path,
+        &paths.known_hosts,
+        &command,
+        timeout_s,
+    )?;
+    store.finish_invocation(&audit_id, "diag/exec")?;
+
+    // ssh exit 255 = transport-level failure (unreachable, key not authorized for ouro-diag,
+    // host-key mismatch) — that IS this tool's failure, with the onboarding recovery path.
+    if outcome.status == 255 {
+        return Err(OuroError::Validation(format!(
+            "diag transport to {machine_id} failed as ouro-diag: {} — is the target onboarded \
+             with a binary that authorizes ouro-diag (re-run `ouro-ops init` if it predates \
+             the diag channel)?",
+            outcome.stderr.lines().last().unwrap_or("(no stderr)")
+        )));
+    }
+
+    const CAP: usize = 16 * 1024;
+    let cap = |s: &str| -> (String, bool) {
+        if s.len() > CAP {
+            let mut end = CAP;
+            while !s.is_char_boundary(end) {
+                end -= 1;
+            }
+            (s[..end].to_string(), true)
+        } else {
+            (s.to_string(), false)
+        }
+    };
+    let (stdout, stdout_truncated) = cap(&outcome.stdout);
+    let (stderr, stderr_truncated) = cap(&outcome.stderr);
+    output::print_json(&ToolOutput::ok("ouro.diag.exec", false).with_data(json!({
+        "machine": machine_id,
+        "principal": "ouro-diag",
+        "command": command,
+        "timeout_s": timeout_s,
+        "exit_code": outcome.status,
+        "timed_out": outcome.status == 124,
+        "stdout": stdout,
+        "stdout_truncated": stdout_truncated,
+        "stderr": stderr,
+        "stderr_truncated": stderr_truncated,
+        "audit_id": audit_id,
+    })))?;
+    Ok(())
+}
+
 /// `ouro-ops tool run` — the sole audited write entrypoint. It creates (or reuses via
 /// `--audit-id`) an audit invocation, signs an invocation token bound to that id,
 /// executes the resolved L2 script with a controlled environment, captures its
@@ -913,6 +1019,10 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
         "OURO_MITHRIL_CERT_CHAIN",
         "OURO_LEGACY_MANIFEST",
         "OURO_CARDANO_ROOT",
+        // p5-18 troubleshooting/logs inputs: a log-source override (test seam pointing the
+        // classifier at a fixture file) and a line bound — inert read inputs, not policy.
+        "OURO_LOGS_SOURCE",
+        "OURO_LOG_LINES",
     ];
     let mut cmd = Command::new("bash");
     cmd.env_clear();
@@ -1167,6 +1277,7 @@ fn print_help() {
     println!("Operate (via the agent):");
     println!("  skill     show|list — the authoritative decision trees + red lines");
     println!("  tool      run <skill>/<script> [--dispatch <machine>] — the ONLY audited write path");
+    println!("  diag      exec --dispatch <machine> -- <cmd> — free-form READ-ONLY diagnosis (ouro-diag, no sudo)");
     println!("  confirm   create — mint a target-bound one-time token for a destructive op");
     println!("  kes       cold-sign-script | counter status | generate | push");
     println!("  deploy    cold-sign-script — offline tx witnessing");
@@ -1197,6 +1308,10 @@ fn command_usage(command: &str) -> Option<&'static str> {
                   | generate | push\n  Rotations run via `tool run kes-rotation/*` — see `ouro-ops skill show kes-rotation`.",
         "deploy" => "ouro-ops deploy cold-sign-script --tx-body <path> --cold-key <role> [--cold-key <role>...] \
                      [--era conway] [--testnet-magic <n>|--mainnet]",
+        "diag" => "ouro-ops diag exec --dispatch <machine> --spec <pool-spec> [--timeout <s>] -- <command>\n  \
+                   Free-form READ-ONLY diagnosis as the unprivileged ouro-diag principal (no sudo; \
+                   cannot write node content or read secret dirs). Audited; output bounded. \
+                   See `ouro-ops skill show troubleshooting`.",
         "pool" => "ouro-ops pool overview --spec <pool-spec> [--snapshot <json>] | register-tx --spec <pool-spec>",
         "skill" => "ouro-ops skill list | show <skill>   (skills: deploy, detect, kes-rotation, observability, runtime, troubleshooting, upgrade, onboard)",
         "spec" => "ouro-ops spec validate --spec <pool-spec>",

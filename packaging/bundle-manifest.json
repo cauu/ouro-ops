@@ -18,7 +18,7 @@
     "kes-rotation/scripts/generate-offline.sh": "84cfcdfc52a24335b61a22f73c5f78365f21e0da8fcc02416a372012d9660dde",
     "kes-rotation/scripts/push-offline.sh": "7e04c5d8eeedc1a7060e9e51c380c072b49414b8dea528c699e6acc4995ec962",
     "kes-rotation/scripts/rotate.sh": "1f44485145908a112e894df4ab75077d9e6a5a7c7f814fbc1cdde99353a89ffc",
-    "lib/ouro-lib.sh": "f67d6eddd797f75e4342d1a9db61f7011e999463fc129e499c8640786d5a70ba",
+    "lib/ouro-lib.sh": "2459436ebfcf8c4e5505b3af47babe43bd70b41a80a76584c76a7e6679ff903b",
     "observability/SKILL.md": "a27636fd6f62a3608f6348e3f481cf5ab84f5caf7d4af8be95eb5b75b9500132",
     "observability/scripts/health.sh": "bd32a17179c068da66ab4db851554f94c7fc37be7b96cd570b3dcbcb16a1f878",
     "observability/scripts/install-gateway.sh": "8be5e1f07516aa6a08bc44699b37e2f7a927aa456223a329dd25b4db9ef82c15",
@@ -31,7 +31,9 @@
     "runtime/scripts/verify.sh": "4f8995b6073b7c02f3b3f362d4f3bd24ae32765a3f79092c1052d1dd26a7e768",
     "schemas/pool-spec.schema.json": "50090f55cf324578507027d51dfae97e4ae31c6d24540748d63e96b325f83c35",
     "schemas/tool-output.schema.json": "558eb8bac6ac2568860034f7fa9523566a69043cc33298aab44127e4e8b7a07e",
-    "troubleshooting/SKILL.md": "c83f2cf874ab8c5c5e271760a195da02925b10dbef45a0a3b503fcc08ce574c6",
+    "troubleshooting/SKILL.md": "37b826489a01a81ad896acc1032a4076a53d488782e82e8b7d631a0d7bb57686",
+    "troubleshooting/scripts/logs.sh": "005930af03c448b616631bc550522f20ae882791422a48fa3421fe61da052259",
+    "troubleshooting/scripts/service.sh": "f7c6cf694e474cfa39233c882dbcbe38805f3c3bbb7ad690dcf2cc2d95fafae7",
     "upgrade/SKILL.md": "36a6fb896882bb7766585b5b364695f8493184e749fb0a12ac145080778e8ce1",
     "upgrade/scripts/rollback.sh": "a69ed01338e46c8aa1169919f71ab89cce39a8d37ed10b844c593b5b77e04971",
     "upgrade/scripts/rollout.sh": "5096f65db31ee3a615452dc22d8f9138f8a06103333a06472b181614617741ca",
@@ -39,11 +41,11 @@
     "upgrade/scripts/upgrade-one.sh": "bdb9aeb009fea89027ede2f6b05a0b3ef0fd5e672c6c80f77df22b6662d8187c",
     "upgrade/scripts/verify.sh": "5c77cb2e4b82e1b67c8681d5fb5f197b4b5c4a306eb90b7e668e771d40eb9ff4"
   },
-  "decision_hash": "b0fb823404f36b60676f47526f39eb72ac6be401846aaa68769d0b34e1cd4702",
-  "embedded_digest": "4a425cf0f8e6febcd3ebb5b530cd90d3b87b3871fc6c9b17463fc31c81e4d06c",
+  "decision_hash": "a597246189ed2a4d1b017a2bf524475dcaf33fbd952ea19c6756ddce338b4872",
+  "embedded_digest": "eeddc0acecac0eac8e367e5baa29b4315650ff41e8ad5046e3da7aebd5832d1b",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
   "schema_hash": "965c7b37b7afe8b44d7f641423515305e4411a28add3182157f154142286669f",
-  "skills_hash": "0b0e4a1f6f222e49627be8d510d68180a2c62dba2740fd2b0ec2a1a2f4017aa7"
+  "skills_hash": "fe6dee83f41f62d9342be484c9468d5fbeb786b12f6e73722f18ed04571389be"
 }
