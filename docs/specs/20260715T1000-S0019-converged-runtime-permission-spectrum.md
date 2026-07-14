@@ -251,7 +251,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 > before any dispatched write goes live.
 - [x] p1-1 layout contract + SIGNED digest allowlist (embed, monotonic + denylist, anti-rollback, skew refuse) — §2.1
 - [x] p1-2 pin the v1 supervisor/host contract; refuse all other shapes at adoption — §2.2
-- [ ] p1-3 adoption ceremony + evidence-bound approval + attestation schema (immutable identity vs versioned state) — §2.3, §2.14
+- [x] p1-3 adoption ceremony + evidence-bound approval + attestation schema (immutable identity vs versioned state) — §2.3, §2.14
 - [ ] p1-4 central live re-attestation gate (immutable container id, in-lock, openat2, CAS before commit) — §2.4
 - [ ] p1-5 new skills READ the attestation; no detection/fallback — §1.C
 - [ ] p2-1 intent envelope + deny-by-default privileged-capability registry + sink rules; static "no unclassified privileged mutation" gate — §1 Constraints, §2.5
@@ -308,6 +308,14 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   specific reason. **Decision (recorded):** a second supervisor shape is a separate versioned
   contract, never a generic runtime field. 2 rust unit tests (conforming accepted; 8 non-v1
   shapes each refused).
+- 2026-07-15 p1-3 completed (§2.3, §2.14): `crates/ouro/src/attestation.rs` — attestation split
+  into IMMUTABLE identity (role/digests/epoch/entrypoint/args/typed mounts/network/genesis/public
+  cred ids/approval hash) vs VERSIONED managed state (monotonic generation + topology/config/
+  kes-opcert hashes + container id). `require_matches_live` refuses identity drift AND out-of-band
+  mutable change; `advance_state` CAS bumps the generation inside the write txn so a LEGITIMATE
+  write is not drift (fixes the round-2 fingerprint-self-invalidation P0); `check_role` (relay
+  forbids forging keys, bp requires opcert); §2.14 `bind_approval`/`verify_approval` bind a
+  single-use operator token to the candidate hash + host key. 5 rust unit tests.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -319,6 +327,10 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p1-3 | stack: rust | command: cargo test attestation | result: pass | note: 5 tests — live match
+  + 6 drift cases refused; a legitimate topology write advances generation (8) and is NOT drift
+  post-write; CAS rejects a stale generation; relay-with-forging-keys refused; approval evidence is
+  candidate+host-key specific.
 - p1-2 | stack: rust | command: cargo test supervisor | result: pass | note: 2 tests — v1 shape
   accepted; 8 non-conforming shapes (rootless/podman/non-rootful/compose/multi-node/named-volume/
   nonstandard-socket/wrong-restart) each refused with a specific reason.

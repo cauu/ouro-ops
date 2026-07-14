@@ -4,6 +4,7 @@ pub mod cli;
 pub mod cold_sign;
 pub mod config;
 pub mod confirm;
+pub mod attestation;
 pub mod convention;
 pub mod domain;
 pub mod error;
