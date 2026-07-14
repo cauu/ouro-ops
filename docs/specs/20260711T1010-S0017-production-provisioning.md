@@ -592,6 +592,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   三处漏了**。新闸:query 追加 `--socket-path`、非 socket 命令不追加、file_exists/disk 经容器 dispatch;适配器/矩阵/布局
   /observability 闸不回归。诚实边界:disk 依赖容器内有 `df`(blinklabs 镜像有;缺失则优雅降级为 null 而非崩)。#1 三字段全闭。
 
+## 4. Test and Acceptance Criteria
+> (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
+
 - TC-1 provisioning Model P:`ouro-ops init` 幂等(重复运行 changed=false)且输出可核对的安装清单。
 - TC-2 (rev) 可卸载 + 还原:从**非默认预存态**起(预存 sshd 配置/用户/文件),`ouro-ops deinit` 后**逐字节
   验证还原** created 对象已删、adopted 对象保留;运行中节点场景分"空闲机"/"曾运行节点";每步失败注入;审计
