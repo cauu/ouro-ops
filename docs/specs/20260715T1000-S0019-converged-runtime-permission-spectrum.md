@@ -254,7 +254,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p1-3 adoption ceremony + evidence-bound approval + attestation schema (immutable identity vs versioned state) — §2.3, §2.14
 - [x] p1-4 central live re-attestation gate (immutable container id, in-lock, openat2, CAS before commit) — §2.4
 - [x] p1-5 new skills READ the attestation; no detection/fallback — §1.C
-- [ ] p2-1 intent envelope + deny-by-default privileged-capability registry + sink rules; static "no unclassified privileged mutation" gate — §1 Constraints, §2.5
+- [x] p2-1 intent envelope + deny-by-default privileged-capability registry + sink rules; static "no unclassified privileged mutation" gate — §1 Constraints, §2.5
 - [ ] p2-2 sealed executor + crash-durable transaction state machine + target-resident recovery + write-seal — §2.6
 - [ ] p2-3 artifact staging inbox (content-addressed, validated, GC) — §2.7
 - [ ] p2-4 executor identity / anti-downgrade parity; disable legacy write entry points — §2.8
@@ -330,6 +330,14 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   exit 20). No process/mode discovery, no path guessing — S0017 detection not carried over. New
   test test_attested_layout.py: unmanaged refuse + recorded-fact reads + static gate (no pgrep/
   cgroup/ouro_node_arg/supervisor primitives in the lib). bundle-manifest regenerated.
+- 2026-07-15 p2-1 completed (§1 Constraints, §2.5): `crates/ouro/src/intent.rs` — the intent
+  envelope (schema_version, operation_id, immutable node_id, pre_state CAS base, nonce, expiry,
+  closed payload), the deny-by-default privileged `registry()` (unregistered op → refused), closed
+  per-op param schemas (Enum / MachineId / ArtifactRef `<id>@sha256:<64hex>` / bounded Uint),
+  payload bounds (depth/width/string), canonical serialization + `canonical_hash` (key-order &
+  duplicate-key independent → confirmed==validated==executed). **Decision (recorded):** payload
+  carries only CLOSED typed references, never raw paths/blobs/shell; artifacts arrive via §2.7; the
+  executor builds fixed argv, no templating (sink rule). 6 rust unit tests.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -341,6 +349,10 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p2-1 | stack: rust | command: cargo test intent | result: pass | note: 6 tests — unregistered op
+  refused (deny-by-default); unknown field / hostile machine id / raw path where ArtifactRef
+  required / bad enum / over-long string all refused; well-formed artifact ref + enum accepted;
+  dangerous ops flagged; canonical hash key-order independent; expiry enforced.
 - p1-5 | stack: python | command: python3 tests/test_attested_layout.py | result: pass | note:
   unmanaged node → not_ouro_managed exit 20; attested node → role/container/db/keys/generation read
   from the attestation; static gate proves no detection primitives in the greenfield lib.
