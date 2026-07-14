@@ -31,8 +31,10 @@ Free-form investigation (your primary instrument — use your judgment):
   `timedatectl`, `dig <relay-host>`, reading world-readable configs. Iterate: each answer narrows
   the next question.
 - The fence is the OS, not a command list: ouro-diag has NO sudo, cannot write node content, and
-  cannot read the 0700 secret dirs — so explore freely; you physically cannot break the node.
-  Every command is audited on the control side and its output is size-bounded.
+  cannot read the 0700 secret dirs — so explore freely; you cannot mutate node/root-owned state.
+  This is UNPRIVILEGED diagnostics, NOT "read-only": the principal can still write its own home/tmp,
+  make network egress, and consume CPU/PID/disk (S0019 §2.11 honest labeling). Every command is
+  audited on the control side and its output is size-bounded.
 - Two privileged reads need supervisor access and therefore stay audited tools:
   `ouro-ops tool run troubleshooting/service --dispatch <m> --spec <spec>` (mode, restart
   counter/flapping, uptime, kernel OOM evidence) and `troubleshooting/logs` (classified recent
