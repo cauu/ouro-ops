@@ -14,6 +14,7 @@ pub mod intent;
 pub mod kes;
 pub mod migration;
 pub mod output;
+pub mod parity;
 pub mod pool;
 pub mod provision;
 pub mod render;

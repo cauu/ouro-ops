@@ -257,7 +257,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p2-1 intent envelope + deny-by-default privileged-capability registry + sink rules; static "no unclassified privileged mutation" gate — §1 Constraints, §2.5
 - [x] p2-2 sealed executor + crash-durable transaction state machine + target-resident recovery + write-seal — §2.6
 - [x] p2-3 artifact staging inbox (content-addressed, validated, GC) — §2.7
-- [ ] p2-4 executor identity / anti-downgrade parity; disable legacy write entry points — §2.8
+- [x] p2-4 executor identity / anti-downgrade parity; disable legacy write entry points — §2.8
 - [ ] p2-5 role-specific readiness proxies; dangerous-write confirm-token binding (canonical hash + diff) — §2.5, §2.6a
 - [ ] p3-1 fleet lease authority (pool generation, fencing lease, step permit, quorum re-eval) — §2.9
 - [ ] p3-2 node-runtime N→N+1 upgrade with DB-compat + attestation rotation; ouro-diag honest labeling/sandbox — §2.10, §2.11
@@ -353,6 +353,12 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   <digest>`; `resolve` re-verifies the digest against stored content (replaced → refused);
   `gc(now,ttl)` reclaims stale (caller-supplied clock, no ambient time). Intents reference only the
   immutable ref (§2.5), never a path/blob. 4 rust unit tests.
+- 2026-07-15 p2-4 completed (§2.8): `crates/ouro/src/parity.rs` — `SecurityIdentity` (build id +
+  embedded executor digest + intent schema version + min security version). `require_parity`
+  refuses an executor-digest / schema-version mismatch and an anti-downgrade (target below control
+  min) before accepting an intent (extends p5-17 parity to the executor). `require_registered_write`
+  disables every legacy S0017 write tool unless migrated into the deny-by-default registry. 4 rust
+  unit tests.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -364,6 +370,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p2-4 | stack: rust | command: cargo test parity | result: pass | note: 4 tests — self parity ok;
+  executor-digest mismatch + schema skew + downgrade refused; legacy write (deploy/takeover)
+  disabled, registered write (runtime/restart) allowed, unknown refused.
 - p2-3 | stack: rust | command: cargo test inbox | result: pass | note: 4 tests — stage/resolve
   roundtrip; tampered content + malformed/unknown ref refused; junk/empty/oversized refused +
   gzip image accepted; gc reclaims stale.
