@@ -20,241 +20,303 @@ uncovered combination is a production surprise on a key-holding node.
 
 S0019 is a **greenfield skill set**, not a patch of the S0017 scripts. The user-facing interaction
 is UNCHANGED (website form → one pasted prompt → agent reads `ouro-ops skill show <op>` → executes
-through `ouro-ops tool run`). What changes is the mechanism the new skills sit on:
-1. **Converge the environment** — collapse the matrix from ∞ to a small, versioned, testable
-   contract; the new skills READ an adoption attestation for layout instead of detecting.
-2. **Intent-based writes** — the agent never authors raw write commands; it composes a
-   schema-validated, hash-bound INTENT that a sealed target-side executor validates and carries
-   out with a crash-durable verify+rollback. This gives the agent parameter-level flexibility
-   (which the S0017 rigidity denied) WITHOUT reopening the write-side injection surface.
+through `ouro-ops tool run`). What changes is the mechanism: (1) **converge the environment** so
+the new skills READ an adoption attestation instead of detecting; (2) **intent-based writes** — the
+agent never authors raw commands, only a schema-validated, hash-bound INTENT that a sealed
+target-side executor carries out under a crash-durable transaction.
 
-This design was shaped by a multi-agent design review (Claude + Codex) of the first S0019 draft;
-its findings are folded in below and recorded in §7.
+This spec was shaped by two rounds of multi-agent design review (Claude + Codex). §2 is written to
+be **self-sufficient for a zero-context implementer**: the safety of the design lives in the
+NORMATIVE PROTOCOLS below, not in decisions made in chat. Review artifacts:
+`code_review/S0019-design-review*/summary.md`.
 
 ### Scope
 
-**A. Environment convergence — a layout contract, digest-pinned.**
-- The convention is a **layout contract**: fixed in-container paths (`/ipc/node.socket`,
-  `/data/db`, opcert/kes/vrf under `/opt/cardano/config/keys`), a container cardano-cli that
-  honors explicit `--socket-path`, and a role (bp|relay). The **blinklabs `cardano-node` image is
-  the pinned baseline** (Decision B — pinned upstream, never self-built), expressed as an
-  **allowlist of immutable OCI digests** (never a moving tag). Same-layout images (e.g. official
-  IOG) MAY be added to the allowlist later; the scripts bind to the CONTRACT + digest, not a tag.
-- Ops skills operate ONLY nodes conforming to a contract+digest in the allowlist. A non-conforming
-  node is REFUSED — never adapted, never reconfigured.
+**A. Environment convergence — a layout contract, digest-pinned.** The convention is a **layout
+contract** (fixed in-container paths, a container cardano-cli that honors explicit `--socket-path`,
+a role bp|relay) with the **blinklabs `cardano-node` image as the pinned baseline** (Decision B —
+never self-built), expressed as a **signed allowlist of immutable OCI digests** (never a tag). Ops
+operate ONLY nodes conforming to a contract+digest in the allowlist; a non-conforming node is
+REFUSED (never adapted). S0019 is deliberately a blinklabs-layout product (accepted product
+decision — non-conforming SPOs are unsupported; same-layout images may be added to the allowlist
+later, additive).
 
-**B. Adopt, not migrate (Decision A).** Re-syncing a node is too costly for an SPO, so there is no
-migration path. A node already conforming (the common case for an SPO on the blinklabs image) is
-adopted NON-DISRUPTIVELY: `adopt` verifies conformance and writes a root-owned **adoption
-attestation** alongside the running node (metadata only — no stop/restart/re-sync). A
-non-conforming node is unsupported. Explicit lifecycle states: `host-onboarded` (init installed
-the control-plane principals) → `node-conformant` (passed the conformance assessment) →
-`node-adopted` (attestation written). Greenfield node deployment is a NON-GOAL: the operator
-stands up a conforming node (documented blinklabs recipe); ouro adopts + operates, never deploys.
+**B. Adopt, not migrate (Decision A).** No migration path (re-sync too costly). A conforming node
+is adopted NON-DISRUPTIVELY (attestation write, no stop/restart/re-sync); a non-conforming node is
+unsupported. States: `host-onboarded` → `node-conformant` → `node-adopted`. Greenfield node
+DEPLOYMENT is a non-goal: the operator stands up a conforming node; ouro only adopts + operates.
 
-**C. Fresh skills, no detection on the happy path.** The new skills READ the attestation for
-layout. Detection exists ONLY at (1) adopt-time conformance assessment and (2) a per-operation
-LIVE re-attestation gate (below). No S0017 discovery / supervisor-mode / cardano-cli-adapter
-fallback is carried forward — there is no legacy path to fall back to.
+**C. Fresh skills, no detection on the happy path.** New skills READ the attestation for layout.
+Detection exists ONLY at (1) the adopt-time conformance assessment and (2) the per-op live
+re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback is carried forward.
 
 **D. Permission model — TWO tiers.**
-- **Reads** — free-form, fenced by the OS (unprivileged `ouro-diag`, no sudo). Delivered in S0017
-  p5-18 (`ouro-ops diag exec` + troubleshooting). Unchanged. The agent's flexibility here is safe
-  because the principal physically cannot write.
-- **Writes — declarative intent → sealed executor (option b).** The agent composes a
-  schema-validated, size-bounded, audit-hash-bound INTENT (target machine + allowed parameters
-  drawn from the spec/attestation) — NEVER raw shell, binaries, paths, or runtime args. A central
-  **deny-by-default tool registry** classifies every write; an unclassified write is refused. The
-  target-side **sealed executor** holds the capability (docker/root), validates the intent against
-  allowed fields/paths, performs the fixed mutation ITSELF, and runs a crash-durable
-  verify+rollback the agent cannot skip. The agent gets parameter-level flexibility; the executor
-  owns the payload and the capability.
-  - **Dangerous writes** (key-touching, irreversible, or availability-affecting: KES rotation,
-    opcert install, tx submit, BP restart, topology activation) ALSO require the evidence-bound
-    **confirm-token** human gate. Category-3 (KES/opcert/tx) sealing is retained unchanged
-    (user-confirmed); it is now a subset of the single sealed-write mechanism.
+- **Reads** — free-form, run as the **unprivileged `ouro-diag` principal**. Unix permissions stop
+  writes to root/node-owned files and reads of secret dirs; they do NOT stop writes to the diag
+  user's own home/tmp, network egress, or resource exhaustion — so this is "unprivileged
+  diagnostics", NOT "read-only" (honest labeling per §2.11). Delivered in S0017 p5-18.
+- **Writes — declarative intent → sealed executor.** The agent composes a schema-validated,
+  canonical, audit-hash-bound INTENT (§2.5); a sealed target-side executor (§2.6) holds the
+  capability, validates the intent, performs the fixed mutation, and runs a crash-durable
+  transaction. Dangerous writes (key-touching, irreversible, availability-affecting) additionally
+  require the evidence-bound confirm-token; category-3 (KES/opcert/tx) sealing is retained.
 
 ### Constraints
-- **Honest control-plane labeling (S0017 P0-1 carried forward).** The bootstrap credential is
-  convenience-mode — NOT mechanism-isolated from the agent. We do NOT claim writes are
-  *mechanically fenced at the control plane*: the write-side guarantees (intent validation, sealed
-  executor, confirm-token, live re-attestation) protect against a CONFUSED/injected agent
-  operating THROUGH ouro-ops, NOT against an agent that bypasses ouro-ops entirely with the
-  bootstrap key. This boundary is stated openly, identical to S0017's honest labeling; closing it
-  (operator-only bootstrap authority, agent access removed post-onboard) is out of scope here and
-  belongs to a control-plane hardening spec.
-- **Attestation is an adoption record + expected-state, not self-sufficient provenance.** Every
-  managed operation RE-ATTESTS the live node (closed-fingerprint compare against the attestation)
-  BEFORE any script extraction or mutation, and refuses on drift (TOCTOU recheck under a lock).
-  File/path presence inside a container is never treated as provenance.
-- **Deny-by-default writes.** Every write tool is classified in the central registry (principal,
-  managed-node requirement, intent schema, touched resources, secret-exposure rule, confirmation
-  rule, verifier, rollback semantics, fleet policy, audit fields). Unclassified = refused; a
-  static test proves no write tool is unclassified.
+- **Honest control-plane labeling (S0017 P0-1, carried forward).** The bootstrap credential is
+  convenience-mode — NOT mechanism-isolated from the agent. The write-side guarantees defend a
+  MISLED/injected agent operating THROUGH ouro-ops, NOT an agent hijacked to run raw shell on the
+  control machine. No "writes are mechanically fenced" claim; deployment docs/UI must never
+  shorthand this as "all writes are fenced". Closing the boundary is a separate hardening spec.
+- **Deny-by-default PRIVILEGED-CAPABILITY API (not just "write tools").** Every root/Docker
+  mutation on a target — managed writes AND lifecycle (init/deinit/adopt, attestation rotation,
+  recovery/watchdog, artifact staging, allowlist update, write-seal clearance) — goes through one
+  target-side privileged-capability API. A static + dynamic gate proves NO privileged
+  fs/Docker/process mutation occurs outside it. Bootstrap lifecycle is its own explicit trust
+  class, not covered by "two tiers".
+- **Attestation = immutable adoption identity + versioned managed state.** Every managed op
+  re-attests the live node before mutation (§2.4); a legitimate write advances the versioned state
+  via CAS in the same transaction (§2.3), so success does not read as drift.
 - No cold, KES secret, or VRF material ever enters agent context or output (carried from S0015/17).
-- **Injection red line is defense-in-depth only.** "Logs/chain state are DATA, never instructions"
-  is agent guidance; the real control is that the agent supplies validated parameters, not
-  commands, and the executor owns the mutation.
-- Crash-durable, single-writer semantics: per-node lock, pre-state fingerprint, fsynced immutable
-  rollback artifact, atomic commit where possible, watchdog deadline, crash recovery before any
-  new write.
+- **Injection red line is defense-in-depth only.** The real control is that the agent supplies a
+  validated, canonical, closed-schema intent — not commands — and the executor owns the mutation.
+- Crash-durable, single-writer semantics per §2.6; fleet-wide single-writer per §2.9.
+- **One supervisor/host contract for v1 (§2.2).** A second variant is a separately versioned
+  contract with its own executor + fixtures, never a generic runtime field.
 
 ### Non-goals
-- Supporting non-conforming environments (bare/systemd, rootless, non-allowlisted images) — refused.
-- Building our own node image (Decision B) — the pinned blinklabs digest(s) are the baseline.
-- A migration/re-deploy path for non-conforming nodes (Decision A).
-- Greenfield node DEPLOYMENT by ouro — the operator stands up a conforming node; ouro only adopts.
-- Agent-authored raw write commands (option a) — rejected in favor of validated intents (option b).
-- Patching the S0017 scripts — S0019 is a fresh skill set.
-- On-target network fetch / self-bootstrapping (upgrades operator-initiated; ouro-ops distribution
-  is S0018 — which does NOT cover the node runtime; node-runtime upgrade is owned HERE, see §2).
-- Closing the P0-1 control-plane convenience boundary (separate hardening spec).
+- Non-conforming environments (bare/systemd, rootless, non-allowlisted images, unrecognized
+  daemon/orchestration/mount/network/multi-node shapes) — refused at adoption, not adapted.
+- Building our own node image (Decision B).
+- Migration/re-deploy for non-conforming nodes (Decision A); greenfield node DEPLOYMENT by ouro.
+- Agent-authored raw write commands, paths, or blobs (artifacts arrive via §2.7, not intents).
+- Patching the S0017 scripts (fresh skill set); on-target network fetch (upgrades operator-init;
+  S0018 distributes only the ouro-ops binary — node-runtime upgrade is owned here, §2.10).
+- Closing the P0-1 control-plane boundary; defending against a compromised host root / Docker
+  daemon (explicitly in the trusted computing base, §2.12).
 
-## 2. Outline Design
-- **Layout contract + digest allowlist** — a reviewed, versioned table: `{convention_version,
-  contract_id, allowed_oci_digests[], in_container_paths{socket,db,keys,config,topology,genesis},
-  role_rules}`. Tags are display-only.
-- **Adoption ceremony** (`ouro-ops adopt`, operator-approved): run a sealed closed-projection
-  conformance assessment (resolve the live container; verify its image config digest ∈ allowlist;
-  probe + RECORD actual in-container layout; role check — a relay MUST NOT bear forging
-  credentials, a BP validates only non-secret opcert/KES facts). Conforms → atomically write the
-  attestation under a lock with a final TOCTOU recheck. Else → refuse, no reconfigure.
-- **Adoption attestation** `/var/lib/ouro/node-attestation.json` (root-owned, `0640` root:ouro-exec):
-  role; host/machine id; immutable OCI index + platform-manifest + image-config digests;
-  container identity + creation epoch; entrypoint/args; network/genesis hash; **typed mount map**
-  `{type, source|volume, destination, read_only, owner, mode}` (distinguishing host vs container
-  paths); non-secret config/topology hashes; public credential identifiers; `adopted_by_audit_id`,
-  `adopted_at`. It is the ONLY layout source the new skills read.
-- **Per-op live re-attestation gate** (lib primitive `ouro_require_attested_node`): before any
-  managed op, centrally re-resolve the live container and compare a CLOSED fingerprint to the
-  attestation; any drift (recreated container, moved digest, changed mounts/args/config) refuses
-  (`node_drift` / `not_ouro_managed`) BEFORE script extraction. Enforced by the `tool run`
-  entrypoint (a central gate), not merely "first line of each script".
-- **Intent + sealed executor** — the write registry maps each write to an intent JSON Schema.
-  `tool run` validates the intent (bounded, allowed fields/paths only), binds its hash to the
-  audit event (and confirm-token for dangerous writes), then invokes the sealed executor which
-  performs the fixed mutation against attestation-bound paths, stages+pre-validates, and runs the
-  transaction below. The executor NEVER runs agent-supplied shell/binaries/paths/args.
-- **Crash-durable write transaction** (host-local, root-owned state machine): exclusive node lock
-  → pre-state fingerprint → fsynced immutable rollback artifact → staged validation → atomic
-  commit where possible → watchdog-owned deadline → postcondition verify → rollback verify →
-  terminal journal. On crash, the next invocation/boot RECOVERS before accepting new writes; a
-  failed/unverifiable rollback seals further writes (typed exit 40, operator recovery).
-- **Role-specific readiness proxies** (not "immediate forging proof", which a low-stake pool
-  cannot show in a bounded window): process/container identity, socket query, expected
-  network/genesis, tip/peer progress, KES/opcert validity, credential-loaded state. BP restart /
-  topology activation are availability-affecting → confirm-token + relay-quorum/leadership policy.
-- **Fleet orchestration** — one attested node per host (or an attestation set keyed by immutable
-  node id); pool-level lock, preflight snapshot, minimum-online-relays quorum, relay batches,
-  BP-last sequencing, active/standby forging rules, abort/rollback boundaries.
-- **Node-runtime upgrade (owned here, NOT S0018)** — a reviewed signed allowlist of immutable OCI
-  digests; N→N+1 transition while both convention versions are understood: upgrade ouro first,
-  canary a relay, BP last, preserve volumes, verify, then atomically rotate the attestation;
-  rollback restores runtime AND attestation; keep N supported until the fleet completes.
-- **Threat model / trust matrix** — explicit table: malicious/injected agent, malicious diagnostic
-  data, hostile spec values, stale/replaced container, compromised upstream tag, out-of-band
-  root/Docker-admin changes, concurrency, crash/power loss. Host-root / Docker-daemon compromise
-  is OUT OF SCOPE (stated). For every invariant, name the enforcing component + its test; prompt
-  text is defense-in-depth only.
-- **Audit event schema** — append-only closed-field events for adopt, live-preflight, intent
-  approval, commit, verify, rollback, recovery, attestation rotation, refusal (hashes only, never
-  raw inspect/config/secret-shaped values). Control-side anchoring remains a stated residual risk
-  (S0017), but event completeness is testable.
-- **Reads-on-unmanaged exception matrix** — unprivileged `diag exec` + sealed adoption/conformance
-  probes MAY run before adoption (needed to explain why adoption failed); managed observability +
-  every write require a live-bound attestation; privileged troubleshooting on unmanaged nodes is
-  narrowly allowed with closed outputs or refused. Each case tested.
+## 2. Outline Design (normative protocols)
+
+### 2.1 Layout contract + signed digest allowlist
+- A versioned table `{convention_version, contract_id, in_container_paths{socket,db,keys,config,
+  topology,genesis}, role_rules, allowed[]}` where `allowed[]` = `{platform, oci_index_digest,
+  image_config_digest}`. Tags are display-only, never trusted.
+- The allowlist is **signed** and embedded like the skill pack (S0016/S0017 embed model); it
+  carries a monotonic version + an emergency **denylist**. Anti-rollback: a target refuses an
+  allowlist older than its recorded floor. Control↔target allowlist skew is a refuse.
+
+### 2.2 Supervisor/host contract (pinned, v1)
+- Exactly ONE: rootful Docker; a single container per host launched by a named unit ouro can
+  identify; bind mounts (not just named volumes) with recorded source device+inode; a fixed
+  restart policy; the Docker daemon at the standard socket. Every other daemon/orchestration
+  (Compose vs run), mount driver, network mode, or **multi-node host** is refused at adoption.
+  (Multi-node support, if ever needed, is a separate versioned contract.)
+
+### 2.3 Adoption attestation — immutable identity vs versioned managed state
+- **Immutable identity (frozen at adopt):** role; host key + machine id; OCI index +
+  platform-manifest + image-config digests; container creation epoch; entrypoint/args; typed mount
+  map `{type, source-device+inode | volume-id+driver+opts, destination, read_only, owner, mode,
+  no_symlink:true}`; network + genesis hash; public credential identifiers.
+- **Versioned managed state (advances on every managed write):** a monotonic `state_generation` +
+  hashes of the mutable fields a managed write may legitimately change (topology hash, config hash,
+  KES period / opcert identifier, container id after a restart/recreate). Stored as a separate
+  CAS-guarded record, updated ONLY inside the write transaction (§2.6).
+- File `/var/lib/ouro/node-attestation.json`, root-owned `0640 root:ouro-exec`. The ONLY layout
+  source new skills read.
+
+### 2.4 Per-op live re-attestation gate (closes check→act TOCTOU)
+- The `tool run` entrypoint is the single central gate; it runs BEFORE script/executor extraction.
+- Under the per-node lock (§2.6): resolve the live container by **immutable container id** (never
+  by name); compare a CLOSED fingerprint (identity fields + expected `state_generation`) to the
+  attestation; any drift → typed `node_drift`/`not_ouro_managed`, no mutation.
+- The executor opens every host resource through stable handles (`openat2` beneath/no-symlink where
+  available), re-validates the container id + mount inodes + `state_generation` IMMEDIATELY before
+  each irreversible commit (CAS), and re-verifies after. Cooperative out-of-band admin must honor
+  the fencing lease (§2.9); non-cooperative Docker/root admin is out of scope (§2.12).
+
+### 2.5 Intent envelope + deny-by-default registry + sink rules
+- **Envelope (normative):** `{schema_version, operation_id, node_id(immutable), pre_state_generation,
+  pre_state_hash, expected_post_state, nonce, expiry, payload}`. Canonical serialization (sorted
+  keys, no duplicates, bounded depth/count/string-length/number-range); the canonical bytes are
+  hashed and that hash is bound to the audit event and (for dangerous ops) to a single-use
+  confirm-token together with a human-readable diff.
+- **Registry (deny-by-default):** each `operation_id` maps to a closed JSON Schema with
+  operation-specific semantic validators (allowed values enumerated, not "string"), a touched-
+  resource set, a secret-exposure rule, a confirmation rule, a verifier, rollback semantics, and
+  fleet policy. An unclassified operation is refused. Static test: no write operation is
+  unclassified; every invariant names its negative test.
+- **Sink rules:** the executor NEVER runs a shell, `eval`, or text templating; it uses fixed
+  executable + argv arrays and structured JSON/YAML serializers; every payload field maps to an
+  explicit sink + resource; free-form fields (rare) get a content validator + traversal/symlink
+  rejection. Topology/config values are DERIVED from the operator's spec, not agent-authored.
+
+### 2.6 Sealed executor + crash-durable transaction state machine
+- Execution locus: a target-resident privileged component (installed by init, identity-pinned per
+  §2.8), invoked by `tool run`; a SEPARATE recovery entrypoint runs at the start of every `tool
+  run` and reconciles an interrupted transaction BEFORE any new write.
+- Durable states: `prepared → committing → committed → verifying → {verified | rolling_back →
+  {rolled_back | sealed}}`. Each transition is fsync'd (file + parent dir) before its side effect
+  is observable; every step is idempotent / CAS-guarded so recovery can re-drive it safely.
+- Ingredients: exclusive per-node lock (with owner + expiry); pre-state fingerprint; fsync'd
+  immutable rollback artifact with generations + retention; ordered multi-resource compensation
+  (KES key + opcert + restart + state-record are NOT one rename — compensation is ordered and
+  each step re-checks); a watchdog whose deadline outlives SSH/process death (owned by the
+  target-resident component, not the SSH session); postcondition verify via role-specific readiness
+  proxies (§2.6a); rollback verify; terminal journal.
+- A failed/unverifiable rollback writes a durable **write-seal**; further writes refuse (exit 40)
+  until an explicit operator recovery clears it.
+- **2.6a Readiness proxies (not "immediate forging proof"):** process/container identity, socket
+  query, expected network/genesis, tip/peer progress, KES/opcert validity, credential-loaded
+  state. A low-stake pool cannot show a fresh block in a bounded window, so forging is never a
+  postcondition.
+
+### 2.7 Artifact staging inbox (opcert / signed tx / OCI image ingress)
+- Operations needing a blob (opcert install, tx submit, KES payloads, runtime image) do NOT pass a
+  path or blob in the intent. A root-owned, content-addressed **staging inbox** accepts bounded
+  streaming ingress (operator-authorized), no symlink/hardlink following, atomic finalize,
+  type-specific parsing + cryptographic/domain validation, provenance/expiry/replay rules, GC.
+- The intent references only an immutable `artifact_id + digest`; the confirm preview and audit
+  event bind that digest. Runtime images use a preloaded-image path + local OCI digest verification
+  (no on-target fetch).
+
+### 2.8 Executor identity / anti-downgrade parity
+- Adoption and every live gate bind: the signed ouro-ops build-id, the executor/registry/intent-
+  schema/transaction-impl digests, and a minimum security version. Privileged execution is compiled
+  into the root-owned binary (no mutable on-disk script/plugin override in production).
+- `tool run` requires control↔target parity (same embedded digest family, cf. S0017 p5-17) before
+  accepting an intent; a target below the minimum security version refuses. All legacy S0017 write
+  entry points are explicitly disabled unless migrated into the registry.
+
+### 2.9 Fleet lease authority (pool-wide single writer)
+- A durable **pool generation** + an exclusive **lease** with expiry + fencing token; a controller
+  identity; a target-side check of a signed/authorized **step permit** before each disruptive step.
+- Quorum (minimum-online-relays) and BP-leadership are re-evaluated immediately before every
+  disruptive step, not just at preflight; relay batches; BP-last; active/standby forging rules;
+  lease-loss → abort; crashed-lease-holder fencing. Tested with two independent controllers,
+  delayed messages, partitions, crashed holders, concurrent out-of-band changes.
+
+### 2.10 Node-runtime upgrade (owned here; DB-compat honest)
+- N→N+1 gated by **signed transition metadata** (node/cardano-cli/protocol + **DB-format
+  compatibility**). Sequence: upgrade ouro first → canary a relay → BP last → preserve volumes →
+  verify → atomically rotate the attestation. Rollback restores runtime AND attestation ONLY if a
+  tested backward-compatible downgrade or a crash-consistent volume snapshot/clone (with capacity
+  check) exists; otherwise the spec states forward-recovery/re-sync as the only honest outcome and
+  does NOT promise rollback. Images arrive via §2.7 preload; N stays supported until the fleet
+  completes.
+
+### 2.11 Reads — honest `ouro-diag` labeling (+ optional sandbox)
+- Label it "unprivileged diagnostics" with the S0017 residuals restated: it can write its own
+  home/tmp, make egress, and exhaust CPU/PID/disk. Either keep that honest scope, OR run each diag
+  command in a bounded transient unit (read-only fs, private tmp, CPU/mem/PID/output/time quotas,
+  no-new-privileges, explicit egress policy). Pick one in p3-2; do not claim "physically cannot
+  write".
+
+### 2.12 Threat model / trust matrix (actual table, authored before activation)
+- Adversaries modeled: misled/injected agent; malicious diagnostic data; hostile spec values;
+  stale/replaced container; compromised upstream tag; cooperative out-of-band admin; concurrency;
+  crash/power loss. **Out of scope (trusted computing base):** compromised host root, Docker
+  daemon, host kernel, the allowlisted image's own vulnerabilities, and (by P0-1) an agent that
+  abandons the ouro-ops path via the bootstrap credential.
+- Every invariant → its enforcing component (§2.x) → its negative test (§4). Prompt text is
+  defense-in-depth only.
+
+### 2.13 Audit event schema
+- Append-only, closed-field events (hashes only, never raw inspect/config/secret-shaped values)
+  for: adopt (with approval evidence hash, §2.14), live-preflight, intent approval, each
+  transaction phase, verify, rollback, recovery, attestation/state rotation, refusal. Control-side
+  anchoring remains a stated residual risk (S0017); event completeness is testable.
+
+### 2.14 Evidence-bound adoption approval
+- `adopt` produces a closed candidate-attestation preview; a single-use operator token/signature is
+  bound to that canonical hash + the target host key; a final live comparison runs under the
+  adoption lock; the approval evidence hash is stored in the attestation + audit journal. (Under
+  the P0-1 boundary an agent can invoke the path, so the binding — not mere invocation — is what
+  makes a specific conforming container the trust root.)
+
+### 2.15 Supported / retired / unsupported operation table
+- Published before activation: every real-operator remediation (disk cleanup/expansion, log
+  rotation, time/firewall correction, config render vs activate, host service repair, failed-
+  transaction recovery, KES/opcert/tx, restart/topology, upgrade) is marked supported (with its
+  schema/executor/transaction policy), retired, or unsupported (typed refusal + documented
+  operator-only recovery path). No operation may fall through to the bootstrap bypass or ad-hoc
+  manual commands.
 
 ## References
-- docs/specs/completed/20260711T1010-S0017-production-provisioning.md (Previous; delivered mechanism + p5 real-machine findings; P0-1 convenience-mode labeling carried forward)
-- docs/specs/draft/S0018-official-distribution-infra.md (ouro-ops binary distribution ONLY — explicitly NOT the node runtime; node-runtime upgrade is owned in this spec)
-- code_review/S0019-design-review/summary.md (multi-agent design review that shaped this draft)
+- docs/specs/completed/20260711T1010-S0017-production-provisioning.md (Previous; delivered mechanism; P0-1 labeling; p5-17 parity)
+- docs/specs/draft/S0018-official-distribution-infra.md (ouro-ops BINARY distribution only — NOT the node runtime)
+- code_review/S0019-design-review/summary.md ; code_review/S0019-design-review-v2/summary.md (the two review rounds that shaped §2)
 - docs/codebase-map.md
 
 ## 3. Execution Plan
-> Draft — sequenced on activation. Greenfield skill set; two-tier permission model.
-- [ ] p1-1 layout contract + digest allowlist (schema, blinklabs baseline digest(s), role rules)
-- [ ] p1-2 `ouro-ops adopt` conformance assessment (image-config digest ∈ allowlist; probe+record layout; role check) → atomic attestation under lock + TOCTOU recheck; operator-approved; non-disruptive
-- [ ] p1-3 adoption-attestation schema (role-aware, typed mounts, digests/hashes) + writer
-- [ ] p1-4 `ouro_require_attested_node` central live re-attestation gate in the `tool run` entrypoint; typed `node_drift`/`not_ouro_managed` refusal before extraction
-- [ ] p1-5 new skills READ the attestation for layout (socket/db/opcert/config); no detection/fallback
-- [ ] p2-1 central deny-by-default write registry + intent JSON Schemas; static test: no unclassified write
-- [ ] p2-2 sealed executor + crash-durable write transaction (lock/pre-state/rollback artifact/staged/commit/watchdog/verify/journal/recovery)
-- [ ] p2-3 role-specific readiness proxies; dangerous-write set (KES/opcert/tx/BP-restart/topology) → confirm-token gate
-- [ ] p2-4 fleet orchestration (pool lock, quorum, relay batches, BP-last, active/standby)
-- [ ] p3-1 node-runtime N→N+1 upgrade protocol + attestation rotation/rollback (owned here)
-- [ ] p3-2 threat-model/trust-matrix doc + audit event schema + reads-on-unmanaged exception matrix
+> Greenfield skill set; two-tier model. The protocol items (p1/p2) must be specified + tested
+> before any dispatched write goes live.
+- [ ] p1-1 layout contract + SIGNED digest allowlist (embed, monotonic + denylist, anti-rollback, skew refuse) — §2.1
+- [ ] p1-2 pin the v1 supervisor/host contract; refuse all other shapes at adoption — §2.2
+- [ ] p1-3 adoption ceremony + evidence-bound approval + attestation schema (immutable identity vs versioned state) — §2.3, §2.14
+- [ ] p1-4 central live re-attestation gate (immutable container id, in-lock, openat2, CAS before commit) — §2.4
+- [ ] p1-5 new skills READ the attestation; no detection/fallback — §1.C
+- [ ] p2-1 intent envelope + deny-by-default privileged-capability registry + sink rules; static "no unclassified privileged mutation" gate — §1 Constraints, §2.5
+- [ ] p2-2 sealed executor + crash-durable transaction state machine + target-resident recovery + write-seal — §2.6
+- [ ] p2-3 artifact staging inbox (content-addressed, validated, GC) — §2.7
+- [ ] p2-4 executor identity / anti-downgrade parity; disable legacy write entry points — §2.8
+- [ ] p2-5 role-specific readiness proxies; dangerous-write confirm-token binding (canonical hash + diff) — §2.5, §2.6a
+- [ ] p3-1 fleet lease authority (pool generation, fencing lease, step permit, quorum re-eval) — §2.9
+- [ ] p3-2 node-runtime N→N+1 upgrade with DB-compat + attestation rotation; ouro-diag honest labeling/sandbox — §2.10, §2.11
+- [ ] p3-3 threat-model/trust-matrix table; audit event schema; supported/retired/unsupported operation table — §2.12, §2.13, §2.15
 
 ## 4. Test and Acceptance Criteria
-> Acceptance MATRIX — must falsify the security claims, not just the happy path. Keep S0017's
-> category-3 and no-leak tests as mandatory regressions.
-- TC-1 unmanaged/non-attested node: every managed op refuses (typed, no mutation). Adopt-time and
-  `diag exec` exceptions behave per the exception matrix.
-- TC-2 adopt: conforming blinklabs node adopted non-disruptively (attestation written; node not
-  stopped/restarted/re-synced); non-conforming (bad digest, wrong layout, relay bearing forging
-  keys) refused without reconfigure.
-- TC-3 live drift refused: container recreated / digest moved / mounts or args changed / config
-  drift → op refuses before extraction (TOCTOU recheck holds).
-- TC-4 intent validation: a hostile intent (raw shell, out-of-allowlist path, key path, manifest
-  edit, DB delete, tx submit, secret read) attempted through ANY write tool is rejected; no
-  forbidden intermediate mutation or secret output.
-- TC-5 sealed executor never runs agent-supplied commands; agent gets only validated parameters.
-- TC-6 crash-durable transaction: fault injection (SSH loss/kill/reboot/OOM) before/after each
-  journal transition leaves a recoverable state; next invocation recovers before new writes; a
-  failed rollback seals writes (exit 40).
-- TC-7 dangerous writes (KES rotation, opcert install, tx submit, BP restart, topology) require a
-  live-bound confirm-token; agent cannot improvise the payload.
-- TC-8 fleet: individually-healthy ops cannot remove relay quorum, disconnect the BP, or restart
-  the active producer out of policy; BP-last + quorum enforced; wrong-container-on-multi-node-host
-  refused.
-- TC-9 node-runtime N→N+1 upgrade + rollback restores runtime AND attestation; N stays supported
-  until the fleet completes.
-- TC-10 no write tool is unclassified (static registry gate); every invariant maps to an enforcing
-  component + test.
+> Acceptance MATRIX — must FALSIFY the security claims, with adversarial interleavings, not just
+> the happy path. Each invariant names its negative test. S0017 category-3 + no-leak tests are
+> mandatory regressions.
+- TC-1 unmanaged/non-attested node: every managed op refuses (typed, no mutation); diag/adopt
+  exceptions behave per §2.11/§2.14.
+- TC-2 adopt: conforming node adopted non-disruptively; non-conforming (bad digest, wrong layout,
+  relay bearing forging keys, wrong supervisor shape) refused; approval NOT evidence-bound → refuse.
+- TC-3 live drift + races: container recreate, digest move, mount/symlink swap, config drift,
+  and a swap timed BETWEEN re-attestation and commit are all refused (in-lock CAS holds).
+- TC-4 intent boundary: hostile intent (raw shell, out-of-allowlist path, traversal/symlink,
+  parser-active string, duplicate/non-canonical JSON, key path, DB delete, secret read, confirmed-
+  hash ≠ executed) rejected; no forbidden intermediate mutation or secret output.
+- TC-5 artifact ingress: a replaced/oversized/wrong-type/replayed artifact after approval is
+  rejected; the intent binds an immutable digest.
+- TC-6 crash-durable transaction: fault injection (SSH loss/kill/reboot/OOM) before/after EACH
+  phase leaves a recoverable state; recovery runs before new writes; rollback is restartable;
+  rollback-of-rollback seals writes (exit 40).
+- TC-7 dangerous writes require a live-bound confirm-token bound to the canonical intent + diff;
+  agent cannot improvise the payload; category-3 unchanged.
+- TC-8 fleet: two independent controllers, delayed messages, partitions, crashed lease holders —
+  cannot both pass preflight and violate quorum / restart the active producer; BP-last enforced.
+- TC-9 upgrade: N→N+1 rollback restores runtime AND attestation where DB-compat allows; where it
+  does not, the honest re-sync/forward-recovery outcome is asserted (no false rollback promise).
+- TC-10 completeness gates: no privileged mutation outside the capability API (static+dynamic);
+  executor/registry/schema downgrade refused; every operation is in the supported/retired/
+  unsupported table.
 
 ## 5. Execution Log (append-only)
-- 2026-07-14 draft created from the S0017 closure decision (converge + permission spectrum).
-- 2026-07-14 multi-agent design review (Claude + Codex; Cursor skipped — usage limit) run; findings
-  in code_review/S0019-design-review/summary.md.
-- 2026-07-14 draft rewritten per the review + user decisions: greenfield skill set (not a patch);
-  two-tier permission model with option (b) declarative-intent + sealed executor for writes;
-  layout-contract + digest-allowlist (not tag); adoption attestation with live re-attestation;
-  honest P0-1 control-plane labeling; role-aware schema; fleet/upgrade/threat-model/audit added.
+- 2026-07-14 draft created from the S0017 closure decision.
+- 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
+  option (b) intent/executor; decisions A/B and post-review items closed.
+- 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
+  mechanisms but had not made them normative protocols; per the user, §2 expanded into
+  self-sufficient normative protocols (2.1–2.15) so a zero-context implementer can build it safely.
 
 ## 6. Validation Evidence (append-only)
 - (pending activation)
 
 ## 7. Change Requests (append-only)
-- 2026-07-14 draft opened; Decisions A (no migration) and B (blinklabs, no self-build) resolved.
-- 2026-07-14 **review-driven rewrite (user).** A multi-agent design review found the first draft's
-  safety claims were assertions, not mechanisms. Resolutions folded in:
-  - **Greenfield, not a patch** (user): a fresh skill set; the S0017 discovery/adapter/mode-
-    dispatch disposition + fallback-regression finding is MOOT (no legacy path to fall back to).
-  - **Two-tier permission model, option (b)** (user): the agent-flexible "reversible write" tier is
-    removed. Convergence already makes sealed write scripts simple, so the flexibility that
-    motivated it is unnecessary; write-flexibility only reopened the injection surface. Writes now
-    go through validated declarative INTENTS + a sealed executor (agent supplies parameters, never
-    commands). This dissolves the earlier P0s (verify+rollback-not-a-mechanism, docker-capability-
-    collapses-cat3) and the restart-reversibility P1.
-  - **Carried into the design (could not be ignored under greenfield):** honest P0-1 control-plane
-    labeling (no "mechanically fenced" claim); attestation = adoption record + live re-attestation
-    (TOCTOU); role-aware, typed-mount, digest-pinned schema; deny-by-default write registry;
-    crash-durable write transaction; fleet/quorum/BP-last; node-runtime upgrade owned here (S0018
-    covers only the ouro-ops binary); explicit threat model/trust matrix; audit event schema;
-    reads-on-unmanaged exception matrix; layout-contract (digest allowlist) rather than a tag.
-  - Removed the stale "after Open Decisions are resolved" qualifier; attestation file mode is
-    `0640 root:ouro-exec`.
-- 2026-07-14 **both remaining items resolved (user); draft ready to activate.**
-  - **Blinklabs is the baseline, full stop (user: "就以 blinklabs 为准").** S0019 is deliberately a
-    blinklabs-layout product; the supported-population question is CLOSED as a product-acceptance
-    decision — non-conforming SPOs are unsupported by design, no further evidence-gathering gates
-    activation. (Same-layout images may still be added to the digest allowlist later; that is an
-    additive change, not a blocker.)
-  - **P0-1 control-plane boundary stays OPEN, honestly labeled (user chose A).** Consistent with
-    S0017: the write-side guarantees defend against a MISLED/injected agent operating through
-    ouro-ops (the realistic threat), NOT against an agent fully hijacked to run raw shell on the
-    control machine (which already owns the machine, its keys, and files regardless). Closing this
-    boundary (bootstrap authority isolated from the agent — broker / hardware auth / post-onboard
-    key removal) is explicitly a FUTURE separate control-plane hardening spec, not a S0019 blocker.
-  Both Open Decisions and both post-review items are now closed. S0019 is ready to activate on the
-  user's go-ahead.
+- 2026-07-14 Decisions A (no migration) and B (blinklabs, no self-build) resolved; then round-1
+  review-driven rewrite (greenfield, two-tier, option b, digest allowlist, honest P0-1 labeling).
+- 2026-07-14 blinklabs baseline finalized; P0-1 control-plane boundary kept OPEN (honestly
+  labeled) — a future separate hardening spec.
+- 2026-07-14 **round-2 review → §2 made normative (user: "写进去吧").** The round-2 review (Claude
+  ACTIVATE_WITH_CHANGES / Codex REWORK) showed the round-1 findings were the right DIRECTION but
+  not yet enforceable protocols; Codex (no chat context) correctly judged the spec on what it
+  wrote, which is the right bar since the implementer has no chat context. §2 now specifies, as
+  normative protocols: intent envelope + sink rules + deny-by-default privileged-capability API
+  (2.5, Constraints); attestation immutable-identity vs versioned-state (2.3) with CAS in-transaction;
+  live re-attestation closing check→act TOCTOU via immutable container id + in-lock + openat2 (2.4);
+  crash-durable transaction state machine with target-resident recovery + write-seal (2.6); artifact
+  staging inbox (2.7); executor identity / anti-downgrade parity (2.8); fleet lease authority (2.9);
+  DB-compat-honest upgrade (2.10); honest ouro-diag labeling (2.11); threat-model/trust-matrix
+  (2.12); audit schema (2.13); evidence-bound adoption approval (2.14); supported/retired/unsupported
+  operation table (2.15). Execution plan + acceptance matrix expanded to match. Ready to activate;
+  the protocol items (p1/p2) must be specified + tested before any dispatched write goes live.
