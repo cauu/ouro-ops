@@ -1,12 +1,12 @@
 # Production Provisioning & Real-Node Lifecycle
 
 Spec-ID: S0017
-Status: active
+Status: completed
 Created Time: 2026-07-09T11:00:00+08:00
 Start Time: 2026-07-11T10:10:11+08:00
-Completion Time:
+Completion Time: 2026-07-14T17:30:00+08:00
 Previous Spec-ID: S0016
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
@@ -1250,6 +1250,19 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   (含 systemd leg;揪出并修 `compose up` 漏 `-p project` 的真 bug。)
 
 ## 7. Change Requests (append-only)
+- 2026-07-14 **收尾 + 实现思路转向(用户定案)。** 真机验收(全新 agent 在主网 BP 上自由排查)暴露的所有痛点
+  (exit 126、tip 读不出、opcert 文件名、容器内外路径、socket 参数、rootless/rootful、镜像差异)**根因统一为一条**:
+  脚本在试图**适配任意异构的节点部署环境**——这是无界 case 爆炸,穷举不可能,每个未覆盖组合都是持钥主网节点上的
+  生产惊吓。用户决定**收敛实现思路**,新方向另立 **S0019**(draft),S0017 就地收尾。转向要点(详见 S0019):
+  (1)**环境收敛**——运维能力仅操作**经 ouro skill 部署的容器化节点**(固定约定 + 版本化 provenance 清单为单一
+  事实源,init/deploy 写入);每个 skill 首步验证清单,非 ouro 部署即**明确拒绝退出**,不再探测适配。(2)**权限谱**——
+  读:自由发挥 + OS 围栏(ouro-diag,已由 p5-18 交付);可逆写(config/topology/restart):agent 灵活跑管路 +
+  封印的 verify+rollback;**不可逆/碰密钥写(KES 轮换/opcert 安装/tx 提交):保持封印脚本 + confirm-token 人类门
+  不变(用户明确认同保持封印)**。S0017 已交付的机制(p1 provisioning、p4 冷签、confirm-gate、p5 系列真机修复)
+  全部保留有效;被 S0019 收敛**取代**的仅是「探测/适配任意环境」这一部分(detect/adapter/mode-dispatch 从「搞清楚
+  怎么操作」语义翻转为「验证是否我们的,否则拒绝」)。收尾时的未决项(bp1 health 真机复测)在新方向下**失去意义**
+  ——bp1 是非 ouro 部署的外部节点,S0019 下会被拒绝,不再为外部环境续命。Closure Reason: delivered(所有 pX 项
+  [x] 且证据在案,真机曾把真实池注册落链;转向属新约束,归 S0019 而非推翻本 spec 交付物)。
 - 2026-07-13 **p3-1 定案:不做(用户再确认)。** 目标机权威审计哈希链/反签名/远端锚点等属过度防御,超出便利模式
   与本 spec 范围;审计保持 append-only,残余篡改风险已知接受。spec 中以 `[-]` 标记(不做,区别于未完成 `[ ]`/在途
   `[~]`/完成 `[x]`)。如日后确需强审计完整性,另立专门 spec。
