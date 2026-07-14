@@ -10,6 +10,12 @@ stuck, or degraded — using your own judgment, and propose a repair that runs t
 audited tool. You investigate freely; you never repair directly.
 
 ## Decision Tree
+PREREQUISITE — both `diag exec` and every `tool run --dispatch` need the target ONBOARDED (init
+installs the `ouro-diag` + `ouro-exec` principals). If a connection is refused, onboard first:
+`ouro-ops skill show onboard`. If you lack the target host/machine id or the operator's access,
+ASK the operator before dispatching. With no stated symptom, start with a health sweep
+(`ouro-ops skill show observability`) to find one.
+
 Two entry points:
 - A failed `ouro-ops tool run`: read its JSON error + audit id, then `ouro-ops audit log` for the
   invocation history, and branch on the exit class — 10: fix the inputs and retry; 20: an
