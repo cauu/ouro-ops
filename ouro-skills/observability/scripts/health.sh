@@ -42,17 +42,19 @@ if ouro_node_running; then
   TIP1="$(query_tip)" || true
   sleep 3
   TIP2="$(query_tip)" || true
-  # KES facts (bp): read from the live node via the PUBLIC opcert. Absent opcert (relay) is
-  # normal, not an error.
-  POOL="$(ouro_node_pool_dir)"
-  if [ -f "$POOL/opcert.cert" ]; then
+  # KES facts (bp): read the REAL opcert path from the node's argv (p5-21 — it is e.g. node.cert,
+  # not a guessed opcert.cert), and check existence IN the node's context (inside the container
+  # for a docker node — the host cannot see the container-internal path). Absent opcert (relay)
+  # is normal, not an error.
+  OPCERT="$(ouro_node_opcert)"
+  if [ -n "$OPCERT" ] && ouro_node_file_exists "$OPCERT"; then
     OPCERT_PRESENT=true
-    KES_JSON="$(ouro_cardano_cli query kes-period-info --op-cert-file "$POOL/opcert.cert" $NET 2>/dev/null \
+    KES_JSON="$(ouro_cardano_cli query kes-period-info --op-cert-file "$OPCERT" $NET 2>/dev/null \
       | python3 -c 'import sys; s=sys.stdin.read(); i=s.find("{"); print(s[i:] if i>=0 else "")' 2>/dev/null || echo "")"
   fi
-  # Disk pressure on the chain-db filesystem (path from the running node's own argv, p5-3).
+  # Disk pressure on the chain-db filesystem (path from the node's argv, checked in its context).
   DB_PATH="$(ouro_node_arg --database-path)"; DB_PATH="${DB_PATH:-${OURO_DEVNET_DIR:-/opt/devnet}/db}"
-  DISK_PCT="$(df -P "$DB_PATH" 2>/dev/null | awk 'NR==2 {gsub(/%/,"",$5); print $5}' || echo "")"
+  DISK_PCT="$(ouro_node_disk_pct "$DB_PATH" || echo "")"
 fi
 
 python3 - "$MACHINE" "$ROLE" "$RUNNING" "$MODE" "$OPCERT_PRESENT" "$DISK_PCT" "${OURO_AUDIT_ID:-}" \

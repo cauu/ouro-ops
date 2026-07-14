@@ -579,8 +579,18 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   Info 级触发词零误报 + dropped 计数;只读静态闸放行 trap 自清 mktemp 惯用法。agent 的 POSIX 直觉("exec 失败非被拒绝")
   与 rootless 被否证后仍准确定位,记功。#1(tip unreadable)判为同类脚本层疑点,留待 diag 坐实后处理。
 
-## 4. Test and Acceptance Criteria
-> (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
+- [x] p5-21 (new) **health 容器感知只做了一半——tip/opcert/disk 三字段修全(finding #1 完整根因)**(真机 sudo 探针在主网
+  BP 上把三处坐死,官方 blinklabs `cardano-node:10.5.4` docker 镜像,节点 argv 全是容器内路径 `/ipc/node.socket`、`/data/db`、
+  `/opt/cardano/config/keys/node.cert`):**① tip(socket)**:`docker exec ... cardano-cli query tip --mainnet` 实测报
+  `Missing: --socket-path`——这版 cardano-cli **不认 `CARDANO_NODE_SOCKET_PATH` 环境变量,必须显式 `--socket-path`**,而适配器
+  只喂了 `-e`。修:适配器对 socket-needing 子命令(所有 `query` + `transaction submit|build`)**自动追加 `--socket-path`**
+  (调用方已给则不重复;offline 命令如 `transaction build-raw` 不加,新闸守卫);**② opcert 文件名+路径双错**:health 找
+  `$POOL/opcert.cert`,但真实证书叫 `node.cert`(argv 里),且路径是容器内路径却在宿主上 `[ -f ]` 检查 → 永远 false。修:
+  新增 `ouro_node_opcert`(从 argv 的 `--shelley-operational-certificate` 读真实路径)+ `ouro_node_file_exists`(docker 模式
+  经 `docker exec sh -c test -f` 在**容器内**查);**③ disk**:`/data/db` 容器内路径宿主 `df` 查不到 → null。修:新增
+  `ouro_node_disk_pct`(docker 模式容器内 `df`)。三处统一根因:**容器感知此前只覆盖了 cardano-cli,socket 参数/opcert/disk
+  三处漏了**。新闸:query 追加 `--socket-path`、非 socket 命令不追加、file_exists/disk 经容器 dispatch;适配器/矩阵/布局
+  /observability 闸不回归。诚实边界:disk 依赖容器内有 `df`(blinklabs 镜像有;缺失则优雅降级为 null 而非崩)。#1 三字段全闭。
 
 - TC-1 provisioning Model P:`ouro-ops init` 幂等(重复运行 changed=false)且输出可核对的安装清单。
 - TC-2 (rev) 可卸载 + 还原:从**非默认预存态**起(预存 sshd 配置/用户/文件),`ouro-ops deinit` 后**逐字节
@@ -624,6 +634,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-14T16:20+08:00 p5-21 completed(health 容器感知补全):真机探针坐死 blinklabs docker 节点三处;适配器为
+  query/transaction-submit|build 追加 --socket-path(cardano-cli 10.x 不认 env),opcert 从 argv 读真实 node.cert 路径 +
+  容器内 test -f,disk 容器内 df;新增 ouro_node_opcert/file_exists/disk_pct;闸:socket 追加/非 socket 不加/容器 dispatch;
+  70 rust + 26 python 绿,manifest 重生成。
 - 2026-07-14T15:00+08:00 p5-20 completed(修真机挖出的两个 troubleshooting bug):logs.sh RAW 走临时文件消除 ARG_MAX/
   exit 126(p5-18 regression,本地复现 126),分类器按 Error/Warning 门控消除 Info 级误报(dropped_benign_matches 透明);
   新增 >2MB blob + Info 误报两条 regression 闸;70 rust + 26 python 全绿,manifest 重生成。
@@ -996,6 +1010,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-21 | stack: python | command: python3 tests/test_cardano_cli_adapter.py(新增 query 追加 --socket-path、非 socket
+  命令不追加、file_exists/disk 容器 dispatch); cargo test(70)| result: pass | note: 真机证据——blinklabs cardano-cli
+  10.5.4 `query tip` 无 --socket-path 报 Missing;修后适配器为 query/submit|build 追加 socket、opcert 读 argv 真实路径
+  经容器 test -f、disk 经容器 df;matrix/gate/layout/observability 闸不回归;全部 26 python 绿。
 - p5-20 | stack: python | command: python3 tests/test_troubleshooting_scripts.py(新增 1c severity 门控 + 1d ARG_MAX
   >2MB 守卫); cargo test(70); bash 本地复现 execve E2BIG→exit 126 | result: pass | note: 大 blob(8000 行/~3.2MB)
   经临时文件 exit 0、lines_scanned≥8000;Info 级触发词 findings={} 且 dropped_benign_matches≥2;脏样本四类仍命中;

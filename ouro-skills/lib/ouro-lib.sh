@@ -439,14 +439,54 @@ ouro_cardano_cli_resolve() {
 
 # Run cardano-cli in the node's supervision context. Use this for EVERY cardano-cli call in a
 # dispatched L2 script (the static gate forbids raw `cardano-cli` outside this adapter).
+# p5-21: node-connecting subcommands (all `query`, plus `transaction submit|build`) need the
+# socket. cardano-cli 10.x (e.g. the blinklabs image) does NOT honor CARDANO_NODE_SOCKET_PATH for
+# these — it demands an explicit `--socket-path`. Decide whether to inject it.
+_ouro_cli_wants_socket() {
+  case "$1" in
+    query) return 0 ;;
+    transaction) case "${2:-}" in submit|build) return 0 ;; esac ;;
+  esac
+  return 1
+}
 ouro_cardano_cli() {
   [ -n "$_OURO_CLI_KIND" ] || ouro_cardano_cli_resolve
+  local extra=()
+  # Inject --socket-path for socket-needing commands when we know it and the caller did not
+  # already pass one (appended at the end — valid position for these subcommands).
+  if [ -n "${CARDANO_NODE_SOCKET_PATH:-}" ] && _ouro_cli_wants_socket "$@"; then
+    case " $* " in *" --socket-path "*) ;; *) extra=(--socket-path "$CARDANO_NODE_SOCKET_PATH") ;; esac
+  fi
   if [ "$_OURO_CLI_KIND" = container ]; then
-    "$_OURO_CLI_RT" exec -e CARDANO_NODE_SOCKET_PATH="${CARDANO_NODE_SOCKET_PATH:-}" "$_OURO_CLI_CID" cardano-cli "$@"
+    "$_OURO_CLI_RT" exec -e CARDANO_NODE_SOCKET_PATH="${CARDANO_NODE_SOCKET_PATH:-}" "$_OURO_CLI_CID" cardano-cli "$@" "${extra[@]}"
   else
-    cardano-cli "$@"
+    cardano-cli "$@" "${extra[@]}"
   fi
 }
+
+# p5-21: file existence + chain-db disk usage in the node's supervision context. For a
+# containerized node the node paths (opcert, --database-path) are CONTAINER-internal, so these
+# checks must run INSIDE the container — the host would not see them (the cause of health's
+# opcert_present:false / disk:null on a docker node). Mirrors the cardano-cli adapter.
+ouro_node_file_exists() {
+  [ -n "$_OURO_CLI_KIND" ] || ouro_cardano_cli_resolve
+  if [ "$_OURO_CLI_KIND" = container ]; then
+    "$_OURO_CLI_RT" exec "$_OURO_CLI_CID" sh -c 'test -f "$1"' _ "$1" 2>/dev/null
+  else
+    [ -f "$1" ]
+  fi
+}
+ouro_node_disk_pct() {
+  [ -n "$_OURO_CLI_KIND" ] || ouro_cardano_cli_resolve
+  if [ "$_OURO_CLI_KIND" = container ]; then
+    "$_OURO_CLI_RT" exec "$_OURO_CLI_CID" sh -c 'df -P "$1"' _ "$1" 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5);print $5}'
+  else
+    df -P "$1" 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5);print $5}'
+  fi
+}
+# Operational certificate path from the running node's argv (the REAL file — e.g. node.cert —
+# not a guessed name).
+ouro_node_opcert() { ouro_node_arg --shelley-operational-certificate; }
 
 # Presence check for cardano-cli in the node's supervision context (host or inside the container).
 ouro_cardano_cli_available() {

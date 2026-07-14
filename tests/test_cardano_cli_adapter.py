@@ -64,11 +64,34 @@ def main():
         r = run("ouro_cardano_cli query tip --testnet-magic 1", proc, binp)
         log = record.read_text()
         check(r.returncode == 0, f"docker-mode adapter failed: {r.stderr}")
-        check(f"docker exec -e CARDANO_NODE_SOCKET_PATH=/opt/devnet/node.socket {CID64[:12]} cardano-cli query tip --testnet-magic 1" in log,
-              f"docker-mode did not dispatch through `docker exec <cid> cardano-cli`: {log!r}")
+        # p5-21: query subcommands get an explicit --socket-path appended (cardano-cli 10.x does
+        # not honor CARDANO_NODE_SOCKET_PATH for node-connecting commands).
+        check(f"docker exec -e CARDANO_NODE_SOCKET_PATH=/opt/devnet/node.socket {CID64[:12]} cardano-cli query tip --testnet-magic 1 --socket-path /opt/devnet/node.socket" in log,
+              f"docker-mode did not dispatch through `docker exec <cid> cardano-cli` with --socket-path: {log!r}")
         # the HOST cardano-cli stub must NOT have been called directly.
         check("cardano-cli query tip" not in log.replace(f"{CID64[:12]} cardano-cli query tip", ""),
               f"docker-mode wrongly called host cardano-cli: {log!r}")
+
+    # --- p5-21: a NON-socket command must NOT get --socket-path (would break offline commands
+    # like `transaction build-raw` / `key`). ---
+    with tempfile.TemporaryDirectory() as tmp:
+        proc, binp, record = bed(tmp, CG["docker"])
+        run("ouro_cardano_cli transaction build-raw --tx-in x --out-file /tmp/t", proc, binp)
+        log = record.read_text()
+        check("--socket-path" not in log,
+              f"non-socket command wrongly got --socket-path: {log!r}")
+
+    # --- p5-21: container-aware file existence + disk check dispatch INSIDE the container
+    # (the host cannot see the node's container-internal paths). ---
+    with tempfile.TemporaryDirectory() as tmp:
+        proc, binp, record = bed(tmp, CG["docker"])
+        run('ouro_node_file_exists /opt/cardano/config/keys/node.cert', proc, binp)
+        run('ouro_node_disk_pct /data/db', proc, binp)
+        log = record.read_text()
+        check(f"docker exec {CID64[:12]} sh -c test -f" in log or f"docker exec {CID64[:12]} sh -c" in log,
+              f"file-exists did not run inside the container: {log!r}")
+        check("df -P" in log,
+              f"disk check did not run inside the container: {log!r}")
 
     # --- container availability check goes through the container too ---
     with tempfile.TemporaryDirectory() as tmp:
