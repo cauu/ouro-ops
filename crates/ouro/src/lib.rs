@@ -8,6 +8,7 @@ pub mod attestation;
 pub mod convention;
 pub mod domain;
 pub mod error;
+pub mod fleet;
 pub mod gate;
 pub mod inbox;
 pub mod intent;

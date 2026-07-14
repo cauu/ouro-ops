@@ -259,7 +259,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p2-3 artifact staging inbox (content-addressed, validated, GC) — §2.7
 - [x] p2-4 executor identity / anti-downgrade parity; disable legacy write entry points — §2.8
 - [x] p2-5 role-specific readiness proxies; dangerous-write confirm-token binding (canonical hash + diff) — §2.5, §2.6a
-- [ ] p3-1 fleet lease authority (pool generation, fencing lease, step permit, quorum re-eval) — §2.9
+- [x] p3-1 fleet lease authority (pool generation, fencing lease, step permit, quorum re-eval) — §2.9
 - [ ] p3-2 node-runtime N→N+1 upgrade with DB-compat + attestation rotation; ouro-diag honest labeling/sandbox — §2.10, §2.11
 - [ ] p3-3 threat-model/trust-matrix table; audit event schema; supported/retired/unsupported operation table — §2.12, §2.13, §2.15
 
@@ -365,6 +365,13 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   'block produced' postcondition (a low-stake pool can't show one in bounds). `bind_confirm`/
   `verify_confirm` bind a confirm-token to the EXACT canonical intent hash + human diff (a token
   for a different intent/diff is refused). 3 rust unit tests.
+- 2026-07-15 p3-1 completed (§2.9): `crates/ouro/src/fleet.rs` — fleet lease authority.
+  `PoolAuthority::acquire` grants an exclusive expiring lease and strictly bumps a monotonic
+  fencing token; `TargetFence::accept` refuses a step permit whose token is below the highest the
+  target has honored (fences a superseded/crashed controller at the point of action) or is expired;
+  `require_quorum` re-evaluates min-online-relays immediately before a disruptive step; `require_bp_last`
+  enforces BP-last ordering. 4 rust unit tests (lease exclusive+fencing; target fences a stale
+  controller; quorum guard; BP-last).
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -376,6 +383,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p3-1 | stack: rust | command: cargo test fleet | result: pass | note: 4 tests — lease exclusive
+  while live + fencing token increases; a stale/ expired step permit is fenced target-side; quorum
+  refuses stopping the last relay; BP refused while relays pending.
 - p2-5 | stack: rust | command: cargo test readiness | result: pass | note: 3 tests — healthy bp
   passes, 7 unhealthy modes fail; relay drops forging reqs but needs peers; confirm-token binds the
   exact intent hash + diff (wrong hash/diff refused).
