@@ -244,6 +244,17 @@ fallback is carried forward — there is no legacy path to fall back to.
     reads-on-unmanaged exception matrix; layout-contract (digest allowlist) rather than a tag.
   - Removed the stale "after Open Decisions are resolved" qualifier; attestation file mode is
     `0640 root:ouro-exec`.
-  Still to confirm before activation: the supported-population evidence for the blinklabs layout
-  (product acceptance decision), and whether the P0-1 control-plane boundary is closed in a
-  separate hardening spec.
+- 2026-07-14 **both remaining items resolved (user); draft ready to activate.**
+  - **Blinklabs is the baseline, full stop (user: "就以 blinklabs 为准").** S0019 is deliberately a
+    blinklabs-layout product; the supported-population question is CLOSED as a product-acceptance
+    decision — non-conforming SPOs are unsupported by design, no further evidence-gathering gates
+    activation. (Same-layout images may still be added to the digest allowlist later; that is an
+    additive change, not a blocker.)
+  - **P0-1 control-plane boundary stays OPEN, honestly labeled (user chose A).** Consistent with
+    S0017: the write-side guarantees defend against a MISLED/injected agent operating through
+    ouro-ops (the realistic threat), NOT against an agent fully hijacked to run raw shell on the
+    control machine (which already owns the machine, its keys, and files regardless). Closing this
+    boundary (bootstrap authority isolated from the agent — broker / hardware auth / post-onboard
+    key removal) is explicitly a FUTURE separate control-plane hardening spec, not a S0019 blocker.
+  Both Open Decisions and both post-review items are now closed. S0019 is ready to activate on the
+  user's go-ahead.
