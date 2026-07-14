@@ -9,6 +9,7 @@ pub mod convention;
 pub mod domain;
 pub mod error;
 pub mod gate;
+pub mod inbox;
 pub mod intent;
 pub mod kes;
 pub mod migration;
