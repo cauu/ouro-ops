@@ -30,6 +30,7 @@
     "runtime/scripts/restart.sh": "3757f89a98385fd797d7d323b82296a6eb67d16785a5776fc385ecc45f80b8dc",
     "runtime/scripts/topology-apply.sh": "95cea9a21eb93eca7de8db72849d9c3a0f9054ac02e9a3b29825be633980aa64",
     "runtime/scripts/verify.sh": "4f8995b6073b7c02f3b3f362d4f3bd24ae32765a3f79092c1052d1dd26a7e768",
+    "schemas/audit-event.schema.json": "c58a6688eb705155b99bbe0b8eb0d57d9563d1c577dcc6097d94e95faae8d06a",
     "schemas/pool-spec.schema.json": "50090f55cf324578507027d51dfae97e4ae31c6d24540748d63e96b325f83c35",
     "schemas/tool-output.schema.json": "558eb8bac6ac2568860034f7fa9523566a69043cc33298aab44127e4e8b7a07e",
     "troubleshooting/SKILL.md": "6acb63cd725829b8d6122f0504904d9501985c998cd0eb1b79bafeae56aa5f21",
@@ -43,10 +44,10 @@
     "upgrade/scripts/verify.sh": "5c77cb2e4b82e1b67c8681d5fb5f197b4b5c4a306eb90b7e668e771d40eb9ff4"
   },
   "decision_hash": "30db4d46040626c3b97155b46ec55ddecb854e766282393791f696d542a17647",
-  "embedded_digest": "e6bd5c8f427fa41a587d8b21e04dcb5159769f389df6c2e90c92d430a36b1866",
+  "embedded_digest": "fb354a3b24e3c2c8baab17ee934049c0d85f108683c3347c56ad1971aff53c75",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
-  "schema_hash": "965c7b37b7afe8b44d7f641423515305e4411a28add3182157f154142286669f",
+  "schema_hash": "8c0f40bc9ec0c47cea54851f0b9f966b1a62d79c225da3bd7caf5823917468bb",
   "skills_hash": "0072fc52079da0fa78e579a2947cca01b6c9ffefc1b813f19b6b1b664bec437b"
 }

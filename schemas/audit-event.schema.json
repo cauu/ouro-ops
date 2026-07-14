@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "S0019 audit event (§2.13)",
+  "description": "Append-only, closed-field audit event. Hashes only — never raw inspect/config/secret-shaped values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event", "audit_id", "node_id", "at_epoch"],
+  "properties": {
+    "event": {
+      "type": "string",
+      "enum": [
+        "adopt", "live_preflight", "intent_approval", "prepared", "committing",
+        "committed", "verifying", "verified", "rolling_back", "rolled_back",
+        "sealed", "recovery", "attestation_rotation", "refusal"
+      ]
+    },
+    "audit_id": { "type": "string", "minLength": 1 },
+    "node_id": { "type": "string", "minLength": 1 },
+    "at_epoch": { "type": "integer", "minimum": 0 },
+    "operation_id": { "type": "string" },
+    "intent_hash": { "type": "string" },
+    "approval_evidence_hash": { "type": "string" },
+    "pre_state_generation": { "type": "integer", "minimum": 0 },
+    "post_state_generation": { "type": "integer", "minimum": 0 },
+    "fencing_token": { "type": "integer", "minimum": 0 },
+    "outcome": { "type": "string" },
+    "refusal_code": { "type": "string" }
+  }
+}

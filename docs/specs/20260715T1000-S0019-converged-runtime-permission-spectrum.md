@@ -261,7 +261,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p2-5 role-specific readiness proxies; dangerous-write confirm-token binding (canonical hash + diff) — §2.5, §2.6a
 - [x] p3-1 fleet lease authority (pool generation, fencing lease, step permit, quorum re-eval) — §2.9
 - [x] p3-2 node-runtime N→N+1 upgrade with DB-compat + attestation rotation; ouro-diag honest labeling/sandbox — §2.10, §2.11
-- [ ] p3-3 threat-model/trust-matrix table; audit event schema; supported/retired/unsupported operation table — §2.12, §2.13, §2.15
+- [x] p3-3 threat-model/trust-matrix table; audit event schema; supported/retired/unsupported operation table — §2.12, §2.13, §2.15
 
 ## 4. Test and Acceptance Criteria
 > Acceptance MATRIX — must FALSIFY the security claims, with adversarial interleavings, not just
@@ -380,6 +380,13 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   wording corrected from 'physically cannot break the node' to honest 'UNPRIVILEGED diagnostics,
   NOT read-only' (can write own home/tmp, egress, resource use). 3 rust tests; skill-docs gate +
   manifest regenerated.
+- 2026-07-15 p3-3 completed (§2.12/§2.13/§2.15): `docs/S0019-threat-model.md` (trust matrix —
+  each adversary → enforcing component § → its negative test; TCB out-of-scope inc. P0-1),
+  `docs/S0019-operations.md` (supported/retired/unsupported operation table),
+  `schemas/audit-event.schema.json` (closed, hashes-only append-only events).
+  New gate test_s0019_completeness.py: every registry op is in the operations table; every threat
+  row names a component + test; audit schema is closed. FULL regression: 112 rust + all python
+  green. **S0019 p1-1..p3-3 all complete — awaiting user acceptance (spec NOT closed).**
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -391,6 +398,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p3-3 | stack: python | command: python3 tests/test_s0019_completeness.py; full cargo test (112);
+  all tests/test_*.py | result: pass | note: registry ⊆ operations table; threat matrix rows map
+  component+test; audit schema closed; full suite green.
 - p3-2 | stack: rust | command: cargo test upgrade; python3 tests/test_skill_docs.py | result:
   pass | note: 3 rust tests — BP-last rollout; rollback promised only when recoverable else honest
   re-sync; N→N+2 and non-allowlisted target refused. Diag honest-labeling passes skill-docs.
