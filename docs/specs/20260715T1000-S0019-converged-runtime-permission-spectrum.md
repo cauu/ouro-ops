@@ -255,7 +255,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p1-4 central live re-attestation gate (immutable container id, in-lock, openat2, CAS before commit) — §2.4
 - [x] p1-5 new skills READ the attestation; no detection/fallback — §1.C
 - [x] p2-1 intent envelope + deny-by-default privileged-capability registry + sink rules; static "no unclassified privileged mutation" gate — §1 Constraints, §2.5
-- [ ] p2-2 sealed executor + crash-durable transaction state machine + target-resident recovery + write-seal — §2.6
+- [x] p2-2 sealed executor + crash-durable transaction state machine + target-resident recovery + write-seal — §2.6
 - [ ] p2-3 artifact staging inbox (content-addressed, validated, GC) — §2.7
 - [ ] p2-4 executor identity / anti-downgrade parity; disable legacy write entry points — §2.8
 - [ ] p2-5 role-specific readiness proxies; dangerous-write confirm-token binding (canonical hash + diff) — §2.5, §2.6a
@@ -338,6 +338,15 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   duplicate-key independent → confirmed==validated==executed). **Decision (recorded):** payload
   carries only CLOSED typed references, never raw paths/blobs/shell; artifacts arrive via §2.7; the
   executor builds fixed argv, no templating (sink rule). 6 rust unit tests.
+- 2026-07-15 p2-2 completed (§2.6): `crates/ouro/src/transaction.rs` — crash-durable write
+  transaction. `TxState` machine (prepared→committing→committed→verifying→verified | rolling_back→
+  {rolled_back|sealed}); `Journal` fsyncs each transition (tmp+rename+dir fsync) BEFORE its side
+  effect; `run` commits→verifies→rolls back on failure; `finish_rollback` seals writes on a failed
+  rollback (`WriteSeal`, exit 40, operator-only clear); `recover` (run at every tool-run start)
+  re-drives an interrupted transaction idempotently. **Decision (recorded):** commit/verify/
+  rollback are FIXED ops the executor supplies (from a validated intent → fixed argv); this module
+  owns durable ordering/recovery/seal. Target-resident watchdog/recovery daemon is exercised
+  target-side; the Rust core is the tested state machine. 6 rust unit tests inc. fault injection.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -349,6 +358,10 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p2-2 | stack: rust | command: cargo test transaction | result: pass | note: 6 tests — happy→
+  verified+cleared; verify-fail→rollback; failed-rollback→seal (further writes refused until
+  clear); crash at Committed→recovery re-verifies to Verified; crash mid-commit + unhealthy→
+  recovery rolls back; clean journal→noop.
 - p2-1 | stack: rust | command: cargo test intent | result: pass | note: 6 tests — unregistered op
   refused (deny-by-default); unknown field / hostile machine id / raw path where ArtifactRef
   required / bad enum / over-long string all refused; well-formed artifact ref + enum accepted;

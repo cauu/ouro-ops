@@ -19,6 +19,7 @@ pub mod render;
 pub mod secrets;
 pub mod skills;
 pub mod state;
+pub mod transaction;
 pub mod version;
 pub mod supervisor;
 pub mod ssh;
