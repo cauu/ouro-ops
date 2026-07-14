@@ -1,0 +1,30 @@
+{
+  "allowlist_version": 1,
+  "signature": "EMBEDDED-TRUSTED",
+  "contracts": [
+    {
+      "convention_version": 1,
+      "contract_id": "blinklabs-cardano-node-v1",
+      "in_container_paths": {
+        "socket": "/ipc/node.socket",
+        "db": "/data/db",
+        "keys": "/opt/cardano/config/keys",
+        "config": "/opt/cardano/config",
+        "topology": "/opt/cardano/config/mainnet/topology.json",
+        "genesis": "/opt/cardano/config/mainnet/shelley-genesis.json"
+      },
+      "role_rules": {
+        "bp": { "requires_opcert": true, "forbids_forging_keys": false },
+        "relay": { "requires_opcert": false, "forbids_forging_keys": true }
+      },
+      "allowed": [
+        {
+          "platform": "linux/amd64",
+          "oci_index_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "image_config_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002"
+        }
+      ]
+    }
+  ],
+  "denylist": []
+}

@@ -1,9 +1,9 @@
 # Converged Ouro-Managed Runtime & Intent-Based Operations
 
 Spec-ID: S0019
-Status: draft
+Status: active
 Created Time: 2026-07-14T17:30:00+08:00
-Start Time:
+Start Time: 2026-07-15T10:00:00+08:00
 Completion Time:
 Previous Spec-ID: S0017
 Closure Reason:
@@ -249,7 +249,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 ## 3. Execution Plan
 > Greenfield skill set; two-tier model. The protocol items (p1/p2) must be specified + tested
 > before any dispatched write goes live.
-- [ ] p1-1 layout contract + SIGNED digest allowlist (embed, monotonic + denylist, anti-rollback, skew refuse) — §2.1
+- [x] p1-1 layout contract + SIGNED digest allowlist (embed, monotonic + denylist, anti-rollback, skew refuse) — §2.1
 - [ ] p1-2 pin the v1 supervisor/host contract; refuse all other shapes at adoption — §2.2
 - [ ] p1-3 adoption ceremony + evidence-bound approval + attestation schema (immutable identity vs versioned state) — §2.3, §2.14
 - [ ] p1-4 central live re-attestation gate (immutable container id, in-lock, openat2, CAS before commit) — §2.4
@@ -292,7 +292,15 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   unsupported table.
 
 ## 5. Execution Log (append-only)
-- 2026-07-14 draft created from the S0017 closure decision.
+- 2026-07-15 S0019 ACTIVATED (draft → active, Start Time set). Executing p1-1..p3-3; user: use my
+  recommended approach at decision points, record in spec, do not close (wait for acceptance).
+- 2026-07-15 p1-1 completed (§2.1): `crates/ouro/src/convention.rs` — layout contract + signed
+  digest allowlist (`data/allowlist.json`, embedded via include_str!). `Allowlist::embedded`,
+  `contract_for` (denylist wins; unknown/wrong-platform digest refused — no tag trust),
+  `require_no_skew`, `enforce_anti_rollback` (MAC'd floor, erase→embedded fallback, ratchet).
+  **Decision (recorded):** the allowlist SIGNATURE is embedded-trusted until the S0018 signed-
+  release feed exists (mirrors `version::security_floor`, never a weaker fallback); the baseline
+  blinklabs `image_config_digest` is a placeholder pinned at release time. 3 rust unit tests.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -300,7 +308,10 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   self-sufficient normative protocols (2.1–2.15) so a zero-context implementer can build it safely.
 
 ## 6. Validation Evidence (append-only)
-- (pending activation)
+- p1-1 | stack: rust | command: cargo test convention | result: pass | note: 3 tests — embedded
+  allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
+  conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
+  rollback floor ratchets and refuses a lower version.
 
 ## 7. Change Requests (append-only)
 - 2026-07-14 Decisions A (no migration) and B (blinklabs, no self-build) resolved; then round-1
