@@ -567,6 +567,18 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **任何 localStorage 访问必须同行 try**(防将来裸调破坏降级性)。浏览器实测:编辑→存、刷新→恢复(hosts/ticker/
   network/机器行全量)、清除→出厂默认。
 
+- [x] p5-20 (new) **修真机验收挖出的两个 troubleshooting 真 bug(其一是 p5-18 引入的 regression)**(全新 agent 在主网
+  BP 上自由排查暴露):**① ARG_MAX/exit 126(regression,严重)**:`logs.sh` 把 `ouro_node_logs` 抓的 ≤400 行日志**当单个
+  argv 参数**传 python3;繁忙 BP 的出块+P2P 追踪日志超 ARG_MAX(~2MB)→ execve E2BIG → shell 返回 126、零输出。本地
+  复现退出码 126 分毫不差;完美解释 agent 观察的全部不对称(bp1 挂/relay1 同镜像好=日志量差、只有 logs 挂=只有它走
+  大 blob argv、单测过=fixture 小)。根因是 p5-18 我把 RAW 从 stdin 改 argv 时埋的。修:RAW 走**临时文件**(trap 清理)、
+  传路径、python 读文件——无 ARG_MAX 无 stdin 冲突。**② 分类器不看 severity 误报(确认真)**:`network_handshake` 等正则
+  只匹配关键词无视日志级别→startup 期本地 IPC socket 的 Info 级瞬时重试("connection refused"字样)被误判为发现
+  (agent 精确指出 severity_counts error:0/warning:0 却报了 network_handshake)。修:命中仅在 Error/Warning 级才成 finding,
+  被降级的 Info 命中记入 `dropped_benign_matches`(不静默丢弃)。新闸:>2MB blob 不得 126(8000 行 fixture 锁死)、
+  Info 级触发词零误报 + dropped 计数;只读静态闸放行 trap 自清 mktemp 惯用法。agent 的 POSIX 直觉("exec 失败非被拒绝")
+  与 rootless 被否证后仍准确定位,记功。#1(tip unreadable)判为同类脚本层疑点,留待 diag 坐实后处理。
+
 ## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
@@ -612,6 +624,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-14T15:00+08:00 p5-20 completed(修真机挖出的两个 troubleshooting bug):logs.sh RAW 走临时文件消除 ARG_MAX/
+  exit 126(p5-18 regression,本地复现 126),分类器按 Error/Warning 门控消除 Info 级误报(dropped_benign_matches 透明);
+  新增 >2MB blob + Info 误报两条 regression 闸;70 rust + 26 python 全绿,manifest 重生成。
 - 2026-07-14T13:10+08:00 p5-19 completed(表单持久化):版本化快照 + 防抖存 + 结构化恢复(含动态机器行,免 innerHTML
   注入)+ nodeverRestored 防最新版覆盖 + 披露/清除控件(四语)+ 静态闸(try/catch 强制);浏览器三态实测过。
 - 2026-07-14T11:30+08:00 p5-18 completed(troubleshooting 重造为自由探索 + OS 围栏):init 授钥 ouro-diag(无 sudoers,
@@ -981,6 +996,10 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-20 | stack: python | command: python3 tests/test_troubleshooting_scripts.py(新增 1c severity 门控 + 1d ARG_MAX
+  >2MB 守卫); cargo test(70); bash 本地复现 execve E2BIG→exit 126 | result: pass | note: 大 blob(8000 行/~3.2MB)
+  经临时文件 exit 0、lines_scanned≥8000;Info 级触发词 findings={} 且 dropped_benign_matches≥2;脏样本四类仍命中;
+  全部 26 python 闸绿;skill 未改无需 manifest 变更但已 regen 对齐。
 - p5-19 | stack: ui | command: python3 tests/test_web_generator.py(新增 v1 键/披露/清除/try-catch 四断言); 浏览器
   实测(localhost:8787)| result: pass | note: 编辑→防抖快照落 localStorage(hosts/ticker/radios/machines 结构化);
   刷新→全量恢复(实测 84.247.139.72/31.220.95.72/MYPL/preprod/3 行);清除→出厂默认;隐私模式降级不破页面。
