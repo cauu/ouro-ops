@@ -250,7 +250,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 > Greenfield skill set; two-tier model. The protocol items (p1/p2) must be specified + tested
 > before any dispatched write goes live.
 - [x] p1-1 layout contract + SIGNED digest allowlist (embed, monotonic + denylist, anti-rollback, skew refuse) — §2.1
-- [ ] p1-2 pin the v1 supervisor/host contract; refuse all other shapes at adoption — §2.2
+- [x] p1-2 pin the v1 supervisor/host contract; refuse all other shapes at adoption — §2.2
 - [ ] p1-3 adoption ceremony + evidence-bound approval + attestation schema (immutable identity vs versioned state) — §2.3, §2.14
 - [ ] p1-4 central live re-attestation gate (immutable container id, in-lock, openat2, CAS before commit) — §2.4
 - [ ] p1-5 new skills READ the attestation; no detection/fallback — §1.C
@@ -301,6 +301,13 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   **Decision (recorded):** the allowlist SIGNATURE is embedded-trusted until the S0018 signed-
   release feed exists (mirrors `version::security_floor`, never a weaker fallback); the baseline
   blinklabs `image_config_digest` is a placeholder pinned at release time. 3 rust unit tests.
+- 2026-07-15 p1-2 completed (§2.2): `crates/ouro/src/supervisor.rs` — pinned v1 contract
+  (rootful docker, 1 node/host, bind mounts, standard daemon socket, `unless-stopped`, direct
+  `run`). `SupervisorObservation::require_conformant` refuses every other shape (rootless, podman,
+  non-rootful, compose, multi-node, named-volume-only, nonstandard socket, wrong restart) with a
+  specific reason. **Decision (recorded):** a second supervisor shape is a separate versioned
+  contract, never a generic runtime field. 2 rust unit tests (conforming accepted; 8 non-v1
+  shapes each refused).
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -312,6 +319,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p1-2 | stack: rust | command: cargo test supervisor | result: pass | note: 2 tests — v1 shape
+  accepted; 8 non-conforming shapes (rootless/podman/non-rootful/compose/multi-node/named-volume/
+  nonstandard-socket/wrong-restart) each refused with a specific reason.
 
 ## 7. Change Requests (append-only)
 - 2026-07-14 Decisions A (no migration) and B (blinklabs, no self-build) resolved; then round-1
