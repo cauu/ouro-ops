@@ -557,6 +557,16 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   service 诚实报 down、脚本只读静态闸(零变更动词)。诚实边界:ouro-diag 可读一切 world-readable(与 P0-1 便利模式
   定位一致)、目标机出站网络 v1 未封、可写自身 $HOME//tmp(ulimit 缓解)——均如实标注。
 
+- [x] p5-19 (new) **网页表单 localStorage 持久化 + 恢复**(用户:表单输入记录到 localStorage 并用于初始化,大部分
+  时候不需重输):单键版本化快照(`ouro-onboarding:v1`:fields + nodever + radios + machines 结构化),`input`/`change`
+  300ms 防抖全量写;恢复顺序:先重建动态机器行(值经 `.value` 赋值**绝不过 innerHTML**,存储字符串无法成为标记)→
+  填字段 → 选 radio → nodever 若非既有选项则补插并置 `nodeverRestored`(GitHub 最新版本拉取**不再覆盖**用户恢复值);
+  版本不符/解析失败整体丢弃静默降级,存储永远是增强不是依赖(全部访问 try/catch,隐私模式/禁用 storage 下页面行为
+  不变);表单无秘密(host/ticker/经济参数),但 host 轻敏感→步骤一底部加诚实披露("只存本浏览器,不离开你的机器")+
+  "清除已存输入"按钮(removeItem + reload 回出厂态),四语 i18n;web 静态闸新增:v1 键存在、披露 + 清除控件存在、
+  **任何 localStorage 访问必须同行 try**(防将来裸调破坏降级性)。浏览器实测:编辑→存、刷新→恢复(hosts/ticker/
+  network/机器行全量)、清除→出厂默认。
+
 ## 4. Test and Acceptance Criteria
 > (rev) = 评审后强化;(new) = 评审新增。可证伪性:每条须有清晰 pass/fail observable + 对应测试基座。
 
@@ -602,6 +612,8 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
   **bootstrap 凭据 OS 级隔离** / 模式·候选模糊 fail-closed / 不推翻 S0015 契约)被违反即 fail。
 
 ## 5. Execution Log (append-only)
+- 2026-07-14T13:10+08:00 p5-19 completed(表单持久化):版本化快照 + 防抖存 + 结构化恢复(含动态机器行,免 innerHTML
+  注入)+ nodeverRestored 防最新版覆盖 + 披露/清除控件(四语)+ 静态闸(try/catch 强制);浏览器三态实测过。
 - 2026-07-14T11:30+08:00 p5-18 completed(troubleshooting 重造为自由探索 + OS 围栏):init 授钥 ouro-diag(无 sudoers,
   单测断言)、新 diag exec(审计 + 截断 + 超时 + 注入惰性,argv 零 sudo)、特权读唯二工具 logs(分类表)/service
   (flapping/OOM)+ lib 原语、SKILL 双入口自由探索重写 + 数据非指令红线、web 模板同步、新闸 test_troubleshooting_scripts
@@ -969,6 +981,9 @@ takeover 均直接 `pgrep`/`pkill`/`setsid`)。p2 引入**中心化带类型 sup
     已就绪"措辞(已顺带在 Background 改为"需扩展")。
 
 ## 6. Validation Evidence (append-only)
+- p5-19 | stack: ui | command: python3 tests/test_web_generator.py(新增 v1 键/披露/清除/try-catch 四断言); 浏览器
+  实测(localhost:8787)| result: pass | note: 编辑→防抖快照落 localStorage(hosts/ticker/radios/machines 结构化);
+  刷新→全量恢复(实测 84.247.139.72/31.220.95.72/MYPL/preprod/3 行);清除→出厂默认;隐私模式降级不破页面。
 - p5-18 | stack: python | command: python3 tests/test_troubleshooting_scripts.py; cargo test(70 passed,含
   diag_exec_argv_is_unprivileged_pinned_and_bounded + init plan diag 步骤/SUDOERS 断言)| result: pass | note:
   脏日志样本 disk_full/kes_invalid/network_handshake/clock_skew 四类命中(exit 20)、干净样本零发现(exit 0)、摘录

@@ -69,6 +69,16 @@ def main() -> int:
     if "ouro-ops tool run" not in HTML:
         fails.append("prompt must drive changes through `ouro-ops tool run`")
 
+    # p5-19 form persistence: versioned key, a user-visible disclosure + clear control, and
+    # every localStorage access guarded (storage is an enhancement, never a dependency).
+    if "ouro-onboarding:v1" not in HTML:
+        fails.append("form persistence must use the versioned ouro-onboarding:v1 key")
+    if 'id="clear-saved"' not in HTML or "persist.note" not in HTML:
+        fails.append("form persistence needs the disclosure note + clear-saved control")
+    for i, line in enumerate(HTML.splitlines(), 1):
+        if "localStorage." in line and "try" not in line:
+            fails.append(f"line {i}: localStorage access outside try/catch: {line.strip()[:80]}")
+
     if fails:
         for f in fails:
             print("FAIL:", f, file=sys.stderr)

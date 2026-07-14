@@ -558,6 +558,8 @@
       </div>
 
       <div id="err" class="note note-err" hidden></div>
+      <p class="hint" id="persist-note"><span data-i18n="persist.note">Inputs are saved in this browser only (localStorage) — they never leave your machine.</span>
+        <button type="button" class="btn btn-ghost btn-sm" id="clear-saved" data-i18n="persist.clear">Clear saved inputs</button></p>
       </div>
 
       <div id="om-step2" hidden>
@@ -804,6 +806,7 @@ const I18N = {
     "sec.fleet":"Your fleet","sec.thisop":"For this operation",
     "lbl.network":"Network","lbl.ticker":"Ticker (3–5, A–Z 0–9)","lbl.machines":"Machines (1 BP + N relays)",
     "btn.addRelay":"+ Add relay","lbl.id":"id","lbl.role":"role","lbl.host":"host (DNS or IP)",
+    "persist.note":"Inputs are saved in this browser only (localStorage) — they never leave your machine.","persist.clear":"Clear saved inputs",
     "machHint":"SSH user is always ouro-exec and the SSH port is 22 (S0015). Only the host is yours to fill.",
     "lbl.nodever":"Node version","ver.checking":"Checking latest…","ver.latest":"Latest (live from GitHub):",
     "ver.fail":"Couldn't reach GitHub — using the versions baked into this page.",
@@ -846,6 +849,7 @@ const I18N = {
     "sec.fleet":"机器配置","sec.thisop":"操作参数",
     "lbl.network":"网络","lbl.ticker":"Ticker(3–5 位,A–Z 0–9)","lbl.machines":"机器(1 台 BP + 若干 relay)",
     "btn.addRelay":"+ 添加 relay","lbl.id":"id","lbl.role":"角色","lbl.host":"host(域名或 IP)",
+    "persist.note":"输入只保存在本浏览器(localStorage),不会离开你的机器。","persist.clear":"清除已存输入",
     "machHint":"SSH 用户固定是 ouro-exec,端口固定 22(见 S0015),这里只需要填 host。",
     "lbl.nodever":"Node 版本","ver.checking":"正在获取最新版本…","ver.latest":"最新版本(来自 GitHub):",
     "ver.fail":"连不上 GitHub,先用页面内置的版本列表。",
@@ -888,6 +892,7 @@ const I18N = {
     "sec.fleet":"機器設定","sec.thisop":"操作參數",
     "lbl.network":"網路","lbl.ticker":"Ticker(3–5 位,A–Z 0–9)","lbl.machines":"機器(1 台 BP + 若干 relay)",
     "btn.addRelay":"+ 新增 relay","lbl.id":"id","lbl.role":"角色","lbl.host":"host(網域或 IP)",
+    "persist.note":"輸入只儲存在本瀏覽器(localStorage),不會離開你的機器。","persist.clear":"清除已存輸入",
     "machHint":"SSH 使用者固定是 ouro-exec,連接埠固定 22(見 S0015),這裡只要填 host。",
     "lbl.nodever":"Node 版本","ver.checking":"正在取得最新版本…","ver.latest":"最新版本(來自 GitHub):",
     "ver.fail":"連不上 GitHub,先用頁面內建的版本清單。",
@@ -930,6 +935,7 @@ const I18N = {
     "sec.fleet":"マシン構成","sec.thisop":"操作パラメータ",
     "lbl.network":"ネットワーク","lbl.ticker":"Ticker(3–5 文字、A–Z 0–9)","lbl.machines":"マシン(BP 1 台 + relay 複数)",
     "btn.addRelay":"+ relay を追加","lbl.id":"id","lbl.role":"ロール","lbl.host":"host(ドメインまたは IP)",
+    "persist.note":"入力はこのブラウザーのみに保存され(localStorage)、あなたのマシンから出ることはありません。","persist.clear":"保存した入力を消去",
     "machHint":"SSH ユーザーは ouro-exec、ポートは 22 で固定(S0015)。入力するのは host だけです。",
     "lbl.nodever":"Node バージョン","ver.checking":"最新バージョンを確認中…","ver.latest":"最新バージョン(GitHub より):",
     "ver.fail":"GitHub に届かないため、ページ内蔵の一覧を使います。",
@@ -969,6 +975,7 @@ function applyLang(lang){
 let current = { spec:"", prompt:"", disclose:[] };
 function render() {
   applyOperation();
+  scheduleFormSave(); // render() is the universal input path — persist (debounced) on every edit
   // Release-notes deep link for the selected node version (the live source of truth for what's
   // in it — the page itself is zero-network, so this link is how you confirm the current release).
   $("relnotes").href = "https://github.com/IntersectMBO/cardano-node/releases/tag/" + $("nodever").value;
@@ -1031,7 +1038,70 @@ $("copy-setup").addEventListener("click",async()=>{ await clip(SETUP[setupOs]);
 
 document.querySelectorAll("input,select").forEach(el=>el.addEventListener("input",render));
 document.querySelectorAll('input[type="radio"]').forEach(el=>el.addEventListener("change",render));
-seedMachines(); render();
+
+// ---- form persistence (localStorage, versioned key) ------------------------------------------
+// Inputs are saved in THIS BROWSER ONLY so returning users do not retype their fleet. Storage
+// is an enhancement, never a dependency: every access is try/catch-guarded (private mode /
+// disabled storage → the page behaves exactly as before), and an unparseable or wrong-version
+// snapshot is discarded whole. No secrets exist in this form (hosts/ticker/economics only).
+const FORM_STORE_KEY = "ouro-onboarding:v1";
+let nodeverRestored = false;
+const FIELD_IDS = ["ticker","meta","pledge","margin","cost"];
+function collectFormState() {
+  const machines = [...document.querySelectorAll(".machine")].map((row) => ({
+    id: row.querySelector(".m-id").value, role: row.querySelector(".m-role").value,
+    host: row.querySelector(".m-host").value,
+  }));
+  const fields = {};
+  for (const id of FIELD_IDS) fields[id] = $(id).value;
+  return { v: 1, savedAt: Date.now(), fields, nodever: $("nodever").value,
+           radios: { network: radioVal("network"), sync: radioVal("sync") }, machines };
+}
+let saveTimer = null;
+function scheduleFormSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem(FORM_STORE_KEY, JSON.stringify(collectFormState())); } catch {}
+  }, 300);
+}
+function restoreFormState() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(FORM_STORE_KEY) || "null"); } catch {}
+  if (!s || s.v !== 1) { seedMachines(); return; }
+  try {
+    // Machines: rebuild rows from the snapshot (values assigned via .value, never innerHTML —
+    // a stored string can not become markup). Fall back to defaults on a malformed list.
+    const ms = Array.isArray(s.machines) ? s.machines.filter(m => m && m.role) : [];
+    if (ms.some(m => m.role === "bp") && ms.some(m => m.role === "relay")) {
+      let rn = 0;
+      for (const m of ms) {
+        const row = machineRow("", m.role, "", m.role === "relay");
+        row.querySelector(".m-id").value = String(m.id || "");
+        row.querySelector(".m-host").value = String(m.host || "");
+        $("machines").appendChild(row);
+        const n = /^relay(\d+)$/.exec(String(m.id || "")); if (n) rn = Math.max(rn, +n[1]);
+      }
+      relayN = Math.max(relayN, rn);
+    } else { seedMachines(); }
+    for (const id of FIELD_IDS) if (s.fields && typeof s.fields[id] === "string") $(id).value = s.fields[id];
+    for (const name of ["network","sync"]) {
+      const v = s.radios && s.radios[name];
+      const el = v && document.querySelector(`input[name="${name}"][value="${CSS.escape(v)}"]`);
+      if (el) el.checked = true;
+    }
+    if (typeof s.nodever === "string" && s.nodever) {
+      const sel = $("nodever");
+      if (![...sel.options].some(o => o.value === s.nodever)) sel.appendChild(new Option(s.nodever, s.nodever));
+      sel.value = s.nodever;
+      nodeverRestored = true; // the GitHub latest-version fetch must not clobber the user's choice
+    }
+  } catch { /* corrupted snapshot: keep whatever restored cleanly; the form stays usable */ }
+}
+$("clear-saved").addEventListener("click", () => {
+  try { localStorage.removeItem(FORM_STORE_KEY); } catch {}
+  location.reload(); // pristine defaults — predictable, no partial-reset states
+});
+restoreFormState(); render();
 
 // Language: remembered choice > browser language > en.
 const langSel = $("lang");
@@ -1068,7 +1138,7 @@ if (initLang !== "en") applyLang(initLang);
     if (!/^\d+\.\d+\.\d+$/.test(tag)) throw new Error("unexpected tag");
     const sel = $("nodever");
     if (![...sel.options].some(o => o.value === tag)) sel.insertBefore(new Option(tag, tag), sel.firstChild);
-    sel.value = tag;
+    if (!nodeverRestored) sel.value = tag; // a restored choice outranks "jump to latest"
     $("ver-live").hidden = false;
     verState = { mode:"latest", tag };
     renderVer();
