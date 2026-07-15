@@ -92,8 +92,14 @@ def main():
         "data.ssh_access_policy",
         "bootstrap_user_preserved: true",
         "Never infer runtime-formatted values from static binary string fragments",
+        "ouro-ops creds check --name <name>",
+        "ouro-ops creds register --name <name>",
+        "never key contents",
     ]:
         assert phrase in onboard, f"onboard Skill lacks rendered-policy guard {phrase!r}"
+    adopt = (ROOT / "ouro-skills/adopt/SKILL.md").read_text()
+    assert "ouro-ops creds check --name <name>" in adopt
+    assert "Never list credentials" in adopt
     print("skill docs passed")
 
 

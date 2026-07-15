@@ -61,6 +61,59 @@ def adopt(home, o, role="bp", node="bp1"):
 def main():
     home = tempfile.mkdtemp()
 
+    # --- p9-9: exact-name credential check/preview/register; no listing, bytes, or path output ---
+    operator_key = Path(home) / "operator-id-ed25519"
+    operator_key.write_text("test-only-private-key-bytes")
+    operator_key.chmod(0o600)
+    _, d = run(home, "creds", "check", "--name", "bp1")
+    assert d["status"] == "ok" and d["data"]["registered"] is False, d
+    _, preview_cred = run(
+        home,
+        "creds",
+        "register",
+        "--name",
+        "bp1",
+        "--path",
+        str(operator_key),
+        "--dry-run",
+    )
+    assert preview_cred["status"] == "ok" and preview_cred["changed"] is False, preview_cred
+    assert preview_cred["data"]["planned"] is True, preview_cred
+    assert preview_cred["data"]["credential_contents_read"] is False, preview_cred
+    preview_text = json.dumps(preview_cred)
+    assert str(operator_key) not in preview_text and "test-only-private-key-bytes" not in preview_text
+    assert not (Path(home) / "credentials" / "bp1").exists(), preview_cred
+
+    _, registered = run(
+        home, "creds", "register", "--name", "bp1", "--path", str(operator_key)
+    )
+    assert registered["status"] == "ok" and registered["changed"] is True, registered
+    assert registered["data"]["registered"] is True and registered["data"]["usable"] is True
+    assert (Path(home) / "credentials" / "bp1").is_symlink()
+    _, checked = run(home, "creds", "check", "--name", "bp1")
+    assert checked["data"]["usable"] is True and checked["data"]["entry_kind"] == "symlink"
+    _, idempotent = run(
+        home, "creds", "register", "--name", "bp1", "--path", str(operator_key)
+    )
+    assert idempotent["status"] == "ok" and idempotent["changed"] is False, idempotent
+    _, no_list = run(home, "creds", "list")
+    assert no_list["status"] == "error" and "unsupported" in json.dumps(no_list), no_list
+    _, ignored_flag = run(home, "creds", "check", "--name", "bp1", "--dry-run")
+    assert ignored_flag["status"] == "error" and "unexpected" in json.dumps(ignored_flag)
+    _, duplicate_name = run(
+        home,
+        "creds",
+        "register",
+        "--name",
+        "bp1",
+        "--name",
+        "relay1",
+        "--path",
+        str(operator_key),
+        "--dry-run",
+    )
+    assert duplicate_name["status"] == "error" and "unexpected" in json.dumps(duplicate_name)
+
     # --- p9-7: onboard preview is a plan, never evidence of an attained remote state ---
     control_pubkey = Path(home) / "control.pub"
     control_pubkey.write_text("ssh-ed25519 AAAA0123456789abcdef operator@control\n")

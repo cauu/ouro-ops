@@ -1,6 +1,6 @@
 {
   "assets": {
-    "adopt/SKILL.md": "e226adacfd3512554baa8ae9dde4d575843864bd9e2ae1fad8b24161848f728f",
+    "adopt/SKILL.md": "8eed66e8cfcda1f9cb265b9db28ed34b79c456e02aa8119fdb6de6b98642ca9b",
     "config/SKILL.md": "8a2afc95ed2d02ece16f7ff899cce27fcf0eb4daea08b1a140f6ebfad8a5f99a",
     "deploy/SKILL.md": "a33a0c4fc4d06d67e231091f183c88f3086748e631699dd07e7a151a81371285",
     "deploy/scripts/preflight.sh": "4827982c84c48d207c9c8ffecd5cdf76a3b5144b2a69dc886f7e56a55aa66a5d",
@@ -28,7 +28,7 @@
     "observability/scripts/install-gateway.sh": "8be5e1f07516aa6a08bc44699b37e2f7a927aa456223a329dd25b4db9ef82c15",
     "observability/scripts/rollback.sh": "74a7182079d42080e105a5c14a22a5cd7054337ca09e20c31e0e15c59b6ad468",
     "observability/scripts/verify.sh": "924fea543b05a321bea8d1319b82e01900dce28b146d21f075602cb56d23eca5",
-    "onboard/SKILL.md": "3994e7470057f4ce20c4ce8f3f8e37b1fb6331d4ed17446bc81b19a9077d7f03",
+    "onboard/SKILL.md": "ee2c1dfb22482eb4c1d5734ed34db623d879b9e13c21c749654112125a4de900",
     "runtime/SKILL.md": "119ef54e7ccf3af3ff401bbb128238f804e2cd9ac96185b5c363b8dc71f7ee0a",
     "runtime/scripts/restart.sh": "3757f89a98385fd797d7d323b82296a6eb67d16785a5776fc385ecc45f80b8dc",
     "runtime/scripts/topology-apply.sh": "95cea9a21eb93eca7de8db72849d9c3a0f9054ac02e9a3b29825be633980aa64",
@@ -46,8 +46,8 @@
     "upgrade/scripts/upgrade-one.sh": "bdb9aeb009fea89027ede2f6b05a0b3ef0fd5e672c6c80f77df22b6662d8187c",
     "upgrade/scripts/verify.sh": "5c77cb2e4b82e1b67c8681d5fb5f197b4b5c4a306eb90b7e668e771d40eb9ff4"
   },
-  "decision_hash": "38ff618c18aed43fd884ff21e3d3fc4d84ebe6bccf41443f74f9e13e0eab2265",
-  "embedded_digest": "68649a3a671e735c15a43cbecd8a30bbbd7c176041782b034d2f6218acb14a51",
+  "decision_hash": "6eaf9374b40a47e75d67f07d2d92732a9fd22efc644ec1a8dd815e227f3c370b",
+  "embedded_digest": "5387995c5f539d3db7307cda9b6c53509930552fb50a10c173d8bda79c2175a8",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",

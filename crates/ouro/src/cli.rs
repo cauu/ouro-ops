@@ -54,6 +54,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "deinit" => run_deinit(&args[2..])?,
         "confirm" => run_confirm(&args[2..])?,
         "config" => run_config(&args[2..])?,
+        "creds" => run_creds(&args[2..])?,
         "deploy" => run_deploy(&args[2..])?,
         "diag" => run_diag(&args[2..])?,
         "onboard" => run_onboard(&args[2..])?,
@@ -72,6 +73,99 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "status" => run_status(&args[2..])?,
         "tool" => run_tool(&args[2..])?,
         other => return Err(OuroError::InvalidArgs(format!("unknown command {other}"))),
+    }
+    Ok(())
+}
+
+/// Named-only credential namespace management. There is deliberately no list operation: the
+/// operator chooses one existing private-key path, and this command can check/preview/register
+/// only the exact name and path supplied in the invocation. Registration creates a symlink and
+/// never opens or copies the key contents.
+fn run_creds(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        Some("check") => {
+            validate_creds_args(args, false)?;
+            let name = flag_value(args, "--name")?;
+            let paths = ConfigPaths::discover();
+            let status = crate::secrets::credential_status(&paths.credentials_dir, name)?;
+            output::print_json(
+                &ToolOutput::ok("ouro.creds.check", false).with_data(json!(status)),
+            )?;
+            Ok(())
+        }
+        Some("register") => {
+            validate_creds_args(args, true)?;
+            let name = flag_value(args, "--name")?;
+            let source = PathBuf::from(flag_value(args, "--path")?);
+            let dry_run = args.iter().any(|arg| arg == "--dry-run");
+            let paths = ConfigPaths::discover();
+            let result = crate::secrets::register_existing_credential(
+                &paths.credentials_dir,
+                name,
+                &source,
+                dry_run,
+            )?;
+            output::print_json(
+                &ToolOutput::ok("ouro.creds.register", result.changed).with_data(json!(result)),
+            )?;
+            Ok(())
+        }
+        _ => Err(OuroError::InvalidArgs(
+            "expected creds check --name <name> | register --name <name> --path <absolute-operator-path> [--dry-run]; listing and replacement are intentionally unsupported"
+                .into(),
+        )),
+    }
+}
+
+fn validate_creds_args(args: &[String], register: bool) -> Result<()> {
+    let mut saw_name = false;
+    let mut saw_path = false;
+    let mut saw_dry_run = false;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--name" if !saw_name => {
+                if args
+                    .get(index + 1)
+                    .map(|value| value.starts_with("--"))
+                    .unwrap_or(true)
+                {
+                    return Err(OuroError::InvalidArgs(
+                        "missing value for credential --name; use `ouro-ops creds --help`".into(),
+                    ));
+                }
+                saw_name = true;
+                index += 2;
+            }
+            "--path" if register && !saw_path => {
+                if args
+                    .get(index + 1)
+                    .map(|value| value.starts_with("--"))
+                    .unwrap_or(true)
+                {
+                    return Err(OuroError::InvalidArgs(
+                        "missing value for credential --path; use `ouro-ops creds --help`".into(),
+                    ));
+                }
+                saw_path = true;
+                index += 2;
+            }
+            "--dry-run" if register && !saw_dry_run => {
+                saw_dry_run = true;
+                index += 1;
+            }
+            _ => {
+                return Err(OuroError::InvalidArgs(
+                    "unexpected or duplicate credential argument; use `ouro-ops creds --help`"
+                        .into(),
+                ))
+            }
+        }
+    }
+    if !saw_name || (register && !saw_path) {
+        return Err(OuroError::InvalidArgs(
+            "missing required credential argument; use `ouro-ops creds --help`".into(),
+        ));
     }
     Ok(())
 }
@@ -1451,6 +1545,7 @@ fn print_help() {
     println!("  Agent contract: read the procedure for any operation with `ouro-ops skill show <skill>`;");
     println!("  run `<command> --help` for a command's usage.\n");
     println!("Onboarding (once per target):");
+    println!("  creds     check/register one operator-named existing SSH key (no list, no copy)");
     println!("  onboard   prepare a host for S0019 adopt/op dispatch (ouro-op + ouro-diag)");
     println!("  adopt     approve one conforming running node as managed (non-disruptive)");
     println!("  init/deinit  legacy S0017 setup/removal; not an inverse for S0019 onboard");
@@ -1480,6 +1575,10 @@ fn command_usage(command: &str) -> Option<&'static str> {
                       --bootstrap-key creds://<name> --control-pubkey <operator-pub> \
                       --ouro-binary <target-arch ouro-ops> [--expected-host-key <sha256>] [--dry-run]\n  \
                       Installs the S0019 ouro-op/ouro-diag confinement; then adopt the node.",
+        "creds" => "ouro-ops creds check --name <name> | ouro-ops creds register --name <name> \
+                    --path <absolute-operator-named-private-key> [--dry-run]\n  \
+                    Checks/registers exactly one name as a symlink; never lists, reads, copies, \
+                    replaces, or chooses private keys.",
         "init" => "ouro-ops init --host <target> [--port 22] --bootstrap-user <account> \
                    --bootstrap-key creds://<name> --control-pubkey <operator-pub> \
                    --ouro-binary <target-arch ouro-ops> --spec <pool-spec> --machine <id> [--expected-host-key <sha256>]\n  \

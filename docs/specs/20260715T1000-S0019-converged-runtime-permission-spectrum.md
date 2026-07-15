@@ -1079,3 +1079,40 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   `2e44e2ec14f81fd1574d98872ac3673680abbe907b90c1c19acd4d9669576f7f`; static Linux x86_64 ELF
   SHA-256 `d5a51d0a740904b6fa4b77550040b28c5f008db6794ad718611ff5f91fcf39ee`; patch clean and
   operator-owned pool-spec.yaml untouched.
+
+## 31. Website-prompt Named Credential Registration UAT Repair (append-only)
+- 2026-07-15T23:50+0800 a new fresh-agent run correctly stopped because `pool-spec.yaml` named
+  `creds://bp1` and `creds://relay1`, while the installed binary exposed no command to check or
+  register those names. The Skill's instruction to place an operator-named existing path under the
+  credential namespace was therefore non-executable without inventing a raw filesystem mutation.
+- [~] p9-9 add a closed, named-only credential registration surface that can check one supplied
+  name and preview/register one operator-supplied existing private-key path as a symlink. It must
+  never list credentials, read/copy key bytes, choose a key, accept traversal, overwrite a different
+  registration or accept group/world-readable key material. Update onboarding/adoption guidance,
+  CLI help, embedded identity and fresh-agent regression coverage.
+- WATC-7 credential handoff: `ouro-ops creds check --name bp1` reports only whether that named entry
+  is registered and usable. `ouro-ops creds register --name bp1 --path <absolute-operator-path>
+  --dry-run` validates metadata and reports a planned symlink without writing; the real command is
+  idempotent for the same source and refuses a conflicting name. Output contains no source path or
+  key bytes and states `credential_contents_read: false`. The Skill requires preview plus human
+  approval before the local namespace write and forbids enumeration or replacement guessing.
+- 2026-07-16T00:00+0800 [x] p9-9 completed. The CLI now checks/registers only one exact name,
+  rejects missing/unknown/duplicate arguments, traversal, relative/non-file paths, unreadable or
+  group/world-accessible sources and conflicting registrations, and creates an idempotent symlink
+  without opening or copying key contents. Listing and replacement remain intentionally absent.
+  Onboard/adopt Skills require exact-name check, registration dry-run and explicit approval.
+- WATC-7 acceptance evidence: Rust `150/150`; full Python suite including release-shaped fresh-agent
+  dispatch negatives passed; Clippy `-D warnings` passed; `git diff --check` clean; embedded manifest
+  verified at digest `5387995c5f539d3db7307cda9b6c53509930552fb50a10c173d8bda79c2175a8`.
+  Release-binary smoke registered both `bp1` and `relay1` from one temporary owner-only fixture only
+  after previews, proved previews emitted neither source path nor bytes and that both final entries
+  were usable symlinks with `credential_contents_read:false`. Installed macOS arm64 control binary
+  SHA-256 `e3c7ef1a7cdfd12d185ec8434f19381c0c69dfbf35f6e84d3f0e493b5c79a347`; static Linux x86_64 ELF
+  SHA-256 `b83ca166ef43e440c554b55e72eb6b4ddc9a79e8f0134e93d9d88fa224f238a4`;
+  operator-owned `pool-spec.yaml` remained untouched.
+- 2026-07-16T00:03+0800 p9-9 release addendum: final review made the documented credential-name
+  grammar real (ASCII alphanumeric plus `_`, `-`, and non-leading single `.`), rejecting whitespace,
+  control text and Unicode without reflecting hostile input in errors. Full Rust `150/150`, full
+  Python and Clippy acceptance were rerun on this final source. Superseding release hashes: installed
+  macOS arm64 control binary SHA-256 `247f3dfe70b67a383faba6ea77c3b1cfe2dcfce3a4ceb37a020f217a748c1115`;
+  static Linux x86_64 ELF SHA-256 `ffe6114f431e6e70804dc94c4dd59da6a5f748bdeb9947814560859a2b0f3aff`.
