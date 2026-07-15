@@ -770,3 +770,26 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   dispatch remains confined/pinned and carries target-side parity input; existing negative gates green.
 - p9-1 | stack: rust | command: cargo build -q -p ouro; git diff --check | result: pass | note:
   production binary builds and patch has no whitespace errors.
+
+## 13. Post-review Progress (append-only)
+- [~] p9-2 started: replace the four-field/no-op journal with durable recovery context and make
+  rollback/error semantics conservative for partial, irreversible and legacy transactions.
+
+## 14. Post-review Item Status (append-only)
+- [x] p9-2 completed: every new journal carries the validated intent, pre-attestation and resolved
+  commit/optional rollback plans in a root-only fsync+rename record; Prepared aborts without verify,
+  Committing always restores/seals, and Committed/Verifying use operation-aware recovery. Legacy
+  uncertain records seal instead of clearing. Successful rollback now returns the original request
+  as failed. KES backs up/restores the old public opcert; tx submission advertises no fake inverse;
+  upgrade rollback removes by stable name best-effort before recreating the prior image.
+
+## 15. Post-review Validation Evidence (append-only)
+- RTC-4 | stack: rust | command: cargo test -q -p ouro | result: pass | note: 139 tests; Prepared
+  never verifies, partial Committing always rolls back, legacy Committed seals, rollback-success still
+  reports requested operation failure, KES has byte-restoring plans and tx submission has no inverse.
+- RTC-4 | stack: python | command: python3 tests/test_s0019_dispatch.py | result: pass | note:
+  CLI-level legacy committed journal is sealed and preserved rather than falsely recovered/cleared.
+- RTC-4 | stack: other | command: bash fixtures/e2e/s0019-bed/run.sh | result: pass | note: real
+  restart, three-step KES backup/install/restart, attestation advance and v1→v2 recreate all pass.
+- p9-2 | stack: rust | command: cargo build -q -p ouro; git diff --check | result: pass | note:
+  production binary builds and durable journal changes have no whitespace errors.

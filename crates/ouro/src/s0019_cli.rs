@@ -21,7 +21,9 @@ use crate::config::ConfigPaths;
 use crate::intent::{Intent, Mutability};
 use crate::output::{self, ToolOutput};
 use crate::supervisor::SupervisorObservation;
-use crate::transaction::{self, Journal, JournalRecord, TxOps, TxState, WriteSeal};
+use crate::transaction::{
+    self, DurableTransaction, Journal, JournalRecord, RecoveryOps, TxOps, TxState, WriteSeal,
+};
 use crate::{convention, parity, OuroError, Result};
 
 /// Where the attestation lives. On the TARGET (`--local`, p5-4) it is the single root-owned file
@@ -322,27 +324,41 @@ pub fn run_op(args: &[String]) -> Result<()> {
 
     // Load the attestation (must be adopted, §1.C / §2.4).
     let local = args.iter().any(|a| a == "--local");
-    let att = load_attestation(&paths, &node, local)?;
-    if att.immutable.machine_id != node {
+    let initial_att = load_attestation(&paths, &node, local)?;
+    if initial_att.immutable.machine_id != node {
         return Err(OuroError::Validation(format!(
             "target binding mismatch: --node {node} does not match adopted machine {} — refused",
-            att.immutable.machine_id
+            initial_att.immutable.machine_id
         )));
     }
 
-    // Recovery pass BEFORE any new write (§2.6): reconcile an interrupted transaction.
+    // Recovery pass BEFORE any new write (§2.6), serialized by the same crash-releasing node lock.
+    // Recovery uses the PRIOR journal's durable intent/pre-state/plans, never the new request.
     let journal = Journal::at(&tx_dir(&paths), &node);
     let seal = WriteSeal::at(&tx_dir(&paths), &node);
-    let noop = || Ok(());
-    let recover_ops = TxOps { commit: &noop, verify: &noop, rollback: &noop };
-    if let Some(state) = transaction::recover(&journal, &seal, &recover_ops)? {
-        if state == TxState::Sealed {
-            return Err(OuroError::Validation(
-                "writes are sealed by a prior failed rollback — operator recovery required (§2.6)"
-                    .into(),
-            ));
+    {
+        let _recovery_lock = crate::gate::NodeLock::acquire(
+            &tx_dir(&paths).join("locks"), &node, "startup-recovery",
+        )?;
+        let recover_verify = |record: &JournalRecord| {
+            verify_recovery_record(record, args, &paths, &node, local)
+        };
+        let recover_rollback = |record: &JournalRecord| {
+            rollback_recovery_record(record, args, &paths, &node, local)
+        };
+        let recover_ops = RecoveryOps { verify: &recover_verify, rollback: &recover_rollback };
+        if let Some(state) = transaction::recover(&journal, &seal, &recover_ops)? {
+            if state == TxState::Sealed {
+                return Err(OuroError::Validation(
+                    "writes are sealed by a prior failed rollback — operator recovery required (§2.6)"
+                        .into(),
+                ));
+            }
         }
     }
+    // Recovery may have advanced or restored the durable attestation; never continue with the stale
+    // copy loaded before reconciliation.
+    let att = load_attestation(&paths, &node, local)?;
 
     // Build the intent from --param k=v flags (agent supplies PARAMETERS, never commands).
     let payload = collect_params(args);
@@ -426,14 +442,6 @@ pub fn run_op(args: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    // Crash-durable transaction (§2.6). In --plan mode the executor is a no-op (gates proven, no
-    // mutation); real target execution is target-side (p5).
-    let base = JournalRecord {
-        audit_id: format!("op-{canon}"),
-        operation_id: op.clone(),
-        node_id: node.clone(),
-        state: TxState::Prepared,
-    };
     if plan {
         // Show the FIXED argv SEQUENCE the sealed executor WOULD run (from the attested container id
         // + digest-resolved artifacts, not the agent's params) — proof of what a real run does, with
@@ -475,12 +483,23 @@ pub fn run_op(args: &[String]) -> Result<()> {
         })?;
         let commit = crate::executor::recreate_argv(&spec, &att.state.container_id, to_digest)?;
         let rb = crate::executor::upgrade_rollback_plan(&att, &spec)?;
-        (commit, rb)
+        (commit, Some(rb))
     } else {
-        (
-            crate::executor::build_plan(&intent, &att, Some(&inbox))?,
-            crate::executor::rollback_plan(&att),
-        )
+        crate::executor::recoverable_plans(
+            &intent, &att, &inbox, &tx_dir(&paths).join("rollback").join(&canon),
+        )?
+    };
+    let base = JournalRecord {
+        audit_id: format!("op-{canon}"),
+        operation_id: op.clone(),
+        node_id: node.clone(),
+        state: TxState::Prepared,
+        durable: Some(DurableTransaction {
+            intent: intent.clone(),
+            pre_attestation: att.clone(),
+            commit_plan: commit_plan.clone(),
+            rollback_plan: rb_plan.clone(),
+        }),
     };
     // For upgrade, verify checks the NEW container landed on the target digest and ROTATES the
     // attestation to the new identity (else every later op would drift-refuse); a mismatch fails
@@ -519,6 +538,16 @@ pub fn run_op(args: &[String]) -> Result<()> {
             // Immutable identity must still hold (an image swap / recreate is still caught); the
             // content hashes are expected to have changed → snapshot them as the new baseline.
             att.require_identity_matches(&live.live.to_live())?;
+            if op == "kes-rotation/rotate" {
+                let expected = intent.payload.get("opcert").and_then(|value| value.as_str())
+                    .and_then(artifact_ref_digest)
+                    .ok_or_else(|| OuroError::Validation("KES intent lost its artifact digest".into()))?;
+                if live.live.kes_opcert_id != expected {
+                    return Err(OuroError::Validation(
+                        "installed opcert digest does not match the approved artifact".into(),
+                    ));
+                }
+            }
             let advanced = att.advance_state(
                 att.state.state_generation,
                 ManagedState {
@@ -534,7 +563,13 @@ pub fn run_op(args: &[String]) -> Result<()> {
             att.require_matches_live(&live.live.to_live())
         }
     };
-    let rollback = || crate::executor::run_plan(&rb_plan); // restart / recreate onto the prior config
+    let rollback = || {
+        let plan = rb_plan.as_ref().ok_or_else(|| OuroError::Validation(format!(
+            "{} has no safe automatic rollback; operator reconciliation required", op
+        )))?;
+        crate::executor::run_rollback_plan(&op, plan)?;
+        persist_attestation(&paths, &node, local, &att)
+    };
     // Consume only after every fail-closed preflight/plan has succeeded, but before the transaction
     // can enter Committing. A crash or failed mutation then burns the approval permanently.
     if let Some(confirmation) = &verified_confirmation {
@@ -661,6 +696,106 @@ fn dispatch_adopt(host: &str, node: &str, args: &[String], paths: &ConfigPaths, 
         .map_err(|e| OuroError::Validation(format!("ssh dispatch failed: {e}")))?;
     output::forward_tool_stdout(&out.stdout)?;
     std::process::exit(out.status.code().unwrap_or(255));
+}
+
+fn artifact_ref_digest(reference: &str) -> Option<&str> {
+    reference.split_once("@sha256:").map(|(_, digest)| digest)
+}
+
+/// Verify the exact interrupted operation described by the durable journal. This may finalize the
+/// attestation update that succeeded immediately before a crash; it never consults the new intent.
+fn verify_recovery_record(
+    record: &JournalRecord,
+    args: &[String],
+    paths: &ConfigPaths,
+    node: &str,
+    local: bool,
+) -> Result<()> {
+    let durable = record.durable.as_ref().ok_or_else(|| {
+        OuroError::Validation("transaction has no durable recovery context".into())
+    })?;
+    if record.node_id != node
+        || durable.intent.node_id != node
+        || durable.pre_attestation.immutable.machine_id != node
+        || durable.intent.operation_id != record.operation_id
+    {
+        return Err(OuroError::Validation(
+            "durable transaction identity mismatch — refusing recovery".into(),
+        ));
+    }
+    let observation = read_observation(args)?;
+    match record.operation_id.as_str() {
+        "upgrade/step" => {
+            let expected = durable.intent.payload.get("image").and_then(|value| value.as_str())
+                .ok_or_else(|| OuroError::Validation("upgrade journal lost target digest".into()))?;
+            if observation.live.image_config_digest != expected {
+                return Err(OuroError::Validation("interrupted upgrade is not on its approved image".into()));
+            }
+            rotate_attestation_for_upgrade(
+                paths, node, local, &durable.pre_attestation, &observation, expected,
+            )
+        }
+        "kes-rotation/rotate" => {
+            durable.pre_attestation.require_identity_matches(&observation.live.to_live())?;
+            let expected = durable.intent.payload.get("opcert").and_then(|value| value.as_str())
+                .and_then(artifact_ref_digest)
+                .ok_or_else(|| OuroError::Validation("KES journal lost artifact digest".into()))?;
+            if observation.live.kes_opcert_id != expected {
+                return Err(OuroError::Validation("interrupted KES opcert digest is not approved".into()));
+            }
+            persist_advanced_recovery(paths, node, local, &durable.pre_attestation, &observation)
+        }
+        "config/render" | "runtime/topology-apply" => {
+            durable.pre_attestation.require_identity_matches(&observation.live.to_live())?;
+            persist_advanced_recovery(paths, node, local, &durable.pre_attestation, &observation)
+        }
+        _ => durable.pre_attestation.require_matches_live(&observation.live.to_live()),
+    }
+}
+
+fn persist_advanced_recovery(
+    paths: &ConfigPaths,
+    node: &str,
+    local: bool,
+    pre: &AdoptionAttestation,
+    observation: &Observation,
+) -> Result<()> {
+    let advanced = pre.advance_state(
+        pre.state.state_generation,
+        ManagedState {
+            state_generation: pre.state.state_generation,
+            container_id: observation.live.container_id.clone(),
+            topology_hash: observation.live.topology_hash.clone(),
+            config_hash: observation.live.config_hash.clone(),
+            kes_opcert_id: observation.live.kes_opcert_id.clone(),
+        },
+    )?;
+    persist_attestation(paths, node, local, &advanced)
+}
+
+fn rollback_recovery_record(
+    record: &JournalRecord,
+    args: &[String],
+    paths: &ConfigPaths,
+    node: &str,
+    local: bool,
+) -> Result<()> {
+    let durable = record.durable.as_ref().ok_or_else(|| {
+        OuroError::Validation("transaction has no durable recovery context".into())
+    })?;
+    let plan = durable.rollback_plan.as_ref().ok_or_else(|| {
+        OuroError::Validation(format!(
+            "{} is irreversible/ambiguous; automatic rollback is forbidden",
+            record.operation_id
+        ))
+    })?;
+    // If no observable node state changed, there is nothing to undo (e.g. crash after Committing
+    // was journaled but before the first executor step). Otherwise run the persisted exact inverse.
+    let observation = read_observation(args)?;
+    if durable.pre_attestation.require_matches_live(&observation.live.to_live()).is_err() {
+        crate::executor::run_rollback_plan(&record.operation_id, plan)?;
+    }
+    persist_attestation(paths, node, local, &durable.pre_attestation)
 }
 
 fn load_attestation(paths: &ConfigPaths, node: &str, local: bool) -> Result<AdoptionAttestation> {

@@ -178,6 +178,43 @@ pub fn rollback_plan(att: &AdoptionAttestation) -> Vec<Vec<String>> {
     vec![vec![s("docker"), s("restart"), att.state.container_id.clone()]]
 }
 
+/// Build commit + honest rollback plans for a durable transaction. KES installation first copies
+/// the previous public opcert into a root-only transaction directory, so rollback restores bytes
+/// before restarting. Transaction submission is irreversible and therefore carries no fake plan.
+pub fn recoverable_plans(
+    intent: &Intent,
+    att: &AdoptionAttestation,
+    inbox: &Path,
+    rollback_root: &Path,
+) -> Result<(Vec<Vec<String>>, Option<Vec<Vec<String>>>)> {
+    let mut commit = build_plan(intent, att, Some(inbox))?;
+    match intent.operation_id.as_str() {
+        "kes-rotation/rotate" => {
+            std::fs::create_dir_all(rollback_root)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(rollback_root, std::fs::Permissions::from_mode(0o700))?;
+            }
+            let backup = rollback_root.join("node.cert.pre").display().to_string();
+            commit.insert(
+                0,
+                vec![
+                    s("docker"), s("cp"),
+                    format!("{}:{OPCERT_DEST}", att.state.container_id), backup.clone(),
+                ],
+            );
+            let rollback = vec![
+                vec![s("docker"), s("cp"), backup, format!("{}:{OPCERT_DEST}", att.state.container_id)],
+                vec![s("docker"), s("restart"), att.state.container_id.clone()],
+            ];
+            Ok((commit, Some(rollback)))
+        }
+        "deploy/register-submit" => Ok((commit, None)),
+        _ => Ok((commit, Some(rollback_plan(att)))),
+    }
+}
+
 /// Build the recreate SEQUENCE for an upgrade (§2.10): remove the attested container, then
 /// `docker run` a new one onto `image_digest`, faithfully reproducing the observed run-spec (name,
 /// restart policy, network, published ports, env, bind mounts, entrypoint + args). FAIL-CLOSED: any
@@ -248,7 +285,9 @@ pub fn recreate_argv(spec: &RecreateSpec, cid: &str, image_digest: &str) -> Resu
 /// same observed run-spec — the honest inverse of a recreate. (Whether this restores service depends
 /// on DB compatibility; the honest RollbackToN / ReSyncRequired classification is `upgrade.rs`.)
 pub fn upgrade_rollback_plan(att: &AdoptionAttestation, spec: &RecreateSpec) -> Result<Vec<Vec<String>>> {
-    recreate_argv(spec, &att.state.container_id, &att.immutable.image_config_digest)
+    // Remove by stable container name. The old immutable id may already be gone, while a partially
+    // created replacement may now occupy the name.
+    recreate_argv(spec, &spec.name, &att.immutable.image_config_digest)
 }
 
 /// Run a FIXED argv (the first element is the program) — a direct exec, never a shell. Returns Ok on
@@ -279,6 +318,24 @@ pub fn run_plan(plan: &[Vec<String>]) -> Result<()> {
         run_argv(argv)?;
     }
     Ok(())
+}
+
+/// Execute a persisted rollback plan. Upgrade removal is deliberately best-effort: after a crash
+/// the named container may not exist, and that expected condition must not prevent recreating N.
+pub fn run_rollback_plan(operation_id: &str, plan: &[Vec<String>]) -> Result<()> {
+    if operation_id == "upgrade/step" {
+        let Some((remove, recreate)) = plan.split_first() else {
+            return Err(OuroError::Validation("upgrade rollback plan is empty".into()));
+        };
+        if remove.get(0).map(String::as_str) != Some("docker")
+            || remove.get(1).map(String::as_str) != Some("rm")
+        {
+            return Err(OuroError::Validation("upgrade rollback lacks fixed remove step".into()));
+        }
+        let _ = run_argv(remove); // absent container is expected after a partial recreate
+        return run_plan(recreate);
+    }
+    run_plan(plan)
 }
 
 #[cfg(test)]
@@ -370,6 +427,27 @@ mod tests {
     }
 
     #[test]
+    fn kes_durable_plan_backs_up_and_restores_the_previous_opcert() {
+        let dir = std::env::temp_dir().join(format!("ouro-exec-kes-rb-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let inbox = dir.join("inbox");
+        let rollback = dir.join("rollback");
+        let bytes = br#"{"type":"NodeOperationalCertificate","cborHex":"deadbeef"}"#;
+        let art_ref = crate::inbox::stage(&inbox, crate::inbox::ArtifactType::Opcert, bytes).unwrap();
+        let (commit, rb) = recoverable_plans(
+            &intent("kes-rotation/rotate", json!({"machine":"bp1","opcert":art_ref})),
+            &att(), &inbox, &rollback,
+        ).unwrap();
+        assert_eq!(commit.len(), 3, "backup, install, restart");
+        assert_eq!(commit[0][2], format!("cid-attested:{OPCERT_DEST}"));
+        assert!(commit[0][3].ends_with("node.cert.pre"));
+        let rb = rb.expect("KES has a real inverse");
+        assert_eq!(rb[0][2], commit[0][3]);
+        assert_eq!(rb[0][3], format!("cid-attested:{OPCERT_DEST}"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn deploy_submits_resolved_tx() {
         assert!(build_plan(&intent("deploy/register-submit", json!({"machine":"bp1","network":"mainnet"})), &att(), None).is_err());
         let tx = format!("tx-1@sha256:{}", "b".repeat(64));
@@ -381,6 +459,21 @@ mod tests {
         let submit: Vec<String> = plan[1].clone();
         assert!(submit.contains(&"submit".to_string()) && submit.contains(&"--tx-file".to_string()));
         assert!(submit.contains(&TX_STAGE.to_string()) && submit.contains(&"--mainnet".to_string()));
+    }
+
+    #[test]
+    fn deploy_has_no_fake_rollback() {
+        let dir = std::env::temp_dir().join(format!("ouro-exec-tx-rb-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let inbox = dir.join("inbox");
+        let tx_bytes = br#"{"type":"Tx ConwayEra","cborHex":"deadbeef"}"#;
+        let tx = crate::inbox::stage(&inbox, crate::inbox::ArtifactType::Tx, tx_bytes).unwrap();
+        let (_, rollback) = recoverable_plans(
+            &intent("deploy/register-submit", json!({"machine":"bp1","tx":tx,"network":"mainnet"})),
+            &att(), &inbox, &dir.join("rollback"),
+        ).unwrap();
+        assert!(rollback.is_none(), "on-chain submit cannot be undone by docker restart");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

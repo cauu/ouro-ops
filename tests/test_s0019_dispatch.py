@@ -78,13 +78,17 @@ def main():
                "--param", "machine=bp1", "--observation", o, "--plan")
     assert d["status"] == "error" and "sealed" in json.dumps(d), d
 
-    # --- crash recovery before a new write (TC-6): journal at 'committed' is reconciled + cleared ---
+    # --- a legacy committed journal lacks intent/pre-state/plans: never clear it as false success ---
     (txn / "bp1.txn.json").write_text(json.dumps(
         {"audit_id": "a", "operation_id": "config/render", "node_id": "bp1", "state": "committed"}))
     _, d = run(home, "op", "run", "--op", "config/render", "--node", "bp1",
                "--param", "machine=bp1", "--observation", o, "--plan")
-    assert d["status"] == "ok", f"op should proceed after recovery: {d}"
-    assert not (txn / "bp1.txn.json").exists(), "recovery cleared the interrupted journal before the new write"
+    assert d["status"] == "error" and "durable recovery context" in json.dumps(d), d
+    assert (txn / "bp1.seal").exists(), "uncertain legacy write must seal target writes"
+    assert json.loads((txn / "bp1.txn.json").read_text())["state"] == "sealed"
+    # Test-only cleanup; production requires the explicit operator recovery path.
+    (txn / "bp1.txn.json").unlink()
+    (txn / "bp1.seal").unlink()
 
     # --- p5-1 SSH dispatch plan: op --dispatch runs on the target as the confined principal ---
     creds = Path(home) / "credentials"
