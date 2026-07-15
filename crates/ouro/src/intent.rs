@@ -129,13 +129,36 @@ pub fn registry() -> &'static [OperationSpec] {
             may_expose_secret: false,
         },
         OperationSpec {
+            // Internal closed read used by the fleet authority. It returns only liveness, role,
+            // current image digest and generation after the normal adoption/live-drift gate.
+            operation_id: "fleet/status",
+            mutability: Mutability::Read,
+            params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
+            touched: &["read:fleet-status"],
+            may_expose_secret: false,
+        },
+        OperationSpec {
+            // Load one reviewed Docker-save artifact into the target image store without touching
+            // the running node. The target config digest is independently allowlist-checked and
+            // must be the archive's only image config.
+            operation_id: "upgrade/preload-image",
+            mutability: Mutability::Dangerous,
+            params: &[
+                ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true },
+                ParamSpec { name: "artifact", kind: ParamKind::ArtifactRef, required: true },
+                ParamSpec { name: "image", kind: ParamKind::ImageDigest, required: true },
+            ],
+            touched: &["image:load"],
+            may_expose_secret: false,
+        },
+        OperationSpec {
             operation_id: "upgrade/step",
             mutability: Mutability::Dangerous, // availability-affecting: recreates the container
             params: &[
                 ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true },
                 // The N+1 target image, named by its config digest — must be on the signed allowlist
                 // (enforced at op time). The recreate preserves the observed run-spec; the operator
-                // delivers the image to the target (pull / inbox load) as a precondition.
+                // delivers the image through upgrade/preload-image as a precondition.
                 ParamSpec { name: "image", kind: ParamKind::ImageDigest, required: true },
             ],
             touched: &["container:recreate"],
@@ -362,6 +385,14 @@ mod tests {
         let good = format!("opcert-1@sha256:{}", "a".repeat(64));
         assert!(intent("kes-rotation/install-opcert",
             json!({"machine":"bp1","opcert": good})).validate(0).is_ok());
+        let image_artifact = format!("image-aaaaaaaa@sha256:{}", "a".repeat(64));
+        let image = format!("sha256:{}", "b".repeat(64));
+        assert!(intent("upgrade/preload-image", json!({
+            "machine":"bp1", "artifact": image_artifact, "image": image,
+        })).validate(0).is_ok());
+        assert!(intent("upgrade/preload-image", json!({
+            "machine":"bp1", "artifact":"/tmp/image.tar", "image":format!("sha256:{}", "b".repeat(64)),
+        })).validate(0).is_err());
     }
 
     #[test]
@@ -379,6 +410,7 @@ mod tests {
     fn dangerous_ops_flagged_confirm_required() {
         assert_eq!(lookup("kes-rotation/install-opcert").unwrap().mutability, Mutability::Dangerous);
         assert_eq!(lookup("runtime/restart").unwrap().mutability, Mutability::Dangerous);
+        assert_eq!(lookup("upgrade/preload-image").unwrap().mutability, Mutability::Dangerous);
         assert!(lookup("config/render").is_none(), "render is retired until it really renders");
         assert!(lookup("runtime/topology-apply").is_none(), "apply is retired until it applies bytes");
     }

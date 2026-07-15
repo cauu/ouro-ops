@@ -27,11 +27,13 @@ prerequisite for every managed operation: an op on a node without an attestation
   is missing, follow the onboard Skill's `creds register --dry-run` → explicit approval → register
   flow for the operator-named absolute path. Never list credentials or replace a conflicting name.
 - First run `ouro-ops adopt --dispatch <host> --bootstrap-user <account> --ssh-key creds://<name>
-  --node <id> --role <bp|relay> --preview`. It probes the live node and returns the exact candidate
-  hash, host-key identity, allowlist identity, role, and non-disruptive diff without writing.
+  --spec <pool-spec> --node <id> --role <bp|relay> --preview`. The control side derives the declared
+  role, network, and Shelley genesis hash from the validated spec; the target binds its live
+  observation to those facts and returns the exact candidate hash, host-key identity, allowlist
+  identity, process/layout/readiness evidence, role, and non-disruptive diff without writing.
 - Present that preview to the operator and WAIT for explicit approval. Then mint
   `ouro-ops confirm adopt create --node <id> --candidate-hash <hash> --host-key <sha256>` and rerun
-  the same adopt command without `--preview`, adding `--approve-token <token>`. The target compares
+  the same adopt command and same spec without `--preview`, adding `--approve-token <token>`. The target compares
   a fresh observation under the adoption lock, consumes the token once, and writes the attestation.
   If
   it refuses (non-conforming image/layout, wrong supervisor shape, relay bearing forging keys),

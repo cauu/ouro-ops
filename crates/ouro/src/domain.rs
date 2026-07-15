@@ -5,6 +5,7 @@ use std::{collections::BTreeSet, fs, path::Path};
 use crate::{secrets::CredentialRef, OuroError, Result};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PoolSpec {
     pub spec_version: u8,
     pub pool: Pool,
@@ -19,9 +20,31 @@ pub struct PoolSpec {
     /// S0017 p5-12 — operation-scoped: only deploy/sync (and its verify) consume it.
     #[serde(default)]
     pub sync: Option<Sync>,
+    /// Human-authored fleet availability policy. It is part of the canonical pool-spec digest;
+    /// agents and environment variables may not relax it at permit-mint time.
+    #[serde(default)]
+    pub upgrade: UpgradePolicy,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpgradePolicy {
+    #[serde(default = "default_min_online_relays")]
+    pub min_online_relays: u32,
+}
+
+impl Default for UpgradePolicy {
+    fn default() -> Self {
+        Self { min_online_relays: default_min_online_relays() }
+    }
+}
+
+fn default_min_online_relays() -> u32 {
+    1
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Pool {
     /// S0017 p5-12 — ticker/metadata/economics are registration-only; optional so specs for
     /// other operations omit them instead of carrying misleading placeholders. Registration
@@ -68,6 +91,7 @@ impl Network {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct GenesisHashes {
     pub byron: Option<String>,
     pub shelley: String,
@@ -83,6 +107,7 @@ pub enum TopologyMode {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Machine {
     pub id: String,
     pub role: MachineRole,
@@ -98,6 +123,7 @@ pub struct Machine {
 
 /// Declared supervision runtime for a machine (advisory; verified against detect/runtime).
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct RuntimeDecl {
     pub mode: RuntimeMode,
     /// systemd unit name (mode=systemd). Container name/id and image ref (mode=docker|podman).
@@ -126,12 +152,14 @@ pub enum MachineRole {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Endpoint {
     pub host: String,
     pub port: u16,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SshTarget {
     pub host: String,
     pub port: u16,
@@ -140,6 +168,7 @@ pub struct SshTarget {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Sync {
     pub mode: SyncMode,
     pub mithril: Option<MithrilSync>,
@@ -153,6 +182,7 @@ pub enum SyncMode {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct MithrilSync {
     pub aggregator_endpoint: String,
     pub genesis_verification_key_ref: CredentialRef,
@@ -365,6 +395,9 @@ impl PoolSpec {
                 "mode": sync.mode,
                 "mithril_enabled": sync.mode == SyncMode::Mithril
             })),
+            "upgrade": {
+                "min_online_relays": self.upgrade.min_online_relays
+            },
             "secrets": {
                 "policy": "redacted",
                 "credential_refs_present": self.credential_ref_count()
@@ -389,12 +422,13 @@ impl GenesisHashes {
             ("conway", self.conway.as_ref()),
         ] {
             if let Some(value) = value {
-                if value.len() < 16
-                    || value.len() > 128
-                    || !value.chars().all(|ch| ch.is_ascii_hexdigit())
+                if value.len() != 64
+                    || !value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
                 {
                     return Err(OuroError::Validation(format!(
-                        "genesis hash {name} must be 16-128 hex characters"
+                        "genesis hash {name} must be a 64-character lowercase SHA-256"
                     )));
                 }
             }
@@ -473,11 +507,44 @@ mod tests {
         assert!(spec.validate().is_err());
     }
 
+    #[test]
+    fn rejects_truncated_or_noncanonical_genesis_hashes() {
+        let mut spec = valid_spec();
+        spec.pool.genesis_hashes.shelley.truncate(63);
+        assert!(spec.validate().is_err(), "63-character file SHA-256 rejected");
+
+        let mut spec = valid_spec();
+        spec.pool.genesis_hashes.shelley.push('a');
+        assert!(spec.validate().is_err(), "65-character file SHA-256 rejected");
+
+        let mut spec = valid_spec();
+        spec.pool.genesis_hashes.shelley.make_ascii_uppercase();
+        assert!(spec.validate().is_err(), "noncanonical uppercase digest rejected");
+    }
+
     fn valid_spec() -> PoolSpec {
         serde_json::from_str(include_str!(
             "../../../tests/fixtures/pool-spec/valid-minimal.json"
         ))
         .unwrap()
+    }
+
+    #[test]
+    fn pool_spec_rejects_unknown_top_level_and_nested_fields() {
+        let baseline: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/pool-spec/valid-minimal.json"
+        )).unwrap();
+        let mut top = baseline.clone();
+        top.as_object_mut().unwrap().insert(
+            "unknown_security_policy".into(), serde_json::json!("allow_all"),
+        );
+        assert!(serde_json::from_value::<PoolSpec>(top).is_err());
+
+        let mut nested = baseline;
+        nested.pointer_mut("/machines/0/ssh").unwrap().as_object_mut().unwrap().insert(
+            "proxy_command".into(), serde_json::json!("evil"),
+        );
+        assert!(serde_json::from_value::<PoolSpec>(nested).is_err());
     }
 
     #[test]

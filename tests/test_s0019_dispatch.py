@@ -11,6 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BIN = ROOT / "target/debug/ouro-ops"
+GENESIS = "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81"
+HOST_KEY = "SHA256:" + "a" * 43
 
 
 def cfg_digest():
@@ -19,12 +21,22 @@ def cfg_digest():
 
 def obs_doc(home, sup=None, **live_over):
     live = {"image_config_digest": cfg_digest(), "platform": "linux/amd64", "container_id": "cid1",
-            "container_creation_epoch": 1000, "entrypoint": ["cardano-node"], "args": ["run"],
-            "mounts": [{"kind": "bind", "source_id": "8:1", "destination": "/data/db",
-                        "read_only": False, "owner": "0:0", "mode": "0755", "no_symlink": True}],
+            "container_creation_epoch": 1000, "container_name": "cardano-node",
+            "image_reference": "ghcr.io/blinklabs-io/cardano-node:test",
+            "entrypoint": ["/usr/local/bin/entrypoint"], "args": ["run"],
+            "image_entrypoint": ["/usr/local/bin/entrypoint"], "image_cmd": [],
+            "mounts": [
+                {"kind": "bind", "source_id": "8:1", "destination": "/data/db",
+                 "read_only": False, "owner": "0:0", "mode": "0755", "no_symlink": True},
+                {"kind": "bind", "source_id": "8:2", "destination": "/opt/cardano/config",
+                 "read_only": True, "owner": "0:0", "mode": "0755", "no_symlink": True},
+                {"kind": "bind", "source_id": "8:3", "destination": "/ipc",
+                 "read_only": False, "owner": "0:0", "mode": "0755", "no_symlink": True},
+            ],
             "topology_hash": "t0", "config_hash": "c0",
-            "kes_opcert_id": "kes:5", "has_forging_keys": True, "host_key_sha256": "a" * 64,
-            "genesis_hash": "gh", "network": "mainnet"}
+            "kes_opcert_id": "kes:5", "has_forging_keys": True,
+            "forging_key_permissions_safe": True, "host_key_sha256": HOST_KEY,
+            "genesis_hash": GENESIS, "network": "mainnet"}
     live.update(live_over)
     supervisor = {"runtime": "docker", "rootful": True, "rootless": False, "node_container_count": 1,
                   "uses_bind_mounts": True, "daemon_socket": "/var/run/docker.sock",
@@ -32,7 +44,13 @@ def obs_doc(home, sup=None, **live_over):
     if sup:
         supervisor.update(sup)
     p = Path(home) / f"obs-{abs(hash(json.dumps(live)+json.dumps(supervisor)))}.json"
-    p.write_text(json.dumps({"supervisor": supervisor, "live": live}))
+    relay = not live["has_forging_keys"]
+    p.write_text(json.dumps({"supervisor": supervisor, "live": live,
+                             "readiness": {"node_running": True, "socket_answers": True,
+                                           "tip_block": 100, "tip_block_next": 100,
+                                           "tip_synced": True, "kes_opcert_valid": not relay,
+                                           "forging_credentials_ready": not relay,
+                                           "established_peers": 2}}))
     return str(p)
 
 
@@ -45,17 +63,29 @@ def run(home, *args):
         return r.returncode, {"status": "error", "raw": (r.stdout + r.stderr)[:200]}
 
 
+def security_digest(home):
+    _, out = run(home, "version")
+    assert out["status"] == "ok", out
+    return out["data"]["security_identity"]
+
+
+def adoption_args(home, observation, role, node):
+    return ("--node", node, "--role", role, "--observation", observation,
+            "--expect-embedded", security_digest(home),
+            "--expected-role", role, "--expected-network", "mainnet",
+            "--expected-genesis", GENESIS, "--expected-host-key", HOST_KEY)
+
+
 def adopt(home, o, role="bp", node="bp1"):
-    code, preview = run(home, "adopt", "--node", node, "--role", role,
-                        "--preview", "--observation", o)
+    args = adoption_args(home, o, role, node)
+    code, preview = run(home, "adopt", *args, "--preview")
     if code != 0:
         return code, preview
     data = preview["data"]
     _, approval = run(home, "confirm", "adopt", "create", "--node", node,
                       "--candidate-hash", data["candidate_hash"],
                       "--host-key", data["host_key_sha256"])
-    return run(home, "adopt", "--node", node, "--role", role,
-               "--approve-token", approval["data"]["approve_token"], "--observation", o)
+    return run(home, "adopt", *args, "--approve-token", approval["data"]["approve_token"])
 
 
 def main():
@@ -131,7 +161,7 @@ def main():
         "--ouro-binary",
         "/operator/supplied/ouro-ops-linux-x86_64",
         "--expected-host-key",
-        "SHA256:operator-verified",
+        "SHA256:" + "a" * 43,
         "--dry-run",
     )
     assert d["status"] == "ok" and d["changed"] is False, d
@@ -175,6 +205,24 @@ def main():
         not step["changed"] and step["planned"] and not step["executed"]
         for step in preview["manifest"]["steps"]
     ), preview["manifest"]
+
+    # A misspelled preview flag can never fall through into a real SSH/host mutation.
+    _, typo_preview = run(
+        home,
+        "onboard",
+        "--host",
+        "192.0.2.1",
+        "--bootstrap-user",
+        "cardano",
+        "--bootstrap-key",
+        "creds://bootstrap",
+        "--control-pubkey",
+        str(control_pubkey),
+        "--ouro-binary",
+        "/operator/supplied/ouro-ops-linux-x86_64",
+        "--dryrun",
+    )
+    assert typo_preview["status"] == "error" and "unexpected" in json.dumps(typo_preview)
 
     # A real-mode fresh-login verification failure emits exactly one typed JSON record. The fake
     # transport reports a converged read-only probe, then rejects only the ouro-op fresh session;
@@ -225,6 +273,7 @@ def main():
             str(failure_key.with_suffix(".pub")),
             "--ouro-binary",
             str(linux_elf),
+            "--apply",
         ],
         env=dict(os.environ, OURO_HOME=home, PATH=f"{fakebin}:{os.environ['PATH']}"),
         text=True,
@@ -250,11 +299,29 @@ def main():
     # a conforming relay WITHOUT forging keys adopts fine
     _, d = adopt(home, obs_doc(home, has_forging_keys=False, container_id="rcid"), role="relay", node="relay1")
     assert d["status"] == "ok", d
+    relay_key_drift = obs_doc(home, has_forging_keys=True, container_id="rcid")
+    _, d = run(home, "op", "run", "--op", "fleet/status", "--node", "relay1",
+               "--param", "machine=relay1", "--observation", relay_key_drift)
+    assert d["status"] == "error" and "forging keys" in json.dumps(d), d
+    missing_ref = "opcert-x@sha256:" + "b" * 64
+    _, d = run(home, "op", "run", "--op", "kes-rotation/install-opcert", "--node", "relay1",
+               "--param", "machine=relay1", "--param", f"opcert={missing_ref}",
+               "--fleet-spec-digest", "sha256:" + "a" * 64,
+               "--fleet-pool-id", "pool-test", "--fleet-min-online-relays", "1",
+               "--observation", obs_doc(home, has_forging_keys=False, container_id="rcid"), "--plan")
+    assert d["status"] == "error" and "BP-only" in json.dumps(d), d
 
     # --- adopt a good bp for the rest ---
     o = obs_doc(home)
     _, d = adopt(home, o)
     assert d["status"] == "ok", d
+    _, d = run(home, "op", "run", "--op", "fleet/status", "--node", "bp1",
+               "--param", "machine=bp1", "--local", "--observation", o)
+    assert d["status"] == "error" and "must use the embedded live probe" in json.dumps(d), d
+    _, d = run(home, "op", "run", "--op", "fleet/status", "--node", "bp1",
+               "--param", "machine=bp1",
+               "--observation", obs_doc(home, sup={"node_container_count": 2}))
+    assert d["status"] == "error" and "exactly 1" in json.dumps(d), d
 
     # --- write-seal refuses any op (TC-6) ---
     txn = Path(home) / "txn"
@@ -263,43 +330,130 @@ def main():
         {"audit_id": "a", "operation_id": "runtime/restart", "node_id": "bp1", "state": "sealed"}))
     _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
                "--param", "machine=bp1", "--observation", o, "--plan")
-    assert d["status"] == "error" and "sealed" in json.dumps(d), d
+    assert d["status"] == "error" and "sealed" in json.dumps(d).lower(), d
 
-    # --- a legacy committed journal lacks intent/pre-state/plans: never clear it as false success ---
+    # --- a plan reports pending recovery but remains pure read; it never seals/reconciles ---
     (txn / "bp1.txn.json").write_text(json.dumps(
         {"audit_id": "a", "operation_id": "config/render", "node_id": "bp1", "state": "committed"}))
     _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
                "--param", "machine=bp1", "--observation", o, "--plan")
-    assert d["status"] == "error" and "durable recovery context" in json.dumps(d), d
-    assert (txn / "bp1.seal").exists(), "uncertain legacy write must seal target writes"
-    assert json.loads((txn / "bp1.txn.json").read_text())["state"] == "sealed"
+    assert d["status"] == "error" and "pending transaction" in json.dumps(d), d
+    assert not (txn / "bp1.seal").exists(), "--plan must not reconcile or create a write seal"
+    assert json.loads((txn / "bp1.txn.json").read_text())["state"] == "committed"
+    # A REAL operation also refuses without auto-verify/rollback: ordinary invocations cannot use a
+    # stale journal to bypass fresh fleet + human authorization.
+    _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
+               "--param", "machine=bp1", "--observation", o)
+    assert d["status"] == "error" and "never auto-verify or auto-rollback" in json.dumps(d), d
+    assert not (txn / "bp1.seal").exists(), "ordinary op must not mutate recovery metadata"
+    assert json.loads((txn / "bp1.txn.json").read_text())["state"] == "committed"
     # Test-only cleanup; production requires the explicit operator recovery path.
     (txn / "bp1.txn.json").unlink()
-    (txn / "bp1.seal").unlink()
 
-    # --- p5-1 SSH dispatch plan: op --dispatch runs on the target as the confined principal ---
+    # --- Explicit transport-only inspection shows confined SSH argv without claiming target validation. ---
     creds = Path(home) / "credentials"
     creds.mkdir(exist_ok=True)
     # p7-1: the op channel logs in as ouro-op (the write principal onboard installs), not ouro-exec.
     (creds / "ouro-op").write_text("key")
     _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
-               "--param", "machine=bp1", "--dispatch", "10.0.0.9", "--plan")
+               "--param", "machine=bp1", "--dispatch", "10.0.0.9", "--transport-plan")
     assert d["status"] == "ok" and d["data"]["principal"] == "ouro-op", d
+    assert d["tool"] == "ouro.op.dispatch.transport_plan" and d["data"]["target_validated"] is False
     j = " ".join(d["data"]["ssh_argv"])
     assert "ouro-op@10.0.0.9" in j and "ouro-exec@" not in j and "StrictHostKeyChecking=yes" in j, j
     assert "/usr/local/sbin/ouro-op-run" in j and "'--local'" in j, j
+    assert "-F /dev/null" in j and "IdentityAgent=none" in j and "IdentitiesOnly=yes" in j, j
+    assert "'--plan'" not in j, "transport plan itself is not forwarded"
 
     # A transport failure is one bounded typed record, not a silent exit 255. Remote stderr is
     # untrusted DATA but retaining a bounded excerpt makes host-key/auth failures diagnosable.
     transport_bin = Path(home) / "transport-bin"
     transport_bin.mkdir()
     fake_transport = transport_bin / "ssh"
+    transport_log = Path(home) / "transport-argv.log"
     fake_transport.write_text(
         "#!/bin/sh\n"
+        f"printf '%s\\n' \"$*\" > '{transport_log}'\n"
         "printf 'Permission denied (publickey).\\n' >&2\n"
         "exit 255\n"
     )
     fake_transport.chmod(0o700)
+    # Preview modes reject an approval capability before transport construction/execution; the
+    # token must never appear in an argv preview or reach the fake SSH process.
+    preview_secret = "CONFIRM-SENTINEL-MUST-NOT-LEAK"
+    for preview_mode in ("--plan", "--transport-plan"):
+        transport_log.unlink(missing_ok=True)
+        rejected_preview = subprocess.run(
+            [
+                str(BIN), "op", "run", "--op", "runtime/restart", "--node", "bp1",
+                "--param", "machine=bp1", "--dispatch", "192.0.2.1",
+                "--ssh-key", "creds://bp1", "--confirm-token", preview_secret, preview_mode,
+            ],
+            env=dict(os.environ, OURO_HOME=home, PATH=f"{transport_bin}:{os.environ['PATH']}"),
+            text=True,
+            capture_output=True,
+        )
+        assert rejected_preview.returncode == 10, rejected_preview
+        assert not transport_log.exists(), "preview approval must be rejected before SSH"
+        assert preview_secret not in rejected_preview.stdout + rejected_preview.stderr
+    # The fleet authority rejects caller-supplied facts, and a failed target snapshot does not mint
+    # a lease/permit before returning the refusal.
+    _, nondisruptive = run(
+        home, "fleet", "permit", "create", "--spec",
+        str(ROOT / "examples/pool-spec.minimal.yaml"), "--node", "bp1",
+        "--op", "observability/health", "--intent-hash", "a" * 64,
+        "--min-online-relays", "1", "--holder", "testctl",
+    )
+    assert nondisruptive["status"] == "error" and "not disruptive" in json.dumps(nondisruptive)
+    assert not (Path(home) / "fleet-authority").exists(), nondisruptive
+    _, supplied_facts = run(
+        home, "fleet", "permit", "create", "--spec",
+        str(ROOT / "examples/pool-spec.minimal.yaml"),
+        "--node", "bp1", "--op", "runtime/restart", "--min-online-relays", "1",
+        "--intent-hash", "a" * 64, "--online-relays", "99", "--holder", "testctl",
+    )
+    assert supplied_facts["status"] == "error" and "not accepted" in json.dumps(supplied_facts)
+    for extra in (
+        ["--node", "relay1"],
+        ["--online-relays=99"],
+    ):
+        _, closed_fleet = run(
+            home, "fleet", "permit", "create", "--spec",
+            str(ROOT / "examples/pool-spec.minimal.yaml"),
+            "--node", "bp1", "--op", "runtime/restart", "--min-online-relays", "1",
+            "--intent-hash", "a" * 64, "--holder", "testctl", *extra,
+        )
+        assert closed_fleet["status"] == "error" and (
+            "duplicate" in json.dumps(closed_fleet) or "unexpected" in json.dumps(closed_fleet)
+        ), closed_fleet
+    failed_fleet = subprocess.run(
+        [
+            str(BIN), "fleet", "permit", "create", "--spec",
+            str(ROOT / "examples/pool-spec.minimal.yaml"),
+            "--node", "bp1", "--op", "runtime/restart", "--min-online-relays", "1",
+            "--intent-hash", "a" * 64, "--holder", "testctl",
+        ],
+        env=dict(os.environ, OURO_HOME=home, PATH=f"{transport_bin}:{os.environ['PATH']}"),
+        text=True,
+        capture_output=True,
+    )
+    assert failed_fleet.returncode != 0, failed_fleet
+    assert not list((Path(home) / "fleet-authority").glob("*.lease.json")) \
+        if (Path(home) / "fleet-authority").exists() else True
+    # Ordinary --plan is not an argv preview: it opens the target transport and forwards --plan so
+    # the target performs registry/adoption/allowlist/parity/live validation.
+    target_plan = subprocess.run(
+        [
+            str(BIN), "op", "run", "--op", "runtime/restart", "--node", "bp1",
+            "--param", "machine=bp1", "--dispatch", "192.0.2.1", "--ssh-key", "creds://bp1",
+            "--plan",
+        ],
+        env=dict(os.environ, OURO_HOME=home, PATH=f"{transport_bin}:{os.environ['PATH']}"),
+        text=True,
+        capture_output=True,
+    )
+    assert target_plan.returncode == 255, target_plan
+    assert "'--plan'" in transport_log.read_text(), transport_log.read_text()
     transport = subprocess.run(
         [
             str(BIN), "op", "run", "--op", "observability/health", "--node", "bp1",
@@ -329,7 +483,7 @@ def main():
     # arguments first.
     for help_args, needle in (
         (["op", "run", "--help"], "--dispatch <host>"),
-        (["fleet", "permit", "create", "--help"], "--online-relays"),
+        (["fleet", "permit", "create", "--help"], "upgrade.min_online_relays"),
         (["inbox", "stage", "--help"], "--type <opcert|tx|image>"),
         (["adopt", "--help"], "--bootstrap-user <account>"),
         (["manifest", "verify", "--help"], "--against <bundle-manifest.json>"),

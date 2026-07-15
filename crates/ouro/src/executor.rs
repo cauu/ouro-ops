@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::attestation::AdoptionAttestation;
 use crate::intent::Intent;
@@ -34,7 +34,7 @@ use crate::{OuroError, Result};
 /// The upgrade recreate spec (§2.10) — the target-side `docker inspect` facts needed to recreate the
 /// container onto a new image WITHOUT losing anything the probe modeled. Fail-closed: the probe emits
 /// `null` (→ refusal) for any shape it cannot faithfully reproduce (named volumes, tmpfs, etc.).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RecreateSpec {
     pub name: String,
     pub restart_policy: String,
@@ -47,14 +47,14 @@ pub struct RecreateSpec {
     pub args: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Bind {
     pub source: String,
     pub destination: String,
     pub read_only: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Port {
     pub container: String,
     pub host_ip: String,
@@ -171,6 +171,17 @@ pub fn build_plan(
                 submit,
             ])
         }
+        // Load exactly one digest-bound Docker-save artifact into the target image store. The
+        // consuming op validates archive↔config↔allowlist binding before this argv is built.
+        "upgrade/preload-image" => {
+            let archive = resolve_artifact(
+                intent,
+                "artifact",
+                crate::inbox::ArtifactType::Image,
+                inbox,
+            )?;
+            Ok(vec![vec![s("docker"), s("load"), s("--input"), archive]])
+        }
         // upgrade/step: the recreate is built by the op flow from the TARGET's own `docker inspect`
         // run-spec (§2.10, `recreate_argv`) + the allowlisted target digest, not from `build_plan`
         // (which has no observation here). This arm is only reached in plan/read PREVIEW, where the
@@ -226,6 +237,13 @@ pub fn recoverable_plans(
             Ok((commit, Some(rollback)))
         }
         "deploy/register-submit" => Ok((commit, None)),
+        "upgrade/preload-image" => {
+            let target = intent.payload.get("image").and_then(serde_json::Value::as_str)
+                .ok_or_else(|| OuroError::Validation("preload intent lost target image".into()))?;
+            Ok((commit, Some(vec![vec![
+                s("docker"), s("image"), s("rm"), target.to_string(),
+            ]])))
+        }
         _ => Ok((commit, Some(rollback_plan(att)))),
     }
 }
@@ -294,6 +312,83 @@ pub fn recreate_argv(spec: &RecreateSpec, cid: &str, image_digest: &str) -> Resu
     run.push(image_digest.to_string());
     run.extend(spec.args.iter().cloned());
     Ok(vec![vec![s("docker"), s("rm"), s("-f"), cid.to_string()], run])
+}
+
+/// Human-reviewable upgrade projection. Docker environment VALUES are deliberately absent from
+/// ToolOutput: the target retains them in the root-only sealed commit plan, while approval sees the
+/// variable names and an explicit redaction marker. The opaque HMAC run-spec binding in the intent
+/// detects any value change before commit without publishing a password-verification oracle.
+pub fn recreate_approval_argv(
+    spec: &RecreateSpec,
+    cid: &str,
+    image_digest: &str,
+) -> Result<Vec<Vec<String>>> {
+    let mut plan = recreate_argv(spec, cid, image_digest)?;
+    for argv in &mut plan {
+        let mut index = 0;
+        while index + 1 < argv.len() {
+            if argv[index] == "-e" {
+                let name = argv[index + 1].split_once('=').map(|(name, _)| name)
+                    .unwrap_or(argv[index + 1].as_str());
+                argv[index + 1] = format!("{name}=<redacted-target-value>");
+                index += 2;
+            } else {
+                index += 1;
+            }
+        }
+    }
+    Ok(plan)
+}
+
+fn verify_image_inspect_output(target: &str, stdout: &[u8]) -> Result<()> {
+    let actual = String::from_utf8_lossy(stdout).trim().to_string();
+    if actual != target {
+        return Err(OuroError::Validation(format!(
+            "upgrade target image is not preloaded by exact config digest: requested {target}, \
+             docker resolved {actual:?}"
+        )));
+    }
+    Ok(())
+}
+
+/// Fixed target-local read proving the allowlisted config digest is already present. Pulling is a
+/// separate, explicitly authorized workflow; upgrade never turns a plan into an implicit download.
+pub fn require_image_present(target: &str) -> Result<()> {
+    let output = std::process::Command::new("docker")
+        .args(["image", "inspect", "--format", "{{.Id}}", target])
+        .output()
+        .map_err(|e| OuroError::Validation(format!("cannot inspect preloaded upgrade image: {e}")))?;
+    if !output.status.success() {
+        return Err(OuroError::Validation(format!(
+            "upgrade target image {target} is not preloaded — stage/pull it separately before planning"
+        )));
+    }
+    verify_image_inspect_output(target, &output.stdout)
+}
+
+/// Preload is additive and rollback removes the exact target, so it may begin only when that
+/// immutable config digest is absent. Distinguish the normal Docker "no such image" response from
+/// daemon/permission failures; the latter must fail closed.
+pub fn require_image_absent(target: &str) -> Result<()> {
+    let output = std::process::Command::new("docker")
+        .args(["image", "inspect", "--format", "{{.Id}}", target])
+        .output()
+        .map_err(|e| OuroError::Validation(format!("cannot inspect preload target image: {e}")))?;
+    if output.status.success() {
+        verify_image_inspect_output(target, &output.stdout)?;
+        return Err(OuroError::Validation(format!(
+            "upgrade target image {target} is already present; no preload mutation is needed"
+        )));
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("No such image") || stderr.contains("No such object") {
+        Ok(())
+    } else {
+        Err(OuroError::Validation(format!(
+            "cannot prove preload target image is absent: {}",
+            stderr.chars().take(2048).collect::<String>().trim()
+        )))
+    }
 }
 
 /// The upgrade rollback plan: recreate the container onto the PRIOR (attested) image digest with the
@@ -460,6 +555,32 @@ pub fn run_rollback_plan(operation_id: &str, plan: &[Vec<String>]) -> Result<()>
         let _ = run_argv(remove); // absent container is expected after a partial recreate
         return run_plan(recreate);
     }
+    if operation_id == "upgrade/preload-image" {
+        let remove = plan.first().ok_or_else(|| {
+            OuroError::Validation("preload rollback plan is empty".into())
+        })?;
+        if remove.first().map(String::as_str) != Some("docker")
+            || remove.get(1).map(String::as_str) != Some("image")
+            || remove.get(2).map(String::as_str) != Some("rm")
+        {
+            return Err(OuroError::Validation(
+                "preload rollback lacks fixed image removal step".into(),
+            ));
+        }
+        return match run_argv(remove) {
+            Ok(()) => Ok(()),
+            Err(remove_error) => {
+                let target = remove.get(3).ok_or_else(|| {
+                    OuroError::Validation("preload rollback lost target image digest".into())
+                })?;
+                require_image_absent(target).map_err(|absence_error| {
+                    OuroError::Validation(format!(
+                        "preload rollback failed ({remove_error}) and absence was not proven ({absence_error})"
+                    ))
+                })
+            }
+        };
+    }
     run_plan(plan)
 }
 
@@ -534,6 +655,24 @@ mod tests {
         assert_eq!(plan[0][2], "<inbox:opcert-1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa>");
         assert_eq!(plan[0][3], format!("cid-attested:{OPCERT_DEST}"));
         assert_eq!(plan[1], vec!["docker", "restart", "cid-attested"]);
+    }
+
+    #[test]
+    fn image_preload_is_one_digest_resolved_load_and_never_restarts_node() {
+        let artifact = format!("image-aaaaaaaa@sha256:{}", "a".repeat(64));
+        let target = format!("sha256:{}", "b".repeat(64));
+        let plan = build_plan(
+            &intent("upgrade/preload-image", json!({
+                "machine": "bp1", "artifact": artifact, "image": target,
+            })),
+            &att(),
+            None,
+        ).unwrap();
+        assert_eq!(plan, vec![vec![
+            "docker".to_string(), "load".to_string(), "--input".to_string(),
+            format!("<inbox:image-aaaaaaaa@sha256:{}>", "a".repeat(64)),
+        ]]);
+        assert!(!plan.iter().flatten().any(|part| part == "restart"));
     }
 
     #[test]
@@ -639,6 +778,26 @@ mod tests {
         // The NEW digest is the image ref; the args follow it.
         let img_pos = run.iter().position(|a| a == &new).unwrap();
         assert_eq!(run[img_pos + 1..], ["run".to_string(), "--socket-path".into(), "/ipc/node.socket".into()]);
+    }
+
+    #[test]
+    fn approval_projection_never_exposes_container_environment_values() {
+        let new = format!("sha256:{}", "d".repeat(64));
+        let mut spec = recreate_spec();
+        spec.env.push("COLD_KEY_SECRET=hunter2".into());
+        let plan = recreate_approval_argv(&spec, "cid", &new).unwrap();
+        let output = serde_json::to_string(&plan).unwrap();
+        assert!(!output.contains("hunter2"));
+        assert!(output.contains("COLD_KEY_SECRET=<redacted-target-value>"));
+        let sealed = recreate_argv(&spec, "cid", &new).unwrap();
+        assert!(serde_json::to_string(&sealed).unwrap().contains("hunter2"));
+    }
+
+    #[test]
+    fn image_presence_requires_exact_config_digest() {
+        let target = format!("sha256:{}", "d".repeat(64));
+        assert!(verify_image_inspect_output(&target, format!("{target}\n").as_bytes()).is_ok());
+        assert!(verify_image_inspect_output(&target, format!("sha256:{}\n", "e".repeat(64)).as_bytes()).is_err());
     }
 
     #[test]

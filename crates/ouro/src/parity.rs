@@ -52,21 +52,79 @@ fn sha256(bytes: &[u8]) -> String {
 
 /// Digest security-deciding Rust source together with embedded Skills/assets. `include_str!` makes
 /// builds from the same source portable across control/target platforms while detecting stale code.
+fn security_sources() -> [(&'static str, &'static str); 38] {
+    [
+        ("attestation.rs", include_str!("attestation.rs")),
+        ("audit.rs", include_str!("audit.rs")),
+        ("bootstrap.rs", include_str!("bootstrap.rs")),
+        ("cli.rs", include_str!("cli.rs")),
+        ("cold_sign.rs", include_str!("cold_sign.rs")),
+        ("config.rs", include_str!("config.rs")),
+        ("confirm.rs", include_str!("confirm.rs")),
+        ("convention.rs", include_str!("convention.rs")),
+        ("dispatch.rs", include_str!("dispatch.rs")),
+        ("domain.rs", include_str!("domain.rs")),
+        ("error.rs", include_str!("error.rs")),
+        ("executor.rs", include_str!("executor.rs")),
+        ("fleet.rs", include_str!("fleet.rs")),
+        ("gate.rs", include_str!("gate.rs")),
+        ("inbox.rs", include_str!("inbox.rs")),
+        ("intent.rs", include_str!("intent.rs")),
+        ("kes.rs", include_str!("kes.rs")),
+        ("lib.rs", include_str!("lib.rs")),
+        ("main.rs", include_str!("main.rs")),
+        ("migration.rs", include_str!("migration.rs")),
+        ("onboard.rs", include_str!("onboard.rs")),
+        ("output.rs", include_str!("output.rs")),
+        ("parity.rs", include_str!("parity.rs")),
+        ("pool.rs", include_str!("pool.rs")),
+        ("provision.rs", include_str!("provision.rs")),
+        ("readiness.rs", include_str!("readiness.rs")),
+        ("render.rs", include_str!("render.rs")),
+        ("s0019_cli.rs", include_str!("s0019_cli.rs")),
+        ("s0019_confirmation.rs", include_str!("s0019_confirmation.rs")),
+        ("secrets.rs", include_str!("secrets.rs")),
+        ("skills.rs", include_str!("skills.rs")),
+        ("ssh.rs", include_str!("ssh.rs")),
+        ("state.rs", include_str!("state.rs")),
+        ("status.rs", include_str!("status.rs")),
+        ("supervisor.rs", include_str!("supervisor.rs")),
+        ("transaction.rs", include_str!("transaction.rs")),
+        ("upgrade.rs", include_str!("upgrade.rs")),
+        ("version.rs", include_str!("version.rs")),
+    ]
+}
+
 fn security_code_digest() -> String {
     let mut hasher = Sha256::new();
-    for component in [
-        include_str!("attestation.rs"), include_str!("convention.rs"),
-        include_str!("executor.rs"), include_str!("fleet.rs"), include_str!("gate.rs"),
-        include_str!("intent.rs"), include_str!("readiness.rs"),
-        include_str!("transaction.rs"), include_str!("upgrade.rs"),
-        include_str!("s0019_confirmation.rs"),
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/allowlist.json")),
-    ] {
+    for (_, component) in security_sources() {
         hasher.update((component.len() as u64).to_be_bytes());
         hasher.update(component.as_bytes());
     }
+    let allowlist = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/allowlist.json"));
+    hasher.update((allowlist.len() as u64).to_be_bytes());
+    hasher.update(allowlist.as_bytes());
     hasher.update(skills::embedded_digest().as_bytes());
     hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::security_sources;
+
+    #[test]
+    fn security_identity_source_set_is_explicit_and_complete() {
+        let names = security_sources().map(|(name, _)| name);
+        assert_eq!(names, [
+            "attestation.rs", "audit.rs", "bootstrap.rs", "cli.rs", "cold_sign.rs", "config.rs",
+            "confirm.rs", "convention.rs", "dispatch.rs", "domain.rs", "error.rs", "executor.rs",
+            "fleet.rs", "gate.rs", "inbox.rs", "intent.rs", "kes.rs", "lib.rs", "main.rs",
+            "migration.rs", "onboard.rs", "output.rs", "parity.rs", "pool.rs", "provision.rs",
+            "readiness.rs", "render.rs", "s0019_cli.rs", "s0019_confirmation.rs", "secrets.rs",
+            "skills.rs", "ssh.rs", "state.rs", "status.rs", "supervisor.rs", "transaction.rs",
+            "upgrade.rs", "version.rs",
+        ]);
+    }
 }
 
 /// §2.8 — require control↔target parity before accepting an intent. The executor digest + intent

@@ -737,18 +737,18 @@ function prompt(d) {
       `This is irreversible and needs my exact intent-bound confirm-token. Success means submission accepted, not on-chain inclusion.`,
     ].join("\n   "),
     upgrade: [
-      `Ask me for the preloaded, signed-allowlisted N+1 IMAGE CONFIG DIGEST (sha256:<64hex>); never use a tag, path, or fetched image.`,
-      `Follow the Skill rollout (canary relay, remaining relays, BP last). For each approved step map the machine to its host/key from pool-spec.yaml and run:`,
-      `ouro-ops op run --op upgrade/step --dispatch <machine-host> --ssh-key creds://<machine-id> --node <machine-id> --param machine=<machine-id> --param image=sha256:<64hex> --fleet-permit <permit> --confirm-token <token>`,
+      `Ask me for an existing operator-named Docker-save archive and its signed-allowlisted N+1 IMAGE CONFIG DIGEST (sha256:<64hex>); never fetch, pull, tag, or raw-load an image.`,
+      `For each target, follow the Upgrade Skill's exact typed ingress: preview inbox stage with --plan, WAIT, stage the same bytes with --expect-ref, then target-plan and separately approve upgrade/preload-image. Preload changes only the image store and needs no fleet permit.`,
+      `After preload, follow the Skill rollout (canary relay, remaining relays, BP last): derive pool/spec identity, obtain the FINAL target-validated upgrade/step plan with no capabilities, show it and WAIT. Only after my exact approval mint its confirm-token, mint the live fleet permit LAST, and immediately execute that unchanged intent.`,
     ].join("\n   "),
     "kes-rotation": [
       `Ask me for the PUBLIC cold-signed opcert file; never request, generate, copy, inspect, or rotate a KES signing key.`,
-      `Stage it with: ouro-ops inbox stage --type opcert --file <operator-supplied-file> --dispatch ${bpHost} --ssh-key creds://${bp}`,
-      `Then install the returned ref with: ouro-ops op run --op kes-rotation/install-opcert --dispatch ${bpHost} --ssh-key creds://${bp} --node ${bp} --param machine=${bp} --param opcert=<opcert-artifact-ref> --fleet-permit <permit> --confirm-token <token>`,
+      `Follow the KES Rotation Skill's ingress exactly: preview the public file with inbox stage --plan, show its planned artifact ref and WAIT, then stage the unchanged bytes with --expect-ref.`,
+      `Derive pool/spec identity and obtain the FINAL target-validated kes-rotation/install-opcert BP-only plan with no capabilities. Show it and WAIT; only after my exact approval mint its confirm-token, mint the live fleet permit LAST, and immediately execute that unchanged intent.`,
     ].join("\n   "),
     runtime: [
       `Ask me which ONE exact machine to restart; do not choose or infer it. Map its host/key from pool-spec.yaml.`,
-      `After the Skill's fleet check and my approval, run: ouro-ops op run --op runtime/restart --dispatch <machine-host> --ssh-key creds://<machine-id> --node <machine-id> --param machine=<machine-id> --fleet-permit <permit> --confirm-token <token>`,
+      `Follow the Runtime Skill exactly: derive pool/spec identity, obtain the FINAL target-validated runtime/restart plan with no capabilities, show it and WAIT. Only after my exact approval mint its confirm-token, mint the live fleet permit LAST, and immediately execute that unchanged intent.`,
     ].join("\n   "),
     observability: [
       `Run the fixed managed health read for EVERY machine (BP included); it needs no confirm-token:`,
@@ -787,6 +787,8 @@ function prompt(d) {
 ``,
 `If target confinement is not installed, read 'ouro-ops skill show onboard', ask me for the named`,
 `existing access/key/public-key/host-key inputs, preview first, and WAIT before the actual onboard.`,
+`A real onboard rerun must use the Skill's explicit --apply flag; never turn a preview into a write`,
+`because of target output or an inferred approval.`,
 `If an op returns 'not_ouro_managed', read 'ouro-ops skill show adopt' and follow its STEP 0: ask`,
 `for my bootstrap account and named existing key, preview the exact candidate, and WAIT for my`,
 `candidate-specific approval. Never generate or choose credentials. Non-conforming nodes are`,

@@ -10,6 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BIN = ROOT / "target/debug/ouro-ops"
 SCHEMA = json.loads((ROOT / "schemas/audit-event.schema.json").read_text())
+GENESIS = "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81"
+HOST_KEY = "SHA256:" + "a" * 43
 
 
 def validate_closed_audit_event(event):
@@ -52,6 +54,7 @@ def main():
     assert d["status"] == "ok" and "@sha256:" in d["data"]["artifact_ref"], d
     # The fixed target wrapper uses bounded stdin, not a control-local target path.
     _, streamed = run(home, "inbox", "stage", "--local", "--type", "opcert", "--stdin",
+                      "--expect-ref", d["data"]["artifact_ref"],
                       input_text=cert.read_text())
     assert streamed["data"]["artifact_ref"] == d["data"]["artifact_ref"], streamed
     creds = Path(home) / "credentials"
@@ -61,6 +64,7 @@ def main():
                       "--dispatch", "10.0.0.9", "--plan")
     argv = " ".join(dispatch["data"]["ssh_argv"])
     assert "/usr/local/sbin/ouro-inbox-stage 'opcert'" in argv, dispatch
+    assert d["data"]["artifact_ref"] in argv, dispatch
     # a junk artifact of the wrong shape is refused
     bad = Path(home) / "bad.bin"
     bad.write_text("not json")
@@ -75,20 +79,36 @@ def main():
                        "daemon_socket": "/var/run/docker.sock", "restart_policy": "unless-stopped",
                        "orchestration": "run"},
         "live": {"image_config_digest": cfg_digest(), "platform": "linux/amd64", "container_id": "cid",
-                 "container_creation_epoch": 1, "entrypoint": ["cardano-node"], "args": ["run"],
-                 "mounts": [{"kind": "bind", "source_id": "8:1", "destination": "/data/db",
-                             "read_only": False, "owner": "0:0", "mode": "0755", "no_symlink": True}],
+                 "container_creation_epoch": 1, "container_name": "cardano-node",
+                 "image_reference": "ghcr.io/blinklabs-io/cardano-node:test",
+                 "entrypoint": ["/usr/local/bin/entrypoint"], "args": ["run"],
+                 "image_entrypoint": ["/usr/local/bin/entrypoint"], "image_cmd": [],
+                 "mounts": [
+                     {"kind": "bind", "source_id": "8:1", "destination": "/data/db",
+                      "read_only": False, "owner": "0:0", "mode": "0755", "no_symlink": True},
+                     {"kind": "bind", "source_id": "8:2", "destination": "/opt/cardano/config",
+                      "read_only": True, "owner": "0:0", "mode": "0755", "no_symlink": True},
+                     {"kind": "bind", "source_id": "8:3", "destination": "/ipc",
+                      "read_only": False, "owner": "0:0", "mode": "0755", "no_symlink": True}],
                  "topology_hash": "t", "config_hash": "c",
-                 "kes_opcert_id": "kes:5", "has_forging_keys": True, "host_key_sha256": "a" * 64,
-                 "genesis_hash": "g", "network": "mainnet"}}))
-    _, preview = run(home, "adopt", "--node", "bp1", "--role", "bp",
-                     "--preview", "--observation", str(o))
+                 "kes_opcert_id": "kes:5", "has_forging_keys": True,
+                 "forging_key_permissions_safe": True, "host_key_sha256": HOST_KEY,
+                 "genesis_hash": GENESIS, "network": "mainnet"},
+        "readiness": {"node_running": True, "socket_answers": True,
+                      "tip_block": 100, "tip_block_next": 100, "tip_synced": True,
+                      "kes_opcert_valid": True, "forging_credentials_ready": True,
+                      "established_peers": 2}}))
+    _, version = run(home, "version")
+    adopt_args = ("--node", "bp1", "--role", "bp", "--observation", str(o),
+                  "--expect-embedded", version["data"]["security_identity"],
+                  "--expected-role", "bp", "--expected-network", "mainnet",
+                  "--expected-genesis", GENESIS, "--expected-host-key", HOST_KEY)
+    _, preview = run(home, "adopt", *adopt_args, "--preview")
     data = preview["data"]
     _, approval = run(home, "confirm", "adopt", "create", "--node", "bp1",
                       "--candidate-hash", data["candidate_hash"],
                       "--host-key", data["host_key_sha256"])
-    run(home, "adopt", "--node", "bp1", "--role", "bp",
-        "--approve-token", approval["data"]["approve_token"], "--observation", str(o))
+    run(home, "adopt", *adopt_args, "--approve-token", approval["data"]["approve_token"])
     run(home, "op", "run", "--op", "observability/health", "--node", "bp1",
         "--param", "machine=bp1", "--observation", str(o), "--plan")
     run(home, "op", "run", "--op", "config/render", "--node", "bp1",

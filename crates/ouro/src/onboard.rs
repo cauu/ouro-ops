@@ -16,14 +16,19 @@ use crate::{OuroError, Result};
 
 /// The fixed root-owned wrapper the `ouro-op` sudoers entry allows: it ONLY ever runs
 /// `ouro-ops op "$@"`, so the confined principal cannot invoke adopt/onboard/other subcommands.
-pub const OP_WRAPPER: &str = "#!/bin/sh\nexec /usr/local/bin/ouro-ops op \"$@\"\n";
+pub const OP_WRAPPER: &str = "#!/bin/sh\n\
+unset OURO_ATTESTATION OURO_ALLOWLIST_FILE OURO_PROBE_LIB OURO_PLATFORM OURO_HOST_KEY_SHA256 OURO_READINESS_SAMPLE_DELAY\n\
+export HOME=/root OURO_HOME=/var/lib/ouro\n\
+exec /usr/local/bin/ouro-ops op \"$@\"\n";
 
 /// Separate fixed ingress wrapper. It accepts exactly one closed artifact kind and streams stdin
 /// into the target-local inbox; it cannot invoke any other ouro command.
 pub const INBOX_WRAPPER: &str = "#!/bin/sh\n\
-[ \"$#\" -eq 1 ] || exit 64\n\
+[ \"$#\" -eq 2 ] || exit 64\n\
 case \"$1\" in opcert|tx|image) ;; *) exit 64 ;; esac\n\
-exec /usr/local/bin/ouro-ops inbox stage --local --type \"$1\" --stdin\n";
+unset OURO_ATTESTATION OURO_ALLOWLIST_FILE OURO_PROBE_LIB OURO_PLATFORM OURO_HOST_KEY_SHA256 OURO_READINESS_SAMPLE_DELAY\n\
+export HOME=/root OURO_HOME=/var/lib/ouro\n\
+exec /usr/local/bin/ouro-ops inbox stage --local --type \"$1\" --stdin --expect-ref \"$2\"\n";
 
 /// sudoers confines `ouro-op` to the op wrapper (NOPASSWD, env reset, fixed secure_path).
 pub const OP_SUDOERS: &str = concat!(
@@ -856,6 +861,10 @@ mod tests {
         assert!(d.contains(&"install inbox wrapper"));
         // The op wrapper only runs `ouro-ops op`, never tool run.
         assert!(OP_WRAPPER.contains("ouro-ops op \"$@\""));
+        assert!(OP_WRAPPER.contains("OURO_HOME=/var/lib/ouro"));
+        assert!(OP_WRAPPER.contains("unset OURO_ATTESTATION OURO_ALLOWLIST_FILE OURO_PROBE_LIB"));
+        assert!(INBOX_WRAPPER.contains("OURO_HOME=/var/lib/ouro"));
+        assert!(INBOX_WRAPPER.contains("unset OURO_ATTESTATION OURO_ALLOWLIST_FILE OURO_PROBE_LIB"));
         assert!(!OP_WRAPPER.contains("tool run"), "greenfield: no S0017 tool-run wrapper");
         // sudoers confines ouro-op to the op wrapper only.
         assert!(OP_SUDOERS.contains("ouro-op ALL=(root) NOPASSWD: /usr/local/sbin/ouro-op-run"));

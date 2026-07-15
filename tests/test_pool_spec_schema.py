@@ -41,6 +41,12 @@ def main():
     bootstrap_spec["machines"][0]["ssh"]["user"] = "-oProxyCommand=evil"
     errors = list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(bootstrap_spec))
     assert errors, "unsafe ssh.user unexpectedly passed"
+
+    for digest in ("a" * 63, "a" * 65, "A" * 64):
+        bad_hash = load_yaml("examples/pool-spec.minimal.yaml")
+        bad_hash["pool"]["genesis_hashes"]["shelley"] = digest
+        errors = list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(bad_hash))
+        assert errors, f"noncanonical genesis SHA-256 unexpectedly passed: {digest!r}"
     print("pool-spec schema fixtures passed")
 
 

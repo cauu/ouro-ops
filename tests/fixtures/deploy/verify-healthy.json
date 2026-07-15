@@ -11,7 +11,7 @@
       "metrics_12798": true,
       "chrony_offset_ms": 8,
       "network_magic": 1,
-      "genesis_hash": "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35",
+      "genesis_hash": "162d29c4e1cf6b8a84f2d692e67a3ac6bc7851bc3e6e4afe64d15778bed8bd86",
       "peers": { "inbound": 0, "outbound": 1 },
       "topology": { "mode": "p2p", "local_roots_ok": true, "peer_sharing_ok": true },
       "db": { "ledger_sanity": true, "era_mismatch": false },
@@ -30,7 +30,7 @@
       "metrics_12798": true,
       "chrony_offset_ms": 4,
       "network_magic": 1,
-      "genesis_hash": "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35",
+      "genesis_hash": "162d29c4e1cf6b8a84f2d692e67a3ac6bc7851bc3e6e4afe64d15778bed8bd86",
       "peers": { "inbound": 4, "outbound": 7 },
       "topology": { "mode": "p2p", "local_roots_ok": true, "peer_sharing_ok": true },
       "db": { "ledger_sanity": true, "era_mismatch": false }

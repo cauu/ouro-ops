@@ -4,7 +4,7 @@
 //! is gated by SIGNED metadata declaring node/cli/protocol and DB-format compatibility. The order:
 //! upgrade ouro first, canary a relay, BP last, preserve volumes, verify, then atomically rotate
 //! the attestation. Rollback restores runtime AND attestation ONLY if a tested backward-compatible
-//! downgrade or a crash-consistent volume snapshot exists; otherwise the ONLY honest outcome is
+//! downgrade exists; otherwise the ONLY honest outcome is
 //! forward-recovery / re-sync — and we say so rather than promise a rollback we cannot deliver.
 //! Images arrive preloaded via the inbox (§2.7); no on-target fetch.
 
@@ -25,7 +25,9 @@ pub struct TransitionMeta {
     /// The old node can read any DB writes made by N+1 (N+1 data → N runtime). This, not forward
     /// compatibility, is what makes a runtime downgrade safe.
     pub db_backward_compatible: bool,
-    /// A crash-consistent volume snapshot was taken before the upgrade (with capacity checked).
+    /// Release metadata may require/describe snapshots, but this static bit is NOT proof that a
+    /// snapshot exists for this node/step. Automatic rollback ignores it until a future intent
+    /// binds a concrete snapshot id, capacity check, creation evidence, and restore plan.
     pub snapshot_taken: bool,
 }
 
@@ -48,7 +50,7 @@ pub fn plan_rollout(relays: &[&str], bp: &str) -> Vec<RolloutStep> {
 
 /// Whether a true rollback (restore runtime + attestation to N) is possible for this transition.
 pub fn rollback_possible(meta: &TransitionMeta) -> bool {
-    meta.db_backward_compatible || meta.snapshot_taken
+    meta.db_backward_compatible
 }
 
 /// The honest outcome the spec/operator must be told when an upgrade step fails.
@@ -131,10 +133,10 @@ mod tests {
         let mut m = meta();
         m.db_backward_compatible = true;
         assert_eq!(failure_outcome(&m), FailureOutcome::RollbackToN);
-        // A snapshot restores the rollback path.
+        // Static signed metadata is not per-node snapshot evidence and cannot restore rollback.
         m.db_backward_compatible = false;
         m.snapshot_taken = true;
-        assert_eq!(failure_outcome(&m), FailureOutcome::RollbackToN);
+        assert_eq!(failure_outcome(&m), FailureOutcome::ReSyncRequired);
     }
 
     #[test]

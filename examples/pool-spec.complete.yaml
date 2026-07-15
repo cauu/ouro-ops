@@ -4,10 +4,10 @@ pool:
   network: mainnet
   network_magic: 764824073
   genesis_hashes:
-    byron: "f0f7892e57e32a7fbb6cfefb84c6a9c8b5d6847096d842e3"
-    shelley: "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35"
-    alonzo: "7e94a15f55d1e82d9b1d322dbbd5c8f0a11a9c6a8f5f2d0e"
-    conway: "4f8c2e9db1a334c66cf1217e2d308f794b08dd761d3e84ba"
+    byron: "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb"
+    shelley: "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81"
+    alonzo: "7e94a15f55d1e82d10f09203fa1d40f8eede58fd8066542cf6566008068ed874"
+    conway: "15a199f895e461ec0ffc6dd4e4028af28a492ab4e806d39cb674c88f7643ef62"
   metadata_url: "https://pool.example.com/metadata.json"
   pledge_lovelace: 100000000000
   margin: 0.02

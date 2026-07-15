@@ -238,6 +238,8 @@ impl BootstrapTransport {
             "IdentitiesOnly=yes".to_string(),
             "-o".to_string(),
             host_key.as_opt().to_string(),
+            "-o".to_string(),
+            "GlobalKnownHostsFile=/dev/null".to_string(),
         ];
         if let Some(path) = known_hosts {
             argv.extend([
@@ -499,6 +501,7 @@ mod tests {
         assert!(joined.contains("StrictHostKeyChecking=yes"));
         assert!(joined.contains("IdentitiesOnly=yes"));
         assert!(joined.contains("UserKnownHostsFile=/control/ouro-known-hosts"));
+        assert!(joined.contains("GlobalKnownHostsFile=/dev/null"));
     }
 
     #[test]

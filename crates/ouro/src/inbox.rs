@@ -30,6 +30,12 @@ pub enum ArtifactType {
     Image,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ArtifactPreview {
+    pub artifact_ref: String,
+    pub size_bytes: u64,
+}
+
 impl ArtifactType {
     pub fn max_bytes(self) -> usize {
         match self {
@@ -64,9 +70,18 @@ pub fn stage_file(inbox: &Path, kind: ArtifactType, source: &Path) -> Result<Str
 /// Open a bounded regular source for streaming transport. The target independently performs full
 /// type/domain validation before finalizing it.
 pub fn open_source(kind: ArtifactType, source: &Path) -> Result<fs::File> {
-    let metadata = fs::symlink_metadata(source)
-        .map_err(|e| OuroError::Validation(format!("cannot inspect artifact: {e}")))?;
-    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
+    }
+    let file = options.open(source)
+        .map_err(|e| OuroError::Validation(format!("cannot open artifact safely: {e}")))?;
+    let metadata = file.metadata()
+        .map_err(|e| OuroError::Validation(format!("cannot inspect opened artifact: {e}")))?;
+    if !metadata.file_type().is_file() {
         return Err(OuroError::Validation(
             "artifact source must be a regular non-symlink file".into(),
         ));
@@ -87,12 +102,52 @@ pub fn open_source(kind: ArtifactType, source: &Path) -> Result<fs::File> {
             kind.max_bytes()
         )));
     }
-    fs::File::open(source).map_err(Into::into)
+    Ok(file)
+}
+
+/// Fully validate and identify the exact opened bytes without staging them. The returned file is
+/// rewound for transport; a later caller can require the planned reference to defeat path swaps.
+pub fn preview_source(kind: ArtifactType, source: &Path) -> Result<(fs::File, ArtifactPreview)> {
+    let mut file = open_source(kind, source)?;
+    let size_bytes = file.metadata()?.len();
+    match kind {
+        ArtifactType::Opcert | ArtifactType::Tx => {
+            let mut bytes = Vec::with_capacity(size_bytes as usize);
+            file.read_to_end(&mut bytes)?;
+            validate_shape(kind, &bytes)?;
+        }
+        ArtifactType::Image => validate_image_archive_file(file.try_clone()?)?,
+    }
+    file.seek(SeekFrom::Start(0))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    let digest = hex_digest(hasher.finalize().as_slice());
+    file.seek(SeekFrom::Start(0))?;
+    Ok((file, ArtifactPreview {
+        artifact_ref: format!("{}-{}@sha256:{}", kind.prefix(), &digest[..8], digest),
+        size_bytes,
+    }))
 }
 
 /// Bounded ingress used by the target-side SSH stdin wrapper. Reads at most `limit + 1`, so an
 /// oversized sender never causes unbounded allocation before the size gate fires.
 pub fn stage_reader<R: Read>(inbox: &Path, kind: ArtifactType, reader: R) -> Result<String> {
+    stage_reader_expected(inbox, kind, reader, None)
+}
+
+pub fn stage_reader_expected<R: Read>(
+    inbox: &Path,
+    kind: ArtifactType,
+    reader: R,
+    expected_ref: Option<&str>,
+) -> Result<String> {
     prepare_inbox(inbox)?;
     let tmp = inbox.join(format!(".incoming.{}.tmp", uuid::Uuid::new_v4().simple()));
     let mut options = OpenOptions::new();
@@ -139,6 +194,14 @@ pub fn stage_reader<R: Read>(inbox: &Path, kind: ArtifactType, reader: R) -> Res
         return Err(error);
     }
     let digest = hex_digest(hasher.finalize().as_slice());
+    let reference = format!("{}-{}@sha256:{}", kind.prefix(), &digest[..8], digest);
+    if expected_ref.is_some_and(|expected| expected != reference) {
+        fs::remove_file(&tmp).ok();
+        return Err(OuroError::Validation(
+            "streamed artifact bytes do not match the reviewed reference — nothing finalized"
+                .into(),
+        ));
+    }
     let path = inbox.join(&digest);
     match fs::hard_link(&tmp, &path) {
         Ok(()) => {
@@ -147,7 +210,6 @@ pub fn stage_reader<R: Read>(inbox: &Path, kind: ArtifactType, reader: R) -> Res
         }
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
             fs::remove_file(&tmp)?;
-            let reference = format!("{}-{}@sha256:{}", kind.prefix(), &digest[..8], digest);
             resolve_typed(inbox, &reference, kind)?;
         }
         Err(error) => {
@@ -155,7 +217,7 @@ pub fn stage_reader<R: Read>(inbox: &Path, kind: ArtifactType, reader: R) -> Res
             return Err(error.into());
         }
     }
-    Ok(format!("{}-{}@sha256:{}", kind.prefix(), &digest[..8], digest))
+    Ok(reference)
 }
 
 /// Stage bytes into the inbox. Validates size + type-specific shape, stores content-addressed, and
@@ -320,7 +382,81 @@ fn validate_shape(kind: ArtifactType, bytes: &[u8]) -> Result<()> {
 }
 
 fn validate_image_archive(path: &Path) -> Result<()> {
+    validate_image_archive_file(fs::File::open(path)?)
+}
+
+/// Prove that a staged Docker-save archive carries exactly one image and that image's immutable
+/// config digest is the allowlisted target the operator approved. Generic OCI layouts remain valid
+/// inbox artifacts, but v1 preload deliberately accepts only the narrower Docker-save shape that
+/// `docker load` and its rollback can identify without tag trust or platform guesswork.
+pub fn require_single_docker_config(path: &Path, expected_config_digest: &str) -> Result<()> {
+    validate_image_archive(path)?;
+    let expected = expected_config_digest.strip_prefix("sha256:").ok_or_else(|| {
+        OuroError::Validation("expected image config digest must be sha256:<64hex>".into())
+    })?;
     let mut file = fs::File::open(path)?;
+    let mut magic = [0u8; 3];
+    file.read_exact(&mut magic)
+        .map_err(|_| OuroError::Validation("image archive is truncated".into()))?;
+    file.seek(SeekFrom::Start(0))?;
+    let reader: Box<dyn Read> = if magic == [0x1f, 0x8b, 0x08] {
+        Box::new(flate2::read::GzDecoder::new(file))
+    } else {
+        Box::new(file)
+    };
+    let mut archive = tar::Archive::new(reader);
+    let mut manifest = None;
+    for entry in archive.entries()
+        .map_err(|error| OuroError::Validation(format!("image tar is invalid: {error}")))?
+    {
+        let entry = entry
+            .map_err(|error| OuroError::Validation(format!("image tar entry is invalid: {error}")))?;
+        if entry.path().ok().as_deref() == Some(Path::new("manifest.json")) {
+            let mut bytes = Vec::new();
+            entry.take(1024 * 1024 + 1).read_to_end(&mut bytes)?;
+            if bytes.len() > 1024 * 1024 || manifest.replace(bytes).is_some() {
+                return Err(OuroError::Validation(
+                    "Docker image archive has ambiguous manifest.json metadata".into(),
+                ));
+            }
+        }
+    }
+    let images: Vec<serde_json::Value> = serde_json::from_slice(
+        manifest.as_deref().ok_or_else(|| {
+            OuroError::Validation(
+                "upgrade preload requires a Docker-save archive with manifest.json".into(),
+            )
+        })?,
+    ).map_err(|_| OuroError::Validation("Docker image manifest.json is malformed".into()))?;
+    if images.len() != 1 {
+        return Err(OuroError::Validation(
+            "upgrade preload archive must contain exactly one image".into(),
+        ));
+    }
+    if images[0].get("RepoTags").is_some_and(|tags| match tags {
+        serde_json::Value::Null => false,
+        serde_json::Value::Array(values) => !values.is_empty(),
+        _ => true,
+    }) {
+        return Err(OuroError::Validation(
+            "upgrade preload archive must not carry RepoTags; tag changes are not authorized"
+                .into(),
+        ));
+    }
+    let config = images[0].get("Config").and_then(serde_json::Value::as_str)
+        .ok_or_else(|| OuroError::Validation("Docker image manifest lacks Config".into()))?;
+    let actual = config.strip_prefix("blobs/sha256/")
+        .or_else(|| config.strip_suffix(".json"))
+        .ok_or_else(|| OuroError::Validation("Docker image Config path is not digest-addressed".into()))?;
+    if actual != expected {
+        return Err(OuroError::Validation(format!(
+            "image archive config digest sha256:{actual} differs from approved {expected_config_digest}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_image_archive_file(mut file: fs::File) -> Result<()> {
     let mut magic = [0u8; 3];
     file.read_exact(&mut magic)
         .map_err(|_| OuroError::Validation("image archive is truncated".into()))?;
@@ -508,6 +644,10 @@ mod tests {
     }
 
     fn valid_image_tar() -> Vec<u8> {
+        image_tar_with_tags(serde_json::json!([]))
+    }
+
+    fn image_tar_with_tags(tags: serde_json::Value) -> Vec<u8> {
         fn append(builder: &mut tar::Builder<Vec<u8>>, path: &str, content: &[u8]) {
             let mut header = tar::Header::new_gnu();
             header.set_size(content.len() as u64);
@@ -520,7 +660,7 @@ mod tests {
         let layer_name = "layer/layer.tar";
         let manifest = serde_json::to_vec(&serde_json::json!([{
             "Config": config_name.clone(),
-            "RepoTags": [],
+            "RepoTags": tags,
             "Layers": [layer_name],
         }])).unwrap();
         let mut builder = tar::Builder::new(Vec::new());
@@ -571,7 +711,21 @@ mod tests {
         assert!(stage(&dir, ArtifactType::Tx, br#"{"type":"NodeOperationalCertificate","cborHex":"aa"}"#).is_err());
         // Magic-only junk is refused; a domain-valid Docker save archive is accepted.
         assert!(stage(&dir, ArtifactType::Image, &[0x1f, 0x8b, 0x08, 0x00]).is_err());
-        assert!(stage(&dir, ArtifactType::Image, &valid_image_tar()).is_ok());
+        let image = stage(&dir, ArtifactType::Image, &valid_image_tar()).unwrap();
+        let image_path = resolve_typed(&dir, &image, ArtifactType::Image).unwrap();
+        let config = br#"{"rootfs":{"type":"layers","diff_ids":[]}}"#;
+        let expected = format!("sha256:{}", sha256_hex(config));
+        assert!(require_single_docker_config(&image_path, &expected).is_ok());
+        assert!(require_single_docker_config(
+            &image_path, &format!("sha256:{}", "a".repeat(64))
+        ).is_err());
+
+        let tagged = stage(&dir, ArtifactType::Image, &image_tar_with_tags(
+            serde_json::json!(["cardano-node:current"]),
+        )).unwrap();
+        let tagged_path = resolve_typed(&dir, &tagged, ArtifactType::Image).unwrap();
+        assert!(require_single_docker_config(&tagged_path, &expected).is_err(),
+                "archive tag mutation is not part of the approved preload state");
         std::fs::remove_dir_all(&dir).ok();
     }
 

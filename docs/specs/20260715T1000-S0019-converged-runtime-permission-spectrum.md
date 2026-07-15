@@ -1245,3 +1245,136 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   pass. Live functional replay used immediately preceding digest `3a4cd41b…`; the only subsequent
   embedded delta is the matching public schema fix, to be converged with the next combined live
   binary rollout. Operator-owned `pool-spec.yaml` remains unmodified and untracked.
+
+## 33. Stateful Skill Preview and Fleet-Fact Repair (append-only)
+- 2026-07-16T02:35+0800 p10-3 code review found that dispatched `op run --plan` stopped at a local
+  SSH argv preview. It therefore returned success before registry, adoption, active allowlist,
+  parity, live-drift, artifact and fleet checks; even an unknown or retired operation could appear
+  planned. The fleet permit command also trusted caller-supplied role, online-relay and
+  relays-remaining counts, so the signed permit authenticated agent assertions rather than live
+  fleet evidence. User SSH config/agent identities were still enabled on several dispatch paths.
+- Repair decision: ordinary `--plan` is forwarded and executed through the confined target wrapper.
+  It performs the normal target gates and renders the fixed executor without a runtime mutation;
+  `--transport-plan` is the explicitly weaker SSH-argv-only inspection and reports
+  `target_validated:false`. Plans and managed reads do not reconcile journals or create persistent
+  node locks; they fail closed on pending transaction/seal state, while the later real mutation
+  acquires the lock and rechecks immediately before commit. Artifact-bearing plans resolve and
+  validate actual target inbox bytes rather than presenting an absent-artifact placeholder.
+- §2.15 operation-table extension: `fleet/status | READ | machine | read:fleet-status | no secret`.
+  This internal closed operation is reachable only through the normal pinned `ouro-op` wrapper and
+  returns node id, attested role, readiness boolean, current image config digest and state
+  generation after adoption, allowlist, parity and live-identity checks. It does not expose command
+  execution or accept caller-supplied availability data.
+- Fleet permits now require a validated pool spec and query `fleet/status` on every declared target
+  before acquiring a lease or signing anything. Target role, online relay count and upgrade
+  relays-remaining are derived from that complete snapshot; the old caller-supplied flags are
+  rejected. The signed permit includes the snapshot start epoch and is rejected after two minutes,
+  even if its outer lease remains live. Upgrade permits additionally bind the exact target image.
+  Runtime, upgrade and KES Skills specify provisional target plan → explicit authorization → live
+  permit → final target plan/hash → exact approval → confirm-token → real execution, and forbid a
+  confirm-token in plan mode.
+
+## 34. p10-3 Security Correction and Final Authorization Order (append-only)
+- 2026-07-16T03:24+0800 supersedes the provisional/two-minute sequence recorded at the end of §33.
+  A disruptive target plan is FINAL before either authorization capability exists. The stable
+  approved semantics include: stable pool id, exact full pool-spec revision digest, operator
+  minimum-online-relay policy, operation payload and (for upgrade) an opaque target-secret-keyed
+  binding to the complete observed recreate spec. Plan rejects both `--fleet-permit` and
+  `--confirm-token` before SSH construction. The only valid order is: inspect pool-spec identity →
+  target FINAL plan with policy flags → show exact plan and WAIT for operator approval → mint the
+  intent-bound confirmation → collect all live fleet facts and mint a 30-second permit LAST →
+  execute the unchanged intent immediately. A permit never enters or changes a plan.
+- The stable `pool_id` is derived from network, Shelley genesis and the immutable logical BP id; it
+  does not change when metadata, node version, credential alias or SSH endpoint changes. The full
+  canonical spec digest remains separately bound as the exact approved revision. This prevents
+  benign revisions from permanently tripping target fencing and prevents two spec revisions from
+  creating independent lease namespaces. The permit signs stable id, exact revision, target node,
+  role, network, genesis, attested host-key identity, target image (upgrade), exact final intent,
+  quorum facts, fencing token and 30-second fact/expiry window. `fleet/status` returns only the
+  corresponding closed live projection after adoption/allowlist/parity/supervisor/role/drift gates.
+- Plan/read/live gates revalidate the complete v1 supervisor shape and active role rule, not only
+  container identity. A relay that gains forging keys, a second node container, orchestration or
+  restart-policy drift is refused and cannot count toward fleet availability. KES opcert install is
+  explicitly BP-only. Post-commit verification applies the same shape/role gate before readiness or
+  attestation advancement.
+- Upgrade requires the exact allowlisted config digest to be preloaded, binds the root-only recreate
+  spec and rechecks it immediately before commit. Human ToolOutput redacts every Docker environment
+  value; the opaque HMAC binding detects changes without publishing an offline secret oracle. The
+  probe returns `recreate:null` for any unmodeled non-default Docker run setting (identity,
+  privilege/capability/security options, namespaces, devices, DNS/hosts, tmpfs/ulimits or resource
+  limits) rather than silently dropping it.
+- All target privileged wrappers and adoption dispatch pin `OURO_HOME=/var/lib/ouro` and sanitize
+  inherited HOME/probe/allowlist/attestation overrides. Embedded probe extraction uses a random
+  exclusive 0700 directory and create-new 0600 `O_NOFOLLOW` file with propagated errors and RAII
+  cleanup. All SSH channels ignore user config, agents/default identities and system-global
+  known-hosts, trusting only the ouro-managed pin and selected credential. Bootstrap usernames are
+  validated before SSH argv construction.
+- Ordinary plan/read/write commands never auto-verify or auto-rollback a pending journal. Such a
+  hidden recovery could mutate a node before fresh fleet/confirmation authorization; pending state
+  therefore fails closed for the explicit operator recovery procedure until a separately planned,
+  fleet-bound recovery intent exists. No normal invocation may turn stale durable context into an
+  executor call.
+- KES ingress is a separate bounded mutation: preview the public artifact transport first, WAIT for
+  permission to stage, then stage and use the returned digest reference. Operation approval follows
+  only after the target validates that exact staged artifact and displays the backup/install/restart
+  plan. Runtime, upgrade and KES Skills and CLI help use only this corrected permit-last order.
+
+## 35. p10-3 Completion, Typed Image Ingress and Safe Live Stop (append-only)
+- 2026-07-16T04:39+0800 [x] p10-3 completed at the authorized non-mutating boundary. Runtime,
+  upgrade and KES now share one enforceable order: operator-owned spec identity → target-validated
+  final plan without capabilities → exact human approval → intent-bound confirmation → fresh fleet
+  permit last → immediate execution of the unchanged intent. Plan mode rejects capabilities, and
+  `--transport-plan` is explicitly labeled as an unvalidated transport preview.
+- Upgrade image ingress is now a separate dangerous `upgrade/preload-image` intent. It accepts only
+  an operator-named, typed, content-addressed Docker-save inbox reference, resolves exactly one
+  image config digest, requires that digest to be signed-allowlisted for the target platform and
+  absent before load, rejects every non-empty `RepoTags` set, and rechecks those facts under lock
+  before fixed `docker load --input`. Postverify proves the exact config digest is present; rollback
+  removes only that exact image because absence-before-load was proven. The operation does not
+  restart or recreate the node and therefore consumes no fleet permit.
+- KES public-opcert ingress now parses the real text-envelope CBOR, verifies the cold-key Ed25519
+  signature over the operational-certificate signable bytes, checks the public KES verification
+  key binding and obtains the live counter/window through `cardano-cli query kes-period-info`.
+  Corrupt signatures, counter replay, trailing/multiple JSON results and misleading human-prefix
+  output are refused. BP key readiness proves owner-only KES/VRF secret permissions and ownership
+  without returning secret material; relays carrying either forging key are refused.
+- Adoption, fleet reads and every privileged operation revalidate the exact target ED25519 host-key
+  fingerprint, v1 supervisor shape, role/key rule, signed allowlist, embedded parity and live drift.
+  All SSH-backed diagnostic, adoption, fleet and operation paths use bounded execution and bounded
+  protocol output. Closed argument grammars reject unknown/internal flags before transport; onboard
+  requires exactly one of `--dry-run` or explicit `--apply`.
+- The website prompt now describes typed image/opcert preview plus `--expect-ref`, target-final plan
+  and permit-last ordering. It no longer inlines the old capability-bearing final-command shortcut,
+  and explicitly states that real onboarding requires `--apply` after approval.
+- Independent live-agent replay against `bp1` and `relay1` proved onboard dry-run, target-plan vs
+  transport-plan separation, deny-by-default unknown/retired operations, spec-derived fleet facts,
+  unprivileged diagnostics and the no-capability-before-approval boundary. Both real adoption
+  previews stopped correctly on current config digest
+  `sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a`,
+  which is absent from the signed release allowlist; no attestation, inbox artifact, token, permit,
+  restart, image load, upgrade or opcert activation was created.
+- LETC-3 | stack: rust | command: `cargo test -p ouro` | result: pass | note: 174/174 including
+  exact recreate/preload, RepoTags refusal, KES signature, host-key, fleet and closed-argv negatives.
+- LETC-4 | stack: python | command: `make python-test` | result: pass | note: complete probe,
+  dispatch, pipeline, inbox/audit, Skill-doc and website-prompt suite passed.
+- LETC-4 | stack: other | command: `bash ci/l2-integration.sh` | result: pass | note: all L2 gates
+  plus 174 Rust tests passed.
+- LETC-4 | stack: rust | command: `cargo clippy --all-targets --all-features -- -D warnings` |
+  result: pass | note: zero warnings.
+- LETC-4 | stack: other | command: `ouro-ops manifest verify --against
+  packaging/bundle-manifest.json` | result: pass | note: final p10-3 embedded digest
+  `25030e9363ae5eceb6a5958d1406e7a4da906aaee74e379906e6112844d8773b` verified.
+- LETC-4 | stack: other | command: `git diff --check` | result: pass | note: patch is whitespace
+  clean and operator-owned untracked `pool-spec.yaml` remains unmodified and uncommitted.
+- External safe-stop disclosure: the signed release allowlist contains neither the live
+  `10.5.4-1` config digest nor an approved N→N+1 transition, and no release signing private key is
+  present in this repository. Fabricating a replacement trust root is forbidden; adoption and
+  upgrade must remain refused until the release authority publishes signed content.
+- Operator-owned prerequisite: `pool-spec.yaml` still describes a systemd BP although the live BP
+  is Docker, declares relay tag `10.5.4` while the live image is `10.5.4-1`, and contains truncated
+  56-character genesis hashes. It was deliberately not edited. Adoption requires the operator to
+  replace those values with independently verified live facts and exact 64-lowercase-hex hashes.
+- Residual non-blocking hardening disclosures: pending-journal recovery remains an explicit
+  operator-only procedure rather than an ordinary Skill intent; the momentary relay TCP check
+  narrows but cannot atomically eliminate the permit-to-commit race and is not Cardano readiness;
+  inbox global quota/GC and universal external-command timeouts remain P2 follow-up work.

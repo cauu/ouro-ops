@@ -14,8 +14,8 @@ live re-attestation gate before each managed operation.
   refusal. Without `--dispatch` it used to inspect the control machine, and its remote privilege
   path no longer exists.
 - For an unmanaged node, use the exact non-mutating adoption assessment:
-  `ouro-ops adopt --dispatch <host> --bootstrap-user <account> --ssh-key creds://<name> --node <id>
-  --role <bp|relay> --preview`.
+  `ouro-ops adopt --dispatch <host> --bootstrap-user <account> --ssh-key creds://<name>
+  --spec <pool-spec> --node <id> --role <bp|relay> --preview`.
 - Interpret only the typed result. A conforming candidate reports the signed convention and exact
   candidate hash. A non-conforming runtime/image/layout is refused, never adapted.
 - For an adopted node, do not run a separate detector before an operation. The mechanism probes and

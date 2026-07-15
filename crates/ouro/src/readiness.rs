@@ -5,8 +5,8 @@
 //! WITHOUT waiting for a freshly-forged block (a low-stake pool may not forge for days). So the
 //! postcondition is a set of bounded readiness PROXIES, role-specific: a BP must be running the
 //! attested container, answer on its socket on the expected network/genesis, have a valid
-//! KES/opcert with credentials loaded, and its tip must be advancing; a relay drops the forging
-//! requirements and needs advancing tip + peers.
+//! in-window KES/opcert plus a BP process configured with all forging credential files, and a
+//! synchronized tip; a relay drops the forging requirements and needs synchronized tip + peers.
 //!
 //! Dangerous writes additionally require a confirm-token bound to the EXACT canonical intent hash +
 //! a human-readable diff, so the operator approves precisely what will run (not a category).
@@ -23,11 +23,16 @@ pub struct Readiness {
     pub socket_answers: bool,
     pub network_ok: bool,
     pub genesis_ok: bool,
-    /// Two tip samples; advancing = second strictly greater.
+    /// Bounded tip samples are diagnostic only; a healthy chain may produce no block during the
+    /// short permit window. `tip_synced` comes from cardano-cli's syncProgress instead.
     pub tip_block: i64,
     pub tip_block_next: i64,
+    pub tip_synced: bool,
     pub kes_opcert_valid: bool,
-    pub credential_loaded: bool,
+    /// Honest bounded proxy: all three hot credential files exist, the container is configured as
+    /// a BP, its socket answers, and cardano-cli validates the opcert against live protocol state.
+    /// This is not a claim that the node has already forged a block with them.
+    pub forging_credentials_ready: bool,
     pub established_peers: u32,
 }
 
@@ -53,16 +58,16 @@ impl Readiness {
         if !self.network_ok || !self.genesis_ok {
             return fail("node on unexpected network/genesis");
         }
-        if !self.tip_advancing() {
-            return fail("tip not advancing");
+        if !self.tip_synced {
+            return fail("tip query reports node is not synchronized");
         }
         match self.role {
             Role::Bp => {
                 if !self.kes_opcert_valid {
                     return fail("KES/opcert invalid (bp cannot forge)");
                 }
-                if !self.credential_loaded {
-                    return fail("forging credentials not loaded");
+                if !self.forging_credentials_ready {
+                    return fail("forging credential readiness proxy did not pass");
                 }
             }
             Role::Relay => {
@@ -115,9 +120,10 @@ mod tests {
             network_ok: true,
             genesis_ok: true,
             tip_block: 100,
-            tip_block_next: 101,
+            tip_block_next: 100,
+            tip_synced: true,
             kes_opcert_valid: true,
-            credential_loaded: true,
+            forging_credentials_ready: true,
             established_peers: 5,
         }
     }
@@ -130,9 +136,9 @@ mod tests {
             |r: &mut Readiness| r.container_id_matches = false,
             |r: &mut Readiness| r.socket_answers = false,
             |r: &mut Readiness| r.network_ok = false,
-            |r: &mut Readiness| r.tip_block_next = 100, // not advancing
+            |r: &mut Readiness| r.tip_synced = false,
             |r: &mut Readiness| r.kes_opcert_valid = false,
-            |r: &mut Readiness| r.credential_loaded = false,
+            |r: &mut Readiness| r.forging_credentials_ready = false,
         ] {
             let mut r = healthy_bp();
             mutate(&mut r);
@@ -145,7 +151,7 @@ mod tests {
         let mut r = healthy_bp();
         r.role = Role::Relay;
         r.kes_opcert_valid = false; // fine for a relay
-        r.credential_loaded = false;
+        r.forging_credentials_ready = false;
         assert!(r.evaluate().is_ok(), "relay does not need forging creds");
         r.established_peers = 0;
         assert!(r.evaluate().is_err(), "relay with no peers fails");

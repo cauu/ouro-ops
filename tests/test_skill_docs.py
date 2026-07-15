@@ -97,11 +97,29 @@ def main():
         "never key contents",
         "legacy_s0017_paths_retired",
         "effective_ssh_policy_verified: true",
+        "--apply",
     ]:
         assert phrase in onboard, f"onboard Skill lacks rendered-policy guard {phrase!r}"
     adopt = (ROOT / "ouro-skills/adopt/SKILL.md").read_text()
     assert "ouro-ops creds check --name <name>" in adopt
     assert "Never list credentials" in adopt
+    upgrade = (ROOT / "ouro-skills/upgrade/SKILL.md").read_text()
+    assert "--expect-ref <planned-artifact-ref>" in " ".join(upgrade.split())
+    assert "upgrade/preload-image" in upgrade
+    for name in ("runtime", "upgrade", "kes-rotation"):
+        stateful = (ROOT / f"ouro-skills/{name}/SKILL.md").read_text()
+        for phrase in [
+            "fleet spec identity --spec",
+            "--fleet-pool-id <pool-id>",
+            "--fleet-spec-digest <pool-spec-digest>",
+            "--fleet-min-online-relays <spec-derived-policy>",
+            "--intent-hash <final-hash>",
+            "LAST",
+        ]:
+            assert phrase in stateful, f"{name} lacks permit-last flow phrase {phrase!r}"
+        assert "--pool-id" not in stateful, f"{name} retains removed caller pool-id flag"
+        assert "provisional" not in stateful.lower(), f"{name} retains provisional-plan model"
+        assert "Rerun the exact target plan with" not in stateful
     print("skill docs passed")
 
 

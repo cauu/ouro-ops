@@ -28,10 +28,11 @@ and the shared confirmation trust needed by later `ouro-ops op run --dispatch` o
   `ouro-ops creds register --name <name> --path <operator-named-absolute-path> --dry-run` and WAIT
   for approval before rerunning without `--dry-run`. This creates only a named symlink; it never
   reads or copies key contents. Do not use raw filesystem commands or invent a registration step.
-- Preview the fixed plan with `--dry-run`, then run:
+- Preview the fixed plan with `--dry-run`, then run the exact approved command with the explicit
+  `--apply` mode (omitting both modes or misspelling either one is rejected before transport):
   `ouro-ops onboard --host <target> --port 22 --bootstrap-user <account> --bootstrap-key
   creds://<name> --control-pubkey <operator-public-key-file> --ouro-binary <matching-linux-binary>
-  [--expected-host-key <sha256>]`.
+  [--expected-host-key <SHA256:base64>] --apply`.
 - In the preview, inspect `data.ssh_access_policy` as the authoritative RENDERED policy. Require its
   `allow_users` to contain `ouro-op`, `ouro-diag` and the exact named bootstrap account, require
   `bootstrap_user_preserved: true`, and show the operator its `rendered_config` before approval.

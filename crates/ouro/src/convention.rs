@@ -364,7 +364,12 @@ pub fn enforce_anti_rollback(
             "allowlist rollback refused: incoming v{incoming_version} < floor v{floor} (S0019 §2.1)"
         )));
     }
-    write_floor(&path, incoming_version.max(floor), &secret)?;
+    let next = incoming_version.max(floor);
+    // A steady-state plan/read must not rewrite anti-rollback metadata merely for checking it.
+    // Ratchet only when the floor is first established or actually advances.
+    if reset || next > recorded {
+        write_floor(&path, next, &secret)?;
+    }
     Ok(reset)
 }
 

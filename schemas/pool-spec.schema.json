@@ -245,7 +245,7 @@
     },
     "hashHex": {
       "type": "string",
-      "pattern": "^[A-Fa-f0-9]{16,128}$"
+      "pattern": "^[a-f0-9]{64}$"
     },
     "machine": {
       "type": "object",

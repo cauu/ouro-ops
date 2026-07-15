@@ -34,14 +34,24 @@ fn shell_quote(v: &str) -> String {
 
 fn base_ssh(port: u16, key: &Path, known_hosts: &Path, user: &str, host: &str) -> Vec<String> {
     vec![
+        "-F".into(),
+        "/dev/null".into(),
         "-p".into(),
         port.to_string(),
+        "-o".into(),
+        "IdentityFile=none".into(),
+        "-o".into(),
+        "IdentityAgent=none".into(),
         "-i".into(),
         key.display().to_string(),
         "-o".into(),
         "BatchMode=yes".into(),
         "-o".into(),
+        "IdentitiesOnly=yes".into(),
+        "-o".into(),
         format!("UserKnownHostsFile={}", known_hosts.display()),
+        "-o".into(),
+        "GlobalKnownHostsFile=/dev/null".into(),
         "-o".into(),
         "StrictHostKeyChecking=yes".into(), // pinned host key; no accept-new TOFU
         format!("{user}@{host}"),
@@ -79,12 +89,14 @@ pub fn inbox_dispatch_argv(
     key: &Path,
     known_hosts: &Path,
     artifact_type: &str,
+    expected_ref: &str,
 ) -> Vec<String> {
     let mut argv = base_ssh(port, key, known_hosts, OP_PRINCIPAL, host);
     argv.push("sudo".into());
     argv.push("-n".into());
     argv.push(INBOX_WRAPPER.into());
     argv.push(shell_quote(artifact_type));
+    argv.push(shell_quote(expected_ref));
     argv
 }
 
@@ -97,17 +109,23 @@ pub fn adopt_dispatch_argv(
     key: &Path,
     known_hosts: &Path,
     remote_args: &[String],
-) -> Vec<String> {
+) -> crate::Result<Vec<String>> {
+    crate::onboard::validate_bootstrap_user(bootstrap_user)?;
     let mut argv = base_ssh(port, key, known_hosts, bootstrap_user, host);
     argv.push("sudo".into());
     argv.push("-n".into());
-    argv.push("ouro-ops".into());
+    argv.push("env".into());
+    argv.push("-i".into());
+    argv.push("HOME=/root".into());
+    argv.push("OURO_HOME=/var/lib/ouro".into());
+    argv.push("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into());
+    argv.push("/usr/local/bin/ouro-ops".into());
     argv.push("adopt".into());
     argv.push("--local".into());
     for a in remote_args {
         argv.push(shell_quote(a));
     }
-    argv
+    Ok(argv)
 }
 
 #[cfg(test)]
@@ -130,9 +148,14 @@ mod tests {
         assert!(!j.contains("ouro-exec@"), "must be the onboard-installed ouro-op, not ouro-exec");
         assert!(j.contains("StrictHostKeyChecking=yes"), "host key pinned");
         assert!(j.contains("UserKnownHostsFile=/home/op/.ouro/known_hosts"));
+        assert!(j.contains("GlobalKnownHostsFile=/dev/null"));
+        assert!(j.contains("-F /dev/null"));
+        assert!(j.contains("IdentityFile=none") && j.contains("IdentityAgent=none"));
+        assert!(j.contains("IdentitiesOnly=yes"));
         assert!(j.contains("sudo -n /usr/local/sbin/ouro-op-run"), "fixed wrapper");
         assert!(j.contains("'runtime/restart'"), "op quoted");
         assert!(j.contains("--expect-embedded 'sha256:abc'"), "parity carried");
+        assert_eq!(j.matches("--expect-embedded").count(), 1, "parity flag exactly once");
         assert!(!j.contains("accept-new"));
     }
 
@@ -153,11 +176,20 @@ mod tests {
         let argv = adopt_dispatch_argv(
             "10.0.0.2", 22, "ubuntu", Path::new("/creds/bp1"),
             Path::new("/kh"), &["--node".into(), "bp1".into(), "--role".into(), "bp".into()],
-        );
+        ).unwrap();
         let j = argv.join(" ");
         assert!(j.contains("ubuntu@10.0.0.2"), "bootstrap account");
-        assert!(j.contains("ouro-ops adopt --local"), "adopt --local on target");
+        assert!(j.contains("sudo -n env -i HOME=/root OURO_HOME=/var/lib/ouro"));
+        assert!(j.contains("/usr/local/bin/ouro-ops adopt --local"), "adopt --local on target");
         assert!(j.contains("'bp1'"));
+    }
+
+    #[test]
+    fn adopt_dispatch_rejects_ssh_option_shaped_bootstrap_user() {
+        assert!(adopt_dispatch_argv(
+            "10.0.0.2", 22, "-oProxyCommand=touch /tmp/pwned", Path::new("/creds/bp1"),
+            Path::new("/kh"), &[],
+        ).is_err());
     }
 
     #[test]
@@ -168,10 +200,11 @@ mod tests {
             Path::new("/creds/ouro-op"),
             Path::new("/kh"),
             "opcert",
+            &format!("opcert-deadbeef@sha256:{}", "a".repeat(64)),
         );
         let joined = argv.join(" ");
         assert!(joined.contains("ouro-op@10.0.0.3"));
         assert!(joined.contains("StrictHostKeyChecking=yes"));
-        assert!(joined.contains("sudo -n /usr/local/sbin/ouro-inbox-stage 'opcert'"));
+        assert!(joined.contains("sudo -n /usr/local/sbin/ouro-inbox-stage 'opcert' 'opcert-deadbeef@sha256:"));
     }
 }

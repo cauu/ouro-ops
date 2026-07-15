@@ -36,7 +36,8 @@ pub fn run(args: Vec<String>) -> Result<()> {
             output::print_json(&ToolOutput::ok("ouro.version", false).with_data(json!({
                 "version": env!("CARGO_PKG_VERSION"),
                 "binary": "ouro-ops",
-                "runtime": "standalone-rust"
+                "runtime": "standalone-rust",
+                "security_identity": crate::parity::SecurityIdentity::local().wire_digest(),
             })))?;
         }
         "paths" => {
@@ -264,6 +265,7 @@ fn init_runtime_record(spec: &PoolSpec, machine_id: &str) -> Result<serde_json::
 /// S0019 p6-1 — `ouro-ops onboard`: the greenfield host-onboard (host-onboarded state). Installs
 /// the S0019 confined principals + op wrapper + binary, pins the host key. No S0017 compat.
 fn run_onboard(args: &[String]) -> Result<()> {
+    validate_onboard_args(args)?;
     let host = flag_value(args, "--host")?.to_string();
     let port: u16 = optional_flag_value(args, "--port")
         .unwrap_or("22")
@@ -275,7 +277,12 @@ fn run_onboard(args: &[String]) -> Result<()> {
     let dry_run = args.iter().any(|a| a == "--dry-run");
     let mut host_key = match optional_flag_value(args, "--host-key") {
         Some("yes") => crate::bootstrap::HostKeyCheck::Yes,
-        _ => crate::bootstrap::HostKeyCheck::AcceptNew,
+        Some("accept-new") | None => crate::bootstrap::HostKeyCheck::AcceptNew,
+        Some(value) => {
+            return Err(OuroError::InvalidArgs(format!(
+                "--host-key must be yes or accept-new, got {value:?}"
+            )))
+        }
     };
     let paths = ConfigPaths::discover();
     let key_path = key_ref.resolve(&paths.credentials_dir)?;
@@ -306,6 +313,11 @@ fn run_onboard(args: &[String]) -> Result<()> {
             .map_err(|e| OuroError::Validation(format!("cannot resolve own binary path: {e}")))?,
     };
     let expected_host_key = optional_flag_value(args, "--expected-host-key");
+    if expected_host_key.is_some_and(|fingerprint| !is_ssh_sha256_fingerprint(fingerprint)) {
+        return Err(OuroError::InvalidArgs(
+            "--expected-host-key must be an OpenSSH SHA256:<base64> fingerprint".into(),
+        ));
+    }
 
     let target = crate::bootstrap::BootstrapTarget { host: host.clone(), port, user };
     let mut transport = crate::bootstrap::BootstrapTransport::new(dry_run);
@@ -395,6 +407,58 @@ fn run_onboard(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Onboarding can rewrite SSH access, sudoers, users and the installed binary. Keep its CLI
+/// grammar closed and require an explicit mode so a misspelled preview flag can never become an
+/// apply. Parsing happens before credential resolution, host-key pinning or transport creation.
+fn validate_onboard_args(args: &[String]) -> Result<()> {
+    let value_flags = [
+        "--host",
+        "--port",
+        "--bootstrap-user",
+        "--bootstrap-key",
+        "--control-pubkey",
+        "--ouro-binary",
+        "--expected-host-key",
+        "--host-key",
+    ];
+    let bool_flags = ["--dry-run", "--apply"];
+    let mut seen = std::collections::BTreeSet::new();
+    let mut index = 0;
+    while index < args.len() {
+        let name = args[index].as_str();
+        if bool_flags.contains(&name) {
+            if !seen.insert(name) {
+                return Err(OuroError::InvalidArgs(format!("duplicate flag {name}")));
+            }
+            index += 1;
+            continue;
+        }
+        if !value_flags.contains(&name) {
+            return Err(OuroError::InvalidArgs(format!(
+                "unexpected onboard argument {name:?}"
+            )));
+        }
+        if !seen.insert(name) {
+            return Err(OuroError::InvalidArgs(format!("duplicate flag {name}")));
+        }
+        let value = args.get(index + 1).ok_or_else(|| {
+            OuroError::InvalidArgs(format!("missing value for {name}"))
+        })?;
+        if value.starts_with("--") {
+            return Err(OuroError::InvalidArgs(format!("missing value for {name}")));
+        }
+        index += 2;
+    }
+    let dry_run = seen.contains("--dry-run");
+    let apply = seen.contains("--apply");
+    if dry_run == apply {
+        return Err(OuroError::InvalidArgs(
+            "onboard requires exactly one of --dry-run or --apply".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn onboard_output_semantics(
     dry_run: bool,
     manifest_ok: bool,
@@ -410,6 +474,15 @@ fn onboard_output_semantics(
     };
     let host_key_status = if has_pinned_host_key { "pinned" } else { "not_pinned" };
     (state, None, host_key_status)
+}
+
+fn is_ssh_sha256_fingerprint(value: &str) -> bool {
+    value.strip_prefix("SHA256:").is_some_and(|encoded| {
+        encoded.len() == 43
+            && encoded.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || byte == b'+' || byte == b'/'
+            })
+    })
 }
 
 fn validate_control_pubkey(value: &str) -> Result<()> {
@@ -614,7 +687,7 @@ fn run_init(args: &[String]) -> Result<()> {
 /// connection against MITM; without it the pin is trust-on-first-use — good against LATER key
 /// swaps), then writes it (idempotently) into the ouro-managed known_hosts. Returns the pinned
 /// key's fingerprint.
-fn fingerprint_of(entry: &str) -> Option<String> {
+pub(crate) fn fingerprint_of(entry: &str) -> Option<String> {
     // Fingerprint a single known_hosts entry so each key's fingerprint is unambiguously its own
     // (fixes the "match one, pin all" flaw — pairing by position across ssh-keygen output is
     // fragile). Returns the SHA256 token, e.g. "SHA256:abc…".
@@ -678,7 +751,12 @@ fn pin_host_key(host: &str, port: u16, known_hosts: &std::path::Path, expected: 
             "could not fingerprint any host key for {host}:{port}"
         )));
     }
-    let primary = kept[0].1.clone();
+    let primary = kept.iter().find_map(|(entry, fingerprint)| {
+        (entry.split_whitespace().nth(1) == Some("ssh-ed25519"))
+            .then(|| fingerprint.clone())
+    }).ok_or_else(|| OuroError::Validation(format!(
+        "{host}:{port} did not present the Ed25519 host key required by S0019 adoption"
+    )))?;
 
     // Idempotent write: drop any prior entry for this host, then append only the kept key(s).
     if let Some(parent) = known_hosts.parent() {
@@ -1205,8 +1283,8 @@ fn run_diag_exec(args: &[String]) -> Result<()> {
         .ok_or_else(|| OuroError::InvalidArgs(
             "missing `--` separator before the diagnostic command".to_string(),
         ))?;
-    let command = args[sep + 1..].join(" ");
-    if command.trim().is_empty() {
+    let command = &args[sep + 1..];
+    if command.first().is_none_or(|program| program.is_empty()) {
         return Err(OuroError::InvalidArgs("empty diagnostic command".to_string()));
     }
 
@@ -1232,7 +1310,7 @@ fn run_diag_exec(args: &[String]) -> Result<()> {
         &machine.ssh,
         &key_path,
         &paths.known_hosts,
-        &command,
+        command,
         timeout_s,
     )?;
     store.finish_invocation(&audit_id, "diag/exec")?;
@@ -1638,7 +1716,8 @@ fn command_usage(command: &str) -> Option<&'static str> {
     Some(match command {
         "onboard" => "ouro-ops onboard --host <target> [--port 22] --bootstrap-user <account> \
                       --bootstrap-key creds://<name> --control-pubkey <operator-pub> \
-                      --ouro-binary <target-arch ouro-ops> [--expected-host-key <sha256>] [--dry-run]\n  \
+                      --ouro-binary <target-arch ouro-ops> [--expected-host-key <SHA256:base64>] \
+                      (--dry-run | --apply)\n  \
                       Installs the S0019 ouro-op/ouro-diag confinement; then adopt the node.",
         "creds" => "ouro-ops creds check --name <name> | ouro-ops creds register --name <name> \
                     --path <absolute-operator-named-private-key> [--dry-run]\n  \
@@ -1652,18 +1731,28 @@ fn command_usage(command: &str) -> Option<&'static str> {
         "deinit" => "ouro-ops deinit --host <target> [--port 22] --bootstrap-user <account> \
                      --bootstrap-key creds://<name> [--force] [--remove-node]\n  Reverses onboarding (refuses while a node runs).",
         "adopt" => "ouro-ops adopt --dispatch <host> --bootstrap-user <account> \
-                    --ssh-key creds://<name> --node <id> --role <bp|relay> --preview\n  \
+                    --ssh-key creds://<name> --spec <pool-spec> --node <id> \
+                    --role <bp|relay> --preview\n  \
                     After exact operator approval, add --approve-token <token> without --preview.",
         "op" => "ouro-ops op run --op <operation> --dispatch <host> --ssh-key creds://<name> \
-                 --node <id> --param machine=<id> [--param k=v] [--fleet-permit <json>] \
-                 [--confirm-token <token>] [--plan]\n  \
-                 Managed intent path; dangerous operations require live gates and exact approval.",
+                 --node <id> --param machine=<id> [--param k=v] \
+                 [--fleet-pool-id <id> --fleet-spec-digest sha256:<digest> \
+                  --fleet-min-online-relays <n> --fleet-permit <json>] \
+                 [--confirm-token <token>] [--plan|--transport-plan]\n  \
+                 --plan returns a final target-validated intent and rejects permit/confirm \
+                 capabilities; --transport-plan only displays SSH argv. Dangerous disruptive ops \
+                 use approval, then a 30-second fleet permit minted last.",
         "inbox" => "ouro-ops inbox stage --type <opcert|tx|image> --file <path> \
-                    --dispatch <host> --ssh-key creds://<name> [--plan]\n  \
-                    Streams one bounded public artifact to the fixed target wrapper.",
-        "fleet" => "ouro-ops fleet permit create --pool-id <id> --node <id> --op <id> \
-                    --role <bp|relay> --online-relays <n> --min-online-relays <n> \
-                    --relays-remaining <n> --holder <id> [--ttl 2m]",
+                    --dispatch <host> --ssh-key creds://<name> --plan\n  \
+                    Preview returns planned_artifact_ref; after approval rerun without --plan \
+                    and add --expect-ref <planned_artifact_ref>.",
+        "fleet" => "ouro-ops fleet spec identity --spec <pool-spec> | \
+                    fleet permit create --spec <pool-spec> --node <id> --op <id> \
+                    --intent-hash <final-plan-hash> --holder <id> \
+                    [--target-image sha256:<digest>]\n  \
+                    Identity exposes stable pool id + exact spec revision. Permit derives signed \
+                    target/network/host/quorum/BP-last facts and upgrade.min_online_relays directly \
+                    from the spec, then expires after 30 seconds.",
         "tool" => "ouro-ops tool run <skill>/<script> [--dispatch <machine>] --spec <pool-spec> \
                    [--machine <id>] [--confirm-token <tok>]\n  The sole audited write path. Read the steps from `ouro-ops skill show <skill>`.",
         "confirm" => "ouro-ops confirm create --op <id> --node <id> --intent-hash <hash> | \
