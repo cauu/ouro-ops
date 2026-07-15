@@ -24,8 +24,17 @@ use crate::supervisor::SupervisorObservation;
 use crate::transaction::{self, Journal, JournalRecord, TxOps, TxState, WriteSeal};
 use crate::{convention, parity, readiness, OuroError, Result};
 
-fn attestation_path(paths: &ConfigPaths, node: &str) -> PathBuf {
-    paths.home.join("attestations").join(format!("{node}.json"))
+/// Where the attestation lives. On the TARGET (`--local`, p5-4) it is the single root-owned file
+/// `/var/lib/ouro/node-attestation.json` (overridable via OURO_ATTESTATION, matching
+/// `ouro-attested.sh`); on the control host it is per-node under OURO_HOME (pre-dispatch modelling).
+fn attestation_path_for(paths: &ConfigPaths, node: &str, local: bool) -> PathBuf {
+    if local {
+        std::env::var_os("OURO_ATTESTATION")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(crate::attestation::ATTESTATION_PATH))
+    } else {
+        paths.home.join("attestations").join(format!("{node}.json"))
+    }
 }
 fn tx_dir(paths: &ConfigPaths) -> PathBuf {
     paths.home.join("txn")
@@ -85,6 +94,7 @@ fn read_observation(args: &[String]) -> Result<Observation> {
 /// (writes metadata only). Refuses a non-conforming node (never adapts).
 pub fn run_adopt(args: &[String]) -> Result<()> {
     let node = flag(args, "--node")?.to_string();
+    let local = args.iter().any(|a| a == "--local");
     let role = match flag(args, "--role")? {
         "bp" => Role::Bp,
         "relay" => Role::Relay,
@@ -163,8 +173,8 @@ pub fn run_adopt(args: &[String]) -> Result<()> {
     // 6. write the attestation (non-disruptive metadata write) + mirror the resolved contract for
     // the shell layout accessors (p1-5).
     let paths = ConfigPaths::discover();
-    let p = attestation_path(&paths, &node);
-    std::fs::create_dir_all(p.parent().unwrap()).ok();
+    let p = attestation_path_for(&paths, &node, local);
+    if let Some(parent) = p.parent() { std::fs::create_dir_all(parent).ok(); }
     let mut doc = serde_json::to_value(&att).unwrap();
     doc["contract"] = json!({ "in_container_paths": contract.in_container_paths });
     std::fs::write(&p, serde_json::to_string_pretty(&doc).unwrap())
@@ -207,7 +217,8 @@ pub fn run_op(args: &[String]) -> Result<()> {
     parity::require_registered_write(&op)?;
 
     // Load the attestation (must be adopted, §1.C / §2.4).
-    let att = load_attestation(&paths, &node)?;
+    let local = args.iter().any(|a| a == "--local");
+    let att = load_attestation(&paths, &node, local)?;
 
     // Recovery pass BEFORE any new write (§2.6): reconcile an interrupted transaction.
     let journal = Journal::at(&tx_dir(&paths), &node);
@@ -379,8 +390,8 @@ fn dispatch_op(
     std::process::exit(out.status.code().unwrap_or(255));
 }
 
-fn load_attestation(paths: &ConfigPaths, node: &str) -> Result<AdoptionAttestation> {
-    let p = attestation_path(paths, node);
+fn load_attestation(paths: &ConfigPaths, node: &str, local: bool) -> Result<AdoptionAttestation> {
+    let p = attestation_path_for(paths, node, local);
     let text = std::fs::read_to_string(&p).map_err(|_| {
         OuroError::Validation(format!(
             "not_ouro_managed: node {node} has no adoption attestation — run `ouro-ops adopt` \

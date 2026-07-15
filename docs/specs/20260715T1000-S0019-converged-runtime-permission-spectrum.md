@@ -270,7 +270,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p5-1 SSH dispatch for `adopt`/`op` (control → target, confined principal); the commands actually reach the target instead of running control-local
 - [x] p5-2 target-side probe: gather the live observation on the target (container inspect + node argv + cardano-cli reads) instead of a hand-supplied `--observation` file
 - [x] p5-3 real executor invocation: run the fixed argv on the target as the transaction's commit/verify/rollback (wire `executor::build_argv` into the transaction; readiness proxies as verify)
-- [ ] p5-4 attestation stored target-side (root-owned `/var/lib/ouro/node-attestation.json`), read by `ouro-attested.sh`; adopt writes it there
+- [x] p5-4 attestation stored target-side (root-owned `/var/lib/ouro/node-attestation.json`), read by `ouro-attested.sh`; adopt writes it there
 - [ ] p5-5 `ouro-ops inbox stage` command (content-addressed ingress) + audit event emission (§2.13 schema) + fleet lease/step-permit + real control↔target parity wired into the op pipeline
 - [ ] p5-6 container-bed end-to-end: adopt a real blinklabs container, run each op for real (docker), crash-injection + rollback, on the bed
 
@@ -463,6 +463,12 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   fresh observation, rollback = idempotent restart. The no-op commit is gone. run_argv unit-tested
   (true/false/empty/missing-prog); real docker exec is target-side (p5-6). 120 rust + all python
   green.
+- 2026-07-15 p5-4 completed (§2.3): the `--local` mode (the dispatched target-side run) stores the
+  attestation at the single root-owned `/var/lib/ouro/node-attestation.json` (overridable via
+  OURO_ATTESTATION, matching `ouro-attested.sh`) instead of the control-home per-node file; `adopt
+  --local` writes it there and `op run --local` reads it. Smoke-verified: adopt --local writes the
+  file and `ouro_attested_role` reads bp from it. Control-host per-node modelling retained for the
+  non-dispatched path. 120 rust + all python green.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -474,6 +480,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p5-4 | stack: rust | command: cargo test (120) + smoke (adopt --local → OURO_ATTESTATION file →
+  ouro_attested_role=bp) | result: pass | note: target-side attestation path wired; shell layout
+  lib reads the same file the Rust adopt writes.
 - p5-3 | stack: rust | command: cargo test executor (+full 120) | result: pass | note: run_argv
   returns ok on exit 0, error on nonzero/empty/missing program; transaction commit now runs the
   sealed argv (build_argv), verify re-attests, rollback restarts — no more no-op commit.
