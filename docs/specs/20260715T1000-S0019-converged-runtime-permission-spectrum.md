@@ -986,3 +986,53 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   regenerated bundle manifest.
 - p9-6 | stack: other | command: git diff --check | result: pass | note: patch is whitespace-clean;
   operator-owned untracked pool-spec.yaml remains untouched and excluded from the item.
+
+## 27. Website-prompt Onboard Dry-run UAT Repair (append-only)
+- 2026-07-15T22:53+0800 fresh-agent UAT reached the unmanaged-host onboarding pause and exposed
+  contradictory preview semantics: the no-write manifest marked every simulated step
+  `changed: true` and advertised `state: host-onboarded`, causing the agent to describe both a real
+  state change and no writes in the same response. `pinned_host_key: null` was also unexplained even
+  though host-key scanning and pinning are intentionally deferred during dry-run.
+- [~] p9-7 make onboarding previews unambiguously non-mutating, distinguish planned from executed
+  steps and planned from attained state, expose the dry-run host-key status, then rebuild the
+  control and matching Linux target artifacts before resuming the same agent transcript.
+- WATC-5 dry-run truth: every preview step reports `changed: false`, `planned: true` and
+  `executed: false`; the response advertises `state: preview` plus
+  `planned_state: host-onboarded`, and explicitly reports that host-key verification/pinning was
+  not performed. A real successful executor result instead reports executed steps and attained
+  `host-onboarded` state. No preview output may imply a remote write already happened.
+- 2026-07-15T23:02+0800 p9-7 completed: step results now distinguish planned from executed work;
+  a simulated success cannot set `changed`, while a real attempted step is explicitly marked
+  `executed`. Onboard output reports preview versus attained/failed state, whether an expected
+  fingerprint was supplied, and `not_checked_in_dry_run` instead of leaving the meaning of a null
+  pin implicit. The fresh-agent transcript can resume only after re-running preview with the
+  rebuilt control binary and the rebuilt matching Linux artifact; the misleading old preview is
+  discarded.
+- [x] p9-7 completed: onboarding preview output is non-mutating and self-describing, with current
+  macOS control and Linux x86_64 release artifacts ready for the resumed UAT.
+
+## 28. Website-prompt Onboard Dry-run Validation Evidence (append-only)
+- WATC-5 | stack: rust | command: cargo test -q -p ouro | result: pass | note: 147/147 tests;
+  preview steps assert changed=false/planned=true/executed=false, while real successful step
+  results assert executed=true/planned=false.
+- WATC-5 | stack: python | command: env PATH=/tmp/ouro-ops-test-venv/bin:$PATH make python-test |
+  result: pass | note: full standalone suite includes CLI JSON assertions for preview state,
+  planned target state, explicit host-key status, null pin and all 19 non-executed plan steps.
+- WATC-5 | stack: rust | command: cargo clippy -p ouro -- -D warnings | result: pass | note: zero
+  warnings after the preview result-schema change.
+- WATC-5 | stack: other | command: release dry-run JSON assertion using target/release/ouro-ops |
+  result: pass | note: preview_semantics=pass steps=19; no step claims changed or executed.
+- p9-7 | stack: other | command: cargo build --release -p ouro; cargo zigbuild --release --target
+  x86_64-unknown-linux-musl; file; shasum -a 256 | result: pass | note: installed macOS arm64 control
+  SHA-256 06f9f9b526f4df15afdaf7afe4b8fea4d54a1045f74f4b16611f6899338cfdbb; matching static Linux
+  x86_64 ELF SHA-256 03ee1b7facb69f5b14fb90d1cc7f7c24dd5297b113aeeb3592d1b10705546e1f.
+- p9-7 | stack: other | command: git diff --check | result: pass | note: repair patch is
+  whitespace-clean and operator-owned untracked pool-spec.yaml remains untouched.
+- 2026-07-15T22:59+0800 timestamp correction: the preceding p9-7 completion entry's `23:02`
+  timestamp was appended from an incorrect clock transcription; the implementation and evidence
+  completed at `22:59+0800`. Append-only history is preserved rather than rewriting that entry.
+- p9-7 | stack: other | command: final source-exact release rebuild after formatting-only cleanup |
+  result: pass | note: this final rebuild supersedes the earlier artifact hashes: installed macOS
+  arm64 control SHA-256 `0e0b0704b457bd6670ccc998230908ab436967b6310f364153cf5d4e1a425575`;
+  static Linux x86_64 ELF SHA-256
+  `30e51c56f7c354dd936b511d1823357a1bcb8daa3c220204735d3af1a22002e1`.

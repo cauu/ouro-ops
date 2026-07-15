@@ -207,6 +207,10 @@ pub struct StepResult {
     pub remote: Option<String>,
     pub status: i32,
     pub changed: bool,
+    /// True only for a dry-run entry: the step is part of the proposed plan but was not run.
+    pub planned: bool,
+    /// True only when the executor actually attempted the remote step.
+    pub executed: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -234,7 +238,13 @@ fn run_steps(
     for step in plan {
         let (kind, remote, outcome) = run_step(transport, target, key_path, host_key, &step)?;
         let step_ok = outcome.status == 0;
-        steps.push(outcome_result(step.desc(), kind, remote.as_deref(), &outcome));
+        steps.push(outcome_result(
+            step.desc(),
+            kind,
+            remote.as_deref(),
+            &outcome,
+            transport.dry_run,
+        ));
         if !step_ok {
             *ok = false;
             break;
@@ -284,7 +294,13 @@ pub fn execute_plan(
     let mut ok = true;
     let stage = write_temp(control_pubkey.trim_end().as_bytes())?;
     let staged = transport.push(target, key_path, host_key, stage.path(), authkey_stage, "0644")?;
-    steps.push(outcome_result("stage control key", "push", Some(authkey_stage), &staged));
+    steps.push(outcome_result(
+        "stage control key",
+        "push",
+        Some(authkey_stage),
+        &staged,
+        transport.dry_run,
+    ));
     ok &= staged.status == 0;
     run_steps(transport, target, key_path, host_key, plan, &mut steps, &mut ok)?;
     Ok((manifest(target, steps.clone(), ok), steps, ok))
@@ -350,14 +366,25 @@ fn run_step(
     }
 }
 
-fn outcome_result(desc: &str, kind: &str, remote: Option<&str>, o: &BootstrapOutcome) -> StepResult {
+fn outcome_result(
+    desc: &str,
+    kind: &str,
+    remote: Option<&str>,
+    o: &BootstrapOutcome,
+    dry_run: bool,
+) -> StepResult {
     StepResult {
         desc: desc.to_string(),
         kind: kind.to_string(),
         remote: remote.map(str::to_string),
         status: o.status,
-        // Without a target we cannot tell converged-vs-changed; report changed on success.
-        changed: o.status == 0,
+        // A simulated success is a plan result, never evidence of a remote state change.
+        // For a real run this executor cannot distinguish converged from newly changed state, so
+        // `changed` means the mutating step completed successfully; `executed` makes that boundary
+        // explicit to consumers.
+        changed: !dry_run && o.status == 0,
+        planned: dry_run,
+        executed: !dry_run,
     }
 }
 
@@ -567,6 +594,22 @@ mod tests {
         // stage + the full plan.
         assert_eq!(manifest.steps.len(), 1 + init_plan("ubuntu", Path::new("/x")).len());
         assert!(manifest.steps.iter().all(|s| s.status == 0));
+        assert!(manifest.steps.iter().all(|s| !s.changed && s.planned && !s.executed));
         assert_eq!(manifest.host, "10.0.0.10");
+    }
+
+    #[test]
+    fn real_step_result_is_executed_not_planned() {
+        let outcome = BootstrapOutcome { status: 0, stdout: String::new(), stderr: String::new() };
+        let result = outcome_result(
+            "install binary",
+            "push",
+            Some("/usr/local/bin/ouro-ops"),
+            &outcome,
+            false,
+        );
+        assert!(result.changed);
+        assert!(!result.planned);
+        assert!(result.executed);
     }
 }

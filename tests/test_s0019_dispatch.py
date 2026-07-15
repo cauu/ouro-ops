@@ -61,6 +61,38 @@ def adopt(home, o, role="bp", node="bp1"):
 def main():
     home = tempfile.mkdtemp()
 
+    # --- p9-7: onboard preview is a plan, never evidence of an attained remote state ---
+    control_pubkey = Path(home) / "control.pub"
+    control_pubkey.write_text("ssh-ed25519 AAAA0123456789abcdef operator@control\n")
+    _, d = run(
+        home,
+        "onboard",
+        "--host",
+        "192.0.2.1",
+        "--bootstrap-user",
+        "cardano",
+        "--bootstrap-key",
+        "creds://bootstrap",
+        "--control-pubkey",
+        str(control_pubkey),
+        "--ouro-binary",
+        "/operator/supplied/ouro-ops-linux-x86_64",
+        "--expected-host-key",
+        "SHA256:operator-verified",
+        "--dry-run",
+    )
+    assert d["status"] == "ok" and d["changed"] is False, d
+    preview = d["data"]
+    assert preview["dry_run"] is True and preview["state"] == "preview", preview
+    assert preview["planned_state"] == "host-onboarded", preview
+    assert preview["pinned_host_key"] is None, preview
+    assert preview["host_key_status"] == "not_checked_in_dry_run", preview
+    assert preview["expected_host_key_supplied"] is True, preview
+    assert all(
+        not step["changed"] and step["planned"] and not step["executed"]
+        for step in preview["manifest"]["steps"]
+    ), preview["manifest"]
+
     # --- adopt refuse paths (TC-2) ---
     # non-conforming supervisor (rootless)
     _, d = adopt(home, obs_doc(home, sup={"rootless": True}))

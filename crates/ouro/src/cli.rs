@@ -262,11 +262,16 @@ fn run_onboard(args: &[String]) -> Result<()> {
         pinned_fp = Some(pin_host_key(&host, port, &paths.known_hosts, None)?);
     }
 
+    let (state, planned_state, host_key_status) =
+        onboard_output_semantics(dry_run, manifest.ok, pinned_fp.is_some());
     output::print_json(&ToolOutput::ok("ouro.onboard", manifest.ok && !dry_run).with_data(json!({
         "manifest": manifest,
         "dry_run": dry_run,
         "pinned_host_key": pinned_fp,
-        "state": "host-onboarded",
+        "host_key_status": host_key_status,
+        "expected_host_key_supplied": expected_host_key.is_some(),
+        "state": state,
+        "planned_state": planned_state,
         "security_note": "bootstrap credential is NOT mechanism-isolated from the agent \
             (convenience mode, P0-1, carried from S0017). Closing this is a separate hardening spec.",
     })))?;
@@ -274,6 +279,23 @@ fn run_onboard(args: &[String]) -> Result<()> {
         return Err(OuroError::Validation("onboard did not complete cleanly".to_string()));
     }
     Ok(())
+}
+
+fn onboard_output_semantics(
+    dry_run: bool,
+    manifest_ok: bool,
+    has_pinned_host_key: bool,
+) -> (&'static str, Option<&'static str>, &'static str) {
+    if dry_run {
+        return ("preview", Some("host-onboarded"), "not_checked_in_dry_run");
+    }
+    let state = if manifest_ok {
+        "host-onboarded"
+    } else {
+        "onboard-failed"
+    };
+    let host_key_status = if has_pinned_host_key { "pinned" } else { "not_pinned" };
+    (state, None, host_key_status)
 }
 
 fn validate_control_pubkey(value: &str) -> Result<()> {
@@ -1702,5 +1724,25 @@ mod tests_embedded_resolution {
         let err = resolve_skill_script("deploy/does-not-exist", "test-audit");
         std::env::remove_var("OURO_SKILLS_DIR");
         assert!(err.is_err(), "absent-everywhere tool must error, not fabricate");
+    }
+
+    #[test]
+    fn onboard_preview_never_claims_attained_state_or_host_key_check() {
+        assert_eq!(
+            onboard_output_semantics(true, true, false),
+            (
+                "preview",
+                Some("host-onboarded"),
+                "not_checked_in_dry_run"
+            )
+        );
+        assert_eq!(
+            onboard_output_semantics(false, true, true),
+            ("host-onboarded", None, "pinned")
+        );
+        assert_eq!(
+            onboard_output_semantics(false, false, false),
+            ("onboard-failed", None, "not_pinned")
+        );
     }
 }
