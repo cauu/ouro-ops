@@ -97,6 +97,10 @@ fn tx_dir(paths: &ConfigPaths) -> PathBuf {
 struct Observation {
     supervisor: SupervisorObservation,
     live: ObsLive,
+    /// The upgrade recreate spec (§2.10), target-gathered from `docker inspect`. `None` (or an
+    /// unmodeled shape) means the executor refuses to recreate rather than guess.
+    #[serde(default)]
+    recreate: Option<crate::executor::RecreateSpec>,
 }
 #[derive(serde::Deserialize, Clone)]
 struct ObsLive {
@@ -420,14 +424,85 @@ pub fn run_op(args: &[String]) -> Result<()> {
     // (Real docker exec is target-side; on the control host `run_plan` fails fast if docker is
     // absent, which the transaction rolls back.)
     let inbox = paths.home.join("inbox");
-    let commit_plan = crate::executor::build_plan(&intent, &att, Some(&inbox))?;
-    let rb_plan = crate::executor::rollback_plan(&att);
+    // upgrade/step is a real container RECREATE (§2.10): the target image must be on the signed
+    // allowlist (so the agent can only ever name a blinklabs baseline), and the recreate is built
+    // from the target's own `docker inspect` facts (fail-closed if the probe couldn't model them).
+    // Rollback recreates onto the PRIOR attested digest. All other ops use the sealed argv builder.
+    let (commit_plan, rb_plan) = if op == "upgrade/step" {
+        let to_digest = intent
+            .payload
+            .get("image")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| OuroError::Validation("upgrade/step needs image (an allowlisted digest)".into()))?;
+        let obs = read_observation(args)?;
+        // The target image must resolve to an allowlisted contract for this platform (§2.1).
+        convention::Allowlist::embedded()?.contract_for(to_digest, &obs.live.platform)?;
+        let spec = obs.recreate.ok_or_else(|| {
+            OuroError::Validation(
+                "upgrade/step: the probe could not model the container run-spec (non-standard \
+                 shape?) — refused rather than recreate blindly (§2.10)"
+                    .into(),
+            )
+        })?;
+        let commit = crate::executor::recreate_argv(&spec, &att.state.container_id, to_digest)?;
+        let rb = crate::executor::upgrade_rollback_plan(&att, &spec)?;
+        (commit, rb)
+    } else {
+        (
+            crate::executor::build_plan(&intent, &att, Some(&inbox))?,
+            crate::executor::rollback_plan(&att),
+        )
+    };
+    // For upgrade, verify checks the NEW container landed on the target digest and ROTATES the
+    // attestation to the new identity (else every later op would drift-refuse); a mismatch fails
+    // verify → the transaction rolls back onto the prior digest. Other ops verify by re-attesting.
+    let is_upgrade = op == "upgrade/step";
+    // These ops deliberately change managed CONTENT (opcert / config / topology); their post-commit
+    // verify checks identity only, then ADVANCES the managed state (CAS gen bump) and persists it —
+    // otherwise the very next op would drift-refuse against the stale attestation.
+    let managed_changing = matches!(
+        op.as_str(),
+        "kes-rotation/rotate" | "config/render" | "runtime/topology-apply"
+    );
+    let to_digest_owned = intent
+        .payload
+        .get("image")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let commit = || crate::executor::run_plan(&commit_plan);
     let verify = || {
         let live = read_observation(args)?;
-        att.require_matches_live(&live.live.to_live())
+        if is_upgrade {
+            if live.live.image_config_digest != to_digest_owned {
+                return Err(OuroError::Validation(
+                    "upgrade did not land on the target image digest — rolling back (§2.10)".into(),
+                ));
+            }
+            if live.live.container_id.is_empty() {
+                return Err(OuroError::Validation("no node container after upgrade — rolling back".into()));
+            }
+            rotate_attestation_for_upgrade(&paths, &node, local, &att, &live, &to_digest_owned)
+        } else if managed_changing {
+            // Immutable identity must still hold (an image swap / recreate is still caught); the
+            // content hashes are expected to have changed → snapshot them as the new baseline.
+            att.require_identity_matches(&live.live.to_live())?;
+            let advanced = att.advance_state(
+                att.state.state_generation,
+                ManagedState {
+                    state_generation: att.state.state_generation, // advance_state bumps it
+                    container_id: live.live.container_id.clone(),
+                    topology_hash: live.live.topology_hash.clone(),
+                    config_hash: live.live.config_hash.clone(),
+                    kes_opcert_id: live.live.kes_opcert_id.clone(),
+                },
+            )?;
+            persist_attestation(&paths, &node, local, &advanced)
+        } else {
+            att.require_matches_live(&live.live.to_live())
+        }
     };
-    let rollback = || crate::executor::run_plan(&rb_plan); // restart onto the prior config
+    let rollback = || crate::executor::run_plan(&rb_plan); // restart / recreate onto the prior config
     let ops = TxOps { commit: &commit, verify: &verify, rollback: &rollback };
     let outcome = transaction::run(&journal, &seal, &base, &ops)?;
     audit_emit(&paths, "committed", &node, json!({"operation_id": op, "intent_hash": canon, "outcome": format!("{outcome:?}")}));
@@ -546,6 +621,100 @@ fn load_attestation(paths: &ConfigPaths, node: &str, local: bool) -> Result<Adop
     })?;
     serde_json::from_str(&text)
         .map_err(|e| OuroError::Validation(format!("malformed attestation: {e}")))
+}
+
+/// Persist an attestation, preserving the resolved `contract` block already on disk (the shell
+/// layout accessors read it). Used to advance the managed state after a state-changing op.
+fn persist_attestation(
+    paths: &ConfigPaths,
+    node: &str,
+    local: bool,
+    att: &AdoptionAttestation,
+) -> Result<()> {
+    let p = attestation_path_for(paths, node, local);
+    let contract = std::fs::read_to_string(&p)
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v.get("contract").cloned());
+    let mut doc = serde_json::to_value(att).unwrap();
+    if let Some(c) = contract {
+        doc["contract"] = c;
+    }
+    std::fs::write(&p, serde_json::to_string_pretty(&doc).unwrap())
+        .map_err(|e| OuroError::Validation(format!("cannot persist advanced attestation: {e}")))?;
+    Ok(())
+}
+
+/// After a successful upgrade recreate, ROTATE the attestation onto the new identity (§2.10): the
+/// image digest, container id, creation epoch, entrypoint/args/mounts all changed, so we rebuild the
+/// immutable identity from the fresh observation — preserving role, machine id, host key, and the
+/// operator's approval evidence — and bump the state generation. The new digest is re-checked
+/// against the signed allowlist. Written atomically like adopt (with the resolved contract paths).
+fn rotate_attestation_for_upgrade(
+    paths: &ConfigPaths,
+    node: &str,
+    local: bool,
+    old: &AdoptionAttestation,
+    obs: &Observation,
+    to_digest: &str,
+) -> Result<()> {
+    let allow = convention::Allowlist::embedded()?;
+    let contract = allow.contract_for(to_digest, &obs.live.platform)?;
+    let immutable = ImmutableIdentity {
+        role: old.immutable.role,
+        contract_id: contract.contract_id.clone(),
+        convention_version: contract.convention_version,
+        host_key_sha256: old.immutable.host_key_sha256.clone(),
+        machine_id: old.immutable.machine_id.clone(),
+        oci_index_digest: obs.live.image_config_digest.clone(),
+        platform_manifest_digest: obs.live.image_config_digest.clone(),
+        image_config_digest: obs.live.image_config_digest.clone(),
+        container_creation_epoch: obs.live.container_creation_epoch,
+        entrypoint: obs.live.entrypoint.clone(),
+        args: obs.live.args.clone(),
+        mounts: obs
+            .live
+            .mount_source_ids
+            .iter()
+            .map(|sid| TypedMount {
+                kind: "bind".into(),
+                source_id: sid.clone(),
+                destination: String::new(),
+                read_only: false,
+                owner: "root".into(),
+                mode: "0755".into(),
+                no_symlink: true,
+            })
+            .collect(),
+        network: obs.live.network.clone(),
+        genesis_hash: obs.live.genesis_hash.clone(),
+        public_credential_ids: if obs.live.kes_opcert_id.is_empty() {
+            vec![]
+        } else {
+            vec![obs.live.kes_opcert_id.clone()]
+        },
+        // The upgrade was operator-approved via the confirm-token; carry the adoption evidence.
+        approval_evidence_hash: old.immutable.approval_evidence_hash.clone(),
+    };
+    let att = AdoptionAttestation {
+        immutable,
+        state: ManagedState {
+            state_generation: old.state.state_generation + 1,
+            container_id: obs.live.container_id.clone(),
+            topology_hash: obs.live.topology_hash.clone(),
+            config_hash: obs.live.config_hash.clone(),
+            kes_opcert_id: obs.live.kes_opcert_id.clone(),
+        },
+    };
+    let p = attestation_path_for(paths, node, local);
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    let mut doc = serde_json::to_value(&att).unwrap();
+    doc["contract"] = json!({ "in_container_paths": contract.in_container_paths });
+    std::fs::write(&p, serde_json::to_string_pretty(&doc).unwrap())
+        .map_err(|e| OuroError::Validation(format!("cannot write rotated attestation: {e}")))?;
+    Ok(())
 }
 
 fn collect_params(args: &[String]) -> serde_json::Value {

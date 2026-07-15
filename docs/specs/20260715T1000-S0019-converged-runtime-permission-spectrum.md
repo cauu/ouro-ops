@@ -281,7 +281,20 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p7-2 remove S0017 residue from the website copy: `ouro-ops tool run` → `ouro-ops op run` and `ouro-exec` → `ouro-op` in the trust panels + machHints (EN/zh-CN/zh-TW/JA)
 - [x] p7-3 real sealed executor (P1): build a SEQUENCE of fixed argvs; install digest-resolved inbox artifacts from attested facts — opcert via `docker cp` (public cert; KES/cold secret NEVER touched), signed tx via `cardano-cli transaction submit --tx-file`, image via `docker load` + recreate; REFUSE (not a misleading `docker restart`) when a required artifact is absent; fix the bogus `config/render` `--version` argv
 - [x] p7-1-fix1 finish the principal rename missed in p7-1: dispatch preview `principal` field, the default `--ssh-key` cred (`creds://ouro-op`), the dispatch comment, and the python dispatch test all now assert `ouro-op` (not `ouro-exec`)
-- [x] p7-4 container-bed proof of a real artifact-op sequence (opcert install / tx submit) through the sealed executor; honest note that the docker-level sequence is bed-proven while cardano-node semantic effect needs a real node
+- [x] p7-4 container-bed proof of a real artifact-op sequence
+- [x] p7-3-fix1 managed-state advancement (latent p7-3 bug): kes-rotation / config/render /
+  topology-apply changed managed CONTENT (opcert/config/topology hash) but did NOT advance the
+  attestation, so their own post-commit verify drift-refused and SILENTLY ROLLED BACK (the p7-4
+  bed passed falsely because the cp'd file + rollback-restart still satisfied its weaker assertions).
+  Split the drift check into identity-only + content; state-changing ops now verify identity, then
+  CAS-advance the managed state and persist. Strengthened the bed to assert the attestation advanced.
+- [x] p8 wire upgrade/step into a REAL container recreate: the target image is an ALLOWLISTED config
+  digest (`sha256:…`, not an inbox tar / repo:tag); the recreate is built from the target's own
+  `docker inspect` run-spec (name, restart, network, ports, env, binds, entrypoint+args) gathered by
+  a new probe block — FAIL-CLOSED if the shape can't be modeled; `docker rm -f` + `docker run` onto
+  the new digest; on success the attestation is ROTATED to the new identity, on failure it recreates
+  onto the PRIOR digest. Bed proves a real v1→v2 swap preserving the /data/db bind + attestation
+  rotation, and refuses a non-allowlisted target. (opcert install / tx submit) through the sealed executor; honest note that the docker-level sequence is bed-proven while cardano-node semantic effect needs a real node
 
 ## 4. Test and Acceptance Criteria
 > Acceptance MATRIX — must FALSIFY the security claims, with adversarial interleavings, not just
@@ -526,6 +539,17 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   topology/config do not perform their mutation; config/render even runs a bogus `--version`);
   P2-D website copy still says S0017 `tool run`; P1-E dispatch real path never run e2e. p6-1 checkbox
   was also left unchecked though onboard.rs was implemented + committed (59fafe3) — corrected.
+- 2026-07-15 p8 completed (+ p7-3-fix1, co-delivered): made upgrade/step a real recreate op driven by
+  the target's docker-inspect run-spec + an allowlisted target digest (intent ParamKind::ImageDigest;
+  executor::recreate_argv/upgrade_rollback_plan, fail-closed; probe `recreate` block; op-flow
+  allowlist gate + attestation ROTATION in verify; rotate onto the prior digest on failure). Wiring
+  upgrade exposed a latent p7-3 bug (p7-3-fix1): state-changing ops (kes/config/topology) never
+  advanced the managed state, so verify drift-refused and silently rolled back — the p7-4 bed had
+  passed falsely. Fixed by splitting require_matches_live into identity + content and advancing the
+  managed state (CAS) after those ops; the bed now asserts the advance explicitly. Bed proves v1→v2
+  recreate (db bind preserved, attestation rotated) + non-allowlisted refusal. 133 rust + all python
+  gates green. Honest scope: docker-level recreate + rotation are bed-proven; a real blinklabs node's
+  runtime acceptance of the new image, and multi-node BP-last rollout, still need a real fleet.
 - 2026-07-15 p7-4 completed: extended the p5-6 container bed with a REAL artifact-op sequence —
   stage an opcert into the inbox, mint the intent-bound confirm-token, run `op run --op
   kes-rotation/rotate`; asserts (1) an unstaged/unconfirmed opcert is refused (no silent restart),
@@ -581,6 +605,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p8 | stack: rust | command: cargo test -q -p ouro | result: pass | note: 133 tests; recreate_argv reproduces observed run-spec onto new digest + fail-closed; upgrade rollback onto prior digest; ImageDigest param shape.
+- p8 | stack: other | command: bash fixtures/e2e/s0019-bed/run.sh | result: pass | note: real v1→v2 recreate preserves /data/db bind + rotates attestation; non-allowlisted target refused.
+- p7-3-fix1 | stack: other | command: bash fixtures/e2e/s0019-bed/run.sh | result: pass | note: kes-rotation now COMMITS (attestation kes_opcert_id advanced + generation bumped), no longer silently rolls back; subsequent upgrade op no longer drift-refuses.
 - p7-4 | stack: other | command: bash fixtures/e2e/s0019-bed/run.sh | result: pass | note: real kes-rotation sequence on a live container — unstaged opcert refused; staged opcert digest-resolved, docker-cp'd into keys mount, then restart (StartedAt advanced); node.cert now the installed cert. cardano semantic effect needs a real node.
 - p7-1-fix1 | stack: python | command: python3 tests/test_s0019_dispatch.py | result: pass | note: dispatch preview principal + login user + default cred all ouro-op; asserts no ouro-exec@ remains.
 - p7-3 | stack: rust | command: cargo test -q -p ouro | result: pass | note: 130 tests; new coverage: kes installs resolved opcert (real inbox digest re-verify), deploy submits resolved tx, config/render is a real restart not --version, health reads tip on attested network, upgrade honestly refuses recreate (points to rollout, no fake restart), rollback = restart, run_plan stops at first failure.

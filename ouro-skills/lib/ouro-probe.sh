@@ -45,15 +45,19 @@ ouro_observe() {
   has_keys="$(docker exec "$cid" sh -c 'test -f /opt/cardano/config/keys/kes.skey && echo true || echo false' 2>/dev/null)"
   genesis_hash="$(docker exec "$cid" sh -c 'sha256sum /opt/cardano/config/mainnet/shelley-genesis.json 2>/dev/null' 2>/dev/null | awk '{print $1}')"
   network="mainnet"
-  local hostkey
+  local hostkey full_json
   hostkey="$(sha256sum /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null | awk '{print $1}')"
+  # Full inspect JSON — the CLOSED source for the upgrade recreate spec (§2.10): name, restart,
+  # network mode, bind mounts (src:dst:ro), env, published ports, and the resolved command. These
+  # are TARGET-SIDE facts (never agent strings); the executor recreates onto the new digest from them.
+  full_json="$(docker inspect "$cid" 2>/dev/null)"
 
   OURO_OBS_PLATFORM="$platform" OURO_OBS_CID="$cid" OURO_OBS_COUNT="$count" \
   OURO_OBS_IMAGE="$image_cfg" OURO_OBS_CREATED="$created" OURO_OBS_ENTRY="$entrypoint" \
   OURO_OBS_ARGS="$args" OURO_OBS_MOUNTS="$mounts" OURO_OBS_RESTART="$restart" \
   OURO_OBS_TOPO="$topo_hash" OURO_OBS_CFG="$cfg_hash" OURO_OBS_OPCERT="$opcert_id" \
   OURO_OBS_HASKEYS="$has_keys" OURO_OBS_GENESIS="$genesis_hash" OURO_OBS_NET="$network" \
-  OURO_OBS_HOSTKEY="$hostkey" \
+  OURO_OBS_HOSTKEY="$hostkey" OURO_OBS_FULL="$full_json" \
   python3 - <<'PY'
 import json, os, hashlib
 def env(k): return os.environ.get(k, "") or ""
@@ -74,6 +78,42 @@ mounts = [m for m in env("OURO_OBS_MOUNTS").split(";") if m]
 # mount source id: a stable identifier per source (its own sha for the stub; a real probe records
 # device+inode). Kept closed — never the raw host path in the attestation fingerprint upstream.
 mount_ids = [hashlib.sha256(m.encode()).hexdigest()[:16] for m in mounts]
+
+# Upgrade recreate spec (§2.10) — parsed from the full inspect JSON. Fail-closed: emit null when the
+# container shape is not the standard single-container bind-mounted layout, so the executor refuses
+# rather than recreate a container it cannot faithfully reproduce.
+def recreate_spec():
+    try:
+        arr = json.loads(env("OURO_OBS_FULL"))
+    except Exception:
+        return None
+    if not isinstance(arr, list) or len(arr) != 1:
+        return None
+    d = arr[0]
+    hc = d.get("HostConfig", {}) or {}
+    cfg = d.get("Config", {}) or {}
+    binds = []
+    for m in (d.get("Mounts", []) or []):
+        if m.get("Type") != "bind":
+            return None  # named volumes / tmpfs are not modeled — refuse (fail-closed)
+        binds.append({"source": m.get("Source", ""), "destination": m.get("Destination", ""),
+                      "read_only": not m.get("RW", True)})
+    ports = []
+    for cont, confs in (hc.get("PortBindings", {}) or {}).items():
+        for c in (confs or []):
+            ports.append({"container": cont, "host_ip": c.get("HostIp", "") or "",
+                          "host_port": c.get("HostPort", "") or ""})
+    return {
+        "name": (d.get("Name", "") or "").lstrip("/"),
+        "restart_policy": ((hc.get("RestartPolicy", {}) or {}).get("Name", "") or ""),
+        "network_mode": hc.get("NetworkMode", "") or "",
+        "binds": binds,
+        "env": list(cfg.get("Env", []) or []),
+        "ports": ports,
+        "entrypoint": d.get("Path", "") or "",
+        "args": list(d.get("Args", []) or []),
+    }
+
 obs = {
   "supervisor": {
     "runtime": "docker", "rootful": True, "rootless": False,
@@ -91,6 +131,7 @@ obs = {
     "host_key_sha256": env("OURO_OBS_HOSTKEY"), "genesis_hash": env("OURO_OBS_GENESIS"),
     "network": env("OURO_OBS_NET"),
   },
+  "recreate": recreate_spec(),
 }
 print(json.dumps(obs, separators=(",", ":")))
 PY

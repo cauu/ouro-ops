@@ -144,6 +144,31 @@ impl AdoptionAttestation {
     /// mutable state must match the recorded state at the CURRENT generation (else out-of-band
     /// drift). Called under the per-node lock, before and after each irreversible commit.
     pub fn require_matches_live(&self, live: &LiveObservation) -> Result<()> {
+        self.require_identity_matches(live)?;
+        let drift = |what: &str| {
+            Err(OuroError::Validation(format!(
+                "node_drift: {what} changed since adoption — refused before mutation (§2.4)"
+            )))
+        };
+        // Mutable state must equal the recorded state at this generation (no out-of-band change).
+        if live.topology_hash != self.state.topology_hash {
+            return drift("topology (out-of-band, no generation bump)");
+        }
+        if live.config_hash != self.state.config_hash {
+            return drift("config (out-of-band, no generation bump)");
+        }
+        if live.kes_opcert_id != self.state.kes_opcert_id {
+            return drift("KES/opcert (out-of-band, no generation bump)");
+        }
+        Ok(())
+    }
+
+    /// The IMMUTABLE half of the drift check: image digest, container id, creation epoch,
+    /// entrypoint/args, and mount sources must all still match. A managed-state-changing op (kes
+    /// opcert, config, topology) is EXPECTED to alter the content hashes, so its post-commit verify
+    /// checks identity only, then advances the managed state — but an image swap or a container
+    /// recreate is still caught here.
+    pub fn require_identity_matches(&self, live: &LiveObservation) -> Result<()> {
         let id = &self.immutable;
         let drift = |what: &str| {
             Err(OuroError::Validation(format!(
@@ -168,16 +193,6 @@ impl AdoptionAttestation {
         got.sort();
         if want != got {
             return drift("mount source (swapped bind/volume)");
-        }
-        // Mutable state must equal the recorded state at this generation (no out-of-band change).
-        if live.topology_hash != self.state.topology_hash {
-            return drift("topology (out-of-band, no generation bump)");
-        }
-        if live.config_hash != self.state.config_hash {
-            return drift("config (out-of-band, no generation bump)");
-        }
-        if live.kes_opcert_id != self.state.kes_opcert_id {
-            return drift("KES/opcert (out-of-band, no generation bump)");
         }
         Ok(())
     }

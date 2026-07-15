@@ -22,7 +22,7 @@
     "kes-rotation/scripts/rotate.sh": "1f44485145908a112e894df4ab75077d9e6a5a7c7f814fbc1cdde99353a89ffc",
     "lib/ouro-attested.sh": "dee534a05268894341c26d6607425a856e38cd78ba8152bca8ea8cc67bf111f0",
     "lib/ouro-lib.sh": "43d8d8dff3f767603c5d534e5849dff5778535478d0dd110fbd76e52830fc774",
-    "lib/ouro-probe.sh": "b2233b164725ebc90cf8161318c5961d40fb082e9a8239261c96e28f936f5a25",
+    "lib/ouro-probe.sh": "83c8c5e43912dcd107075d742b913af2b3bb547cb7053f9d7f26f25b6195a54d",
     "observability/SKILL.md": "3ddf7fbafe0899309b30a9345dfe98195516ecb56602091dd1a0ee5e7dc35271",
     "observability/scripts/health.sh": "c8a7862ef9572aaa065589c76652cd5a03189987ea1aef16c9518367c0b91f61",
     "observability/scripts/install-gateway.sh": "8be5e1f07516aa6a08bc44699b37e2f7a927aa456223a329dd25b4db9ef82c15",
@@ -39,18 +39,18 @@
     "troubleshooting/SKILL.md": "a9a9b438bc8d41ae986abe6a6dde9098afb79aaced063c44150b4946e15423cc",
     "troubleshooting/scripts/logs.sh": "a08b463994aec58d209306853890b48023cff6a5de5419491e2711b4811cb44a",
     "troubleshooting/scripts/service.sh": "f7c6cf694e474cfa39233c882dbcbe38805f3c3bbb7ad690dcf2cc2d95fafae7",
-    "upgrade/SKILL.md": "5d5f2eeba74d567345424c96624b499c088c0ed3cfa94b2310a3c218bda6cc67",
+    "upgrade/SKILL.md": "281678baa72aba3355a7f6567f9dc06091a1e3c08102586b71ea86296c4ac1e5",
     "upgrade/scripts/rollback.sh": "a69ed01338e46c8aa1169919f71ab89cce39a8d37ed10b844c593b5b77e04971",
     "upgrade/scripts/rollout.sh": "5096f65db31ee3a615452dc22d8f9138f8a06103333a06472b181614617741ca",
     "upgrade/scripts/run.sh": "c09b41c0fe455c5e96b36d743c0ad58d637843ce501b621979b9c1b8c9022ba9",
     "upgrade/scripts/upgrade-one.sh": "bdb9aeb009fea89027ede2f6b05a0b3ef0fd5e672c6c80f77df22b6662d8187c",
     "upgrade/scripts/verify.sh": "5c77cb2e4b82e1b67c8681d5fb5f197b4b5c4a306eb90b7e668e771d40eb9ff4"
   },
-  "decision_hash": "6f77317eeb26fbcbd4bf843a9cf10e30ace12d1bbbd01c4b1703d337224fe598",
-  "embedded_digest": "b4890ca3f7e6a287a0d46f7b1433fc87c16837c40f09de235e5e9662a8164636",
+  "decision_hash": "1720f146b26278f4586a94c42f16e5a3e2abfd7782732cf3dc5d9db32421175f",
+  "embedded_digest": "75e4456fb3ce3badbe1889f04441b13b1cc0d3bbfa32ee5bcbead421cde8af4c",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
   "schema_hash": "8c0f40bc9ec0c47cea54851f0b9f966b1a62d79c225da3bd7caf5823917468bb",
-  "skills_hash": "df4d96f3c8dac33d517188ac3d96b913dc862fae7778363cfa7d54404e833775"
+  "skills_hash": "de7f5b06cb5d88e2e472b2a989213758b31361c033e5de4a410b7deb63362499"
 }

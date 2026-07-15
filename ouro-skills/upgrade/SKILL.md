@@ -12,8 +12,13 @@ volumes, relays first and the block producer last.
 - Each machine must be ADOPTED; an upgrade step on a non-managed node is refused.
 - Only N→N+1 to an ALLOWLISTED target image is permitted; a version skip or a non-allowlisted image
   is refused.
-- The new image arrives PRELOADED (content-addressed), verified by digest — never fetched on the
-  target.
+- The new image arrives PRELOADED (the operator pulls or inbox-loads it onto the target), and is
+  named to the step by its CONFIG DIGEST (`sha256:<64hex>`) — which must be on the signed allowlist.
+- The upgrade step RECREATES the container onto the new digest, faithfully reproducing the observed
+  run-spec (name, restart policy, network, ports, env, bind mounts, entrypoint+args) gathered from
+  the target's own `docker inspect`. If that shape cannot be modeled, the step refuses (fail-closed)
+  rather than recreate a node with a partial spec. On success the attestation is rotated to the new
+  identity; a failed step recreates onto the prior digest.
 - Rollback restores runtime AND attestation ONLY when a tested backward-compatible downgrade or a
   crash-consistent snapshot exists; otherwise the honest outcome is a re-sync, and the mechanism
   will not pretend a rollback that cannot work.
@@ -27,7 +32,8 @@ volumes, relays first and the block producer last.
 - Upgrade ouro first, then a canary relay, verify, then the remaining relays, then the BP last.
 - Each step: tell the operator which machine, WAIT for go-ahead, mint the confirm-token bound to the
   intent, then run the step via `ouro-ops op run --op upgrade/step --node <id> --param
-  machine=<id> --param image=<ref> --confirm-token <tok>`, and verify readiness before proceeding.
+  machine=<id> --param image=sha256:<64hex> --confirm-token <tok>`, and verify readiness before
+  proceeding. `image` is the allowlisted target config digest — never a repo/tag or a path.
 
 ## Stop Conditions
 - Stop on any step that would drop relay quorum, or restart the BP before relays are done.

@@ -70,6 +70,10 @@ pub enum ParamKind {
     MachineId,
     /// An immutable artifact reference `<id>@sha256:<64hex>` (ingress via §2.7, never a raw path).
     ArtifactRef,
+    /// An image config digest `sha256:<64hex>` — the upgrade target. Shape-checked here; that it is
+    /// on the SIGNED allowlist is enforced at op time (`allowlist.contract_for`), so the agent can
+    /// only ever name a blinklabs baseline, never an arbitrary image.
+    ImageDigest,
     /// A bounded non-negative integer.
     Uint { max: u64 },
 }
@@ -139,10 +143,13 @@ pub fn registry() -> &'static [OperationSpec] {
         },
         OperationSpec {
             operation_id: "upgrade/step",
-            mutability: Mutability::Dangerous, // availability-affecting; image via inbox artifact
+            mutability: Mutability::Dangerous, // availability-affecting: recreates the container
             params: &[
                 ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true },
-                ParamSpec { name: "image", kind: ParamKind::ArtifactRef, required: true },
+                // The N+1 target image, named by its config digest — must be on the signed allowlist
+                // (enforced at op time). The recreate preserves the observed run-spec; the operator
+                // delivers the image to the target (pull / inbox load) as a precondition.
+                ParamSpec { name: "image", kind: ParamKind::ImageDigest, required: true },
             ],
             touched: &["container:recreate"],
             may_expose_secret: false,
@@ -242,6 +249,18 @@ fn validate_param(p: &ParamSpec, v: &serde_json::Value) -> Result<()> {
                 if ok { Ok(()) } else { bad("must be <id>@sha256:<64hex> (an inbox artifact, §2.7)") }
             }
             _ => bad("must be an artifact reference string"),
+        },
+        ParamKind::ImageDigest => match v.as_str() {
+            // sha256:<64hex> — a content-addressed image digest (allowlist membership is enforced at
+            // op time). No repo/tag/path, so it can never be a mutable or arbitrary reference.
+            Some(s) => {
+                let ok = s
+                    .strip_prefix("sha256:")
+                    .map(|hexd| hexd.len() == 64 && hexd.chars().all(|c| c.is_ascii_hexdigit()))
+                    .unwrap_or(false);
+                if ok { Ok(()) } else { bad("must be sha256:<64hex> (an allowlisted image digest)") }
+            }
+            _ => bad("must be an image digest string"),
         },
         ParamKind::Uint { max } => match v.as_u64() {
             Some(n) if n <= max => Ok(()),

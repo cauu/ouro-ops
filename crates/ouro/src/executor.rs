@@ -20,9 +20,41 @@
 
 use std::path::Path;
 
+use serde::Deserialize;
+
 use crate::attestation::AdoptionAttestation;
 use crate::intent::Intent;
 use crate::{OuroError, Result};
+
+/// The upgrade recreate spec (§2.10) — the target-side `docker inspect` facts needed to recreate the
+/// container onto a new image WITHOUT losing anything the probe modeled. Fail-closed: the probe emits
+/// `null` (→ refusal) for any shape it cannot faithfully reproduce (named volumes, tmpfs, etc.).
+#[derive(Debug, Clone, Deserialize)]
+pub struct RecreateSpec {
+    pub name: String,
+    pub restart_policy: String,
+    pub network_mode: String,
+    pub binds: Vec<Bind>,
+    pub env: Vec<String>,
+    pub ports: Vec<Port>,
+    /// The resolved entrypoint executable (`.Path`) + its args (`.Args`) — the exact process.
+    pub entrypoint: String,
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Bind {
+    pub source: String,
+    pub destination: String,
+    pub read_only: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Port {
+    pub container: String,
+    pub host_ip: String,
+    pub host_port: String,
+}
 
 /// The converged container layout (§2.2): fixed destinations the sealed executor writes to.
 const KEYS_DIR: &str = "/opt/cardano/config/keys";
@@ -124,20 +156,15 @@ pub fn build_plan(
                 submit,
             ])
         }
-        // upgrade/step: HONEST REFUSAL. Recreating the container onto a new image must re-apply the
-        // full run-spec, but the attestation stores mounts as device identity (major:minor:inode) for
-        // verification — NOT as remountable host paths — so a faithful recreate cannot be built as a
-        // fixed argv here. The multi-step, output-reading recreate belongs to the rollout flow
-        // (`upgrade::plan_rollout`, §3 p3-2), not this per-container sealed executor. We validate the
-        // image ref is staged + digest-verified, then refuse rather than fake a bare restart.
-        "upgrade/step" => {
-            let image = resolve_artifact(intent, "image", inbox)?;
-            Err(OuroError::Validation(format!(
-                "upgrade/step: image {image} is staged + digest-verified, but container recreate is \
-                 not a fixed-argv sealed step (mounts are attested as device identity, not host \
-                 paths); run the upgrade through the rollout flow (upgrade::plan_rollout, §3 p3-2)"
-            )))
-        }
+        // upgrade/step: the recreate is built by the op flow from the TARGET's own `docker inspect`
+        // run-spec (§2.10, `recreate_argv`) + the allowlisted target digest, not from `build_plan`
+        // (which has no observation here). This arm is only reached in plan/read PREVIEW, where the
+        // recreate spec is not available — say so honestly.
+        "upgrade/step" => Err(OuroError::Validation(
+            "upgrade/step recreate is computed target-side from the observed run-spec (§2.10); \
+             run without --plan to execute it"
+                .into(),
+        )),
         other => Err(OuroError::Validation(format!(
             "no sealed executor for {other} (§2.5)"
         ))),
@@ -149,6 +176,79 @@ pub fn build_plan(
 /// after the prior artifact/config is what remains, so this is idempotent.
 pub fn rollback_plan(att: &AdoptionAttestation) -> Vec<Vec<String>> {
     vec![vec![s("docker"), s("restart"), att.state.container_id.clone()]]
+}
+
+/// Build the recreate SEQUENCE for an upgrade (§2.10): remove the attested container, then
+/// `docker run` a new one onto `image_digest`, faithfully reproducing the observed run-spec (name,
+/// restart policy, network, published ports, env, bind mounts, entrypoint + args). FAIL-CLOSED: any
+/// missing/ambiguous fact is refused — we never recreate a node with a partial spec. `image_digest`
+/// is `sha256:<…>` (a target-present, allowlist-verified digest); nothing here is an agent string
+/// except the digest, which was validated as a closed selector + allowlist membership.
+pub fn recreate_argv(spec: &RecreateSpec, cid: &str, image_digest: &str) -> Result<Vec<Vec<String>>> {
+    if spec.name.is_empty() {
+        return Err(OuroError::Validation(
+            "upgrade: observed container has no name — refused (fail-closed)".into(),
+        ));
+    }
+    if spec.binds.is_empty() {
+        return Err(OuroError::Validation(
+            "upgrade: no bind mounts observed — refusing to recreate a node without its volumes".into(),
+        ));
+    }
+    if spec.entrypoint.is_empty() {
+        return Err(OuroError::Validation(
+            "upgrade: no resolved entrypoint observed — refused (fail-closed)".into(),
+        ));
+    }
+    if image_digest.strip_prefix("sha256:").map(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit())) != Some(true) {
+        return Err(OuroError::Validation(format!(
+            "upgrade: target image {image_digest:?} is not a sha256 digest — refused"
+        )));
+    }
+    let mut run = vec![
+        s("docker"), s("run"), s("-d"),
+        s("--name"), spec.name.clone(),
+        s("--restart"), if spec.restart_policy.is_empty() { s("unless-stopped") } else { spec.restart_policy.clone() },
+    ];
+    // Preserve a non-default network exactly (host / a named network); the docker default is elided.
+    if !matches!(spec.network_mode.as_str(), "" | "default" | "bridge") {
+        run.push(s("--network"));
+        run.push(spec.network_mode.clone());
+    }
+    for p in &spec.ports {
+        // hostip:hostport:container | hostport:container — reproduce the published mapping.
+        let mapping = if p.host_ip.is_empty() {
+            format!("{}:{}", p.host_port, p.container)
+        } else {
+            format!("{}:{}:{}", p.host_ip, p.host_port, p.container)
+        };
+        run.push(s("-p"));
+        run.push(mapping);
+    }
+    for e in &spec.env {
+        run.push(s("-e"));
+        run.push(e.clone());
+    }
+    for b in &spec.binds {
+        let mut v = format!("{}:{}", b.source, b.destination);
+        if b.read_only {
+            v.push_str(":ro");
+        }
+        run.push(s("-v"));
+        run.push(v);
+    }
+    run.push(s("--entrypoint"));
+    run.push(spec.entrypoint.clone());
+    run.push(image_digest.to_string());
+    run.extend(spec.args.iter().cloned());
+    Ok(vec![vec![s("docker"), s("rm"), s("-f"), cid.to_string()], run])
+}
+
+/// The upgrade rollback plan: recreate the container onto the PRIOR (attested) image digest with the
+/// same observed run-spec — the honest inverse of a recreate. (Whether this restores service depends
+/// on DB compatibility; the honest RollbackToN / ReSyncRequired classification is `upgrade.rs`.)
+pub fn upgrade_rollback_plan(att: &AdoptionAttestation, spec: &RecreateSpec) -> Result<Vec<Vec<String>>> {
+    recreate_argv(spec, &att.state.container_id, &att.immutable.image_config_digest)
 }
 
 /// Run a FIXED argv (the first element is the program) — a direct exec, never a shell. Returns Ok on
@@ -284,15 +384,66 @@ mod tests {
     }
 
     #[test]
-    fn upgrade_refuses_recreate_but_validates_image() {
-        // No image → refused for the missing artifact.
-        assert!(build_plan(&intent("upgrade/step", json!({"machine":"bp1"})), &att(), None).is_err());
-        // With an image → still refused, but the message names the rollout flow (not a fake restart).
-        let img = format!("img-1@sha256:{}", "c".repeat(64));
-        let err = build_plan(&intent("upgrade/step", json!({"machine":"bp1","image":img})), &att(), None).unwrap_err();
+    fn upgrade_preview_defers_to_the_targetside_recreate() {
+        // In preview (build_plan) upgrade has no observation, so it never fakes a restart — it says
+        // the recreate is computed target-side. The real recreate is `recreate_argv` (tested below).
+        let err = build_plan(&intent("upgrade/step", json!({"machine":"bp1"})), &att(), None).unwrap_err();
         let msg = format!("{err:?}");
-        assert!(msg.contains("rollout"), "honest pointer to the rollout flow: {msg}");
+        assert!(msg.contains("target-side"), "defers to the observed recreate: {msg}");
         assert!(!msg.contains("restart"), "must not pretend a restart is an upgrade");
+    }
+
+    fn recreate_spec() -> RecreateSpec {
+        RecreateSpec {
+            name: "bp1-node".into(),
+            restart_policy: "unless-stopped".into(),
+            network_mode: "bridge".into(),
+            binds: vec![Bind { source: "/srv/db".into(), destination: "/data/db".into(), read_only: false }],
+            env: vec!["NETWORK=mainnet".into()],
+            ports: vec![Port { container: "3001/tcp".into(), host_ip: "".into(), host_port: "3001".into() }],
+            entrypoint: "/usr/local/bin/cardano-node".into(),
+            args: vec!["run".into(), "--socket-path".into(), "/ipc/node.socket".into()],
+        }
+    }
+
+    #[test]
+    fn recreate_reproduces_the_observed_runspec_onto_the_new_digest() {
+        let new = format!("sha256:{}", "d".repeat(64));
+        let seq = recreate_argv(&recreate_spec(), "cid-attested", &new).unwrap();
+        assert_eq!(seq[0], vec!["docker", "rm", "-f", "cid-attested"], "removes the old container first");
+        let run = &seq[1];
+        let j = run.join(" ");
+        assert!(j.contains("docker run -d --name bp1-node --restart unless-stopped"));
+        assert!(j.contains("-p 3001:3001/tcp"), "published port preserved: {j}");
+        assert!(j.contains("-e NETWORK=mainnet"), "env preserved: {j}");
+        assert!(j.contains("-v /srv/db:/data/db"), "bind mount preserved: {j}");
+        assert!(j.contains("--entrypoint /usr/local/bin/cardano-node"), "entrypoint preserved: {j}");
+        // The NEW digest is the image ref; the args follow it.
+        let img_pos = run.iter().position(|a| a == &new).unwrap();
+        assert_eq!(run[img_pos + 1..], ["run".to_string(), "--socket-path".into(), "/ipc/node.socket".into()]);
+    }
+
+    #[test]
+    fn recreate_is_fail_closed() {
+        let new = format!("sha256:{}", "d".repeat(64));
+        // No binds → refuse (never recreate a node without its volumes).
+        let mut nb = recreate_spec(); nb.binds.clear();
+        assert!(recreate_argv(&nb, "cid", &new).is_err());
+        // No name → refuse.
+        let mut nn = recreate_spec(); nn.name.clear();
+        assert!(recreate_argv(&nn, "cid", &new).is_err());
+        // Non-digest image → refuse.
+        assert!(recreate_argv(&recreate_spec(), "cid", "blinklabs/cardano-node:latest").is_err());
+    }
+
+    #[test]
+    fn upgrade_rollback_recreates_onto_the_prior_digest() {
+        let mut a = att();
+        let prior = format!("sha256:{}", "e".repeat(64));
+        a.immutable.image_config_digest = prior.clone();
+        let seq = upgrade_rollback_plan(&a, &recreate_spec()).unwrap();
+        assert_eq!(seq[0][0..2], ["docker".to_string(), "rm".to_string()]);
+        assert!(seq[1].iter().any(|arg| arg == &prior), "rollback recreates onto the PRIOR digest");
     }
 
     #[test]

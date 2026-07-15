@@ -8,6 +8,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 BIN="$ROOT/target/debug/ouro-ops"
 IMG="ouro-s0019-bed:local"
+IMG2="ouro-s0019-bed-v2:local"
 NAME="ouro-s0019-bed-$$"
 WORK="$(mktemp -d)"
 export OURO_HOME="$WORK/home"
@@ -16,7 +17,7 @@ mkdir -p "$OURO_HOME"
 
 pass() { echo "  PASS  $*"; }
 fail() { echo "  FAIL  $*" >&2; cleanup; exit 1; }
-cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; docker rmi "$IMG" >/dev/null 2>&1 || true; rm -rf "$WORK"; }
+cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; docker rmi "$IMG" "$IMG2" >/dev/null 2>&1 || true; rm -rf "$WORK"; }
 trap cleanup EXIT
 
 command -v docker >/dev/null 2>&1 || { echo "SKIP: docker not available"; exit 0; }
@@ -101,7 +102,48 @@ KSTART1="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
 INSTALLED="$(docker exec "$NAME" cat /opt/cardano/config/keys/node.cert 2>/dev/null)"
 echo "$INSTALLED" | grep -q 'NodeOperationalCertificate' || fail "opcert was NOT docker-cp'd into the keys mount; got: $INSTALLED"
 [ "$KSTART0" != "$KSTART1" ] || fail "kes-rotation did not restart the container after installing the opcert"
-pass "REAL kes-rotation sequence: digest-resolved opcert docker-cp'd into keys mount THEN restart"
+# The op must COMMIT (advance the managed state), not silently roll back: the attestation's opcert id
+# must now match the installed cert AND the generation must have bumped. (Without the advance, the
+# next op would drift-refuse — proving the earlier "restart happened" assertion was not enough.)
+INSTALLED_ID="$(docker exec "$NAME" sh -c 'sha256sum /opt/cardano/config/keys/node.cert' | awk '{print $1}')"
+python3 -c "import json;a=json.load(open('$OURO_ATTESTATION'));assert a['state']['kes_opcert_id']=='$INSTALLED_ID',('opcert id not advanced',a['state']['kes_opcert_id']);assert a['state']['state_generation']>=1,a['state']['state_generation']" || fail "attestation managed state was NOT advanced (op rolled back?)"
+pass "REAL kes-rotation sequence: opcert installed, restarted, AND attestation advanced (committed, not rolled back)"
+
+# p8 — a REAL N→N+1 upgrade: recreate the container onto a new allowlisted image digest, preserving
+# the observed run-spec (name + the /data/db bind), then rotate the attestation. Build a v2 image
+# (distinct config digest via a label), allowlist BOTH, and drive upgrade/step.
+echo "== build a v2 image (distinct digest) and allowlist v1 + v2 =="
+docker build -q --label ouro.upgrade=v2 -t "$IMG2" "$HERE" >/dev/null || fail "v2 image build"
+V2CFG="$(docker inspect --format '{{.Id}}' "$IMG2")"
+[ -n "$V2CFG" ] && [ "$V2CFG" != "$IMG_CFG" ] || fail "v2 digest not distinct from v1"
+python3 - "$ROOT/data/allowlist.json" "$IMG_CFG" "$V2CFG" > "$WORK/allowlist.json" <<'PY'
+import json, sys
+a = json.load(open(sys.argv[1]))
+v1, v2 = sys.argv[2], sys.argv[3]
+base = a["contracts"][0]["allowed"][0]
+base["image_config_digest"] = v1; base["oci_index_digest"] = v1
+nxt = json.loads(json.dumps(base)); nxt["image_config_digest"] = v2; nxt["oci_index_digest"] = v2
+a["contracts"][0]["allowed"] = [base, nxt]
+json.dump(a, sys.stdout)
+PY
+pass "v2 image built with a distinct config digest; allowlist pins both baselines"
+
+echo "== upgrade v1 → v2: recreate onto the new digest, preserve the db bind, rotate attestation =="
+UIH="$("$BIN" op run --op upgrade/step --local --node bp1 --param machine=bp1 --param image="$V2CFG" 2>&1 | grep -o 'intent-hash [0-9a-f]*' | awk '{print $2}')"
+[ -n "$UIH" ] || fail "no upgrade intent hash"
+UTOK="$("$BIN" confirm create --op upgrade/step --node bp1 --intent-hash "$UIH" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["confirm_token"])')"
+"$BIN" op run --op upgrade/step --local --node bp1 --param machine=bp1 --param image="$V2CFG" --confirm-token "$UTOK" >/dev/null || fail "confirmed upgrade failed"
+NEWIMG="$(docker inspect --format '{{.Image}}' "$NAME" 2>/dev/null)"
+[ "$NEWIMG" = "$V2CFG" ] || fail "container not recreated onto v2 (got: $NEWIMG)"
+docker inspect --format '{{range .Mounts}}{{.Destination}} {{end}}' "$NAME" | grep -q '/data/db' || fail "db bind mount not preserved across the upgrade"
+python3 -c "import json;a=json.load(open('$OURO_ATTESTATION'));assert a['immutable']['image_config_digest']=='$V2CFG',a['immutable']['image_config_digest'];assert a['state']['state_generation']>=1" || fail "attestation not rotated to v2"
+pass "REAL upgrade: container recreated onto v2, /data/db bind preserved, attestation rotated"
+
+echo "== a non-allowlisted target image is refused =="
+BADIMG="sha256:$(printf 'f%.0s' {1..64})"
+BOUT="$("$BIN" op run --op upgrade/step --local --node bp1 --param machine=bp1 --param image="$BADIMG" --confirm-token "$UTOK" 2>&1)"
+echo "$BOUT" | grep -qiE 'allowlist|not on|refus|denied' || fail "non-allowlisted upgrade target not refused; got: $BOUT"
+pass "upgrade to a non-allowlisted image digest refused"
 
 echo ""
 echo "S0019 container-bed e2e: ALL PASS"
