@@ -384,10 +384,10 @@ pub fn run_op(args: &[String]) -> Result<()> {
     // no write transaction — it does not mutate. Return the fixed read argv (target-side executor
     // gathers + returns the data); no journal is touched.
     if spec.mutability == Mutability::Read {
-        let argv = crate::executor::build_argv(&intent, &att).unwrap_or_default();
+        let plan = crate::executor::build_plan(&intent, &att, None).unwrap_or_default();
         audit_emit(&paths, "live_preflight", &node, json!({"operation_id": op, "intent_hash": canon}));
         output::print_json(&ToolOutput::ok("ouro.op.read", false).with_data(json!({
-            "op": op, "node": node, "intent_hash": canon, "executor_argv": argv,
+            "op": op, "node": node, "intent_hash": canon, "executor_plan": plan,
             "note": "managed read — no mutation; target-side executor gathers the data",
         })))?;
         return Ok(());
@@ -402,27 +402,32 @@ pub fn run_op(args: &[String]) -> Result<()> {
         state: TxState::Prepared,
     };
     if plan {
-        // Show the FIXED argv the sealed executor WOULD run (from the attested container id, not
-        // the agent's params) — proof of what a real run does, with no mutation.
-        let argv = crate::executor::build_argv(&intent, &att).unwrap_or_default();
+        // Show the FIXED argv SEQUENCE the sealed executor WOULD run (from the attested container id
+        // + digest-resolved artifacts, not the agent's params) — proof of what a real run does, with
+        // no mutation. Preview mode (inbox=None) renders artifact paths as `<inbox:…>` placeholders.
+        let steps = crate::executor::build_plan(&intent, &att, None).unwrap_or_default();
         output::print_json(&ToolOutput::ok("ouro.op.plan", false).with_data(json!({
             "op": op, "node": node, "mutability": format!("{:?}", spec.mutability),
-            "intent_hash": canon, "touched": spec.touched, "executor_argv": argv,
+            "intent_hash": canon, "touched": spec.touched, "executor_plan": steps,
             "note": "plan mode — all gates passed; no mutation (real target execution is target-side)",
         })))?;
         return Ok(());
     }
-    // p5-3 — the transaction's commit runs the sealed executor's FIXED argv on the target (from the
-    // attested container id, not agent params). verify re-attests + checks readiness proxies;
-    // rollback restarts the node onto its prior state. (Real docker exec is target-side; on the
-    // control host `run_argv` will fail fast if docker is absent, which the transaction rolls back.)
-    let argv = crate::executor::build_argv(&intent, &att)?;
-    let commit = || crate::executor::run_argv(&argv);
+    // p5-3 / p7-3 — the transaction's commit runs the sealed executor's FIXED argv SEQUENCE on the
+    // target (from the attested container id + digest-resolved inbox artifacts, not agent params).
+    // Artifact-bearing ops (kes opcert, deploy tx) are refused here if their artifact is not staged.
+    // verify re-attests + checks readiness proxies; rollback restarts the node onto its prior state.
+    // (Real docker exec is target-side; on the control host `run_plan` fails fast if docker is
+    // absent, which the transaction rolls back.)
+    let inbox = paths.home.join("inbox");
+    let commit_plan = crate::executor::build_plan(&intent, &att, Some(&inbox))?;
+    let rb_plan = crate::executor::rollback_plan(&att);
+    let commit = || crate::executor::run_plan(&commit_plan);
     let verify = || {
         let live = read_observation(args)?;
         att.require_matches_live(&live.live.to_live())
     };
-    let rollback = || crate::executor::run_argv(&argv); // idempotent restart onto the prior config
+    let rollback = || crate::executor::run_plan(&rb_plan); // restart onto the prior config
     let ops = TxOps { commit: &commit, verify: &verify, rollback: &rollback };
     let outcome = transaction::run(&journal, &seal, &base, &ops)?;
     audit_emit(&paths, "committed", &node, json!({"operation_id": op, "intent_hash": canon, "outcome": format!("{outcome:?}")}));
