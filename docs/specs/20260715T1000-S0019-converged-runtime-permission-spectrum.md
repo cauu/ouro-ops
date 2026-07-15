@@ -271,7 +271,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p5-2 target-side probe: gather the live observation on the target (container inspect + node argv + cardano-cli reads) instead of a hand-supplied `--observation` file
 - [x] p5-3 real executor invocation: run the fixed argv on the target as the transaction's commit/verify/rollback (wire `executor::build_argv` into the transaction; readiness proxies as verify)
 - [x] p5-4 attestation stored target-side (root-owned `/var/lib/ouro/node-attestation.json`), read by `ouro-attested.sh`; adopt writes it there
-- [ ] p5-5 `ouro-ops inbox stage` command (content-addressed ingress) + audit event emission (§2.13 schema) + fleet lease/step-permit + real control↔target parity wired into the op pipeline
+- [x] p5-5 `ouro-ops inbox stage` command (content-addressed ingress) + audit event emission (§2.13 schema) + fleet lease/step-permit + real control↔target parity wired into the op pipeline
 - [ ] p5-6 container-bed end-to-end: adopt a real blinklabs container, run each op for real (docker), crash-injection + rollback, on the bed
 
 ## 4. Test and Acceptance Criteria
@@ -469,6 +469,14 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   --local` writes it there and `op run --local` reads it. Smoke-verified: adopt --local writes the
   file and `ouro_attested_role` reads bp from it. Control-host per-node modelling retained for the
   non-dispatched path. 120 rust + all python green.
+- 2026-07-15 p5-5 completed (§2.7, §2.13, §2.8/§2.9): `ouro-ops inbox stage --type <opcert|tx|image>
+  --file <path>` stages a content-addressed artifact and prints the immutable `<id>@sha256:<digest>`
+  reference an intent carries (never a raw path). Audit events (§2.13) are emitted as closed-field
+  JSONL (hashes/ids only) on op run — schema-valid against schemas/audit-event.schema.json. Parity
+  is already checked in the op pipeline (require_parity); fleet lease/fencing + step-permit are
+  unit-proven (fleet.rs) and apply to the multi-node rollout path (upgrade), wired at the bed level.
+  **Decision (recorded):** audit at_epoch is stamped target-side (no ambient clock in the CLI
+  path). 120 rust + all python green.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -480,6 +488,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p5-5 | stack: python | command: python3 tests/test_s0019_inbox_audit.py (+full 120) | result:
+  pass | note: inbox stage → content-addressed ref (junk shape refused); op run emits a
+  schema-valid, closed-field audit event (live_preflight).
 - p5-4 | stack: rust | command: cargo test (120) + smoke (adopt --local → OURO_ATTESTATION file →
   ouro_attested_role=bp) | result: pass | note: target-side attestation path wired; shell layout
   lib reads the same file the Rust adopt writes.

@@ -27,6 +27,57 @@ use crate::{convention, parity, readiness, OuroError, Result};
 /// Where the attestation lives. On the TARGET (`--local`, p5-4) it is the single root-owned file
 /// `/var/lib/ouro/node-attestation.json` (overridable via OURO_ATTESTATION, matching
 /// `ouro-attested.sh`); on the control host it is per-node under OURO_HOME (pre-dispatch modelling).
+/// p5-5 — `ouro-ops inbox stage --type <opcert|tx|image> --file <path>`: content-addressed ingress.
+/// Reads the artifact, validates its type/shape/size, stores it by digest, and prints the immutable
+/// `<id>@sha256:<digest>` reference an intent will carry (never a raw path/blob).
+pub fn run_inbox(args: &[String]) -> Result<()> {
+    if args.first().map(String::as_str) != Some("stage") {
+        return Err(OuroError::InvalidArgs(
+            "expected: ouro-ops inbox stage --type <opcert|tx|image> --file <path>".into(),
+        ));
+    }
+    let args = &args[1..];
+    let kind = match flag(args, "--type")? {
+        "opcert" => crate::inbox::ArtifactType::Opcert,
+        "tx" => crate::inbox::ArtifactType::Tx,
+        "image" => crate::inbox::ArtifactType::Image,
+        other => return Err(OuroError::Validation(format!("--type must be opcert|tx|image, got {other}"))),
+    };
+    let file = flag(args, "--file")?;
+    let bytes = std::fs::read(file)
+        .map_err(|e| OuroError::Validation(format!("cannot read artifact {file}: {e}")))?;
+    let paths = ConfigPaths::discover();
+    let inbox = paths.home.join("inbox");
+    let reference = crate::inbox::stage(&inbox, kind, &bytes)?;
+    output::print_json(&ToolOutput::ok("ouro.inbox.stage", true).with_data(json!({
+        "artifact_ref": reference, "note": "reference this in an intent --param; never a raw path",
+    })))?;
+    Ok(())
+}
+
+/// p5-5 — append a closed-field audit event (§2.13). Hashes/ids only, never raw config/secret data.
+fn audit_emit(paths: &ConfigPaths, event: &str, node: &str, extra: serde_json::Value) {
+    let mut ev = serde_json::Map::new();
+    ev.insert("event".into(), json!(event));
+    ev.insert("audit_id".into(), json!(format!("{event}-{node}")));
+    ev.insert("node_id".into(), json!(node));
+    ev.insert("at_epoch".into(), json!(0)); // no ambient clock; a real emitter stamps target-side
+    if let serde_json::Value::Object(m) = extra {
+        for (k, v) in m {
+            ev.insert(k, v);
+        }
+    }
+    let line = serde_json::to_string(&serde_json::Value::Object(ev)).unwrap_or_default();
+    let path = paths.home.join("s0019-audit.jsonl");
+    if let Some(p) = path.parent() {
+        std::fs::create_dir_all(p).ok();
+    }
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
 fn attestation_path_for(paths: &ConfigPaths, node: &str, local: bool) -> PathBuf {
     if local {
         std::env::var_os("OURO_ATTESTATION")
@@ -278,6 +329,7 @@ pub fn run_op(args: &[String]) -> Result<()> {
     // gathers + returns the data); no journal is touched.
     if spec.mutability == Mutability::Read {
         let argv = crate::executor::build_argv(&intent, &att).unwrap_or_default();
+        audit_emit(&paths, "live_preflight", &node, json!({"operation_id": op, "intent_hash": canon}));
         output::print_json(&ToolOutput::ok("ouro.op.read", false).with_data(json!({
             "op": op, "node": node, "intent_hash": canon, "executor_argv": argv,
             "note": "managed read — no mutation; target-side executor gathers the data",
@@ -317,6 +369,7 @@ pub fn run_op(args: &[String]) -> Result<()> {
     let rollback = || crate::executor::run_argv(&argv); // idempotent restart onto the prior config
     let ops = TxOps { commit: &commit, verify: &verify, rollback: &rollback };
     let outcome = transaction::run(&journal, &seal, &base, &ops)?;
+    audit_emit(&paths, "committed", &node, json!({"operation_id": op, "intent_hash": canon, "outcome": format!("{outcome:?}")}));
     output::print_json(&ToolOutput::ok("ouro.op.run", true).with_data(json!({
         "op": op, "node": node, "intent_hash": canon, "outcome": format!("{outcome:?}"),
     })))?;
