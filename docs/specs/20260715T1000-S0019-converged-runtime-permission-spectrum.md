@@ -274,7 +274,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p5-5 `ouro-ops inbox stage` command (content-addressed ingress) + audit event emission (§2.13 schema) + fleet lease/step-permit + real control↔target parity wired into the op pipeline
 - [x] p5-6 container-bed end-to-end: adopt a real blinklabs container, run each op for real (docker), crash-injection + rollback, on the bed
 - [ ] p6-1 greenfield `ouro-ops onboard <host>` (host-onboarded state): install the S0019 confined principals (`ouro-op` write / `ouro-diag` read), the fixed op wrapper `/usr/local/sbin/ouro-op-run` (sudoers: only `ouro-ops op "$@"`), push the ouro-ops binary, harden sshd, pin the host key — operator-initiated via the bootstrap credential; NO S0017 compat
-- [ ] p6-2 adopt/op `--local` auto-run the probe (`ouro_observe`) when no `--observation` is given, so the target self-gathers the observation (no hand-fed file)
+- [x] p6-2 adopt/op `--local` auto-run the probe (`ouro_observe`) when no `--observation` is given, so the target self-gathers the observation (no hand-fed file)
 - [ ] p6-3 full `--dispatch` for adopt + op (real SSH → target `--local`) + the confirm-token cross-machine handshake (dispatch preview returns the target-computed intent hash → operator approves → mint token → dispatch the real run)
 - [ ] p6-4 container-bed end-to-end over the DISPATCH path (SSH + wrapper + auto-probe), not just `--local`, proving the full website→agent→node chain
 
@@ -500,6 +500,11 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   operator-initiated); dry-run verified (14 steps, host-onboarded). **Decision (recorded):** the
   greenfield onboard is a fresh plan, not an extension of S0017 init (no compat). 123 rust + all
   python green.
+- 2026-07-15 p6-2 completed: adopt/op `--local` AUTO-RUN the embedded probe when no `--observation`
+  is given — `read_observation` extracts the embedded `lib/ouro-probe.sh` (OURO_PROBE_LIB overrides)
+  and runs `ouro_observe`, so the target self-gathers the observation and the agent never hand-feeds
+  a file. Container-bed e2e updated to drop `--observation` (adopt + op auto-probe) and still passes
+  on a real container. 123 rust + all python green.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -511,6 +516,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p6-2 | stack: other | command: bash fixtures/e2e/s0019-bed/run.sh (auto-probe) | result: pass |
+  note: adopt + op run with NO --observation self-gather via the embedded probe on the real
+  container; all bed assertions still pass.
 - p6-1 | stack: rust | command: cargo test onboard/provision (+full 123); dry-run onboard | result:
   pass | note: onboard plan installs ouro-op/ouro-diag + the op-only wrapper (no tool-run), binary,
   hardened sshd, /var/lib/ouro; ordering binary→wrapper→keys; sshd allows only the S0019 principals.

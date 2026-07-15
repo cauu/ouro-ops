@@ -47,8 +47,11 @@ ouro_observe linux/amd64 > "$WORK/obs.json" || fail "probe"
 python3 -c "import json;o=json.load(open('$WORK/obs.json'));assert o['live']['container_id'];assert o['live']['image_config_digest']=='$IMG_CFG',o['live']['image_config_digest']" || fail "observation mismatch"
 pass "probe gathered the observation from the real container"
 
-echo "== adopt the real container (non-disruptive) =="
-"$BIN" adopt --local --node bp1 --role bp --approve-token op-tok --observation "$WORK/obs.json" >/dev/null || fail "adopt refused a conforming container"
+# p6-2: adopt/op auto-run the embedded probe when no --observation is given. Point it at the lib.
+export OURO_PROBE_LIB="$ROOT/ouro-skills/lib/ouro-probe.sh"
+
+echo "== adopt the real container (auto-probe, non-disruptive) =="
+"$BIN" adopt --local --node bp1 --role bp --approve-token op-tok >/dev/null || fail "adopt (auto-probe) refused a conforming container"
 [ -f "$OURO_ATTESTATION" ] || fail "attestation not written"
 pass "adopt wrote the attestation; container untouched"
 # node still running after adopt (non-disruptive)
@@ -56,16 +59,16 @@ pass "adopt wrote the attestation; container untouched"
 pass "adopt was non-disruptive (node still running)"
 
 echo "== dangerous write without confirm → refused =="
-OUT="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 --observation "$WORK/obs.json" 2>&1)"
+OUT="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 2>&1)"
 echo "$OUT" | grep -q "dangerous write" || fail "restart without confirm was not refused; got: $OUT"
 pass "restart refused without an operator confirm-token"
 
 echo "== mint the intent-bound confirm-token, then run the real restart =="
-IH="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 --observation "$WORK/obs.json" 2>&1 | grep -o 'intent-hash [0-9a-f]*' | awk '{print $2}')"
+IH="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 2>&1 | grep -o 'intent-hash [0-9a-f]*' | awk '{print $2}')"
 [ -n "$IH" ] || fail "no intent hash"
 TOK="$("$BIN" confirm create --op runtime/restart --node bp1 --intent-hash "$IH" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["confirm_token"])')"
 START0="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
-"$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 --observation "$WORK/obs.json" --confirm-token "$TOK" >/dev/null || fail "confirmed restart failed"
+"$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 --confirm-token "$TOK" >/dev/null || fail "confirmed restart failed"
 START1="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
 [ "$START0" != "$START1" ] || fail "container did not actually restart"
 pass "REAL docker restart executed (StartedAt advanced) through the sealed executor"

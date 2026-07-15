@@ -134,11 +134,48 @@ impl ObsLive {
 }
 
 fn read_observation(args: &[String]) -> Result<Observation> {
-    let path = flag(args, "--observation")?;
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| OuroError::Validation(format!("cannot read observation {path}: {e}")))?;
+    // p6-2 — with no `--observation`, RUN the target-side probe (ouro_observe) to self-gather the
+    // observation, so the agent never hand-feeds a file. The probe lib is embedded; extract it to a
+    // temp dir and source it. (OURO_PROBE_LIB overrides the source for the bed / tests.)
+    let text = match optional(args, "--observation") {
+        Some(path) => std::fs::read_to_string(path)
+            .map_err(|e| OuroError::Validation(format!("cannot read observation {path}: {e}")))?,
+        None => run_probe()?,
+    };
     serde_json::from_str(&text)
         .map_err(|e| OuroError::Validation(format!("malformed observation: {e}")))
+}
+
+/// Run the embedded target-side probe and capture its observation JSON. The probe lib
+/// (`lib/ouro-probe.sh`) is embedded; extract it to a temp file, source it, and run `ouro_observe`.
+fn run_probe() -> Result<String> {
+    let lib_path = match std::env::var_os("OURO_PROBE_LIB") {
+        Some(p) => PathBuf::from(p),
+        None => {
+            let bytes = crate::skills::asset("lib/ouro-probe.sh").ok_or_else(|| {
+                OuroError::Validation("embedded probe lib/ouro-probe.sh missing".into())
+            })?;
+            let dir = std::env::temp_dir().join(format!("ouro-probe-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).ok();
+            let p = dir.join("ouro-probe.sh");
+            std::fs::write(&p, bytes).ok();
+            p
+        }
+    };
+    let platform =
+        std::env::var("OURO_PLATFORM").unwrap_or_else(|_| "linux/amd64".to_string());
+    let out = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(format!("source '{}'\nouro_observe '{}'", lib_path.display(), platform))
+        .output()
+        .map_err(|e| OuroError::Validation(format!("probe failed to run: {e}")))?;
+    if !out.status.success() {
+        return Err(OuroError::Validation(format!(
+            "probe failed: {}",
+            String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("")
+        )));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 /// `ouro-ops adopt` — conformance → evidence-bound approval → write the attestation. Non-disruptive
