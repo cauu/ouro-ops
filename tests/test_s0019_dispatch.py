@@ -289,6 +289,54 @@ def main():
     assert "ouro-op@10.0.0.9" in j and "ouro-exec@" not in j and "StrictHostKeyChecking=yes" in j, j
     assert "/usr/local/sbin/ouro-op-run" in j and "'--local'" in j, j
 
+    # A transport failure is one bounded typed record, not a silent exit 255. Remote stderr is
+    # untrusted DATA but retaining a bounded excerpt makes host-key/auth failures diagnosable.
+    transport_bin = Path(home) / "transport-bin"
+    transport_bin.mkdir()
+    fake_transport = transport_bin / "ssh"
+    fake_transport.write_text(
+        "#!/bin/sh\n"
+        "printf 'Permission denied (publickey).\\n' >&2\n"
+        "exit 255\n"
+    )
+    fake_transport.chmod(0o700)
+    transport = subprocess.run(
+        [
+            str(BIN), "op", "run", "--op", "observability/health", "--node", "bp1",
+            "--param", "machine=bp1", "--dispatch", "192.0.2.1", "--ssh-key", "creds://bp1",
+        ],
+        env=dict(os.environ, OURO_HOME=home, PATH=f"{transport_bin}:{os.environ['PATH']}"),
+        text=True,
+        capture_output=True,
+    )
+    assert transport.returncode == 255 and len(transport.stdout.splitlines()) == 1, transport
+    transport_result = json.loads(transport.stdout)
+    assert transport_result["status"] == "error", transport_result
+    assert transport_result["error"]["code"] == "ssh_exit_255", transport_result
+    assert "Permission denied" in transport_result["error"]["detail"], transport_result
+    assert len(transport_result["error"]["detail"]) < 4096, transport_result
+
+    # Standalone S0017 detection is retired before local execution or legacy dispatch can produce
+    # control-host facts under a target machine id.
+    for detect_args in (
+        ["tool", "run", "detect/runtime", "--machine", "bp1"],
+        ["tool", "run", "detect/runtime", "--dispatch", "bp1", "--spec", "pool-spec.yaml"],
+    ):
+        _, retired = run(home, *detect_args)
+        assert retired["status"] == "error" and "retired in S0019" in json.dumps(retired), retired
+
+    # Nested agent-facing help must be discoverable without supplying the operation's required
+    # arguments first.
+    for help_args, needle in (
+        (["op", "run", "--help"], "--dispatch <host>"),
+        (["fleet", "permit", "create", "--help"], "--online-relays"),
+        (["inbox", "stage", "--help"], "--type <opcert|tx|image>"),
+        (["adopt", "--help"], "--bootstrap-user <account>"),
+        (["manifest", "verify", "--help"], "--against <bundle-manifest.json>"),
+    ):
+        helped = subprocess.run([str(BIN), *help_args], text=True, capture_output=True)
+        assert helped.returncode == 0 and needle in helped.stdout, (help_args, helped)
+
     print("S0019 dispatch-level negatives passed")
 
 

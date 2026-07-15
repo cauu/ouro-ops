@@ -1131,7 +1131,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p10-1 establish the live baseline and validate credential, connectivity, onboard dry-run /
   idempotence and adopt preview/current-management behavior on both hosts. Fix any correctness bug
   required to reach an honest stop state.
-- [ ] p10-2 exercise config, detect, observability and troubleshooting end to end on both hosts,
+- [x] p10-2 exercise config, detect, observability and troubleshooting end to end on both hosts,
   including the typed retired-config boundary, two-sample tip semantics and unprivileged diagnostic
   confinement; fix correctness defects and add local regression coverage.
 - [ ] p10-3 exercise runtime, upgrade and kes-rotation through their live non-mutating boundary,
@@ -1213,3 +1213,35 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - p10-1 acceptance evidence: Rust `158/158`, Clippy `-D warnings`, probe/dispatch/Skill-doc Python
   regressions, manifest verification and `git diff --check` all pass. `pool-spec.yaml` remains
   operator-owned, unmodified and untracked.
+- 2026-07-16T02:11+0800 [x] p10-2 completed with an independent external-agent replay. The first
+  replay found that `PoolSpec::validate` and the public JSON schema still required retired
+  `ouro-exec`, blocking the S0019 `ouro-diag` read plane; the Detect Skill's exact legacy command
+  could also omit dispatch and successfully misreport the control Mac as target `mode=none`. The
+  old remote route was structurally unusable after onboarding because it depended on the retired
+  `cardano|ouro-exec -> /usr/local/sbin/ouro-tool-run` privilege path. Pool SSH users now share one
+  bounded safe-account grammar in Rust/schema, accepting operator account `cardano` while rejecting
+  SSH-option injection.
+- Per normative §1.C, standalone `tool run detect/runtime` is now a typed S0019 retirement rather
+  than a revived adaptive detector. Both the local and nominally dispatched forms stop before
+  execution and direct unmanaged assessment to the exact `adopt --preview` command; the two live
+  previews reached the remote signed-convention gate and honestly refused observed image config
+  digest `sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a`.
+  Managed operations retain target-side re-attestation under lock.
+- Config and observability Skills now contain complete host + named-credential dispatch commands.
+  Both hosts returned a typed retired refusal for remote `config/render`, and both returned typed
+  `not_ouro_managed` for the managed health read because allowlist refusal prevented adoption. No
+  tip sample was fabricated; the Skill still requires distinct samples before claiming progress.
+  Both unprivileged diagnostic sessions returned `ouro-diag`, exact groups
+  `ouro-diag ouro-attest`, an unreadable confirm secret and non-writable management binary/wrapper;
+  command exit is bounded DATA and no repair ran.
+- SSH/op/adopt dispatch now forwards one valid remote ToolOutput with its original exit, or emits
+  exactly one bounded structured local failure containing sanitized stderr when transport/protocol
+  output is absent. Regression coverage proves exit 255 authentication diagnostics. Agent-facing
+  help for `adopt`, `op run`, `fleet permit create`, `inbox stage` and manifest verification now
+  succeeds without first supplying required operation arguments.
+- p10-2 acceptance evidence: Rust `158/158`, Clippy `-D warnings`, S0019 dispatch, Skill docs,
+  pool-spec schema and website generator tests, manifest verification at final local embedded digest
+  `a17d2f58439cedfb9b53d2fc0150c919deb8b1c707f946f8883e535bd1f6001d`, and `git diff --check`
+  pass. Live functional replay used immediately preceding digest `3a4cd41b…`; the only subsequent
+  embedded delta is the matching public schema fix, to be converged with the next combined live
+  binary rollout. Operator-owned `pool-spec.yaml` remains unmodified and untracked.

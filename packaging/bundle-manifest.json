@@ -1,7 +1,7 @@
 {
   "assets": {
     "adopt/SKILL.md": "8eed66e8cfcda1f9cb265b9db28ed34b79c456e02aa8119fdb6de6b98642ca9b",
-    "config/SKILL.md": "8a2afc95ed2d02ece16f7ff899cce27fcf0eb4daea08b1a140f6ebfad8a5f99a",
+    "config/SKILL.md": "d8256ec94fa921bba012fffdb8f4e6a6610c9c05b4ca4b5ee58481a82be3c848",
     "deploy/SKILL.md": "a33a0c4fc4d06d67e231091f183c88f3086748e631699dd07e7a151a81371285",
     "deploy/scripts/preflight.sh": "4827982c84c48d207c9c8ffecd5cdf76a3b5144b2a69dc886f7e56a55aa66a5d",
     "deploy/scripts/provision.sh": "4e77fd0dcbe695cc09c4c97d610d8f387625c0bb2446c600d27e4cf062271a58",
@@ -13,7 +13,7 @@
     "deploy/scripts/takeover-verify.sh": "1a2d9b5d380e33de0192c9ec4df0491c07647b07e5379cf08734220e48de1b70",
     "deploy/scripts/takeover.sh": "27f9c2a434d9426147c749e92ded283d1993f959c1d65a125e3620aefad81fb1",
     "deploy/scripts/verify.sh": "265a4953bb81e8adaeb25d0967d5f50a8bd11e263ac28f3efbf7edba6cceaa97",
-    "detect/SKILL.md": "c48098f35ea5a9e0bacee8e3e364b6a3c167f9ae3fd62bc4100b8e7edca1e85e",
+    "detect/SKILL.md": "501125a97713a7b2742c14a620ae8488d18ef84509e8f2a78513439a67603d53",
     "detect/scripts/cardano-cli.sh": "36120545ca8fa765e0005b5a10de0f4744dbb9de5bae4badba0f770bd33505c9",
     "detect/scripts/runtime.sh": "63106a5b42fa467c60bf7182062d8a4dc9648e002348a13b467a6c01aa4d5940",
     "kes-rotation/SKILL.md": "fda6073c237e1ed856d93c1a21dfc2aa47bbc76f1aa6b219dcedfc87c1d87b55",
@@ -23,7 +23,7 @@
     "lib/ouro-attested.sh": "dee534a05268894341c26d6607425a856e38cd78ba8152bca8ea8cc67bf111f0",
     "lib/ouro-lib.sh": "43d8d8dff3f767603c5d534e5849dff5778535478d0dd110fbd76e52830fc774",
     "lib/ouro-probe.sh": "edca8a275bf435b709c28b4de10b2accfc430c5c7b58ff57dc08c36c26ec5201",
-    "observability/SKILL.md": "fe13b0e1a03dc2df50c9b079016b305058ba2e3ec045bc96c37d55473c75eb97",
+    "observability/SKILL.md": "228a80ecbb62f5d7daaa718d6256894f5e5da007733c42c22d6a7a1aa1365c4d",
     "observability/scripts/health.sh": "c8a7862ef9572aaa065589c76652cd5a03189987ea1aef16c9518367c0b91f61",
     "observability/scripts/install-gateway.sh": "8be5e1f07516aa6a08bc44699b37e2f7a927aa456223a329dd25b4db9ef82c15",
     "observability/scripts/rollback.sh": "74a7182079d42080e105a5c14a22a5cd7054337ca09e20c31e0e15c59b6ad468",
@@ -34,7 +34,7 @@
     "runtime/scripts/topology-apply.sh": "95cea9a21eb93eca7de8db72849d9c3a0f9054ac02e9a3b29825be633980aa64",
     "runtime/scripts/verify.sh": "4f8995b6073b7c02f3b3f362d4f3bd24ae32765a3f79092c1052d1dd26a7e768",
     "schemas/audit-event.schema.json": "c58a6688eb705155b99bbe0b8eb0d57d9563d1c577dcc6097d94e95faae8d06a",
-    "schemas/pool-spec.schema.json": "50090f55cf324578507027d51dfae97e4ae31c6d24540748d63e96b325f83c35",
+    "schemas/pool-spec.schema.json": "5a5763d4b5a5a88462bf235945aac7f81d9bf8c5df2c6ec224ca9df4728eed28",
     "schemas/tool-output.schema.json": "558eb8bac6ac2568860034f7fa9523566a69043cc33298aab44127e4e8b7a07e",
     "troubleshooting/SKILL.md": "f1b8b78d55a5dc12bb6bfbd3079736a98fa6bb37ad56c96a561a366f713a8bd0",
     "troubleshooting/scripts/logs.sh": "a08b463994aec58d209306853890b48023cff6a5de5419491e2711b4811cb44a",
@@ -46,11 +46,11 @@
     "upgrade/scripts/upgrade-one.sh": "bdb9aeb009fea89027ede2f6b05a0b3ef0fd5e672c6c80f77df22b6662d8187c",
     "upgrade/scripts/verify.sh": "5c77cb2e4b82e1b67c8681d5fb5f197b4b5c4a306eb90b7e668e771d40eb9ff4"
   },
-  "decision_hash": "c65e2ef558993e320855a7964c16fa091218fd24ba8da4702f3ba28c3f64dff0",
-  "embedded_digest": "0ee37fef6f856dc58ba0212a5e19ee549ee93a8db0f9ca4029484ee8ff0d4182",
+  "decision_hash": "bbb346dceef70306b35c75847ed876088c0691a8f8b55fb868302575903cc59e",
+  "embedded_digest": "a17d2f58439cedfb9b53d2fc0150c919deb8b1c707f946f8883e535bd1f6001d",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
-  "schema_hash": "8c0f40bc9ec0c47cea54851f0b9f966b1a62d79c225da3bd7caf5823917468bb",
+  "schema_hash": "ff5abbf2400284e0a8984f28d7f217d385ec8045ec49009b8464e4ac262fb8bd",
   "skills_hash": "cfb56eec89b90a34920a69d2efe45ac5f7713ea07aa8737e51e1be49733bebf0"
 }

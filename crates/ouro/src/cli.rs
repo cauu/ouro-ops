@@ -947,6 +947,20 @@ fn run_confirm(args: &[String]) -> Result<()> {
 
 fn run_tool(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {
+        // S0019 §1.C: standalone S0017 supervisor discovery is not a supported happy-path read.
+        // Keeping it callable produced a dangerous false success: an omitted --dispatch silently
+        // described the control Mac, while the dispatched path depended on the retired
+        // ouro-exec/ouro-tool-run privilege channel. Detection now occurs only during adopt preview
+        // and every managed op's target-side live re-attestation.
+        Some("run") if args.get(1).map(String::as_str) == Some("detect/runtime") => {
+            Err(OuroError::Validation(
+                "detect/runtime is retired in S0019: use `ouro-ops adopt --dispatch <host> \
+                 --bootstrap-user <account> --ssh-key creds://<name> --node <id> --role <bp|relay> \
+                 --preview` for unmanaged conformance detection; managed operations re-attest the \
+                 target automatically"
+                    .to_string(),
+            ))
+        }
         // `--dispatch <m>` on control = Model B remote dispatch: SSH to m and run the
         // tool there. Absent it, execute the L2 script locally (S0014 semantics).
         Some("run") if optional_flag_value(args, "--dispatch").is_some() => run_tool_dispatch(args),
@@ -1607,14 +1621,14 @@ fn print_help() {
     println!("  fleet     permit create — authorize one disruptive fleet step");
     println!("  diag      exec --dispatch <machine> --spec <pool-spec> -- <cmd> — unprivileged diagnosis");
     println!("  confirm   create — mint an exact intent-bound one-time approval");
-    println!("  tool      run <skill>/<script> — legacy S0017 dispatch path");
+    println!("  tool      run <skill>/<script> — legacy S0017 path; standalone detect is retired");
     println!("  kes       cold-sign-script | counter status | generate | push");
     println!("  deploy    cold-sign-script — offline tx witnessing");
     println!("  pool      overview | register-tx");
     println!("  rollback  roll back a prior change");
     println!("  self-update  --check");
     println!("Read-only / meta:");
-    println!("  status    node status from a snapshot | spec validate | detect (via tool run detect/*)");
+    println!("  status    node status from a snapshot | spec validate | detection via adopt --preview");
     println!("  version | paths | contract | manifest show|verify | audit init|log");
     println!("\nOutput is single-line JSON when captured (agents/pipes/dispatch); human-readable on a TTY (force JSON: --json).");
 }
@@ -1637,13 +1651,26 @@ fn command_usage(command: &str) -> Option<&'static str> {
                    See `ouro-ops skill show onboard`.",
         "deinit" => "ouro-ops deinit --host <target> [--port 22] --bootstrap-user <account> \
                      --bootstrap-key creds://<name> [--force] [--remove-node]\n  Reverses onboarding (refuses while a node runs).",
+        "adopt" => "ouro-ops adopt --dispatch <host> --bootstrap-user <account> \
+                    --ssh-key creds://<name> --node <id> --role <bp|relay> --preview\n  \
+                    After exact operator approval, add --approve-token <token> without --preview.",
+        "op" => "ouro-ops op run --op <operation> --dispatch <host> --ssh-key creds://<name> \
+                 --node <id> --param machine=<id> [--param k=v] [--fleet-permit <json>] \
+                 [--confirm-token <token>] [--plan]\n  \
+                 Managed intent path; dangerous operations require live gates and exact approval.",
+        "inbox" => "ouro-ops inbox stage --type <opcert|tx|image> --file <path> \
+                    --dispatch <host> --ssh-key creds://<name> [--plan]\n  \
+                    Streams one bounded public artifact to the fixed target wrapper.",
+        "fleet" => "ouro-ops fleet permit create --pool-id <id> --node <id> --op <id> \
+                    --role <bp|relay> --online-relays <n> --min-online-relays <n> \
+                    --relays-remaining <n> --holder <id> [--ttl 2m]",
         "tool" => "ouro-ops tool run <skill>/<script> [--dispatch <machine>] --spec <pool-spec> \
                    [--machine <id>] [--confirm-token <tok>]\n  The sole audited write path. Read the steps from `ouro-ops skill show <skill>`.",
         "confirm" => "ouro-ops confirm create --op <id> --node <id> --intent-hash <hash> | \
                       confirm adopt create --node <id> --candidate-hash <hash> --host-key <sha256>\n  \
                       Mints a one-time S0019 approval bound to the exact intent or adoption candidate.",
         "kes" => "ouro-ops kes cold-sign-script --kes-vkey <pub> --kes-period <n> | counter status --state <json> \
-                  | generate | push\n  Rotations run via `tool run kes-rotation/*` — see `ouro-ops skill show kes-rotation`.",
+                  | generate | push\n  Public opcert install runs via `op run kes-rotation/install-opcert`; see the Skill.",
         "deploy" => "ouro-ops deploy cold-sign-script --tx-body <path> --cold-key <role> [--cold-key <role>...] \
                      [--era conway] [--testnet-magic <n>|--mainnet]",
         "diag" => "ouro-ops diag exec --dispatch <machine> --spec <pool-spec> [--timeout <s>] -- <command>\n  \
@@ -1654,7 +1681,7 @@ fn command_usage(command: &str) -> Option<&'static str> {
         "skill" => "ouro-ops skill list | show <skill>   (skills: deploy, detect, kes-rotation, observability, runtime, troubleshooting, upgrade, onboard)",
         "spec" => "ouro-ops spec validate --spec <pool-spec>",
         "status" => "ouro-ops status --snapshot <json> [--diff-spec --spec <pool-spec>]",
-        "manifest" => "ouro-ops manifest show | verify",
+        "manifest" => "ouro-ops manifest show | verify --against <bundle-manifest.json>",
         "config" => "ouro-ops config render --spec <pool-spec> --machine <id> [--out <dir>] | apply ...",
         "audit" => "ouro-ops audit init | log",
         "rollback" => "ouro-ops rollback --spec <pool-spec> ...",

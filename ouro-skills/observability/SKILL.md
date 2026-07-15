@@ -17,9 +17,11 @@ JSON; it does not by itself prove forging, KES lifetime, peer health, or disk ca
   by design.
 
 ## Decision guidance (use your judgment; this is not a rigid script)
-- For EVERY machine (BP included), run the fixed managed read: `ouro-ops op run --op
-  observability/health --node <id> --param machine=<id>`. It executes the sealed health query and
-  returns its bounded JSON result; `--plan` only shows the argv and is not health evidence.
+- For EVERY machine (BP included), run the fixed managed read against the target host:
+  `ouro-ops op run --op observability/health --dispatch <host> --ssh-key creds://<name> --node <id>
+  --param machine=<id>`. It executes the sealed health query and returns its bounded JSON result;
+  `--plan` only shows the transport argv and is not health evidence. Never omit `--dispatch`: a
+  control-local `not_ouro_managed` result says nothing about the target.
 - Use `ouro-ops diag exec --dispatch <id> --spec <pool-spec> -- <command>` only when health is
   insufficient and troubleshooting is warranted. That channel is unprivileged free-form diagnosis,
   not a mechanism-enforced read-only command language.

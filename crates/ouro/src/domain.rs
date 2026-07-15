@@ -236,12 +236,7 @@ impl PoolSpec {
             if let Some(ep) = &machine.public_endpoint {
                 reject_unsafe_host(&format!("machine {} public_endpoint.host", machine.id), &ep.host)?;
             }
-            if machine.ssh.user != "ouro-exec" {
-                return Err(OuroError::Validation(format!(
-                    "machine {} must use ouro-exec ssh user",
-                    machine.id
-                )));
-            }
+            reject_unsafe_username(&format!("machine {} ssh.user", machine.id), &machine.ssh.user)?;
             // p2-4: if runtime is DECLARED, it must be internally consistent — a systemd
             // declaration names a unit; a container declaration names a container or image.
             // (Absent = undeclared = fail-safe: detection governs; no assumption here.)
@@ -425,6 +420,24 @@ fn reject_unsafe_host(field: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
+/// Pool specs may name a bootstrap account (`cardano`) or a managed principal (`ouro-op`),
+/// depending on the lifecycle command consuming the target. The old equality check for
+/// `ouro-exec` survived the S0019 principal migration and blocked even the `ouro-diag` channel.
+/// Keep the actual security property here: a bounded, non-option, shell-safe Linux user name.
+fn reject_unsafe_username(field: &str, value: &str) -> Result<()> {
+    let mut chars = value.chars();
+    let first = chars.next();
+    let valid = value.len() <= 32
+        && first.is_some_and(|ch| ch.is_ascii_lowercase() || ch == '_')
+        && chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-');
+    if !valid {
+        return Err(OuroError::Validation(format!(
+            "{field} must be a safe Linux account name ([a-z_][a-z0-9_-]{{0,31}})"
+        )));
+    }
+    Ok(())
+}
+
 /// p4-1 — a metadata URL a target script may echo into config. Require http(s), bound the
 /// length, and reject shell metacharacters / whitespace / control chars.
 fn reject_unsafe_url(field: &str, value: &str) -> Result<()> {
@@ -476,6 +489,14 @@ mod tests {
         let mut s = valid_spec();
         s.machines[0].ssh.host = "relay1; rm -rf /".to_string();
         assert!(s.validate().is_err(), "shell metachars in ssh.host rejected");
+
+        let mut s = valid_spec();
+        s.machines[0].ssh.user = "cardano".to_string();
+        assert!(s.validate().is_ok(), "bootstrap account is not the retired ouro-exec principal");
+
+        let mut s = valid_spec();
+        s.machines[0].ssh.user = "-oProxyCommand=evil".to_string();
+        assert!(s.validate().is_err(), "ssh option injection in ssh.user rejected");
 
         let mut s = valid_spec();
         if let Some(ep) = s.machines.iter_mut().find_map(|m| m.public_endpoint.as_mut()) {

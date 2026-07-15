@@ -307,9 +307,7 @@
             },
             "user": {
               "type": "string",
-              "enum": [
-                "ouro-exec"
-              ]
+              "pattern": "^[a-z_][a-z0-9_-]{0,31}$"
             },
             "key_ref": {
               "$ref": "#/$defs/credentialRef"

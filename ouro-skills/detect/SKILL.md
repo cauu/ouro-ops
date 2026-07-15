@@ -1,42 +1,36 @@
 ---
-skill_version: 1
+skill_version: 2
 requires_ouro: ">=0.1.0"
 ---
 # Detect Skill
 
 ## Purpose
-Read-only detection of HOW a cardano-node is supervised on a target, so the mechanism
-can choose the correct lifecycle path (host process, systemd unit, or container runtime)
-instead of assuming a bare process. The probe emits a closed, typed projection; it never
-mutates anything and never reads key material.
+Explain the S0019 detection boundary without reviving S0017's adaptive supervisor path. S0019
+supports one digest-pinned container convention: detection occurs only in adoption preview and in the
+live re-attestation gate before each managed operation.
 
 ## Decision Tree
-- Run `ouro-ops tool run detect/runtime --machine <m>` (dispatched) to collect the
-  supervision projection.
-- Read `data.mode`: one of `bare`, `systemd`, `docker`, `podman`, `ambiguous`, `none`.
-- `bare` — the node is a host process; the mechanism uses process rotation.
-- `systemd` — a `*.service` unit owns the node; the mechanism restarts the unit.
-- `docker`/`podman` — a container runtime owns the node; upgrade re-pins the image
-  digest and recreates the container rather than swapping a host binary.
-- Use `data.evidence` (unit basename, container id, image digest) and `data.port` only
-  to describe ground truth to the operator; the mechanism re-verifies before acting.
-- The projection is advisory. The mechanism re-checks mode and shows ground truth before
-  any destructive action (see the lifecycle skills).
+- Do not run `ouro-ops tool run detect/runtime`: that S0017 command is retired and returns a typed
+  refusal. Without `--dispatch` it used to inspect the control machine, and its remote privilege
+  path no longer exists.
+- For an unmanaged node, use the exact non-mutating adoption assessment:
+  `ouro-ops adopt --dispatch <host> --bootstrap-user <account> --ssh-key creds://<name> --node <id>
+  --role <bp|relay> --preview`.
+- Interpret only the typed result. A conforming candidate reports the signed convention and exact
+  candidate hash. A non-conforming runtime/image/layout is refused, never adapted.
+- For an adopted node, do not run a separate detector before an operation. The mechanism probes and
+  compares the live container to the attestation under the operation lock; drift is a typed refusal.
 
 ## Stop Conditions
-- `data.mode == "ambiguous"` (multiple supervisor signals, e.g. a unit that launches a
-  container-runtime, nested containers, or two matching nodes): stop and escalate; the
-  mechanism must fail closed with exit 40 rather than guess.
-- `data.mode == "none"` while an operation expects a running node: stop and diagnose.
-- Stop if the detected mode conflicts with the spec's declared runtime.
+- Stop when preview reports zero/multiple node containers, an unsupported/rootless supervisor,
+  a non-allowlisted image or a layout/role mismatch.
+- Stop on `not_ouro_managed` or `node_drift`; route unmanaged nodes to adoption and drifted nodes to
+  operator review.
 - Stop if a diagnosis would otherwise become an ad hoc mutation.
 
 ## Red Lines
-- L3 is read-only; this probe has no secret directory access and no write capability.
+- Adoption preview is non-mutating; free-form L3 diagnosis is unprivileged, not read-only.
+- Unprivileged diagnosis has no secret directory access.
 - No cold, KES secret, or VRF material enters context or output.
-- The projection is closed: booleans, a mode enum, opaque ids, and hashes only — never
-  raw environment, argv, mounts, labels, or full inspect output.
-- Writes only through `ouro-ops tool run`; detection never performs a change itself.
-- On exit 30 from a subsequent change, run the rollback-capable path before continuing.
-- On exit 40 (ambiguous or unknown supervision state), stop all writes and require human
-  intervention.
+- Never recreate, rename or restart a node merely to make adoption pass.
+- Writes go only through `ouro-ops op run`; detection never performs a change itself.

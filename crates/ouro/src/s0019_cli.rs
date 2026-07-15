@@ -26,6 +26,60 @@ use crate::transaction::{
 };
 use crate::{convention, parity, OuroError, Result};
 
+const DISPATCH_DIAGNOSTIC_CAP: usize = 2048;
+
+/// Preserve the remote command's one-record contract. A well-formed remote ToolOutput is forwarded
+/// byte-for-byte and its exit code is retained without a second local error. SSH/protocol failures
+/// that produced no ToolOutput become one bounded local record, including enough untrusted stderr
+/// to diagnose authentication/host-key failures without flooding the agent context.
+fn finish_ssh_dispatch(tool: &str, result: &std::process::Output) -> Result<()> {
+    let exit = result.status.code().unwrap_or(255);
+    let typed = serde_json::from_slice::<serde_json::Value>(&result.stdout)
+        .ok()
+        .is_some_and(|value| {
+            value.is_object() && value.get("tool").is_some() && value.get("status").is_some()
+        });
+    if typed {
+        output::forward_tool_stdout(&result.stdout)?;
+        return if result.status.success() { Ok(()) } else { Err(OuroError::Reported(exit)) };
+    }
+
+    let bounded = |raw: &[u8]| {
+        String::from_utf8_lossy(raw)
+            .chars()
+            .filter(|ch| !ch.is_control() || matches!(ch, '\n' | '\r' | '\t'))
+            .take(DISPATCH_DIAGNOSTIC_CAP)
+            .collect::<String>()
+            .trim()
+            .to_string()
+    };
+    let stdout = bounded(&result.stdout);
+    let stderr = bounded(&result.stderr);
+    let detail = if result.status.success() {
+        format!(
+            "target returned no typed ToolOutput (bounded stdout: {})",
+            if stdout.is_empty() { "<empty>" } else { &stdout }
+        )
+    } else {
+        format!(
+            "SSH/remote dispatch failed with exit {exit} (bounded stderr: {}; bounded stdout: {})",
+            if stderr.is_empty() { "<empty>" } else { &stderr },
+            if stdout.is_empty() { "<empty>" } else { &stdout },
+        )
+    };
+    let reported_exit = if result.status.success() { 20 } else { exit };
+    output::print_json(&ToolOutput::failure(
+        tool,
+        if result.status.success() {
+            "invalid_remote_output".to_string()
+        } else {
+            format!("ssh_exit_{exit}")
+        },
+        detail,
+    ))?;
+    Err(OuroError::Reported(reported_exit))
+}
+
 /// Where the attestation lives. On the TARGET (`--local`, p5-4) it is the single root-owned file
 /// `/var/lib/ouro/node-attestation.json` (overridable via OURO_ATTESTATION, matching
 /// `ouro-attested.sh`); on the control host it is per-node under OURO_HOME (pre-dispatch modelling).
@@ -1345,8 +1399,7 @@ fn dispatch_op(
         .args(&argv)
         .output()
         .map_err(|e| OuroError::Validation(format!("ssh dispatch failed: {e}")))?;
-    output::forward_tool_stdout(&out.stdout)?;
-    std::process::exit(out.status.code().unwrap_or(255));
+    finish_ssh_dispatch("ouro.op.dispatch", &out)
 }
 
 /// p6-3 — SSH-dispatch `adopt` to the target (as the bootstrap account), running `adopt --local`
@@ -1379,8 +1432,7 @@ fn dispatch_adopt(host: &str, node: &str, args: &[String], paths: &ConfigPaths, 
         .args(&argv)
         .output()
         .map_err(|e| OuroError::Validation(format!("ssh dispatch failed: {e}")))?;
-    output::forward_tool_stdout(&out.stdout)?;
-    std::process::exit(out.status.code().unwrap_or(255));
+    finish_ssh_dispatch("ouro.adopt.dispatch", &out)
 }
 
 fn artifact_ref_digest(reference: &str) -> Option<&str> {

@@ -32,6 +32,15 @@ def main():
     assert_invalid("tests/fixtures/pool-spec/invalid-network-magic.yaml")
     assert_invalid("tests/fixtures/pool-spec/invalid-plain-secret.yaml")
     assert_invalid("tests/fixtures/pool-spec/invalid-runtime-mode.yaml")  # p2-4: bad mode enum
+
+    # S0019 may use a bootstrap account in the operator-owned spec; the retired ouro-exec equality
+    # must not disagree with Rust validation. The schema still rejects an SSH-option injection.
+    bootstrap_spec = load_yaml("examples/pool-spec.minimal.yaml")
+    bootstrap_spec["machines"][0]["ssh"]["user"] = "cardano"
+    jsonschema.Draft202012Validator(SCHEMA).validate(bootstrap_spec)
+    bootstrap_spec["machines"][0]["ssh"]["user"] = "-oProxyCommand=evil"
+    errors = list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(bootstrap_spec))
+    assert errors, "unsafe ssh.user unexpectedly passed"
     print("pool-spec schema fixtures passed")
 
 
