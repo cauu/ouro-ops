@@ -16,6 +16,7 @@ pub mod inbox;
 pub mod intent;
 pub mod kes;
 pub mod migration;
+pub mod onboard;
 pub mod output;
 pub mod parity;
 pub mod pool;

@@ -273,6 +273,10 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p5-4 attestation stored target-side (root-owned `/var/lib/ouro/node-attestation.json`), read by `ouro-attested.sh`; adopt writes it there
 - [x] p5-5 `ouro-ops inbox stage` command (content-addressed ingress) + audit event emission (§2.13 schema) + fleet lease/step-permit + real control↔target parity wired into the op pipeline
 - [x] p5-6 container-bed end-to-end: adopt a real blinklabs container, run each op for real (docker), crash-injection + rollback, on the bed
+- [ ] p6-1 greenfield `ouro-ops onboard <host>` (host-onboarded state): install the S0019 confined principals (`ouro-op` write / `ouro-diag` read), the fixed op wrapper `/usr/local/sbin/ouro-op-run` (sudoers: only `ouro-ops op "$@"`), push the ouro-ops binary, harden sshd, pin the host key — operator-initiated via the bootstrap credential; NO S0017 compat
+- [ ] p6-2 adopt/op `--local` auto-run the probe (`ouro_observe`) when no `--observation` is given, so the target self-gathers the observation (no hand-fed file)
+- [ ] p6-3 full `--dispatch` for adopt + op (real SSH → target `--local`) + the confirm-token cross-machine handshake (dispatch preview returns the target-computed intent hash → operator approves → mint token → dispatch the real run)
+- [ ] p6-4 container-bed end-to-end over the DISPATCH path (SSH + wrapper + auto-probe), not just `--local`, proving the full website→agent→node chain
 
 ## 4. Test and Acceptance Criteria
 > Acceptance MATRIX — must FALSIFY the security claims, with adversarial interleavings, not just
@@ -487,6 +491,15 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   sealed executor; live drift (swapped container id) is refused before mutation. The seam is closed:
   the whole chain runs on a real container. **S0019 p1-1..p5-6 ALL COMPLETE — awaiting user
   acceptance (spec NOT closed).**
+- 2026-07-15 p6-1 completed: greenfield `ouro-ops onboard` (`crates/ouro/src/onboard.rs`). Installs
+  the S0019 confined principals (`ouro-op` write / `ouro-diag` read), the FIXED op wrapper
+  `/usr/local/sbin/ouro-op-run` (sudoers: only `ouro-ops op "$@"`), the ouro-ops binary, a hardened
+  sshd (AllowUsers ouro-op ouro-diag <bootstrap>), and the /var/lib/ouro attestation dir; pins the
+  host key. NO S0017 tool-run wrapper/principal. Refactored provision into a generic `execute_plan`
+  reused by both init (S0017) and onboard (S0019). CLI `ouro-ops onboard` (bootstrap credential,
+  operator-initiated); dry-run verified (14 steps, host-onboarded). **Decision (recorded):** the
+  greenfield onboard is a fresh plan, not an extension of S0017 init (no compat). 123 rust + all
+  python green.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -498,6 +511,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p6-1 | stack: rust | command: cargo test onboard/provision (+full 123); dry-run onboard | result:
+  pass | note: onboard plan installs ouro-op/ouro-diag + the op-only wrapper (no tool-run), binary,
+  hardened sshd, /var/lib/ouro; ordering binary→wrapper→keys; sshd allows only the S0019 principals.
 - p5-6 | stack: other | command: bash fixtures/e2e/s0019-bed/run.sh (real docker) | result: pass |
   note: probe + adopt(non-disruptive) + no-confirm refuse + REAL docker restart (StartedAt advances)
   + live-drift refuse, all on a real container; convention OURO_ALLOWLIST_FILE seam pins the bed

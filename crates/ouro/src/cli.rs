@@ -56,6 +56,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "config" => run_config(&args[2..])?,
         "deploy" => run_deploy(&args[2..])?,
         "diag" => run_diag(&args[2..])?,
+        "onboard" => run_onboard(&args[2..])?,
         "adopt" => crate::s0019_cli::run_adopt(&args[2..])?,
         "op" => crate::s0019_cli::run_op(&args[2..])?,
         "inbox" => crate::s0019_cli::run_inbox(&args[2..])?,
@@ -163,6 +164,82 @@ fn init_runtime_record(spec: &PoolSpec, machine_id: &str) -> Result<serde_json::
             "note": "runtime undeclared (v1 optional); mode is DETECTED at operation time, detection governs",
         }),
     })
+}
+
+/// S0019 p6-1 — `ouro-ops onboard`: the greenfield host-onboard (host-onboarded state). Installs
+/// the S0019 confined principals + op wrapper + binary, pins the host key. No S0017 compat.
+fn run_onboard(args: &[String]) -> Result<()> {
+    let host = flag_value(args, "--host")?.to_string();
+    let port: u16 = optional_flag_value(args, "--port")
+        .unwrap_or("22")
+        .parse()
+        .map_err(|_| OuroError::InvalidArgs("--port must be a number".to_string()))?;
+    let user = flag_value(args, "--bootstrap-user")?.to_string();
+    let key_ref = CredentialRef::parse(flag_value(args, "--bootstrap-key")?)?;
+    let dry_run = args.iter().any(|a| a == "--dry-run");
+    let host_key = match optional_flag_value(args, "--host-key") {
+        Some("yes") => crate::bootstrap::HostKeyCheck::Yes,
+        _ => crate::bootstrap::HostKeyCheck::AcceptNew,
+    };
+    let paths = ConfigPaths::discover();
+    let key_path = key_ref.resolve(&paths.credentials_dir)?;
+    if !dry_run && !key_path.is_file() {
+        return Err(OuroError::Validation(format!(
+            "bootstrap credential key not found: {}",
+            key_path.display()
+        )));
+    }
+    let control_pubkey = match optional_flag_value(args, "--control-pubkey") {
+        Some(p) => std::fs::read_to_string(p)
+            .map_err(|e| OuroError::Validation(format!("cannot read --control-pubkey {p}: {e}")))?,
+        None => {
+            return Err(OuroError::Validation(
+                "missing --control-pubkey: pass the operator's control public key (derive it with \
+                 `ssh-keygen -y -f <the operator's key>`). See `ouro-ops skill show adopt`."
+                    .to_string(),
+            ))
+        }
+    };
+    let ouro_binary = match optional_flag_value(args, "--ouro-binary") {
+        Some(p) => PathBuf::from(p),
+        None => std::env::current_exe()
+            .map_err(|e| OuroError::Validation(format!("cannot resolve own binary path: {e}")))?,
+    };
+    let expected_host_key = optional_flag_value(args, "--expected-host-key");
+
+    let target = crate::bootstrap::BootstrapTarget { host: host.clone(), port, user };
+    let transport = crate::bootstrap::BootstrapTransport::new(dry_run);
+
+    let mut pinned_fp = None;
+    if let Some(fp) = expected_host_key {
+        pinned_fp = Some(pin_host_key(&host, port, &paths.known_hosts, Some(fp))?);
+    }
+
+    let manifest = crate::onboard::execute_onboard(
+        &transport,
+        &target,
+        &key_path,
+        host_key,
+        &control_pubkey,
+        &ouro_binary,
+    )?;
+
+    if pinned_fp.is_none() && manifest.ok && !dry_run {
+        pinned_fp = Some(pin_host_key(&host, port, &paths.known_hosts, None)?);
+    }
+
+    output::print_json(&ToolOutput::ok("ouro.onboard", manifest.ok && !dry_run).with_data(json!({
+        "manifest": manifest,
+        "dry_run": dry_run,
+        "pinned_host_key": pinned_fp,
+        "state": "host-onboarded",
+        "security_note": "bootstrap credential is NOT mechanism-isolated from the agent \
+            (convenience mode, P0-1, carried from S0017). Closing this is a separate hardening spec.",
+    })))?;
+    if !manifest.ok {
+        return Err(OuroError::Validation("onboard did not complete cleanly".to_string()));
+    }
+    Ok(())
 }
 
 fn run_init(args: &[String]) -> Result<()> {

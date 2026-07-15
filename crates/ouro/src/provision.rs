@@ -257,17 +257,35 @@ pub fn execute(
     control_pubkey: &str,
     ouro_binary: &Path,
 ) -> Result<InstallManifest> {
+    execute_plan(
+        transport,
+        target,
+        key_path,
+        host_key,
+        control_pubkey,
+        init_plan(&target.user, ouro_binary),
+    )
+    .map(|(m, ..)| m)
+}
+
+/// Generic install-plan executor (S0019 p6-1): stage the control pubkey, run any plan, return the
+/// manifest. Both `init` (S0017) and the greenfield `onboard` (S0019) build a plan and run it here.
+pub fn execute_plan(
+    transport: &BootstrapTransport,
+    target: &BootstrapTarget,
+    key_path: &Path,
+    host_key: HostKeyCheck,
+    control_pubkey: &str,
+    plan: Vec<Step>,
+) -> Result<(InstallManifest, Vec<StepResult>, bool)> {
     let mut steps = Vec::new();
     let mut ok = true;
-
-    // Stage the control pubkey (root-owned temp) before the plan installs it.
     let stage = write_temp(control_pubkey.trim_end().as_bytes())?;
     let staged = transport.push(target, key_path, host_key, stage.path(), AUTHKEY_STAGE, "0644")?;
     steps.push(outcome_result("stage control key", "push", Some(AUTHKEY_STAGE), &staged));
     ok &= staged.status == 0;
-
-    run_steps(transport, target, key_path, host_key, init_plan(&target.user, ouro_binary), &mut steps, &mut ok)?;
-    Ok(manifest(target, steps, ok))
+    run_steps(transport, target, key_path, host_key, plan, &mut steps, &mut ok)?;
+    Ok((manifest(target, steps.clone(), ok), steps, ok))
 }
 
 /// `ouro-ops deinit`: run the removal plan (see `deinit_plan`). Returns a manifest of what was
