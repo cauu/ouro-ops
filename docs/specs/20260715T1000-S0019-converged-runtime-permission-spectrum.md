@@ -1407,3 +1407,36 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   `bp1` and `relay1` | result: pass | note: both actual target commands crossed the parity gate and
   safely refused only at the signed allowlist because live config digest `sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a`
   is not published; no attestation or node mutation occurred.
+- 2026-07-16T05:12+0800 [x] p10-4 completed. The final macOS arm64 control binary has SHA-256
+  `84c29c2519b84b7f071daa24972d79619d1e88c50c7312ec8fbc47e3bc3b5aa1`; the static-PIE Linux
+  x86_64 artifact and both installed `/usr/local/bin/ouro-ops` copies have SHA-256
+  `f0daf65cb421086263d56034a6736be57d720fe8ccfd3ec67cedf26582b78d82`. All three report security
+  identity `992aab9b7b15ca8a13ee418110e67f1525b6a846550a6253da478d6bf061787f`; manifest digest
+  `25030e9363ae5eceb6a5958d1406e7a4da906aaee74e379906e6112844d8773b` verifies.
+- LETC-1 | stack: other | command: final `onboard ... --apply` followed by exact rerun on `bp1`
+  and `relay1` | result: pass | note: management binaries/policy were converged one target at a
+  time; each rerun returned `changed:false`, `already_converged`, pinned ED25519 host key, verified
+  effective policy and fresh successful `cardano`, `ouro-op`, `ouro-diag` sessions.
+- LETC-2 | stack: other | command: independent final-binary non-deploy Skill replay | result: pass |
+  note: onboard PASS; troubleshooting PASS; adopt/config/detect/observability/runtime/upgrade/KES
+  reached their correct typed safe stops; unknown op denied and retired ids refused.
+- LETC-3 | stack: other | command: independent target-plan/transport-plan/diag replay | result:
+  pass | note: ordinary plans reached target gates, transport plans stated `target_validated:false`,
+  diagnostic argv grouping returned exact `EXPECTED:value`, and no fleet lease, confirm token,
+  inbox artifact, attestation or node mutation was created.
+- LETC-4 | stack: other | command: release `version`, `manifest verify`, `file`, `shasum -a 256` and
+  remote `sha256sum` | result: pass | note: architecture, three-way security identity and exact
+  Linux artifact equality verified; both credentials remained owner-only/usable without content
+  reads.
+- Final per-Skill outcome: onboard `PASS`; troubleshooting `PASS`; adopt `EXPECTED SAFE STOP` at
+  signed allowlist; config and legacy detect `EXPECTED SAFE STOP` at typed retirement;
+  observability, runtime, upgrade and KES `EXPECTED SAFE STOP` at `not_ouro_managed`. Upgrade did not
+  stage/load/recreate an image; KES did not stage/install an opcert; runtime did not restart a node.
+- The independent agent created no permit/token/staged artifact and removed its temporary,
+  non-authorizing validation spec. Operator-owned `pool-spec.yaml` remained untracked and byte
+  unchanged at SHA-256 `2729fcad5a7e5291be3553e60995ab929a895083a9f13656a55216bf8fb35912`.
+  Its exact 64-character genesis hashes and live Docker runtime/image declarations still require
+  operator correction, and the release authority must publish the live image digest/transition in
+  the signed allowlist before adoption or an actual upgrade can proceed.
+- Delivery scope is complete but this active spec remains open under the immutable-spec rule until
+  the operator explicitly declares it finished, replaced or cancelled.
