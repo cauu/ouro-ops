@@ -79,5 +79,29 @@ DOUT="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp
 echo "$DOUT" | grep -q "drift" || fail "drift not refused; got: $DOUT"
 pass "live drift refused before mutation"
 
+# p7-4 — a REAL artifact-consuming op sequence (kes-rotation): the sealed executor must (1) refuse
+# when no opcert is staged, then (2) docker cp the DIGEST-RESOLVED opcert (public node.cert) into the
+# keys mount AND restart. Proves build_plan's multi-step sequence runs for real, not just restart.
+echo "== kes-rotation without a staged opcert → refused (no silent restart) =="
+RREF="kes-not-staged@sha256:$(printf 'x%.0s' {1..64})"
+NOUT="$("$BIN" op run --op kes-rotation/rotate --local --node bp1 --param machine=bp1 --param opcert="$RREF" --confirm-token "$TOK" 2>&1)"
+echo "$NOUT" | grep -qiE 'confirm|dangerous|artifact|refus' || fail "kes with unstaged opcert not refused; got: $NOUT"
+pass "kes-rotation refused a non-staged / unconfirmed opcert (no silent restart)"
+
+echo "== stage a real opcert artifact, then run the REAL kes-rotation sequence =="
+printf '{"type":"NodeOperationalCertificate","description":"","cborHex":"82008278"}' > "$WORK/opcert.json"
+OREF="$("$BIN" inbox stage --type opcert --file "$WORK/opcert.json" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["artifact_ref"])')"
+[ -n "$OREF" ] || fail "opcert not staged"
+KIH="$("$BIN" op run --op kes-rotation/rotate --local --node bp1 --param machine=bp1 --param opcert="$OREF" 2>&1 | grep -o 'intent-hash [0-9a-f]*' | awk '{print $2}')"
+[ -n "$KIH" ] || fail "no kes intent hash"
+KTOK="$("$BIN" confirm create --op kes-rotation/rotate --node bp1 --intent-hash "$KIH" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["confirm_token"])')"
+KSTART0="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
+"$BIN" op run --op kes-rotation/rotate --local --node bp1 --param machine=bp1 --param opcert="$OREF" --confirm-token "$KTOK" >/dev/null || fail "confirmed kes-rotation failed"
+KSTART1="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
+INSTALLED="$(docker exec "$NAME" cat /opt/cardano/config/keys/node.cert 2>/dev/null)"
+echo "$INSTALLED" | grep -q 'NodeOperationalCertificate' || fail "opcert was NOT docker-cp'd into the keys mount; got: $INSTALLED"
+[ "$KSTART0" != "$KSTART1" ] || fail "kes-rotation did not restart the container after installing the opcert"
+pass "REAL kes-rotation sequence: digest-resolved opcert docker-cp'd into keys mount THEN restart"
+
 echo ""
 echo "S0019 container-bed e2e: ALL PASS"
