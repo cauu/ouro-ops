@@ -278,7 +278,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p6-3 full `--dispatch` for adopt + op (real SSH → target `--local`) + the confirm-token cross-machine handshake (dispatch preview returns the target-computed intent hash → operator approves → mint token → dispatch the real run)
 - [x] p6-4 container-bed end-to-end over the DISPATCH path (SSH + wrapper + auto-probe), not just `--local`, proving the full website→agent→node chain
 - [x] p7-1 close the closed-loop review gaps (P0): unify the write principal on `ouro-op` across `dispatch.rs` (op channel) + `ssh.rs` comment + the website machine block so the SSH login user, the sudoers grant, and sshd `AllowUsers` all agree with what `onboard.rs` installs (was split `ouro-exec`/`ouro-op` → real dispatch could not authenticate); rebuild + reinstall the control-host `ouro-ops` so `adopt`/`op`/`onboard`/`inbox` exist (installed binary was 0.1.0 / S0017-only)
-- [ ] p7-2 remove S0017 residue from the website copy: `ouro-ops tool run` → `ouro-ops op run` and `ouro-exec` → `ouro-op` in the trust panels + machHints (EN/zh-CN/zh-TW/JA)
+- [x] p7-2 remove S0017 residue from the website copy: `ouro-ops tool run` → `ouro-ops op run` and `ouro-exec` → `ouro-op` in the trust panels + machHints (EN/zh-CN/zh-TW/JA)
 - [ ] p7-3 real sealed executor (P1): build a SEQUENCE of fixed argvs; install digest-resolved inbox artifacts from attested facts — opcert via `docker cp` (public cert; KES/cold secret NEVER touched), signed tx via `cardano-cli transaction submit --tx-file`, image via `docker load` + recreate; REFUSE (not a misleading `docker restart`) when a required artifact is absent; fix the bogus `config/render` `--version` argv
 - [ ] p7-4 container-bed proof of a real artifact-op sequence (opcert install / tx submit) through the sealed executor; honest note that the docker-level sequence is bed-proven while cardano-node semantic effect needs a real node
 
@@ -525,6 +525,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   topology/config do not perform their mutation; config/render even runs a bogus `--version`);
   P2-D website copy still says S0017 `tool run`; P1-E dispatch real path never run e2e. p6-1 checkbox
   was also left unchecked though onboard.rs was implemented + committed (59fafe3) — corrected.
+- 2026-07-15 p7-2 completed: replaced the last S0017 residue in the website — `ouro-ops tool run` →
+  `ouro-ops op run` in the zh-CN/zh-TW/JA trust panels (EN already correct) and `ouro-exec` →
+  `ouro-op` in all four machHints. No `tool run`/`ouro-exec` string remains in the page.
 - 2026-07-15 p7-1 completed: renamed the op-channel principal to `ouro-op` in dispatch.rs (+ OP_PRINCIPAL
   const asserting it matches onboard.rs), fixed the ssh.rs write-channel comment, and changed the
   website machine block `user: ouro-exec` → `ouro-op`. Rebuilt --release and reinstalled
@@ -555,6 +558,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p7-2 | stack: node | command: python3 tests/test_web_generator.py | result: pass | note: static CSP/no-network gates pass; grep confirms no tool-run/ouro-exec residue remains.
 - p7-1 | stack: rust | command: cargo test -q -p ouro | result: pass | note: 123 tests; dispatch op-channel now ouro-op (asserts !ouro-exec@), matches onboard principals.
 - p7-1 | stack: other | command: install -m0755 target/release/ouro-ops ~/.local/bin && ouro-ops skill show adopt | result: pass | note: control binary reinstalled; adopt/op/onboard/inbox routed; skill show adopt resolves (was S0017-only 0.1.0).
 - p6-4 | stack: other | command: bash fixtures/e2e/s0019-dispatch/run.sh | result: pass(skip on this host) | note: harness drives adopt→wrapper→op --local→executor on a Linux target; SKIPS on the local docker cross-platform exec gremlin (components proven separately: dispatch.rs argv, onboard.rs plan, p5-6 real restart).
