@@ -80,7 +80,9 @@ def main():
     # 2. No raw supervision primitive appears in any skill script except the adapter.
     offenders = []
     for script in sorted(SKILLS.rglob("*.sh")):
-        if script.resolve() == ADAPTER.resolve():
+        # The whole lib/ directory is the privileged-primitive (adapter) layer — supervision
+        # primitives live there by design (ouro-lib.sh, and S0019's ouro-probe.sh docker probe).
+        if script.parent.name == "lib":
             continue
         for lineno, line in enumerate(script.read_text().splitlines(), 1):
             m = FORBIDDEN_RE.search(strip_noncode(line))
