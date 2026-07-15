@@ -8,10 +8,15 @@
 # entrypoint/args, mounts) and the node (topology/config hashes, kes/opcert id, forging-key
 # presence) — never any secret material. Missing facts are emitted as empty/false, never guessed.
 
-# Resolve the single cardano-node container id, or empty.
+# Resolve the single cardano-node container id, or empty. Match by the process command (the node's
+# argv contains cardano-node) — an empty first result falls back, not just a non-zero exit.
 ouro_probe_container() {
-  docker ps --filter 'ancestor=cardano-node' --format '{{.ID}}' 2>/dev/null | head -1 \
-    || docker ps --format '{{.ID}} {{.Command}}' 2>/dev/null | awk '/cardano-node/{print $1; exit}'
+  local cid
+  cid="$(docker ps --filter 'ancestor=cardano-node' --format '{{.ID}}' 2>/dev/null | head -1)"
+  if [ -z "$cid" ]; then
+    cid="$(docker ps --no-trunc --format '{{.ID}} {{.Command}}' 2>/dev/null | awk '/cardano-node/{print $1; exit}')"
+  fi
+  printf '%s' "$cid"
 }
 
 # docker inspect a single --format field for a container.

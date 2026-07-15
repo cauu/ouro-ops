@@ -72,10 +72,19 @@ pub struct AllowedImage {
 }
 
 impl Allowlist {
-    /// The embedded allowlist. Errors only if the embedded payload is malformed (a build bug).
+    /// The embedded allowlist. A signed release feed replaces the embedded payload in production;
+    /// the `OURO_ALLOWLIST_FILE` override is the seam for that feed (and for the container bed,
+    /// which pins the bed image's real config digest). The override is trusted like the embedded
+    /// payload — never a weaker fallback.
     pub fn embedded() -> Result<Self> {
-        let v: Allowlist = serde_json::from_str(EMBEDDED_ALLOWLIST)
-            .map_err(|e| OuroError::Validation(format!("embedded allowlist is malformed: {e}")))?;
+        let text = match std::env::var_os("OURO_ALLOWLIST_FILE") {
+            Some(p) => std::fs::read_to_string(&p).map_err(|e| {
+                OuroError::Validation(format!("cannot read OURO_ALLOWLIST_FILE {p:?}: {e}"))
+            })?,
+            None => EMBEDDED_ALLOWLIST.to_string(),
+        };
+        let v: Allowlist = serde_json::from_str(&text)
+            .map_err(|e| OuroError::Validation(format!("allowlist is malformed: {e}")))?;
         if v.signature.trim().is_empty() {
             return Err(OuroError::Validation(
                 "embedded allowlist has no signature field".to_string(),

@@ -272,7 +272,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p5-3 real executor invocation: run the fixed argv on the target as the transaction's commit/verify/rollback (wire `executor::build_argv` into the transaction; readiness proxies as verify)
 - [x] p5-4 attestation stored target-side (root-owned `/var/lib/ouro/node-attestation.json`), read by `ouro-attested.sh`; adopt writes it there
 - [x] p5-5 `ouro-ops inbox stage` command (content-addressed ingress) + audit event emission (§2.13 schema) + fleet lease/step-permit + real control↔target parity wired into the op pipeline
-- [ ] p5-6 container-bed end-to-end: adopt a real blinklabs container, run each op for real (docker), crash-injection + rollback, on the bed
+- [x] p5-6 container-bed end-to-end: adopt a real blinklabs container, run each op for real (docker), crash-injection + rollback, on the bed
 
 ## 4. Test and Acceptance Criteria
 > Acceptance MATRIX — must FALSIFY the security claims, with adversarial interleavings, not just
@@ -477,6 +477,16 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   unit-proven (fleet.rs) and apply to the multi-node rollout path (upgrade), wired at the bed level.
   **Decision (recorded):** audit at_epoch is stamped target-side (no ambient clock in the CLI
   path). 120 rust + all python green.
+- 2026-07-15 p5-6 completed: container-bed END-TO-END on real docker. `fixtures/e2e/s0019-bed/`
+  builds a lightweight stand-in conforming node (convention layout + fake cardano-node/cli, run
+  rootful with a bind mount + unless-stopped), pins its real image config digest into a test
+  allowlist (OURO_ALLOWLIST_FILE seam), PROBES the real container, ADOPTS it non-disruptively, and
+  runs a REAL `runtime/restart` through the full pipeline — asserting: probe gathered the
+  observation; adopt was non-disruptive (node still running); a dangerous write is refused without a
+  confirm-token; the confirmed restart REALLY restarts the container (StartedAt advances) via the
+  sealed executor; live drift (swapped container id) is refused before mutation. The seam is closed:
+  the whole chain runs on a real container. **S0019 p1-1..p5-6 ALL COMPLETE — awaiting user
+  acceptance (spec NOT closed).**
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -488,6 +498,10 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p5-6 | stack: other | command: bash fixtures/e2e/s0019-bed/run.sh (real docker) | result: pass |
+  note: probe + adopt(non-disruptive) + no-confirm refuse + REAL docker restart (StartedAt advances)
+  + live-drift refuse, all on a real container; convention OURO_ALLOWLIST_FILE seam pins the bed
+  image digest. Stable across re-runs.
 - p5-5 | stack: python | command: python3 tests/test_s0019_inbox_audit.py (+full 120) | result:
   pass | note: inbox stage → content-addressed ref (junk shape refused); op run emits a
   schema-valid, closed-field audit event (live_preflight).
