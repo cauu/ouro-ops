@@ -65,9 +65,13 @@ def main() -> int:
     if "disclose" not in HTML or "topology" not in HTML.lower():
         fails.append("page must disclose topology exposure before copying the prompt")
 
-    # The prompt must instruct writes only via `ouro-ops tool run` (mechanism, not raw node cmds).
-    if "ouro-ops tool run" not in HTML:
-        fails.append("prompt must drive changes through `ouro-ops tool run`")
+    # The prompt must instruct writes only via the audited mechanism (S0019 `ouro-ops op run`
+    # intents, or the legacy `ouro-ops tool run`), never raw node commands.
+    if "ouro-ops op run" not in HTML and "ouro-ops tool run" not in HTML:
+        fails.append("prompt must drive changes through `ouro-ops op run` (or legacy tool run)")
+    # S0019: the prompt must route an unmanaged node to adopt, not the retired onboard.
+    if "not_ouro_managed" not in HTML or "skill show adopt" not in HTML:
+        fails.append("prompt must route an unmanaged node to `ouro-ops skill show adopt`")
 
     # p5-19 form persistence: versioned key, a user-visible disclosure + clear control, and
     # every localStorage access guarded (storage is an enhancement, never a dependency).
