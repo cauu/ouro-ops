@@ -30,10 +30,12 @@ volumes, relays first and the block producer last.
   backward-compatible and no snapshot exists, tell the operator plainly that a failed upgrade means
   a re-sync — do not promise a rollback.
 - Upgrade ouro first, then a canary relay, verify, then the remaining relays, then the BP last.
-- Each step: tell the operator which machine, WAIT for go-ahead, mint the confirm-token bound to the
-  intent, then run the step via `ouro-ops op run --op upgrade/step --node <id> --param
-  machine=<id> --param image=sha256:<64hex> --confirm-token <tok>`, and verify readiness before
-  proceeding. `image` is the allowlisted target config digest — never a repo/tag or a path.
+- Each step: tell the operator which machine and transition, then WAIT for go-ahead. Create a signed
+  `ouro-ops fleet permit create` from current quorum/remaining-relay facts, use that permit to obtain
+  the exact intent hash, and mint the bound confirm-token. Run `ouro-ops op run --op upgrade/step
+  --node <id> --param machine=<id> --param image=sha256:<64hex> --fleet-permit <permit>
+  --confirm-token <tok>`, and verify readiness before proceeding. `image` is the allowlisted target
+  config digest — never a repo/tag or a path.
 
 ## Stop Conditions
 - Stop on any step that would drop relay quorum, or restart the BP before relays are done.

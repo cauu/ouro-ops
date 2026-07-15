@@ -127,6 +127,7 @@ pub fn require_expected_wire_digest(expected: &str) -> Result<()> {
 /// the new deny-by-default registry (§2.5). A legacy tool name that is NOT registered is refused;
 /// this closes the "run an old write entry point under weaker rules" gap during greenfield cutover.
 const LEGACY_WRITE_TOOLS: &[&str] = &[
+    "config/render",
     "runtime/topology-apply",
     "runtime/restart",
     "kes-rotation/rotate",

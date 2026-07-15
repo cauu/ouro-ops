@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help fmt test check ci e2e status e2e-build-base e2e-bed-up e2e-bed-down e2e-provision e2e-t2 e2e-t2-node e2e-t2-kes e2e-t2-secrets e2e-t2-takeover e2e-t2-observability e2e-t2-upgrade e2e-t3 e2e-t2-runtime e2e-t2-coldsign e2e-t2-offline-rotation e2e-t2-register e2e-clean
+.PHONY: help fmt test python-test check ci e2e status e2e-build-base e2e-bed-up e2e-bed-down e2e-provision e2e-t2 e2e-t2-node e2e-t2-kes e2e-t2-secrets e2e-t2-takeover e2e-t2-observability e2e-t2-upgrade e2e-t3 e2e-t2-runtime e2e-t2-coldsign e2e-t2-offline-rotation e2e-t2-register e2e-clean
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -12,6 +12,10 @@ fmt: ## Format Rust code
 
 test: ## Run Rust tests
 	cargo test
+
+python-test: ## Run Python tests (first install requirements-dev.txt in your environment)
+	@python3 -c 'import jsonschema, yaml' || { echo 'missing Python test deps: python3 -m pip install -r requirements-dev.txt' >&2; exit 2; }
+	@set -e; for test_file in tests/test_*.py; do python3 "$$test_file"; done
 
 check: ## Run Rust compile checks
 	cargo check

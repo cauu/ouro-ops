@@ -9,13 +9,14 @@ Find the CAUSE behind a symptom or a failed operation, using your own judgment, 
 that runs through the audited intent pipeline. You investigate freely; you never repair directly.
 
 ## Invariants (the mechanism enforces these; you respect them)
-- Free-form diagnosis runs as the UNPRIVILEGED principal — it cannot mutate node/root-owned state.
+- Free-form diagnosis runs as the UNPRIVILEGED principal. It cannot mutate node/root-owned state,
+  but it can write its own scratch, use resources, and make egress.
 - Any repair is a WRITE: it goes through `ouro-ops op run` (intents), so the mechanism validates,
   re-attests, and (for dangerous repairs) requires the operator's confirm-token. You cannot repair
   by improvising a command.
 
 ## Decision guidance (use your judgment; this is not a rigid script)
-- Investigate freely: `ouro-ops diag exec --node <id> -- <any read-only command>` runs YOUR command
+- Investigate freely: `ouro-ops diag exec --dispatch <id> --spec <pool-spec> -- <command>` runs YOUR command
   on the target as the unprivileged principal. Compose whatever the symptom calls for (connections,
   disk, memory, processes, time, DNS, world-readable configs). Iterate — each answer narrows the
   next question. The fence is the OS, not a command list, so explore freely.

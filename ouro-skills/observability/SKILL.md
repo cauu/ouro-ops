@@ -5,31 +5,36 @@ requires_ouro: ">=0.1.0"
 # Observability Skill
 
 ## Purpose
-Read the health of each managed machine (BP and relays) and report CONCLUSIONS to the operator —
-whether the node is up and forging-capable, whether KES rotation is due, whether sync or disk needs
-attention, and which operation to run next.
+Read the node tip of each managed machine (BP and relays) and report only conclusions supported by
+that result. The fixed S0019 health read proves the socket query answered and returns the node's tip
+JSON; it does not by itself prove forging, KES lifetime, peer health, or disk capacity.
 
 ## Invariants (the mechanism enforces these; you respect them)
 - Health is READ, never a mutation — this is the read tier, not a write.
 - Managed reads require the node to be ADOPTED; layout comes from the attestation, never from
   environment guessing.
-- The BP never gets a public telemetry endpoint; its health is read through the audited read path,
+- The BP never gets a public telemetry endpoint; its tip is read through the audited read path,
   by design.
 
 ## Decision guidance (use your judgment; this is not a rigid script)
-- For EVERY machine (BP included), read its health from the attested layout and, for facts the
-  unprivileged principal can reach, `ouro-ops diag exec --node <id> -- <read-only command>`.
-- INTERPRET the facts and report conclusions in plain language: node down → recommend the
-  troubleshooting skill before any restart; tip not advancing → likely a fault, diagnose; sync
-  behind → report the percentage; KES remaining low → recommend the kes-rotation skill and offer to
-  start it (its confirm gate still applies); BP with no opcert → surface it (cannot forge); disk
-  high → recommend the operator grow/clean the volume.
-- Summarize per machine, worst finding first. If everything is healthy, say so with the actual
-  numbers (KES periods left, disk %, tip advancing) — no vague "all good".
+- For EVERY machine (BP included), run the fixed managed read: `ouro-ops op run --op
+  observability/health --node <id> --param machine=<id>`. It executes the sealed health query and
+  returns its bounded JSON result; `--plan` only shows the argv and is not health evidence.
+- Use `ouro-ops diag exec --dispatch <id> --spec <pool-spec> -- <command>` only when health is
+  insufficient and troubleshooting is warranted. That channel is unprivileged free-form diagnosis,
+  not a mechanism-enforced read-only command language.
+- INTERPRET only returned fields. A successful single sample means the query path responds; it does
+  not establish that the tip is advancing. Compare separate samples before claiming movement. If
+  the result includes a sync percentage, report that exact value.
+- KES remaining periods, forging evidence, peer state, and disk pressure require additional
+  evidence through troubleshooting or another future typed read. Label those dimensions “not
+  measured”; never infer them from a successful tip response.
+- Summarize per machine, worst finding first, with actual block/slot/era/sync fields. Say “tip query
+  healthy” rather than “node fully healthy” when no broader evidence exists.
 
 ## Stop Conditions
-- Stop and report (do not act) when health shows the node down or the tip stuck — diagnosis before
-  any write.
+- Stop and report (do not act) when the query fails or repeated samples show the tip stuck —
+  diagnosis before any write.
 - Stop if a machine is not adopted — recommend the adopt skill.
 
 ## Red Lines

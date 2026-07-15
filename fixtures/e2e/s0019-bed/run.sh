@@ -71,6 +71,11 @@ pass "adopt wrote the attestation; container untouched"
 [ "$(docker inspect --format '{{.State.Running}}' "$NAME")" = "true" ] || fail "adopt disrupted the node"
 pass "adopt was non-disruptive (node still running)"
 
+echo "== managed health read returns real target data =="
+HOUT="$("$BIN" op run --op observability/health --local --node bp1 --param machine=bp1 2>&1)" || fail "managed health read failed: $HOUT"
+echo "$HOUT" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["data"]["result"]["block"] >= 1,d' || fail "health returned no target result: $HOUT"
+pass "managed health executed the fixed target query and returned JSON data"
+
 fleet_permit() {
   "$BIN" fleet permit create --pool-id bedpool --node bp1 --op "$1" --role bp \
     --online-relays 1 --min-online-relays 1 --relays-remaining 0 --holder bedctl \
@@ -92,6 +97,13 @@ START0="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
 START1="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
 [ "$START0" != "$START1" ] || fail "container did not actually restart"
 pass "REAL docker restart executed (StartedAt advanced) through the sealed executor"
+python3 - "$OURO_HOME/s0019-audit.jsonl" <<'PY' || fail "transaction audit phases incomplete"
+import json, sys
+events = [json.loads(line)["event"] for line in open(sys.argv[1]) if line.strip()]
+for required in ("adopt", "live_preflight", "intent_approval", "prepared", "committing", "committed", "verifying", "verified"):
+    assert required in events, (required, events)
+PY
+pass "audit log contains adoption, approval, and every durable transaction phase"
 REPLAY="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 --fleet-permit "$RPERMIT" --confirm-token "$TOK" 2>&1)"
 echo "$REPLAY" | grep -qiE 'stale|replay|already used' || fail "fleet/confirm replay was not refused: $REPLAY"
 pass "target-side fencing refused replay of the same disruptive-step permit"
@@ -107,8 +119,8 @@ pass "live drift refused before mutation"
 # keys mount AND restart. Proves build_plan's multi-step sequence runs for real, not just restart.
 echo "== kes-rotation without a staged opcert → refused (no silent restart) =="
 RREF="kes-not-staged@sha256:$(printf 'x%.0s' {1..64})"
-KPERMIT="$(fleet_permit kes-rotation/rotate)" || fail "KES fleet permit"
-NOUT="$("$BIN" op run --op kes-rotation/rotate --local --node bp1 --param machine=bp1 --param opcert="$RREF" --fleet-permit "$KPERMIT" --confirm-token "$TOK" 2>&1)"
+KPERMIT="$(fleet_permit kes-rotation/install-opcert)" || fail "KES fleet permit"
+NOUT="$("$BIN" op run --op kes-rotation/install-opcert --local --node bp1 --param machine=bp1 --param opcert="$RREF" --fleet-permit "$KPERMIT" --confirm-token "$TOK" 2>&1)"
 echo "$NOUT" | grep -qiE 'confirm|dangerous|artifact|refus' || fail "kes with unstaged opcert not refused; got: $NOUT"
 pass "kes-rotation refused a non-staged / unconfirmed opcert (no silent restart)"
 
@@ -116,11 +128,11 @@ echo "== stage a real opcert artifact, then run the REAL kes-rotation sequence =
 printf '{"type":"NodeOperationalCertificate","description":"","cborHex":"82008278"}' > "$WORK/opcert.json"
 OREF="$("$BIN" inbox stage --type opcert --file "$WORK/opcert.json" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["artifact_ref"])')"
 [ -n "$OREF" ] || fail "opcert not staged"
-KIH="$("$BIN" op run --op kes-rotation/rotate --local --node bp1 --param machine=bp1 --param opcert="$OREF" --fleet-permit "$KPERMIT" 2>&1 | grep -o 'intent-hash [0-9a-f]*' | awk '{print $2}')"
+KIH="$("$BIN" op run --op kes-rotation/install-opcert --local --node bp1 --param machine=bp1 --param opcert="$OREF" --fleet-permit "$KPERMIT" 2>&1 | grep -o 'intent-hash [0-9a-f]*' | awk '{print $2}')"
 [ -n "$KIH" ] || fail "no kes intent hash"
-KTOK="$("$BIN" confirm create --op kes-rotation/rotate --node bp1 --intent-hash "$KIH" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["confirm_token"])')"
+KTOK="$("$BIN" confirm create --op kes-rotation/install-opcert --node bp1 --intent-hash "$KIH" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["confirm_token"])')"
 KSTART0="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
-"$BIN" op run --op kes-rotation/rotate --local --node bp1 --param machine=bp1 --param opcert="$OREF" --fleet-permit "$KPERMIT" --confirm-token "$KTOK" >/dev/null || fail "confirmed kes-rotation failed"
+"$BIN" op run --op kes-rotation/install-opcert --local --node bp1 --param machine=bp1 --param opcert="$OREF" --fleet-permit "$KPERMIT" --confirm-token "$KTOK" >/dev/null || fail "confirmed opcert install failed"
 KSTART1="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
 INSTALLED="$(docker exec "$NAME" cat /opt/cardano/config/keys/node.cert 2>/dev/null)"
 echo "$INSTALLED" | grep -q 'NodeOperationalCertificate' || fail "opcert was NOT docker-cp'd into the keys mount; got: $INSTALLED"

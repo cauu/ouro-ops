@@ -867,3 +867,62 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   result: pass | note: real signed test allowlist, device+inode bind evidence, adoption preview/
   approval, atomic attestation, restart fencing, KES install/readiness, v1→v2 allowlist ratchet,
   recreate and attestation rotation all pass on a real Docker container.
+
+## 22. Post-review Progress (append-only)
+- 2026-07-15T20:08+0800 p9-5 completed: reconciled the S0019 operation registry, executor,
+  operator Skills, CLI help and audit evidence against behavior that is actually executable. The
+  spec remains active pending explicit operator acceptance; this completion does not close it.
+
+## 23. Post-review Item Status (append-only)
+- [x] p9-5 completed: `observability/health` now executes its single fixed target argv and returns
+  bounded, timed, UTF-8/JSON data instead of returning an unexecuted plan. `--plan` is explicitly a
+  preview. The false `config/render` and `runtime/topology-apply` capabilities are removed from the
+  registry and retained only as typed retired-operation refusals; legacy durable journals remain
+  recoverable through startup recovery. `kes-rotation/rotate` is replaced by the truthful
+  `kes-rotation/install-opcert` identity and touches only the public opcert plus restart, never a KES
+  private key. Deploy binds the approved network to the attested execution network, and upgrade
+  preview now shows the exact recreate argv instead of an empty plan.
+- [x] p9-5 Skills/CLI truthfulness: adopt documents preview → explicit approval → single-use token;
+  onboard documents the actual S0019 `ouro-op`/`ouro-diag` and `ouro-ops onboard` path and no longer
+  claims legacy `deinit` is its inverse; observability claims only tip-query evidence; runtime/KES/
+  upgrade document fleet-permit-before-confirm ordering; deploy no longer claims submission proves
+  on-chain inclusion; diagnostics are labeled unprivileged, not mechanism-enforced read-only. CLI
+  help distinguishes S0019 onboard/adopt/op from retained S0017 surfaces. Embedded manifest hashes
+  are updated.
+- [x] p9-5 audit closure: adoption, live preflight, intent approval, every durable transaction
+  phase, attestation rotation, recovery and all returning adopt/op refusals emit closed-field events
+  with a real target timestamp. Audit append failures are propagated, lines are append+fsync durable,
+  the file is 0600 with one link, and Unix opens use `O_NOFOLLOW`; a symlink attack is acceptance-
+  tested without altering the victim. Transaction observers run only after the corresponding journal
+  transition is durable, so audit failure cannot expose an unjournaled side effect.
+- [x] p9-5 test reproducibility/quality: Python integration dependencies are declared in
+  `requirements-dev.txt` with a discoverable `make python-test` target. All Rust Clippy warnings in
+  the current crate were cleared. Repository-wide rustfmt remains historical formatting debt; this
+  item deliberately did not mass-format unrelated Rust code into the security repair commit.
+- Honest unsupported boundary after repair: S0019 still has no typed config/topology mutation or
+  automated de-onboard inverse, and its fixed observability operation measures the node tip only.
+  Skills and operation tables now stop/report at those boundaries instead of promising behavior the
+  mechanism does not implement. Fleet safety still assumes the shared durable authority described
+  in §17, not disconnected-controller consensus.
+
+## 24. Post-review Validation Evidence (append-only)
+- RTC-5 / TC-4 / TC-5 | stack: rust+python | command: cargo test -q -p ouro; python3
+  tests/test_s0019_inbox_audit.py | result: pass | note: 145 Rust tests; managed read returns command
+  data, transaction observer emits all happy-path phases, audit has real epochs/0600 closed fields,
+  adoption/refusal are present and an audit symlink is refused without modifying its target.
+- RTC-5 / TC-7 | stack: python | command: python3 tests/test_skill_docs.py; python3
+  tests/test_s0019_completeness.py | result: pass | note: onboard is correctly classified as an
+  S0019 Skill; every decision document names only supported semantics or explicit typed refusal;
+  registry remains a subset of the supported/retired operation inventory.
+- RTC-1 / RTC-5 / TC-8 | stack: python | command: python3 tests/test_s0019_pipeline.py; python3
+  tests/test_s0019_dispatch.py | result: pass | note: config/topology/old-KES ids refuse, deploy
+  payload-network mismatch refuses before authorization/execution, retired journals still recover
+  conservatively and confined dispatch remains pinned.
+- p9-5 | stack: python | command: env PATH=<dev-venv>/bin:$PATH make python-test | result: pass |
+  note: 32/32 standalone Python tests pass with dependencies installed from requirements-dev.txt.
+- p9-5 | stack: rust | command: cargo clippy -p ouro -- -D warnings | result: pass | note: zero
+  warnings; cargo test -q -p ouro remains 145/145 green and the committed embedded manifest matches.
+- RTC-2 / RTC-3 / RTC-4 / RTC-5 / TC-6 / TC-9 | stack: other | command: bash
+  fixtures/e2e/s0019-bed/run.sh | result: pass | note: real target health JSON, restart, full durable
+  audit phases, permit/token replay refusal, public-opcert backup/install/restart plus attestation
+  advance, allowlisted v1→v2 recreate and non-allowlisted refusal all pass on Docker.

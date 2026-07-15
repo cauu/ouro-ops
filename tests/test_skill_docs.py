@@ -14,12 +14,12 @@ S0019_SKILLS = [
     ROOT / "ouro-skills/observability/SKILL.md",
     ROOT / "ouro-skills/kes-rotation/SKILL.md",
     ROOT / "ouro-skills/troubleshooting/SKILL.md",
+    ROOT / "ouro-skills/onboard/SKILL.md",
 ]
 # S0017 skills kept for the legacy dispatch model (disabled at the mechanism by S0019 §2.8, but the
 # decision docs remain readable).
 LEGACY_SKILLS = [
     ROOT / "ouro-skills/detect/SKILL.md",
-    ROOT / "ouro-skills/onboard/SKILL.md",
 ]
 SKILLS = S0019_SKILLS + LEGACY_SKILLS
 FORBIDDEN = [" ssh ", " scp ", " docker ", " bash ", "sudo ", "rsync "]

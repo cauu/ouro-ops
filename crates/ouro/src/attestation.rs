@@ -8,6 +8,7 @@
 //!     mounts, network/genesis, public credential ids), and
 //!   - VERSIONED managed state, a monotonic `state_generation` + hashes of the fields a managed
 //!     write may legitimately change, advanced by CAS INSIDE the write transaction (§2.6).
+//!
 //! Live re-attestation (§2.4) then compares immutable identity AND the live mutable hashes against
 //! the recorded state at the current generation: an out-of-band change (no generation bump) is
 //! drift; a legitimate write bumped the generation and recorded the new hashes, so it is not.

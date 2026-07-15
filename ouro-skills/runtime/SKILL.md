@@ -5,7 +5,7 @@ requires_ouro: ">=0.1.0"
 # Runtime Skill
 
 ## Purpose
-Apply a runtime change (restart, or re-apply relay topology) and confirm the node returns healthy.
+Restart an attested node and confirm it returns healthy.
 
 ## Invariants (the mechanism enforces these; you respect them)
 - The node must be ADOPTED first — a runtime op on a non-managed node is refused (`not_ouro_managed`).
@@ -13,18 +13,21 @@ Apply a runtime change (restart, or re-apply relay topology) and confirm the nod
   action; you cannot hand it a raw command, path, or shell.
 - Every runtime change runs inside a crash-durable transaction that verifies the node returns
   healthy (running the attested container, socket answers, tip advancing) and rolls back if not.
-- A restart or topology change on a block producer is availability-affecting: it requires the
+- A restart on a block producer is availability-affecting: it requires the
   operator's confirm-token, and fleet policy (relay quorum, BP-last) is re-evaluated before it runs.
 
 ## Decision guidance (use your judgment; this is not a rigid script)
 - Decide whether a runtime change is actually warranted (diagnose first via the troubleshooting
   skill if the symptom is unclear — do not restart reflexively).
 - Submit the change as an intent: `ouro-ops op run --op runtime/restart --node <id> --param
-  machine=<id>` (or `runtime/topology-apply`). You provide only the parameters.
-- Because these are availability-affecting, they are dangerous writes: FIRST tell the operator
-  exactly what will run against which machine and WAIT for their go-ahead in chat, THEN
-  `ouro-ops confirm create --op runtime/restart --node <id> --intent-hash <hash>` and pass
-  `--confirm-token`. Never mint a token the operator did not just approve.
+  machine=<id>`. You provide only the parameters. `runtime/topology-apply` is retired because the
+  sealed executor does not receive or write topology bytes; do not describe restart as apply.
+- Because restart is availability-affecting, first tell the operator exactly which machine will be
+  restarted and WAIT for approval. Create a signed `ouro-ops fleet permit create` for that exact
+  node/operation using current quorum facts, then run the op without a confirm-token to obtain the
+  fleet-bound intent hash. Mint `ouro-ops confirm create --op runtime/restart --node <id>
+  --intent-hash <hash>`, then rerun with the same `--fleet-permit` and new `--confirm-token`.
+  Never mint either authorization from guessed fleet facts or unprompted approval.
 - Read the transaction outcome. On a rollback, report it and diagnose before retrying.
 
 ## Stop Conditions

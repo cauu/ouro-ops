@@ -470,6 +470,7 @@ dependencies = [
  "ed25519-dalek",
  "flate2",
  "hmac",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",

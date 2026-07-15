@@ -19,7 +19,7 @@ use crate::{OuroError, Result};
 
 /// Per-artifact-type size ceilings (bytes). A blob over its ceiling is refused before hashing.
 const MAX_OPCERT: usize = 64 * 1024;
-const MAX_TX: usize = 1 * 1024 * 1024;
+const MAX_TX: usize = 1024 * 1024;
 const MAX_IMAGE: usize = 2 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -482,10 +482,8 @@ pub fn gc(inbox: &Path, now_secs: u64, ttl_secs: u64) -> usize {
             .map(|d| d.as_secs())
             .unwrap_or(0)
             .max(secs_between(modified, now_secs));
-        if age > ttl_secs {
-            if std::fs::remove_file(e.path()).is_ok() {
-                removed += 1;
-            }
+        if age > ttl_secs && std::fs::remove_file(e.path()).is_ok() {
+            removed += 1;
         }
     }
     removed

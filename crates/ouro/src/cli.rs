@@ -991,7 +991,7 @@ fn run_tool_dispatch(args: &[String]) -> Result<()> {
     std::process::exit(outcome.status);
 }
 
-/// S0017 p5-18 — `ouro-ops diag ...`: free-form READ-ONLY diagnostics channel.
+/// S0017 p5-18 — `ouro-ops diag ...`: free-form UNPRIVILEGED diagnostics channel.
 fn run_diag(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {
         Some("exec") => run_diag_exec(&args[1..]),
@@ -1428,13 +1428,17 @@ fn print_help() {
     println!("  Agent contract: read the procedure for any operation with `ouro-ops skill show <skill>`;");
     println!("  run `<command> --help` for a command's usage.\n");
     println!("Onboarding (once per target):");
-    println!("  init      onboard a target (installs the confined ouro-exec dispatch principal)");
-    println!("  deinit    reverse onboarding (restores the box)");
+    println!("  onboard   prepare a host for S0019 adopt/op dispatch (ouro-op + ouro-diag)");
+    println!("  adopt     approve one conforming running node as managed (non-disruptive)");
+    println!("  init/deinit  legacy S0017 setup/removal; not an inverse for S0019 onboard");
     println!("Operate (via the agent):");
     println!("  skill     show|list — the authoritative decision trees + red lines");
-    println!("  tool      run <skill>/<script> [--dispatch <machine>] — the ONLY audited write path");
-    println!("  diag      exec --dispatch <machine> -- <cmd> — free-form READ-ONLY diagnosis (ouro-diag, no sudo)");
-    println!("  confirm   create — mint a target-bound one-time token for a destructive op");
+    println!("  op        run --op <operation> --node <id> — S0019 managed read/write intent path");
+    println!("  inbox     stage a typed, content-addressed public artifact");
+    println!("  fleet     permit create — authorize one disruptive fleet step");
+    println!("  diag      exec --dispatch <machine> --spec <pool-spec> -- <cmd> — unprivileged diagnosis");
+    println!("  confirm   create — mint an exact intent-bound one-time approval");
+    println!("  tool      run <skill>/<script> — legacy S0017 dispatch path");
     println!("  kes       cold-sign-script | counter status | generate | push");
     println!("  deploy    cold-sign-script — offline tx witnessing");
     println!("  pool      overview | register-tx");
@@ -1442,13 +1446,17 @@ fn print_help() {
     println!("  self-update  --check");
     println!("Read-only / meta:");
     println!("  status    node status from a snapshot | spec validate | detect (via tool run detect/*)");
-    println!("  version | paths | contract | manifest show|verify | config render|apply | audit init|log");
+    println!("  version | paths | contract | manifest show|verify | audit init|log");
     println!("\nOutput is single-line JSON when captured (agents/pipes/dispatch); human-readable on a TTY (force JSON: --json).");
 }
 
 /// One-line usage for `<command> --help`. Covers the agent-facing surface; None → fall through.
 fn command_usage(command: &str) -> Option<&'static str> {
     Some(match command {
+        "onboard" => "ouro-ops onboard --host <target> [--port 22] --bootstrap-user <account> \
+                      --bootstrap-key creds://<name> --control-pubkey <operator-pub> \
+                      --ouro-binary <target-arch ouro-ops> [--expected-host-key <sha256>] [--dry-run]\n  \
+                      Installs the S0019 ouro-op/ouro-diag confinement; then adopt the node.",
         "init" => "ouro-ops init --host <target> [--port 22] --bootstrap-user <account> \
                    --bootstrap-key creds://<name> --control-pubkey <operator-pub> \
                    --ouro-binary <target-arch ouro-ops> --spec <pool-spec> --machine <id> [--expected-host-key <sha256>]\n  \
@@ -1458,15 +1466,16 @@ fn command_usage(command: &str) -> Option<&'static str> {
                      --bootstrap-key creds://<name> [--force] [--remove-node]\n  Reverses onboarding (refuses while a node runs).",
         "tool" => "ouro-ops tool run <skill>/<script> [--dispatch <machine>] --spec <pool-spec> \
                    [--machine <id>] [--confirm-token <tok>]\n  The sole audited write path. Read the steps from `ouro-ops skill show <skill>`.",
-        "confirm" => "ouro-ops confirm create --action <skill>/<script> --machine <id> --runtime-evidence <hash>\n  \
-                      Mints a one-time token bound to the live target fingerprint (from `tool run detect/runtime`).",
+        "confirm" => "ouro-ops confirm create --op <id> --node <id> --intent-hash <hash> | \
+                      confirm adopt create --node <id> --candidate-hash <hash> --host-key <sha256>\n  \
+                      Mints a one-time S0019 approval bound to the exact intent or adoption candidate.",
         "kes" => "ouro-ops kes cold-sign-script --kes-vkey <pub> --kes-period <n> | counter status --state <json> \
                   | generate | push\n  Rotations run via `tool run kes-rotation/*` — see `ouro-ops skill show kes-rotation`.",
         "deploy" => "ouro-ops deploy cold-sign-script --tx-body <path> --cold-key <role> [--cold-key <role>...] \
                      [--era conway] [--testnet-magic <n>|--mainnet]",
         "diag" => "ouro-ops diag exec --dispatch <machine> --spec <pool-spec> [--timeout <s>] -- <command>\n  \
-                   Free-form READ-ONLY diagnosis as the unprivileged ouro-diag principal (no sudo; \
-                   cannot write node content or read secret dirs). Audited; output bounded. \
+                   Free-form UNPRIVILEGED diagnosis as ouro-diag (no sudo; cannot write node \
+                   content or read secret dirs, but can use its own resources/egress). Audited; output bounded. \
                    See `ouro-ops skill show troubleshooting`.",
         "pool" => "ouro-ops pool overview --spec <pool-spec> [--snapshot <json>] | register-tx --spec <pool-spec>",
         "skill" => "ouro-ops skill list | show <skill>   (skills: deploy, detect, kes-rotation, observability, runtime, troubleshooting, upgrade, onboard)",

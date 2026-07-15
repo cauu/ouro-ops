@@ -95,20 +95,15 @@ pub fn registry() -> &'static [OperationSpec] {
             may_expose_secret: false,
         },
         OperationSpec {
-            operation_id: "runtime/topology-apply",
-            mutability: Mutability::Dangerous, // can partition a BP from relays
-            params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
-            touched: &["file:topology", "container:restart"],
-            may_expose_secret: false,
-        },
-        OperationSpec {
-            operation_id: "kes-rotation/rotate",
+            // ouro does not create or rotate the KES signing key. The operator performs that
+            // ceremony offline; this operation installs only the resulting PUBLIC opcert.
+            operation_id: "kes-rotation/install-opcert",
             mutability: Mutability::Dangerous,
             params: &[
                 ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true },
                 ParamSpec { name: "opcert", kind: ParamKind::ArtifactRef, required: true },
             ],
-            touched: &["file:kes", "file:opcert", "container:restart"],
+            touched: &["file:opcert", "container:restart"],
             may_expose_secret: false,
         },
         OperationSpec {
@@ -124,15 +119,6 @@ pub fn registry() -> &'static [OperationSpec] {
                 },
             ],
             touched: &["chain:submit"],
-            may_expose_secret: false,
-        },
-        OperationSpec {
-            operation_id: "config/render",
-            // The current executor applies already-rendered on-disk config by restarting the node;
-            // availability impact makes this dangerous until an actual render-only path exists.
-            mutability: Mutability::Dangerous,
-            params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
-            touched: &["file:config", "container:restart"],
             may_expose_secret: false,
         },
         OperationSpec {
@@ -370,11 +356,11 @@ mod tests {
         assert!(intent("runtime/restart", json!({"machine": "bp1; rm -rf /"})).validate(0).is_err());
         assert!(intent("runtime/restart", json!({"machine": "../etc"})).validate(0).is_err());
         // A raw path where an ArtifactRef is required → refused (no path sink, §2.7).
-        assert!(intent("kes-rotation/rotate",
+        assert!(intent("kes-rotation/install-opcert",
             json!({"machine":"bp1","opcert":"/etc/passwd"})).validate(0).is_err());
         // Well-formed artifact ref accepted.
         let good = format!("opcert-1@sha256:{}", "a".repeat(64));
-        assert!(intent("kes-rotation/rotate",
+        assert!(intent("kes-rotation/install-opcert",
             json!({"machine":"bp1","opcert": good})).validate(0).is_ok());
     }
 
@@ -391,9 +377,10 @@ mod tests {
 
     #[test]
     fn dangerous_ops_flagged_confirm_required() {
-        assert_eq!(lookup("kes-rotation/rotate").unwrap().mutability, Mutability::Dangerous);
+        assert_eq!(lookup("kes-rotation/install-opcert").unwrap().mutability, Mutability::Dangerous);
         assert_eq!(lookup("runtime/restart").unwrap().mutability, Mutability::Dangerous);
-        assert_eq!(lookup("config/render").unwrap().mutability, Mutability::Dangerous);
+        assert!(lookup("config/render").is_none(), "render is retired until it really renders");
+        assert!(lookup("runtime/topology-apply").is_none(), "apply is retired until it applies bytes");
     }
 
     #[test]

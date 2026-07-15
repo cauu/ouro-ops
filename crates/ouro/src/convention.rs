@@ -437,7 +437,7 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn decode_hex(value: &str) -> Result<Vec<u8>> {
-    if value.len() % 2 != 0
+    if value.len() & 1 != 0
         || !value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
         return Err(OuroError::Validation("hex value is malformed".into()));

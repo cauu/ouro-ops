@@ -85,14 +85,14 @@ def main():
     txn.mkdir(exist_ok=True)
     (txn / "bp1.txn.json").write_text(json.dumps(
         {"audit_id": "a", "operation_id": "runtime/restart", "node_id": "bp1", "state": "sealed"}))
-    _, d = run(home, "op", "run", "--op", "config/render", "--node", "bp1",
+    _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
                "--param", "machine=bp1", "--observation", o, "--plan")
     assert d["status"] == "error" and "sealed" in json.dumps(d), d
 
     # --- a legacy committed journal lacks intent/pre-state/plans: never clear it as false success ---
     (txn / "bp1.txn.json").write_text(json.dumps(
         {"audit_id": "a", "operation_id": "config/render", "node_id": "bp1", "state": "committed"}))
-    _, d = run(home, "op", "run", "--op", "config/render", "--node", "bp1",
+    _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
                "--param", "machine=bp1", "--observation", o, "--plan")
     assert d["status"] == "error" and "durable recovery context" in json.dumps(d), d
     assert (txn / "bp1.seal").exists(), "uncertain legacy write must seal target writes"

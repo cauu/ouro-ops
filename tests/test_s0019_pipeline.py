@@ -127,6 +127,18 @@ def main():
     _, d = run(home, "op", "run", "--op", "deploy/takeover", "--node", "bp1",
                "--param", "machine=bp1", "--observation", o, "--plan")
     assert d["status"] == "error" and ("disabled" in json.dumps(d) or "registry" in json.dumps(d)), d
+    # Misleading names that used to execute only a restart are retired, not silently aliased.
+    for retired in ("config/render", "runtime/topology-apply", "kes-rotation/rotate"):
+        _, d = run(home, "op", "run", "--op", retired, "--node", "bp1",
+                   "--param", "machine=bp1", "--observation", o, "--plan")
+        assert d["status"] == "error" and ("disabled" in json.dumps(d) or "registry" in json.dumps(d)), d
+
+    # The approved deploy network must be the same network the attested executor will use.
+    tx_ref = "tx-1@sha256:" + "b" * 64
+    _, d = run(home, "op", "run", "--op", "deploy/register-submit", "--node", "bp1",
+               "--param", "machine=bp1", "--param", f"tx={tx_ref}",
+               "--param", "network=preview", "--observation", o, "--plan")
+    assert d["status"] == "error" and "payload network" in json.dumps(d), d
 
     # 5. mint a confirm-token bound to the exact intent, then op run passes all gates (plan)
     #    First discover the intent hash from the refusal message path: build it the same way by

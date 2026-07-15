@@ -18,7 +18,12 @@
 //! `build_plan` returns what the executor WOULD run; the actual `std::process` invocation happens
 //! target-side (as the confined principal). This module is the sealed argv builder + its proof.
 
+use std::io::Read;
 use std::path::Path;
+use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
@@ -62,6 +67,9 @@ const OPCERT_DEST: &str = "/opt/cardano/config/keys/node.cert";
 const SOCKET: &str = "/ipc/node.socket";
 /// Where a signed tx artifact is staged INSIDE the container before submit (ephemeral, public tx).
 const TX_STAGE: &str = "/tmp/ouro-tx.signed";
+
+pub type ExecutionPlan = Vec<Vec<String>>;
+pub type RecoverablePlans = (ExecutionPlan, Option<ExecutionPlan>);
 
 fn s(x: &str) -> String {
     x.to_string()
@@ -123,11 +131,6 @@ pub fn build_plan(
     match intent.operation_id.as_str() {
         // Restart the attested container onto whatever is currently on disk.
         "runtime/restart" => Ok(vec![restart()]),
-        // Apply the on-disk topology by restarting onto it (the topology content itself is delivered
-        // out-of-band into the mounted config dir; this op is the "apply" = restart).
-        "runtime/topology-apply" => Ok(vec![restart()]),
-        // Apply the on-disk rendered config by restarting onto it (was a bogus `--version` no-op).
-        "config/render" => Ok(vec![restart()]),
         // A managed READ — query the node's tip via the container's socket + attested network.
         "observability/health" => {
             let mut argv = vec![
@@ -137,10 +140,10 @@ pub fn build_plan(
             argv.extend(net_flags(&att.immutable.network)?);
             Ok(vec![argv])
         }
-        // kes-rotation: install the digest-resolved opcert (public `node.cert`) into the keys mount,
+        // Install the digest-resolved opcert (public `node.cert`) into the keys mount,
         // then restart. NEVER touches the KES signing key or the air-gapped cold key — the operator
         // builds the opcert air-gapped and stages it; this executor only installs the public cert.
-        "kes-rotation/rotate" => {
+        "kes-rotation/install-opcert" => {
             let opcert = resolve_artifact(
                 intent,
                 "opcert",
@@ -198,10 +201,10 @@ pub fn recoverable_plans(
     att: &AdoptionAttestation,
     inbox: &Path,
     rollback_root: &Path,
-) -> Result<(Vec<Vec<String>>, Option<Vec<Vec<String>>>)> {
+) -> Result<RecoverablePlans> {
     let mut commit = build_plan(intent, att, Some(inbox))?;
     match intent.operation_id.as_str() {
-        "kes-rotation/rotate" => {
+        "kes-rotation/install-opcert" => {
             std::fs::create_dir_all(rollback_root)?;
             #[cfg(unix)]
             {
@@ -322,6 +325,116 @@ pub fn run_argv(argv: &[String]) -> Result<()> {
     }
 }
 
+const MAX_READ_OUTPUT_BYTES: usize = 1024 * 1024;
+const READ_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn bounded_reader<R: Read + Send + 'static>(
+    mut reader: R,
+    limit: usize,
+    exceeded: Arc<AtomicBool>,
+) -> std::thread::JoinHandle<std::io::Result<Vec<u8>>> {
+    std::thread::spawn(move || {
+        let mut kept = Vec::new();
+        let mut chunk = [0_u8; 8192];
+        loop {
+            let count = reader.read(&mut chunk)?;
+            if count == 0 {
+                break;
+            }
+            let remaining = limit.saturating_sub(kept.len());
+            kept.extend_from_slice(&chunk[..count.min(remaining)]);
+            if count > remaining {
+                exceeded.store(true, Ordering::Release);
+            }
+            // Continue draining after the cap so the child cannot deadlock on a full pipe while
+            // the parent observes the flag and terminates it.
+        }
+        Ok(kept)
+    })
+}
+
+/// Execute the one fixed read argv and return bounded UTF-8 stdout. Unlike `run_argv`, this is a
+/// data path: it must return the command's result, not merely claim that an argv would be run.
+/// Both streams are drained concurrently, capped, and the child is terminated on timeout/cap.
+pub fn run_read_plan(plan: &[Vec<String>]) -> Result<String> {
+    if plan.len() != 1 {
+        return Err(OuroError::Validation(
+            "managed read executor requires exactly one fixed argv".into(),
+        ));
+    }
+    let Some((prog, rest)) = plan[0].split_first() else {
+        return Err(OuroError::Validation("empty managed read argv".into()));
+    };
+    let mut child = std::process::Command::new(prog)
+        .args(rest)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| {
+            OuroError::Validation(format!("read executor {prog} failed to start: {error}"))
+        })?;
+    let stdout = child.stdout.take().ok_or_else(|| {
+        OuroError::Validation("read executor did not expose stdout".into())
+    })?;
+    let stderr = child.stderr.take().ok_or_else(|| {
+        OuroError::Validation("read executor did not expose stderr".into())
+    })?;
+    let exceeded = Arc::new(AtomicBool::new(false));
+    let stdout_thread = bounded_reader(stdout, MAX_READ_OUTPUT_BYTES, Arc::clone(&exceeded));
+    let stderr_thread = bounded_reader(stderr, MAX_READ_OUTPUT_BYTES, Arc::clone(&exceeded));
+    let started = Instant::now();
+    let mut timed_out = false;
+    let status = loop {
+        if exceeded.load(Ordering::Acquire) {
+            let _ = child.kill();
+            break child.wait().map_err(|error| {
+                OuroError::Validation(format!("read executor wait after output cap: {error}"))
+            })?;
+        }
+        if started.elapsed() >= READ_TIMEOUT {
+            timed_out = true;
+            let _ = child.kill();
+            break child.wait().map_err(|error| {
+                OuroError::Validation(format!("read executor wait after timeout: {error}"))
+            })?;
+        }
+        match child.try_wait().map_err(|error| {
+            OuroError::Validation(format!("read executor status: {error}"))
+        })? {
+            Some(status) => break status,
+            None => std::thread::sleep(Duration::from_millis(10)),
+        }
+    };
+    let stdout = stdout_thread
+        .join()
+        .map_err(|_| OuroError::Validation("read executor stdout reader panicked".into()))?
+        .map_err(|error| OuroError::Validation(format!("read executor stdout: {error}")))?;
+    let stderr = stderr_thread
+        .join()
+        .map_err(|_| OuroError::Validation("read executor stderr reader panicked".into()))?
+        .map_err(|error| OuroError::Validation(format!("read executor stderr: {error}")))?;
+    if timed_out {
+        return Err(OuroError::Validation(
+            "managed read exceeded the fixed 30s timeout".into(),
+        ));
+    }
+    if exceeded.load(Ordering::Acquire) {
+        return Err(OuroError::Validation(format!(
+            "managed read output exceeded {MAX_READ_OUTPUT_BYTES} bytes"
+        )));
+    }
+    if !status.success() {
+        let detail = String::from_utf8_lossy(&stderr);
+        return Err(OuroError::Validation(format!(
+            "read executor {prog} exited {}: {}",
+            status.code().unwrap_or(-1),
+            detail.trim()
+        )));
+    }
+    String::from_utf8(stdout)
+        .map_err(|_| OuroError::Validation("managed read output was not UTF-8".into()))
+}
+
 /// Run a fixed SEQUENCE of argvs in order, stopping at the first failure. Each argv came from
 /// `build_plan` (attested facts + digest-resolved artifacts only), so nothing agent-supplied is
 /// interpolated here.
@@ -339,7 +452,7 @@ pub fn run_rollback_plan(operation_id: &str, plan: &[Vec<String>]) -> Result<()>
         let Some((remove, recreate)) = plan.split_first() else {
             return Err(OuroError::Validation("upgrade rollback plan is empty".into()));
         };
-        if remove.get(0).map(String::as_str) != Some("docker")
+        if remove.first().map(String::as_str) != Some("docker")
             || remove.get(1).map(String::as_str) != Some("rm")
         {
             return Err(OuroError::Validation("upgrade rollback lacks fixed remove step".into()));
@@ -397,10 +510,8 @@ mod tests {
     }
 
     #[test]
-    fn config_render_is_a_real_restart_not_a_version_probe() {
-        let plan = build_plan(&intent("config/render", json!({"machine": "bp1"})), &att(), None).unwrap();
-        assert_eq!(plan, vec![vec!["docker", "restart", "cid-attested"]]);
-        assert!(!plan.iter().flatten().any(|a| a == "--version"), "no bogus --version");
+    fn retired_config_render_has_no_executor() {
+        assert!(build_plan(&intent("config/render", json!({"machine": "bp1"})), &att(), None).is_err());
     }
 
     #[test]
@@ -414,10 +525,10 @@ mod tests {
     #[test]
     fn kes_installs_resolved_opcert_then_restarts() {
         // Refuse with no opcert.
-        assert!(build_plan(&intent("kes-rotation/rotate", json!({"machine":"bp1"})), &att(), None).is_err());
+        assert!(build_plan(&intent("kes-rotation/install-opcert", json!({"machine":"bp1"})), &att(), None).is_err());
         // Preview shows the cp+restart sequence with a placeholder path (no inbox needed).
         let good = format!("opcert-1@sha256:{}", "a".repeat(64));
-        let plan = build_plan(&intent("kes-rotation/rotate", json!({"machine":"bp1","opcert":good})), &att(), None).unwrap();
+        let plan = build_plan(&intent("kes-rotation/install-opcert", json!({"machine":"bp1","opcert":good})), &att(), None).unwrap();
         assert_eq!(plan.len(), 2, "cp then restart");
         assert_eq!(plan[0][0..2], ["docker".to_string(), "cp".to_string()]);
         assert_eq!(plan[0][2], "<inbox:opcert-1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa>");
@@ -432,7 +543,7 @@ mod tests {
         let opcert_bytes = br#"{"type":"NodeOperationalCertificate","cborHex":"deadbeef"}"#;
         let art_ref = crate::inbox::stage(&dir, crate::inbox::ArtifactType::Opcert, opcert_bytes).unwrap();
         let plan = build_plan(
-            &intent("kes-rotation/rotate", json!({"machine":"bp1","opcert":art_ref})),
+            &intent("kes-rotation/install-opcert", json!({"machine":"bp1","opcert":art_ref})),
             &att(), Some(&dir),
         ).unwrap();
         // The cp source is the REAL resolved inbox path (digest-verified), never the agent's string.
@@ -449,7 +560,7 @@ mod tests {
         let bytes = br#"{"type":"NodeOperationalCertificate","cborHex":"deadbeef"}"#;
         let art_ref = crate::inbox::stage(&inbox, crate::inbox::ArtifactType::Opcert, bytes).unwrap();
         let (commit, rb) = recoverable_plans(
-            &intent("kes-rotation/rotate", json!({"machine":"bp1","opcert":art_ref})),
+            &intent("kes-rotation/install-opcert", json!({"machine":"bp1","opcert":art_ref})),
             &att(), &inbox, &rollback,
         ).unwrap();
         assert_eq!(commit.len(), 3, "backup, install, restart");
@@ -569,6 +680,14 @@ mod tests {
         assert!(run_argv(&["false".into()]).is_err(), "nonzero → error");
         assert!(run_argv(&[]).is_err(), "empty argv → error");
         assert!(run_argv(&["this-binary-does-not-exist-xyz".into()]).is_err(), "missing prog → error");
+    }
+
+    #[test]
+    fn managed_read_returns_data_instead_of_only_an_argv() {
+        let plan = vec![vec!["printf".into(), r#"{"block":42}"#.into()]];
+        assert_eq!(run_read_plan(&plan).unwrap(), r#"{"block":42}"#);
+        assert!(run_read_plan(&[]).is_err());
+        assert!(run_read_plan(&[vec!["false".into()]]).is_err());
     }
 
     #[test]

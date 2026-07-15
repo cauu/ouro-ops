@@ -41,7 +41,12 @@ impl NodeLock {
         std::fs::create_dir_all(lock_root)
             .map_err(|e| OuroError::Validation(format!("cannot create lock dir: {e}")))?;
         let path = lock_root.join(format!("{node_id}.lock"));
-        let mut file = OpenOptions::new().read(true).write(true).create(true).open(&path)
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)
             .map_err(|e| OuroError::Validation(format!("cannot open node lock: {e}")))?;
         #[cfg(unix)]
         {

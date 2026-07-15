@@ -90,14 +90,31 @@ def main():
     run(home, "adopt", "--node", "bp1", "--role", "bp",
         "--approve-token", approval["data"]["approve_token"], "--observation", str(o))
     run(home, "op", "run", "--op", "observability/health", "--node", "bp1",
-        "--param", "machine=bp1", "--observation", str(o))
+        "--param", "machine=bp1", "--observation", str(o), "--plan")
+    run(home, "op", "run", "--op", "config/render", "--node", "bp1",
+        "--param", "machine=bp1", "--observation", str(o), "--plan")
     audit = Path(home) / "s0019-audit.jsonl"
     assert audit.exists(), "audit log written"
     events = [json.loads(l) for l in audit.read_text().splitlines() if l.strip()]
     assert events, "at least one audit event"
     for ev in events:
         validate_closed_audit_event(ev)
+        assert ev["at_epoch"] > 0, ev
+    assert (audit.stat().st_mode & 0o777) == 0o600
+    assert any(e["event"] == "adopt" for e in events), events
     assert any(e["event"] == "live_preflight" for e in events), events
+    assert any(e["event"] == "refusal" and e.get("operation_id") == "config/render"
+               for e in events), events
+
+    # Audit append never follows an attacker-controlled symlink or mutates its target.
+    unsafe_home = Path(tempfile.mkdtemp())
+    victim = unsafe_home / "victim"
+    victim.write_text("keep")
+    (unsafe_home / "s0019-audit.jsonl").symlink_to(victim)
+    _, refused = run(str(unsafe_home), "op", "run", "--op", "runtime/restart",
+                     "--node", "bp1", "--param", "machine=bp1", "--plan")
+    assert "audit path" in json.dumps(refused), refused
+    assert victim.read_text() == "keep"
 
     print("inbox stage + audit emission passed")
 

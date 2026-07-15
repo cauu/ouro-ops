@@ -188,26 +188,127 @@ pub fn run_fleet(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// p5-5 — append a closed-field audit event (§2.13). Hashes/ids only, never raw config/secret data.
-fn audit_emit(paths: &ConfigPaths, event: &str, node: &str, extra: serde_json::Value) {
+/// Append one closed-field, durable audit event (§2.13). Hashes/ids only, never raw
+/// config/secret data. Audit failure is an operation failure; it is never silently swallowed.
+fn audit_emit(
+    paths: &ConfigPaths,
+    event: &str,
+    node: &str,
+    extra: serde_json::Value,
+) -> Result<()> {
+    const EVENTS: &[&str] = &[
+        "adopt", "live_preflight", "intent_approval", "prepared", "committing",
+        "committed", "verifying", "verified", "rolling_back", "rolled_back", "sealed",
+        "recovery", "attestation_rotation", "refusal",
+    ];
+    const EXTRA_FIELDS: &[&str] = &[
+        "operation_id", "intent_hash", "approval_evidence_hash", "pre_state_generation",
+        "post_state_generation", "fencing_token", "outcome", "refusal_code",
+    ];
+    if !EVENTS.contains(&event) {
+        return Err(OuroError::Validation(format!("unknown audit event {event:?}")));
+    }
     let mut ev = serde_json::Map::new();
     ev.insert("event".into(), json!(event));
-    ev.insert("audit_id".into(), json!(format!("{event}-{node}")));
+    let audit_id = extra
+        .get("intent_hash")
+        .and_then(serde_json::Value::as_str)
+        .map(|hash| format!("op-{hash}"))
+        .unwrap_or_else(|| format!("{event}-{}", uuid::Uuid::new_v4().simple()));
+    ev.insert("audit_id".into(), json!(audit_id));
     ev.insert("node_id".into(), json!(node));
-    ev.insert("at_epoch".into(), json!(0)); // no ambient clock; a real emitter stamps target-side
+    ev.insert("at_epoch".into(), json!(crate::s0019_confirmation::current_epoch()?));
     if let serde_json::Value::Object(m) = extra {
         for (k, v) in m {
+            if !EXTRA_FIELDS.contains(&k.as_str()) {
+                return Err(OuroError::Validation(format!(
+                    "audit field {k:?} is outside the closed schema"
+                )));
+            }
             ev.insert(k, v);
         }
     }
-    let line = serde_json::to_string(&serde_json::Value::Object(ev)).unwrap_or_default();
+    let mut line = serde_json::to_vec(&serde_json::Value::Object(ev))
+        .map_err(|error| OuroError::Validation(format!("audit serialize: {error}")))?;
+    line.push(b'\n');
     let path = paths.home.join("s0019-audit.jsonl");
-    if let Some(p) = path.parent() {
-        std::fs::create_dir_all(p).ok();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| OuroError::Validation(format!("audit mkdir: {error}")))?;
+    }
+    match std::fs::symlink_metadata(&path) {
+        Ok(metadata) => {
+            if !metadata.file_type().is_file() {
+                return Err(OuroError::Validation(
+                    "audit path is not a regular file — refused".into(),
+                ));
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::{MetadataExt, PermissionsExt};
+                if metadata.nlink() != 1 || metadata.permissions().mode() & 0o022 != 0 {
+                    return Err(OuroError::Validation(
+                        "audit file has unsafe links or permissions — refused".into(),
+                    ));
+                }
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(OuroError::Validation(format!(
+                "cannot inspect audit path: {error}"
+            )))
+        }
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
+    }
+    let mut file = options
+        .open(&path)
+        .map_err(|error| OuroError::Validation(format!("audit open: {error}")))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| OuroError::Validation(format!("audit metadata: {error}")))?;
+    if !metadata.file_type().is_file() {
+        return Err(OuroError::Validation("audit destination is not a regular file".into()));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if metadata.nlink() != 1 || metadata.permissions().mode() & 0o022 != 0 {
+            return Err(OuroError::Validation(
+                "audit destination has unsafe links or permissions — refused".into(),
+            ));
+        }
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
     }
     use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-        let _ = writeln!(f, "{line}");
+    file.write_all(&line)
+        .map_err(|error| OuroError::Validation(format!("audit append: {error}")))?;
+    file.sync_data()
+        .map_err(|error| OuroError::Validation(format!("audit fsync: {error}")))?;
+    if let Some(parent) = path.parent() {
+        std::fs::File::open(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| OuroError::Validation(format!("audit directory fsync: {error}")))?;
+    }
+    Ok(())
+}
+
+fn tx_audit_event(state: TxState) -> &'static str {
+    match state {
+        TxState::Prepared => "prepared",
+        TxState::Committing => "committing",
+        TxState::Committed => "committed",
+        TxState::Verifying => "verifying",
+        TxState::Verified => "verified",
+        TxState::RollingBack => "rolling_back",
+        TxState::RolledBack => "rolled_back",
+        TxState::Sealed => "sealed",
     }
 }
 
@@ -404,9 +505,33 @@ fn run_probe() -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+fn audit_refusal(args: &[String], operation: &str, error: &OuroError) -> Result<()> {
+    let node = optional(args, "--node").unwrap_or("unknown");
+    let paths = ConfigPaths::discover();
+    audit_emit(&paths, "refusal", node, json!({
+        "operation_id": operation,
+        "outcome": "refused",
+        "refusal_code": format!("exit_{}", error.exit_code()),
+    }))
+}
+
 /// `ouro-ops adopt` — conformance → evidence-bound approval → write the attestation. Non-disruptive
 /// (writes metadata only). Refuses a non-conforming node (never adapts).
 pub fn run_adopt(args: &[String]) -> Result<()> {
+    match run_adopt_inner(args) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            audit_refusal(args, "adopt", &error).map_err(|audit_error| {
+                OuroError::Validation(format!(
+                    "{error}; additionally failed to append refusal audit: {audit_error}"
+                ))
+            })?;
+            Err(error)
+        }
+    }
+}
+
+fn run_adopt_inner(args: &[String]) -> Result<()> {
     let node = flag(args, "--node")?.to_string();
     crate::intent::validate_machine_id(&node)?;
     let local = args.iter().any(|a| a == "--local");
@@ -558,6 +683,11 @@ pub fn run_adopt(args: &[String]) -> Result<()> {
     let mut doc = serde_json::to_value(&att).unwrap();
     doc["contract"] = json!({ "in_container_paths": contract.in_container_paths });
     attestation::write_document(&p, &doc)?;
+    audit_emit(&paths, "adopt", &node, json!({
+        "approval_evidence_hash": att.immutable.approval_evidence_hash,
+        "post_state_generation": 0,
+        "outcome": "adopted",
+    }))?;
 
     output::print_json(&ToolOutput::ok("ouro.adopt", true).with_data(json!({
         "node": node,
@@ -574,6 +704,21 @@ pub fn run_adopt(args: &[String]) -> Result<()> {
 /// The intent pipeline: recover → parity → build+validate intent → live re-attest gate → confirm
 /// gate → crash-durable transaction → sealed executor (plan mode until p4-2).
 pub fn run_op(args: &[String]) -> Result<()> {
+    let operation = optional(args, "--op").unwrap_or("unknown").to_string();
+    match run_op_inner(args) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            audit_refusal(args, &operation, &error).map_err(|audit_error| {
+                OuroError::Validation(format!(
+                    "{error}; additionally failed to append refusal audit: {audit_error}"
+                ))
+            })?;
+            Err(error)
+        }
+    }
+}
+
+fn run_op_inner(args: &[String]) -> Result<()> {
     if args.first().map(String::as_str) != Some("run") {
         return Err(OuroError::InvalidArgs(
             "expected: ouro-ops op run --op <id> --node <id> [--param k=v]... [--confirm-token T] --observation <f> [--plan]".into(),
@@ -620,8 +765,20 @@ pub fn run_op(args: &[String]) -> Result<()> {
         let recover_rollback = |record: &JournalRecord| {
             rollback_recovery_record(record, args, &paths, &node, local)
         };
+        let interrupted = journal.read()?.map(|record| record.operation_id);
         let recover_ops = RecoveryOps { verify: &recover_verify, rollback: &recover_rollback };
         if let Some(state) = transaction::recover(&journal, &seal, &recover_ops)? {
+            let mut fields = serde_json::Map::new();
+            if let Some(operation_id) = interrupted {
+                fields.insert("operation_id".into(), json!(operation_id));
+            }
+            fields.insert("outcome".into(), json!(format!("{state:?}")));
+            audit_emit(
+                &paths,
+                "recovery",
+                &node,
+                serde_json::Value::Object(fields),
+            )?;
             if state == TxState::Sealed {
                 return Err(OuroError::Validation(
                     "writes are sealed by a prior failed rollback — operator recovery required (§2.6)"
@@ -687,6 +844,19 @@ pub fn run_op(args: &[String]) -> Result<()> {
             "target binding mismatch: payload machine {payload_machine} != adopted machine {} — refused",
             att.immutable.machine_id
         )));
+    }
+    if op == "deploy/register-submit" {
+        let requested_network = intent
+            .payload
+            .get("network")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| OuroError::Validation("deploy intent lost its network binding".into()))?;
+        if requested_network != att.immutable.network {
+            return Err(OuroError::Validation(format!(
+                "target binding mismatch: payload network {requested_network} != attested network {} — refused",
+                att.immutable.network
+            )));
+        }
     }
 
     // Dispatched writes carry the control's complete security identity; local invocations still
@@ -781,15 +951,62 @@ pub fn run_op(args: &[String]) -> Result<()> {
         None
     };
 
+    audit_emit(&paths, "live_preflight", &node, json!({
+        "operation_id": op,
+        "intent_hash": canon,
+        "pre_state_generation": att.state.state_generation,
+        "outcome": "passed",
+    }))?;
+    if spec.mutability == Mutability::Dangerous {
+        let token = optional(args, "--confirm-token").ok_or_else(|| {
+            OuroError::Validation("dangerous operation lost verified confirmation".into())
+        })?;
+        let mut approval = serde_json::Map::new();
+        approval.insert("operation_id".into(), json!(op));
+        approval.insert("intent_hash".into(), json!(canon));
+        approval.insert(
+            "approval_evidence_hash".into(),
+            json!(crate::intent::sha256_hex(token.as_bytes())),
+        );
+        if let Some(permit) = &fleet_permit {
+            approval.insert("fencing_token".into(), json!(permit.fencing_token));
+        }
+        audit_emit(
+            &paths,
+            "intent_approval",
+            &node,
+            serde_json::Value::Object(approval),
+        )?;
+    }
+
     // A managed READ (e.g. observability/health) passes the attested gate but takes no confirm and
-    // no write transaction — it does not mutate. Return the fixed read argv (target-side executor
-    // gathers + returns the data); no journal is touched.
+    // no write transaction. Plan mode returns the fixed argv; a real run executes that fixed argv
+    // and returns its bounded, parsed result. No journal is touched.
     if spec.mutability == Mutability::Read {
-        let plan = crate::executor::build_plan(&intent, &att, None).unwrap_or_default();
-        audit_emit(&paths, "live_preflight", &node, json!({"operation_id": op, "intent_hash": canon}));
+        let executor_plan = crate::executor::build_plan(&intent, &att, None)?;
+        if plan {
+            output::print_json(&ToolOutput::ok("ouro.op.read.plan", false).with_data(json!({
+                "op": op, "node": node, "intent_hash": canon,
+                "executor_plan": executor_plan,
+                "note": "managed read plan — fixed argv shown; command not executed",
+            })))?;
+            return Ok(());
+        }
+        let stdout = crate::executor::run_read_plan(&executor_plan)?;
+        let result: serde_json::Value = serde_json::from_str(stdout.trim()).map_err(|error| {
+            OuroError::Validation(format!(
+                "managed health read returned malformed JSON: {error}"
+            ))
+        })?;
+        audit_emit(&paths, "verified", &node, json!({
+            "operation_id": op,
+            "intent_hash": canon,
+            "pre_state_generation": att.state.state_generation,
+            "post_state_generation": att.state.state_generation,
+            "outcome": "managed_read_success",
+        }))?;
         output::print_json(&ToolOutput::ok("ouro.op.read", false).with_data(json!({
-            "op": op, "node": node, "intent_hash": canon, "executor_plan": plan,
-            "note": "managed read — no mutation; target-side executor gathers the data",
+            "op": op, "node": node, "intent_hash": canon, "result": result,
         })))?;
         return Ok(());
     }
@@ -798,7 +1015,23 @@ pub fn run_op(args: &[String]) -> Result<()> {
         // Show the FIXED argv SEQUENCE the sealed executor WOULD run (from the attested container id
         // + digest-resolved artifacts, not the agent's params) — proof of what a real run does, with
         // no mutation. Preview mode (inbox=None) renders artifact paths as `<inbox:…>` placeholders.
-        let steps = crate::executor::build_plan(&intent, &att, None).unwrap_or_default();
+        let steps = if op == "upgrade/step" {
+            let target = intent
+                .payload
+                .get("image")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| OuroError::Validation("upgrade plan lost target image".into()))?;
+            let observation = read_observation(args)?;
+            let recreate = observation.recreate.ok_or_else(|| {
+                OuroError::Validation(
+                    "upgrade plan unavailable: probe could not model the full container run-spec"
+                        .into(),
+                )
+            })?;
+            crate::executor::recreate_argv(&recreate, &att.state.container_id, target)?
+        } else {
+            crate::executor::build_plan(&intent, &att, None)?
+        };
         output::print_json(&ToolOutput::ok("ouro.op.plan", false).with_data(json!({
             "op": op, "node": node, "mutability": format!("{:?}", spec.mutability),
             "intent_hash": canon, "touched": spec.touched, "executor_plan": steps,
@@ -871,7 +1104,7 @@ pub fn run_op(args: &[String]) -> Result<()> {
     // otherwise the very next op would drift-refuse against the stale attestation.
     let managed_changing = matches!(
         op.as_str(),
-        "kes-rotation/rotate" | "config/render" | "runtime/topology-apply"
+        "kes-rotation/install-opcert"
     );
     let to_digest_owned = intent
         .payload
@@ -895,12 +1128,19 @@ pub fn run_op(args: &[String]) -> Result<()> {
             if live.live.container_id.is_empty() {
                 return Err(OuroError::Validation("no node container after upgrade — rolling back".into()));
             }
-            rotate_attestation_for_upgrade(&paths, &node, local, &att, &live, &to_digest_owned)
+            rotate_attestation_for_upgrade(&paths, &node, local, &att, &live, &to_digest_owned)?;
+            audit_emit(&paths, "attestation_rotation", &node, json!({
+                "operation_id": op,
+                "intent_hash": canon,
+                "pre_state_generation": att.state.state_generation,
+                "post_state_generation": att.state.state_generation.saturating_add(1),
+                "outcome": "upgrade_identity_rotated",
+            }))
         } else if managed_changing {
             // Immutable identity must still hold (an image swap / recreate is still caught); the
             // content hashes are expected to have changed → snapshot them as the new baseline.
             att.require_identity_matches(&live.live.to_live())?;
-            if op == "kes-rotation/rotate" {
+            if op == "kes-rotation/install-opcert" {
                 let expected = intent.payload.get("opcert").and_then(|value| value.as_str())
                     .and_then(artifact_ref_digest)
                     .ok_or_else(|| OuroError::Validation("KES intent lost its artifact digest".into()))?;
@@ -920,7 +1160,14 @@ pub fn run_op(args: &[String]) -> Result<()> {
                     kes_opcert_id: live.live.kes_opcert_id.clone(),
                 },
             )?;
-            persist_attestation(&paths, &node, local, &advanced)
+            persist_attestation(&paths, &node, local, &advanced)?;
+            audit_emit(&paths, "attestation_rotation", &node, json!({
+                "operation_id": op,
+                "intent_hash": canon,
+                "pre_state_generation": att.state.state_generation,
+                "post_state_generation": advanced.state.state_generation,
+                "outcome": "managed_state_advanced",
+            }))
         } else {
             att.require_matches_live(&live.live.to_live())
         }
@@ -944,8 +1191,33 @@ pub fn run_op(args: &[String]) -> Result<()> {
         )?;
     }
     let ops = TxOps { commit: &commit, verify: &verify, rollback: &rollback };
-    let outcome = transaction::run(&journal, &seal, &base, &ops)?;
-    audit_emit(&paths, "committed", &node, json!({"operation_id": op, "intent_hash": canon, "outcome": format!("{outcome:?}")}));
+    let post_generation = if is_upgrade || managed_changing {
+        att.state.state_generation.saturating_add(1)
+    } else {
+        att.state.state_generation
+    };
+    let observe = |state: TxState| {
+        let mut fields = serde_json::Map::new();
+        fields.insert("operation_id".into(), json!(op));
+        fields.insert("intent_hash".into(), json!(canon));
+        fields.insert("pre_state_generation".into(), json!(att.state.state_generation));
+        if matches!(state, TxState::Verified | TxState::RolledBack) {
+            fields.insert("post_state_generation".into(), json!(
+                if state == TxState::Verified { post_generation } else { att.state.state_generation }
+            ));
+        }
+        if let Some(permit) = &fleet_permit {
+            fields.insert("fencing_token".into(), json!(permit.fencing_token));
+        }
+        fields.insert("outcome".into(), json!(format!("{state:?}")));
+        audit_emit(
+            &paths,
+            tx_audit_event(state),
+            &node,
+            serde_json::Value::Object(fields),
+        )
+    };
+    let outcome = transaction::run_observed(&journal, &seal, &base, &ops, &observe)?;
     output::print_json(&ToolOutput::ok("ouro.op.run", true).with_data(json!({
         "op": op, "node": node, "intent_hash": canon, "outcome": format!("{outcome:?}"),
     })))?;
@@ -1153,7 +1425,7 @@ fn verify_recovery_record(
                 paths, node, local, &durable.pre_attestation, &observation, expected,
             )
         }
-        "kes-rotation/rotate" => {
+        "kes-rotation/install-opcert" | "kes-rotation/rotate" => {
             durable.pre_attestation.require_identity_matches(&observation.live.to_live())?;
             let expected = durable.intent.payload.get("opcert").and_then(|value| value.as_str())
                 .and_then(artifact_ref_digest)
@@ -1163,6 +1435,8 @@ fn verify_recovery_record(
             }
             persist_advanced_recovery(paths, node, local, &durable.pre_attestation, &observation)
         }
+        // Legacy durable journals remain recoverable even though these misleading operation ids
+        // are no longer admitted for new intents.
         "config/render" | "runtime/topology-apply" => {
             durable.pre_attestation.require_identity_matches(&observation.live.to_live())?;
             persist_advanced_recovery(paths, node, local, &durable.pre_attestation, &observation)

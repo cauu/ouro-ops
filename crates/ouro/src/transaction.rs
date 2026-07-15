@@ -209,6 +209,18 @@ pub fn run(
     base: &JournalRecord,
     ops: &TxOps<'_>,
 ) -> Result<TxState> {
+    run_observed(journal, seal, base, ops, &|_| Ok(()))
+}
+
+/// Run a write transaction while emitting each durable phase through `observe`. The journal is
+/// always persisted first, so an audit failure cannot make an unjournaled side effect observable.
+pub fn run_observed(
+    journal: &Journal,
+    seal: &WriteSeal,
+    base: &JournalRecord,
+    ops: &TxOps<'_>,
+    observe: &dyn Fn(TxState) -> Result<()>,
+) -> Result<TxState> {
     seal.require_clear()?;
     if base.durable.is_none() {
         return Err(OuroError::Validation(
@@ -216,12 +228,17 @@ pub fn run(
         ));
     }
     journal.record(&rec(base, TxState::Prepared))?;
+    observe(TxState::Prepared)?;
 
     journal.record(&rec(base, TxState::Committing))?;
+    observe(TxState::Committing)?;
     match (ops.commit)() {
-        Ok(()) => journal.record(&rec(base, TxState::Committed))?,
+        Ok(()) => {
+            journal.record(&rec(base, TxState::Committed))?;
+            observe(TxState::Committed)?;
+        }
         Err(error) => {
-            rollback_to_terminal(journal, seal, base, ops)?;
+            rollback_to_terminal(journal, seal, base, ops, observe)?;
             return Err(OuroError::Validation(format!(
                 "commit failed for {} and was rolled back: {error}", base.operation_id
             )));
@@ -229,14 +246,16 @@ pub fn run(
     }
 
     journal.record(&rec(base, TxState::Verifying))?;
+    observe(TxState::Verifying)?;
     match (ops.verify)() {
         Ok(()) => {
             journal.record(&rec(base, TxState::Verified))?;
+            observe(TxState::Verified)?;
             journal.clear()?; // terminal success
             Ok(TxState::Verified)
         }
         Err(error) => {
-            rollback_to_terminal(journal, seal, base, ops)?;
+            rollback_to_terminal(journal, seal, base, ops, observe)?;
             Err(OuroError::Validation(format!(
                 "verification failed for {} and was rolled back: {error}", base.operation_id
             )))
@@ -249,17 +268,21 @@ fn rollback_to_terminal(
     seal: &WriteSeal,
     base: &JournalRecord,
     ops: &TxOps<'_>,
+    observe: &dyn Fn(TxState) -> Result<()>,
 ) -> Result<()> {
     journal.record(&rec(base, TxState::RollingBack))?;
+    observe(TxState::RollingBack)?;
     match (ops.rollback)() {
         Ok(()) => {
             journal.record(&rec(base, TxState::RolledBack))?;
+            observe(TxState::RolledBack)?;
             journal.clear()?;
             Ok(())
         }
         Err(e) => {
             journal.record(&rec(base, TxState::Sealed))?;
             seal.set(&format!("rollback failed for {}: {e}", base.operation_id))?;
+            observe(TxState::Sealed)?;
             Err(OuroError::Validation(format!(
                 "rollback failed → writes sealed (exit 40, operator recovery): {e}"
             )))
@@ -424,6 +447,32 @@ mod tests {
         assert_eq!(run(&j, &s, &base, &ops).unwrap(), TxState::Verified);
         assert!(j.read().unwrap().is_none(), "journal cleared on success");
         assert!(!s.is_sealed());
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn observer_receives_every_durable_happy_path_phase() {
+        use std::cell::RefCell;
+
+        let (d, base) = dirs("observed");
+        let (journal, seal) = (Journal::at(&d, "bp1"), WriteSeal::at(&d, "bp1"));
+        let ops = TxOps { commit: &|| Ok(()), verify: &|| Ok(()), rollback: &|| Ok(()) };
+        let phases = RefCell::new(Vec::new());
+        run_observed(&journal, &seal, &base, &ops, &|state| {
+            phases.borrow_mut().push(state);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            phases.into_inner(),
+            vec![
+                TxState::Prepared,
+                TxState::Committing,
+                TxState::Committed,
+                TxState::Verifying,
+                TxState::Verified,
+            ]
+        );
         std::fs::remove_dir_all(&d).ok();
     }
 

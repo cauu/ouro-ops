@@ -16,8 +16,10 @@ covers only the on-chain registration submit.
   as a path or blob, never a command.
 - The signed tx arrives as a content-addressed inbox artifact; its digest is re-verified. The cold
   signature was produced OFFLINE (the cold key never moves).
-- Submission requires the operator's confirm-token bound to the exact intent, and it ground-truths
-  the pool id is registered on chain; it refuses to resubmit an already-registered pool.
+- Submission requires the operator's confirm-token bound to the exact intent. The requested network
+  must equal the attested node network; a mismatch is refused before submission.
+- A successful command means the node accepted the transaction submission. It does not prove ledger
+  inclusion, pool registration, or protection from resubmission; verify those separately on chain.
 
 ## Decision guidance (use your judgment; this is not a rigid script)
 - Node standup is the operator's job (documented conforming-node recipe); if the target is not
@@ -30,8 +32,9 @@ covers only the on-chain registration submit.
   --param network=<net> --confirm-token <tok>`.
 
 ## Stop Conditions
-- Stop if the node is not adopted, the tx artifact fails its digest check, or the pool is already
-  registered.
+- Stop if the node is not adopted, the tx artifact fails its digest check, or the requested network
+  differs from the attested network.
+- After submit, stop short of claiming registration until independent on-chain evidence confirms it.
 - Stop and hand to the operator on any submit ambiguity — an irreversible on-chain action gets the
   operator's eyes.
 
