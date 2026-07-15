@@ -56,6 +56,8 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "config" => run_config(&args[2..])?,
         "deploy" => run_deploy(&args[2..])?,
         "diag" => run_diag(&args[2..])?,
+        "adopt" => crate::s0019_cli::run_adopt(&args[2..])?,
+        "op" => crate::s0019_cli::run_op(&args[2..])?,
         "kes" => run_kes(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
         "manifest" => run_manifest(&args[2..])?,
@@ -553,6 +555,13 @@ fn run_manifest(args: &[String]) -> Result<()> {
 }
 
 fn run_confirm(args: &[String]) -> Result<()> {
+    // S0019 p4-1: `confirm create --op <id> --node <id> --intent-hash <h>` mints a token bound to
+    // the exact canonical intent (§2.5). Routed here so the greenfield `op` path reuses `confirm`.
+    if args.first().map(String::as_str) == Some("create")
+        && optional_flag_value(args, "--op").is_some()
+    {
+        return crate::s0019_cli::run_confirm_create(&args[1..]);
+    }
     match args.first().map(String::as_str) {
         Some("create") => {
             let action = flag_value(args, "--action")?;

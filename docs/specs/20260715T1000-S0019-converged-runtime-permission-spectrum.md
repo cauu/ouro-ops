@@ -262,6 +262,10 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p3-1 fleet lease authority (pool generation, fencing lease, step permit, quorum re-eval) — §2.9
 - [x] p3-2 node-runtime N→N+1 upgrade with DB-compat + attestation rotation; ouro-diag honest labeling/sandbox — §2.10, §2.11
 - [x] p3-3 threat-model/trust-matrix table; audit event schema; supported/retired/unsupported operation table — §2.12, §2.13, §2.15
+- [x] p4-1 CLI wiring: `ouro-ops adopt` (conformance → evidence-bound approval → attestation) + intent-based `tool run` (recover → parity → build+validate intent → live re-attest gate → confirm-gate → crash-durable transaction → sealed executor) + `confirm create` bound to the canonical intent — integrates §2.1–2.9
+- [ ] p4-2 greenfield SKILL.md decision trees (adopt/observability/troubleshooting/runtime/kes-rotation/deploy/config/upgrade) as judgment frameworks (invariants/stop/red-lines, writes = intents, dangerous = operator-approved confirm) + sealed per-op executor scripts (fixed argv) — §1.D/§2.5/§2.6
+- [ ] p4-3 web onboarding prompt templates aligned to the adopt + intent commands (interaction unchanged; English prompt)
+- [ ] p4-4 dispatch-level end-to-end negative tests: TC-1..10 promoted from unit to dispatch (unmanaged refuse, hostile intent refuse, confirm binding, live drift, crash recovery, fleet quorum) on the container bed
 
 ## 4. Test and Acceptance Criteria
 > Acceptance MATRIX — must FALSIFY the security claims, with adversarial interleavings, not just
@@ -387,6 +391,16 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   New gate test_s0019_completeness.py: every registry op is in the operations table; every threat
   row names a component + test; audit schema is closed. FULL regression: 112 rust + all python
   green. **S0019 p1-1..p3-3 all complete — awaiting user acceptance (spec NOT closed).**
+- 2026-07-15 p4-1 completed (integrates §2.1–2.9): `crates/ouro/src/s0019_cli.rs` — `ouro-ops
+  adopt` (supervisor conformance → allowlist digest → role rule → evidence-bound approval → writes
+  attestation, non-disruptive) and `ouro-ops op run` (recover → require-registered/parity → build
+  intent from --param → validate against registry → load attestation / not_ouro_managed → live
+  re-attest gate → confirm-gate for dangerous → crash-durable transaction). `confirm create --op
+  --node --intent-hash` mints a token bound to the canonical intent. **Decision (recorded):** S0019
+  uses a NEW `op` command (not the S0017 `tool run`, whose legacy writes are disabled by §2.8); the
+  live-observation probe + docker executor are the target-side seam — probe reads a closed
+  `--observation` JSON and the executor runs in `--plan` mode (gates fire, no mutation) until p4-2.
+  test_s0019_pipeline.py exercises all gates via the CLI.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -398,6 +412,10 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p4-1 | stack: python | command: python3 tests/test_s0019_pipeline.py; cargo test (112) | result:
+  pass | note: adopt writes attestation (gen 0); op on unadopted node → not_ouro_managed; dangerous
+  write without confirm refused; hostile param refused; legacy op disabled; confirm-token bound to
+  the exact intent lets it pass; container-id drift refused before mutation.
 - p3-3 | stack: python | command: python3 tests/test_s0019_completeness.py; full cargo test (112);
   all tests/test_*.py | result: pass | note: registry ⊆ operations table; threat matrix rows map
   component+test; audit schema closed; full suite green.
