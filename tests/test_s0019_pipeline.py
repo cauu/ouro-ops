@@ -3,6 +3,7 @@
 refuse before any mutation."""
 import json
 import os
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -20,8 +21,10 @@ def obs(home, **over):
     live = {
         "image_config_digest": cfg_digest(), "platform": "linux/amd64", "container_id": "cid1",
         "container_creation_epoch": 1000, "entrypoint": ["cardano-node"], "args": ["run"],
-        "mount_source_ids": ["8:1:1"], "topology_hash": "t0", "config_hash": "c0",
-        "kes_opcert_id": "kes:5", "has_forging_keys": True, "host_key_sha256": "hk",
+        "mounts": [{"kind": "bind", "source_id": "8:1", "destination": "/data/db",
+                    "read_only": False, "owner": "0:0", "mode": "0755", "no_symlink": True}],
+        "topology_hash": "t0", "config_hash": "c0",
+        "kes_opcert_id": "kes:5", "has_forging_keys": True, "host_key_sha256": "a" * 64,
         "genesis_hash": "gh", "network": "mainnet",
     }
     live.update(over)
@@ -53,6 +56,20 @@ def fleet_permit(home, operation):
     return out["data"]["fleet_permit"]
 
 
+def adopt(home, observation, role="bp", node="bp1"):
+    code, preview = run(home, "adopt", "--node", node, "--role", role,
+                        "--preview", "--observation", observation)
+    if code != 0:
+        return code, preview
+    data = preview["data"]
+    _, approval = run(home, "confirm", "adopt", "create", "--node", node,
+                      "--candidate-hash", data["candidate_hash"],
+                      "--host-key", data["host_key_sha256"])
+    return run(home, "adopt", "--node", node, "--role", role,
+               "--approve-token", approval["data"]["approve_token"],
+               "--observation", observation)
+
+
 def main():
     home = tempfile.mkdtemp()
     o = obs(home)
@@ -62,10 +79,23 @@ def main():
                "--param", "machine=bp1", "--observation", o, "--plan")
     assert "not_ouro_managed" in json.dumps(d), d
 
-    # 1. adopt a conforming node
-    _, d = run(home, "adopt", "--node", "bp1", "--role", "bp",
-               "--approve-token", "op-tok", "--observation", o)
+    # 1. adoption accepts only a signed, preview-bound approval; an arbitrary string is refused.
+    _, preview = run(home, "adopt", "--node", "bp1", "--role", "bp",
+                     "--preview", "--observation", o)
+    assert preview["status"] == "ok" and len(preview["data"]["candidate_hash"]) == 64, preview
+    _, forged = run(home, "adopt", "--node", "bp1", "--role", "bp",
+                    "--approve-token", "arbitrary", "--observation", o)
+    assert forged["status"] == "error" and "confirmation" in json.dumps(forged), forged
+
+    # A valid single-use approval adopts the conforming node.
+    _, d = adopt(home, o)
     assert d["status"] == "ok" and d["data"]["state_generation"] == 0, d
+    attestation = Path(home) / "attestations" / "bp1.json"
+    assert stat.S_IMODE(attestation.stat().st_mode) == 0o640
+    attested = json.loads(attestation.read_text())["immutable"]
+    assert attested["allowlist_version"] == 1 and len(attested["allowlist_digest"]) == 71
+    assert len({attested["oci_index_digest"], attested["platform_manifest_digest"],
+                attested["image_config_digest"]}) == 3, attested
     fp = fleet_permit(home, "runtime/restart")
 
     # Disruptive operations fail closed without a signed pool-wide step permit.
@@ -126,12 +156,27 @@ def main():
                "--expect-embedded", "stale-control", "--plan")
     assert d["status"] == "error" and "security identity mismatch" in json.dumps(d), d
 
-    # 6. live drift (container recreated) → refuse before mutation
+    # 6. typed-mount drift (same source id, changed ownership/mode) is identity drift too.
+    changed_mount = [{"kind": "bind", "source_id": "8:1", "destination": "/data/db",
+                      "read_only": False, "owner": "0:0", "mode": "0777", "no_symlink": True}]
+    om = obs(home, mounts=changed_mount)
+    _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
+               "--param", "machine=bp1", "--observation", om, "--fleet-permit", fp,
+               "--confirm-token", token, "--plan")
+    assert d["status"] == "error" and "mount" in json.dumps(d), d
+
+    # 7. live drift (container recreated) → refuse before mutation
     o2 = obs(home + "/d2" if False else home, container_id="cid-swapped")
     _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
                "--param", "machine=bp1", "--observation", o2, "--fleet-permit", fp,
                "--confirm-token", token, "--plan")
     assert d["status"] == "error" and "drift" in json.dumps(d), d
+
+    # 8. erasing the allowlist floor on an adopted node fails closed; it does not reset to v1.
+    (Path(home) / "allowlist-floor.json").unlink()
+    _, d = run(home, "op", "run", "--op", "observability/health", "--node", "bp1",
+               "--param", "machine=bp1", "--observation", o2)
+    assert d["status"] == "error" and "anti-rollback floor is missing" in json.dumps(d), d
 
     print("S0019 pipeline (adopt + op gates) passed")
 

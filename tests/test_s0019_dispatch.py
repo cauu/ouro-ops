@@ -20,8 +20,10 @@ def cfg_digest():
 def obs_doc(home, sup=None, **live_over):
     live = {"image_config_digest": cfg_digest(), "platform": "linux/amd64", "container_id": "cid1",
             "container_creation_epoch": 1000, "entrypoint": ["cardano-node"], "args": ["run"],
-            "mount_source_ids": ["8:1:1"], "topology_hash": "t0", "config_hash": "c0",
-            "kes_opcert_id": "kes:5", "has_forging_keys": True, "host_key_sha256": "hk",
+            "mounts": [{"kind": "bind", "source_id": "8:1", "destination": "/data/db",
+                        "read_only": False, "owner": "0:0", "mode": "0755", "no_symlink": True}],
+            "topology_hash": "t0", "config_hash": "c0",
+            "kes_opcert_id": "kes:5", "has_forging_keys": True, "host_key_sha256": "a" * 64,
             "genesis_hash": "gh", "network": "mainnet"}
     live.update(live_over)
     supervisor = {"runtime": "docker", "rootful": True, "rootless": False, "node_container_count": 1,
@@ -44,7 +46,16 @@ def run(home, *args):
 
 
 def adopt(home, o, role="bp", node="bp1"):
-    return run(home, "adopt", "--node", node, "--role", role, "--approve-token", "op", "--observation", o)
+    code, preview = run(home, "adopt", "--node", node, "--role", role,
+                        "--preview", "--observation", o)
+    if code != 0:
+        return code, preview
+    data = preview["data"]
+    _, approval = run(home, "confirm", "adopt", "create", "--node", node,
+                      "--candidate-hash", data["candidate_hash"],
+                      "--host-key", data["host_key_sha256"])
+    return run(home, "adopt", "--node", node, "--role", role,
+               "--approve-token", approval["data"]["approve_token"], "--observation", o)
 
 
 def main():

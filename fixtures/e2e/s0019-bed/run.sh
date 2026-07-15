@@ -14,6 +14,8 @@ WORK="$(mktemp -d)"
 export OURO_HOME="$WORK/home"
 export OURO_ATTESTATION="$WORK/node-attestation.json"
 export OURO_READINESS_SAMPLE_DELAY=0
+export OURO_ALLOWLIST_TEST_KEY=s0019-bed-test-key
+export OURO_HOST_KEY_SHA256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 mkdir -p "$OURO_HOME"
 
 pass() { echo "  PASS  $*"; }
@@ -28,6 +30,7 @@ echo "== build the stand-in conforming node image =="
 docker build -q -t "$IMG" "$HERE" >/dev/null || fail "image build"
 
 echo "== run it (rootful docker run, bind mount, unless-stopped) =="
+mkdir -p "$WORK/db"
 docker run -d --name "$NAME" --restart unless-stopped -v "$WORK/db:/data/db" "$IMG" >/dev/null || fail "container run"
 CID="$(docker inspect --format '{{.Id}}' "$NAME" | cut -c1-64)"
 IMG_CFG="$(docker inspect --format '{{.Image}}' "$NAME")"
@@ -35,10 +38,14 @@ IMG_CFG="$(docker inspect --format '{{.Image}}' "$NAME")"
 
 echo "== pin the bed image digest into a test allowlist =="
 python3 - "$ROOT/data/allowlist.json" "$IMG_CFG" > "$WORK/allowlist.json" <<'PY'
-import json, sys
+import hashlib, hmac, json, os, sys
 a = json.load(open(sys.argv[1]))
 a["contracts"][0]["allowed"][0]["image_config_digest"] = sys.argv[2]
 a["contracts"][0]["allowed"][0]["oci_index_digest"] = sys.argv[2]
+a["contracts"][0]["allowed"][0]["platform_manifest_digest"] = sys.argv[2]
+payload = dict(a); payload.pop("signature", None)
+canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+a["signature"] = "test-hmac-sha256:" + hmac.new(os.environ["OURO_ALLOWLIST_TEST_KEY"].encode(), canonical, hashlib.sha256).hexdigest()
 json.dump(a, sys.stdout)
 PY
 export OURO_ALLOWLIST_FILE="$WORK/allowlist.json"
@@ -46,14 +53,18 @@ export OURO_ALLOWLIST_FILE="$WORK/allowlist.json"
 echo "== probe the running container for the observation =="
 source "$ROOT/ouro-skills/lib/ouro-probe.sh"
 ouro_observe linux/amd64 > "$WORK/obs.json" || fail "probe"
-python3 -c "import json;o=json.load(open('$WORK/obs.json'));assert o['live']['container_id'];assert o['live']['image_config_digest']=='$IMG_CFG',o['live']['image_config_digest']" || fail "observation mismatch"
+python3 -c "import json;o=json.load(open('$WORK/obs.json'));assert o['live']['container_id'];assert o['live']['image_config_digest']=='$IMG_CFG',o['live']['image_config_digest'];assert o['live']['mounts'],o['live']" || fail "observation mismatch: $(cat "$WORK/obs.json")"
 pass "probe gathered the observation from the real container"
 
 # p6-2: adopt/op auto-run the embedded probe when no --observation is given. Point it at the lib.
 export OURO_PROBE_LIB="$ROOT/ouro-skills/lib/ouro-probe.sh"
 
 echo "== adopt the real container (auto-probe, non-disruptive) =="
-"$BIN" adopt --local --node bp1 --role bp --approve-token op-tok >/dev/null || fail "adopt (auto-probe) refused a conforming container"
+APREVIEW="$("$BIN" adopt --local --node bp1 --role bp --preview 2>&1)" || fail "adopt preview refused a conforming container: $APREVIEW"
+ACAND="$(echo "$APREVIEW" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["candidate_hash"])')"
+AHOST="$(echo "$APREVIEW" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["host_key_sha256"])')"
+ATOK="$("$BIN" confirm adopt create --node bp1 --candidate-hash "$ACAND" --host-key "$AHOST" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["approve_token"])')"
+"$BIN" adopt --local --node bp1 --role bp --approve-token "$ATOK" >/dev/null || fail "adopt (auto-probe) refused a conforming container"
 [ -f "$OURO_ATTESTATION" ] || fail "attestation not written"
 pass "adopt wrote the attestation; container untouched"
 # node still running after adopt (non-disruptive)
@@ -129,16 +140,17 @@ docker build -q --label ouro.upgrade=v2 -t "$IMG2" "$HERE" >/dev/null || fail "v
 V2CFG="$(docker inspect --format '{{.Id}}' "$IMG2")"
 [ -n "$V2CFG" ] && [ "$V2CFG" != "$IMG_CFG" ] || fail "v2 digest not distinct from v1"
 python3 - "$ROOT/data/allowlist.json" "$IMG_CFG" "$V2CFG" > "$WORK/allowlist.json" <<'PY'
-import json, sys
+import hashlib, hmac, json, os, sys
 a = json.load(open(sys.argv[1])); v1, v2 = sys.argv[2], sys.argv[3]
+a["allowlist_version"] = 2
 c1 = a["contracts"][0]
 base = c1["allowed"][0]
-base["image_config_digest"] = v1; base["oci_index_digest"] = v1
+base["image_config_digest"] = v1; base["oci_index_digest"] = v1; base["platform_manifest_digest"] = v1
 c1["allowed"] = [base]
 c2 = json.loads(json.dumps(c1))
 c2["convention_version"] = c1["convention_version"] + 1
 c2["contract_id"] = c1["contract_id"] + "-v2"
-nxt = json.loads(json.dumps(base)); nxt["image_config_digest"] = v2; nxt["oci_index_digest"] = v2
+nxt = json.loads(json.dumps(base)); nxt["image_config_digest"] = v2; nxt["oci_index_digest"] = v2; nxt["platform_manifest_digest"] = v2
 c2["allowed"] = [nxt]
 a["contracts"] = [c1, c2]
 a["transitions"] = [{
@@ -148,6 +160,9 @@ a["transitions"] = [{
   "db_forward_compatible": True, "db_backward_compatible": True,
   "snapshot_taken": False,
 }]
+payload = dict(a); payload.pop("signature", None)
+canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+a["signature"] = "test-hmac-sha256:" + hmac.new(os.environ["OURO_ALLOWLIST_TEST_KEY"].encode(), canonical, hashlib.sha256).hexdigest()
 json.dump(a, sys.stdout)
 PY
 pass "v2 image built with a distinct config digest; allowlist pins both baselines"

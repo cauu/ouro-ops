@@ -13,14 +13,17 @@
 //! drift; a legitimate write bumped the generation and recorded the new hashes, so it is not.
 
 use serde::{Deserialize, Serialize};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use sha2::{Digest, Sha256};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::Path;
 
 use crate::convention::RoleRule;
 use crate::{OuroError, Result};
 
 /// Target-side path of the attestation (written by the adopt ceremony; root-owned 0640).
 pub const ATTESTATION_PATH: &str = "/var/lib/ouro/node-attestation.json";
+pub const ATTESTATION_GROUP: &str = "ouro-attest";
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct AdoptionAttestation {
@@ -34,11 +37,17 @@ pub struct ImmutableIdentity {
     pub role: Role,
     pub contract_id: String,
     pub convention_version: u32,
+    #[serde(default)]
+    pub allowlist_version: u32,
+    #[serde(default)]
+    pub allowlist_digest: String,
     pub host_key_sha256: String,
     pub machine_id: String,
     pub oci_index_digest: String,
     pub platform_manifest_digest: String,
     pub image_config_digest: String,
+    #[serde(default)]
+    pub platform: String,
     pub container_creation_epoch: u64,
     pub entrypoint: Vec<String>,
     pub args: Vec<String>,
@@ -99,7 +108,7 @@ pub struct LiveObservation {
     pub container_creation_epoch: u64,
     pub entrypoint: Vec<String>,
     pub args: Vec<String>,
-    pub mount_source_ids: Vec<String>,
+    pub mounts: Vec<TypedMount>,
     pub topology_hash: String,
     pub config_hash: String,
     pub kes_opcert_id: String,
@@ -108,9 +117,10 @@ pub struct LiveObservation {
 }
 
 pub fn stable_hash(value: &str) -> String {
-    let mut h = DefaultHasher::new();
-    value.hash(&mut h);
-    format!("{:016x}", h.finish())
+    Sha256::digest(value.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 impl AdoptionAttestation {
@@ -187,12 +197,12 @@ impl AdoptionAttestation {
         if live.entrypoint != id.entrypoint || live.args != id.args {
             return drift("entrypoint/args");
         }
-        let mut want: Vec<&String> = id.mounts.iter().map(|m| &m.source_id).collect();
-        let mut got: Vec<&String> = live.mount_source_ids.iter().collect();
-        want.sort();
-        got.sort();
+        let mut want = id.mounts.clone();
+        let mut got = live.mounts.clone();
+        want.sort_by(|left, right| left.destination.cmp(&right.destination));
+        got.sort_by(|left, right| left.destination.cmp(&right.destination));
         if want != got {
-            return drift("mount source (swapped bind/volume)");
+            return drift("typed mount identity/target/permissions (swapped bind/volume)");
         }
         Ok(())
     }
@@ -219,6 +229,81 @@ impl AdoptionAttestation {
             state: next,
         })
     }
+}
+
+/// Root-owned, crash-durable attestation persistence. The temp file is created in the same
+/// directory, fsync'd, atomically renamed, then the final file and parent are fsync'd. On the
+/// production target path ownership is fixed to `root:ouro-attest`; test overrides retain the
+/// invoking user's ownership but still receive mode 0640 and atomic durability.
+pub fn write_document(path: &Path, document: &serde_json::Value) -> Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        OuroError::Validation("attestation path has no parent directory".into())
+    })?;
+    fs::create_dir_all(parent)?;
+    let bytes = serde_json::to_vec_pretty(document)
+        .map_err(|e| OuroError::Validation(format!("cannot serialize attestation: {e}")))?;
+    let tmp = parent.join(format!(".node-attestation.{}.tmp", uuid::Uuid::new_v4().simple()));
+    let mut options = OpenOptions::new();
+    options.create_new(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o640);
+    }
+    let mut file = options.open(&tmp)?;
+    file.write_all(&bytes)?;
+    file.sync_all()?;
+    fs::rename(&tmp, path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o640))?;
+    }
+
+    if path == Path::new(ATTESTATION_PATH) {
+        #[cfg(target_os = "linux")]
+        {
+            let status = std::process::Command::new("chown")
+                .arg(format!("root:{ATTESTATION_GROUP}"))
+                .arg(path)
+                .status()
+                .map_err(|e| OuroError::Validation(format!("cannot set attestation owner: {e}")))?;
+            if !status.success() {
+                return Err(OuroError::Validation(
+                    "cannot set attestation owner root:ouro-attest".into(),
+                ));
+            }
+        }
+    }
+    fs::File::open(path)?.sync_all()?;
+    fs::File::open(parent)?.sync_all()?;
+    Ok(())
+}
+
+/// Read a regular, non-symlink attestation with non-writable group/world mode. The default
+/// production path additionally requires root ownership.
+pub fn read_document(path: &Path) -> Result<String> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Err(OuroError::Validation(
+            "attestation must be a regular non-symlink file".into(),
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.mode() & 0o022 != 0 {
+            return Err(OuroError::Validation(
+                "attestation is group/world writable — refused".into(),
+            ));
+        }
+        if path == Path::new(ATTESTATION_PATH) && metadata.uid() != 0 {
+            return Err(OuroError::Validation(
+                "production attestation is not root-owned — refused".into(),
+            ));
+        }
+    }
+    fs::read_to_string(path).map_err(Into::into)
 }
 
 /// §2.14 — evidence-bound adoption approval. The adopt ceremony produces a canonical candidate
@@ -269,11 +354,14 @@ mod tests {
             role: Role::Bp,
             contract_id: "blinklabs-cardano-node-v1".into(),
             convention_version: 1,
+            allowlist_version: 1,
+            allowlist_digest: "sha256:allowlist".into(),
             host_key_sha256: "hk".into(),
             machine_id: "bp1".into(),
             oci_index_digest: "sha256:idx".into(),
             platform_manifest_digest: "sha256:pm".into(),
             image_config_digest: "sha256:cfg".into(),
+            platform: "linux/amd64".into(),
             container_creation_epoch: 1000,
             entrypoint: vec!["cardano-node".into()],
             args: vec!["run".into()],
@@ -311,7 +399,7 @@ mod tests {
             container_creation_epoch: 1000,
             entrypoint: vec!["cardano-node".into()],
             args: vec!["run".into()],
-            mount_source_ids: vec!["8:1:12345".into()],
+            mounts: ident().mounts,
             topology_hash: "t0".into(),
             config_hash: "c0".into(),
             kes_opcert_id: "kes:5".into(),
@@ -327,7 +415,7 @@ mod tests {
             |l: &mut LiveObservation| l.image_config_digest = "sha256:evil".into(),
             |l: &mut LiveObservation| l.container_id = "cid999".into(),
             |l: &mut LiveObservation| l.args = vec!["run".into(), "--evil".into()],
-            |l: &mut LiveObservation| l.mount_source_ids = vec!["9:9:99".into()],
+            |l: &mut LiveObservation| l.mounts[0].source_id = "9:9:99".into(),
             |l: &mut LiveObservation| l.topology_hash = "t-oob".into(),
             |l: &mut LiveObservation| l.kes_opcert_id = "kes:oob".into(),
         ] {

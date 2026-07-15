@@ -29,13 +29,14 @@ use crate::{convention, parity, OuroError, Result};
 /// Where the attestation lives. On the TARGET (`--local`, p5-4) it is the single root-owned file
 /// `/var/lib/ouro/node-attestation.json` (overridable via OURO_ATTESTATION, matching
 /// `ouro-attested.sh`); on the control host it is per-node under OURO_HOME (pre-dispatch modelling).
-/// p5-5 — `ouro-ops inbox stage --type <opcert|tx|image> --file <path>`: content-addressed ingress.
-/// Reads the artifact, validates its type/shape/size, stores it by digest, and prints the immutable
-/// `<id>@sha256:<digest>` reference an intent will carry (never a raw path/blob).
+/// `ouro-ops inbox stage`: bounded local or SSH-streamed target ingress. A dispatched artifact is
+/// sent over stdin to the fixed target wrapper, never referenced by a control-local path.
 pub fn run_inbox(args: &[String]) -> Result<()> {
     if args.first().map(String::as_str) != Some("stage") {
         return Err(OuroError::InvalidArgs(
-            "expected: ouro-ops inbox stage --type <opcert|tx|image> --file <path>".into(),
+            "expected: ouro-ops inbox stage --type <opcert|tx|image> \
+             (--file <path> [--dispatch <host>] | --stdin --local)"
+                .into(),
         ));
     }
     let args = &args[1..];
@@ -45,12 +46,68 @@ pub fn run_inbox(args: &[String]) -> Result<()> {
         "image" => crate::inbox::ArtifactType::Image,
         other => return Err(OuroError::Validation(format!("--type must be opcert|tx|image, got {other}"))),
     };
-    let file = flag(args, "--file")?;
-    let bytes = std::fs::read(file)
-        .map_err(|e| OuroError::Validation(format!("cannot read artifact {file}: {e}")))?;
     let paths = ConfigPaths::discover();
+    if let Some(host) = optional(args, "--dispatch") {
+        if args.iter().any(|arg| arg == "--stdin" || arg == "--local") {
+            return Err(OuroError::Validation(
+                "control dispatch requires --file; --stdin/--local are target-wrapper only".into(),
+            ));
+        }
+        let file = flag(args, "--file")?;
+        let mut source = crate::inbox::open_source(kind, std::path::Path::new(file))?;
+        let key_ref = optional(args, "--ssh-key").unwrap_or("creds://ouro-op");
+        let key = crate::secrets::CredentialRef::parse(key_ref)?.resolve(&paths.credentials_dir)?;
+        let argv = crate::dispatch::inbox_dispatch_argv(
+            host,
+            22,
+            &key,
+            &paths.known_hosts,
+            kind.prefix(),
+        );
+        if args.iter().any(|arg| arg == "--plan") {
+            output::print_json(&ToolOutput::ok("ouro.inbox.dispatch.plan", false).with_data(json!({
+                "target": host,
+                "artifact_type": kind,
+                "ssh_argv": argv,
+                "transport": "bounded stdin to fixed target wrapper",
+            })))?;
+            return Ok(());
+        }
+        let mut child = std::process::Command::new("ssh")
+            .args(&argv)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| OuroError::Validation(format!("inbox SSH dispatch failed: {e}")))?;
+        let mut stdin = child.stdin.take().ok_or_else(|| {
+            OuroError::Validation("inbox SSH dispatch has no stdin pipe".into())
+        })?;
+        std::io::copy(&mut source, &mut stdin)?;
+        drop(stdin);
+        let result = child.wait_with_output()?;
+        if !result.status.success() {
+            return Err(OuroError::Validation(format!(
+                "target inbox rejected the artifact: {}",
+                String::from_utf8_lossy(&result.stderr).trim()
+            )));
+        }
+        output::forward_tool_stdout(&result.stdout)?;
+        return Ok(());
+    }
+
     let inbox = paths.home.join("inbox");
-    let reference = crate::inbox::stage(&inbox, kind, &bytes)?;
+    let reference = if args.iter().any(|arg| arg == "--stdin") {
+        if !args.iter().any(|arg| arg == "--local") {
+            return Err(OuroError::Validation(
+                "--stdin is accepted only by the target-local fixed wrapper".into(),
+            ));
+        }
+        crate::inbox::stage_reader(&inbox, kind, std::io::stdin().lock())?
+    } else {
+        let file = flag(args, "--file")?;
+        crate::inbox::stage_file(&inbox, kind, std::path::Path::new(file))?
+    };
     output::print_json(&ToolOutput::ok("ouro.inbox.stage", true).with_data(json!({
         "artifact_ref": reference, "note": "reference this in an intent --param; never a raw path",
     })))?;
@@ -192,7 +249,7 @@ struct ObsReadiness {
     credential_loaded: bool,
     established_peers: u32,
 }
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, Eq)]
 struct ObsLive {
     image_config_digest: String,
     platform: String,
@@ -200,7 +257,7 @@ struct ObsLive {
     container_creation_epoch: u64,
     entrypoint: Vec<String>,
     args: Vec<String>,
-    mount_source_ids: Vec<String>,
+    mounts: Vec<TypedMount>,
     topology_hash: String,
     config_hash: String,
     kes_opcert_id: String,
@@ -218,13 +275,56 @@ impl ObsLive {
             container_creation_epoch: self.container_creation_epoch,
             entrypoint: self.entrypoint.clone(),
             args: self.args.clone(),
-            mount_source_ids: self.mount_source_ids.clone(),
+            mounts: self.mounts.clone(),
             topology_hash: self.topology_hash.clone(),
             config_hash: self.config_hash.clone(),
             kes_opcert_id: self.kes_opcert_id.clone(),
             has_forging_keys: self.has_forging_keys,
         }
     }
+}
+
+fn require_typed_mounts(mounts: &[TypedMount]) -> Result<()> {
+    let mut destinations = std::collections::HashSet::new();
+    if mounts.is_empty() {
+        return Err(OuroError::Validation(
+            "probe did not provide typed bind-mount evidence — adoption refused".into(),
+        ));
+    }
+    for mount in mounts {
+        let source_ok = mount.source_id.split_once(':').map(|(device, inode)| {
+            !device.is_empty()
+                && !inode.is_empty()
+                && device.bytes().all(|byte| byte.is_ascii_digit())
+                && inode.bytes().all(|byte| byte.is_ascii_digit())
+        }) == Some(true);
+        let destination = std::path::Path::new(&mount.destination);
+        let destination_ok = destination.is_absolute()
+            && destination.components().all(|component| !matches!(
+                component,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            ));
+        let owner_ok = mount.owner.split_once(':').map(|(uid, gid)| {
+            !uid.is_empty() && !gid.is_empty()
+                && uid.bytes().all(|byte| byte.is_ascii_digit())
+                && gid.bytes().all(|byte| byte.is_ascii_digit())
+        }) == Some(true);
+        let mode_ok = (3..=4).contains(&mount.mode.len())
+            && mount.mode.bytes().all(|byte| (b'0'..=b'7').contains(&byte));
+        if mount.kind != "bind"
+            || !mount.no_symlink
+            || !source_ok
+            || !destination_ok
+            || !destinations.insert(mount.destination.as_str())
+            || !owner_ok
+            || !mode_ok
+        {
+            return Err(OuroError::Validation(
+                "probe supplied an unsafe/ambiguous typed mount — adoption refused".into(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn require_readiness(
@@ -325,15 +425,41 @@ pub fn run_adopt(args: &[String]) -> Result<()> {
         "relay" => Role::Relay,
         other => return Err(OuroError::Validation(format!("--role must be bp|relay, got {other}"))),
     };
-    let approve_token = flag(args, "--approve-token")?;
+    let paths = ConfigPaths::discover();
+    let attestation_path = attestation_path_for(&paths, &node, local);
+    let _adoption_lock = crate::gate::NodeLock::acquire(
+        &tx_dir(&paths).join("locks"),
+        &node,
+        "adoption",
+    )?;
     let obs = read_observation(args)?;
 
     // 1. supervisor shape must conform to the v1 contract (§2.2).
     obs.supervisor.require_conformant()?;
+    require_typed_mounts(&obs.live.mounts)?;
+    if obs.live.host_key_sha256.len() != 64
+        || !obs.live.host_key_sha256.bytes().all(|byte| {
+            byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+        })
+    {
+        return Err(OuroError::Validation(
+            "probe did not provide a lowercase SHA-256 target host-key identity".into(),
+        ));
+    }
 
     // 2. image digest must be on the signed allowlist (§2.1); resolve the layout contract.
-    let allow = convention::Allowlist::embedded()?;
-    let contract = allow.contract_for(&obs.live.image_config_digest, &obs.live.platform)?;
+    let allow = convention::Allowlist::load(&paths.home, !attestation_path.exists())?;
+    if let Some(expected) = optional(args, "--expect-allowlist") {
+        let actual = allow.signed_digest()?;
+        if expected != actual {
+            return Err(OuroError::Validation(format!(
+                "control→target allowlist mismatch: expected {expected}, target has {actual}"
+            )));
+        }
+    }
+    let (contract, allowed_image) =
+        allow.contract_and_image_for(&obs.live.image_config_digest, &obs.live.platform)?;
+    let allowlist_digest = allow.signed_digest()?;
 
     // 3. build the immutable identity + initial managed state.
     let role_rule = match role {
@@ -344,28 +470,18 @@ pub fn run_adopt(args: &[String]) -> Result<()> {
         role,
         contract_id: contract.contract_id.clone(),
         convention_version: contract.convention_version,
+        allowlist_version: allow.allowlist_version,
+        allowlist_digest,
         host_key_sha256: obs.live.host_key_sha256.clone(),
         machine_id: node.clone(),
-        oci_index_digest: obs.live.image_config_digest.clone(), // index digest resolved target-side; pinned here
-        platform_manifest_digest: obs.live.image_config_digest.clone(),
+        oci_index_digest: allowed_image.oci_index_digest.clone(),
+        platform_manifest_digest: allowed_image.platform_manifest_digest.clone(),
         image_config_digest: obs.live.image_config_digest.clone(),
+        platform: obs.live.platform.clone(),
         container_creation_epoch: obs.live.container_creation_epoch,
         entrypoint: obs.live.entrypoint.clone(),
         args: obs.live.args.clone(),
-        mounts: obs
-            .live
-            .mount_source_ids
-            .iter()
-            .map(|sid| TypedMount {
-                kind: "bind".into(),
-                source_id: sid.clone(),
-                destination: String::new(),
-                read_only: false,
-                owner: "root".into(),
-                mode: "0755".into(),
-                no_symlink: true,
-            })
-            .collect(),
+        mounts: obs.live.mounts.clone(),
         network: obs.live.network.clone(),
         genesis_hash: obs.live.genesis_hash.clone(),
         public_credential_ids: if obs.live.kes_opcert_id.is_empty() {
@@ -392,18 +508,56 @@ pub fn run_adopt(args: &[String]) -> Result<()> {
     // 5. evidence-bound approval (§2.14): bind the operator token to the candidate + host key.
     let candidate =
         attestation::candidate_hash(&serde_json::to_value(&att.immutable).unwrap_or(json!({})));
+    let approval_diff = format!("adopt {node} host {}", obs.live.host_key_sha256);
+    if args.iter().any(|argument| argument == "--preview") {
+        output::print_json(&ToolOutput::ok("ouro.adopt.preview", false).with_data(json!({
+            "node": node,
+            "role": role,
+            "candidate_hash": candidate,
+            "host_key_sha256": obs.live.host_key_sha256,
+            "allowlist_version": allow.allowlist_version,
+            "allowlist_digest": allow.signed_digest()?,
+            "diff": approval_diff,
+            "non_disruptive": true,
+            "next": "mint `ouro-ops confirm adopt create` for this candidate, then rerun adopt with --approve-token",
+        })))?;
+        return Ok(());
+    }
+    let approve_token = flag(args, "--approve-token")?;
+    let shared = std::path::Path::new(crate::onboard::CONFIRM_SECRET_PATH);
+    let secret = if local && shared.exists() {
+        std::fs::read_to_string(shared)
+            .map_err(|e| OuroError::Validation(format!("cannot read shared adoption secret: {e}")))?
+    } else {
+        crate::confirm::load_or_create_secret(&paths.tool_run_secret)?
+    };
+    let verified = crate::s0019_confirmation::verify(
+        approve_token,
+        &candidate,
+        &approval_diff,
+        secret.trim().as_bytes(),
+        crate::s0019_confirmation::current_epoch()?,
+    )?;
+    // Final target-side comparison under the adoption lock closes preview→write drift.
+    let final_observation = read_observation(args)?;
+    if final_observation.supervisor != obs.supervisor || final_observation.live != obs.live {
+        return Err(OuroError::Validation(
+            "adoption candidate changed after approval preview — refused; preview again".into(),
+        ));
+    }
+    crate::s0019_confirmation::consume(
+        &tx_dir(&paths).join("adopt-confirm-used").join(format!("{node}.log")),
+        &verified,
+    )?;
     let evidence = attestation::bind_approval(&candidate, approve_token, &obs.live.host_key_sha256);
     att.immutable.approval_evidence_hash = evidence;
 
     // 6. write the attestation (non-disruptive metadata write) + mirror the resolved contract for
     // the shell layout accessors (p1-5).
-    let paths = ConfigPaths::discover();
-    let p = attestation_path_for(&paths, &node, local);
-    if let Some(parent) = p.parent() { std::fs::create_dir_all(parent).ok(); }
+    let p = attestation_path;
     let mut doc = serde_json::to_value(&att).unwrap();
     doc["contract"] = json!({ "in_container_paths": contract.in_container_paths });
-    std::fs::write(&p, serde_json::to_string_pretty(&doc).unwrap())
-        .map_err(|e| OuroError::Validation(format!("cannot write attestation: {e}")))?;
+    attestation::write_document(&p, &doc)?;
 
     output::print_json(&ToolOutput::ok("ouro.adopt", true).with_data(json!({
         "node": node,
@@ -479,6 +633,33 @@ pub fn run_op(args: &[String]) -> Result<()> {
     // Recovery may have advanced or restored the durable attestation; never continue with the stale
     // copy loaded before reconciliation.
     let att = load_attestation(&paths, &node, local)?;
+    let active_allowlist = convention::Allowlist::load(&paths.home, false)?;
+    let active_allowlist_digest = active_allowlist.signed_digest()?;
+    if let Some(expected) = optional(args, "--expect-allowlist") {
+        if expected != active_allowlist_digest {
+            return Err(OuroError::Validation(format!(
+                "control→target allowlist mismatch: expected {expected}, target has {active_allowlist_digest}"
+            )));
+        }
+    }
+    let (active_contract, active_image) = active_allowlist.contract_and_image_for(
+        &att.immutable.image_config_digest,
+        &att.immutable.platform,
+    )?;
+    if att.immutable.allowlist_version > active_allowlist.allowlist_version
+        || (att.immutable.allowlist_version == active_allowlist.allowlist_version
+            && att.immutable.allowlist_digest != active_allowlist_digest)
+        || att.immutable.contract_id != active_contract.contract_id
+        || att.immutable.convention_version != active_contract.convention_version
+        || att.immutable.oci_index_digest != active_image.oci_index_digest
+        || att.immutable.platform_manifest_digest != active_image.platform_manifest_digest
+    {
+        return Err(OuroError::Validation(
+            "adoption attestation is not bound to the active signed allowlist/OCI identity — \
+             re-adopt before operating"
+                .into(),
+        ));
+    }
 
     // Build the intent from --param k=v flags (agent supplies PARAMETERS, never commands).
     let payload = collect_params(args);
@@ -559,11 +740,14 @@ pub fn run_op(args: &[String]) -> Result<()> {
         let target = intent.payload.get("image").and_then(|value| value.as_str())
             .ok_or_else(|| OuroError::Validation("upgrade/step lost target image".into()))?;
         let observation = read_observation(args)?;
-        let allowlist = convention::Allowlist::embedded()?;
-        let transition = allowlist
+        let transition = active_allowlist
             .transition_for(&att.immutable.image_config_digest, target)?
             .clone();
-        crate::upgrade::validate_transition(&transition, &allowlist, &observation.live.platform)?;
+        crate::upgrade::validate_transition(
+            &transition,
+            &active_allowlist,
+            &observation.live.platform,
+        )?;
         Some(transition)
     } else {
         None
@@ -797,6 +981,49 @@ pub fn run_confirm_create(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Mint the operator approval for an exact adoption preview. The target verifies and durably
+/// consumes it under the adoption lock before writing the attestation.
+pub fn run_adopt_confirm_create(args: &[String]) -> Result<()> {
+    let node = flag(args, "--node")?;
+    crate::intent::validate_machine_id(node)?;
+    let candidate = flag(args, "--candidate-hash")?;
+    let host_key = flag(args, "--host-key")?;
+    let valid_hash = |value: &str| {
+        value.len() == 64
+            && value.bytes().all(|byte| {
+                byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+            })
+    };
+    if !valid_hash(candidate) || !valid_hash(host_key) {
+        return Err(OuroError::Validation(
+            "adoption candidate and host key must be lowercase SHA-256 values".into(),
+        ));
+    }
+    let ttl = crate::confirm::parse_ttl(optional(args, "--ttl").unwrap_or("5m"))?;
+    let ttl_seconds = u64::try_from(ttl.num_seconds())
+        .map_err(|_| OuroError::Validation("adoption confirmation ttl must be positive".into()))?;
+    let paths = ConfigPaths::discover();
+    let secret = crate::confirm::load_or_create_secret(&paths.tool_run_secret)?;
+    let diff = format!("adopt {node} host {host_key}");
+    let (token, expires_at) = crate::s0019_confirmation::mint(
+        candidate,
+        &diff,
+        secret.as_bytes(),
+        crate::s0019_confirmation::current_epoch()?,
+        ttl_seconds,
+    )?;
+    output::print_json(&ToolOutput::ok("ouro.confirm.adopt.create", false).with_data(json!({
+        "node": node,
+        "candidate_hash": candidate,
+        "host_key_sha256": host_key,
+        "diff": diff,
+        "approve_token": token,
+        "expires_at_epoch": expires_at,
+        "single_use": true,
+    })))?;
+    Ok(())
+}
+
 /// p5-1 — build (and, unless `--plan`, run) the SSH dispatch of an `op` to the target. The remote
 /// command is the same op args with `--dispatch` stripped and `--local` appended. Real SSH exec is
 /// bed-level (p5-6); `--plan` prints the confined remote command for inspection.
@@ -824,6 +1051,8 @@ fn dispatch_op(
         i += 1;
     }
     remote.push("--local".into());
+    remote.push("--expect-allowlist".into());
+    remote.push(convention::Allowlist::active_verified()?.signed_digest()?);
     let argv = crate::dispatch::op_dispatch_argv(
         host,
         22,
@@ -864,6 +1093,8 @@ fn dispatch_adopt(host: &str, node: &str, args: &[String], paths: &ConfigPaths, 
         }
         i += 1;
     }
+    remote.push("--expect-allowlist".into());
+    remote.push(convention::Allowlist::active_verified()?.signed_digest()?);
     let argv = crate::dispatch::adopt_dispatch_argv(host, 22, user, &key, &paths.known_hosts, &remote);
     if plan {
         output::print_json(&ToolOutput::ok("ouro.adopt.dispatch.plan", false).with_data(json!({
@@ -987,12 +1218,16 @@ fn rollback_recovery_record(
 
 fn load_attestation(paths: &ConfigPaths, node: &str, local: bool) -> Result<AdoptionAttestation> {
     let p = attestation_path_for(paths, node, local);
-    let text = std::fs::read_to_string(&p).map_err(|_| {
-        OuroError::Validation(format!(
-            "not_ouro_managed: node {node} has no adoption attestation — run `ouro-ops adopt` \
-             first; ops are refused, never adapted (§1.C)"
-        ))
-    })?;
+    let text = match attestation::read_document(&p) {
+        Ok(text) => text,
+        Err(OuroError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(OuroError::Validation(format!(
+                "not_ouro_managed: node {node} has no adoption attestation — run `ouro-ops adopt` \
+                 first; ops are refused, never adapted (§1.C)"
+            )))
+        }
+        Err(error) => return Err(error),
+    };
     serde_json::from_str(&text)
         .map_err(|e| OuroError::Validation(format!("malformed attestation: {e}")))
 }
@@ -1006,7 +1241,7 @@ fn persist_attestation(
     att: &AdoptionAttestation,
 ) -> Result<()> {
     let p = attestation_path_for(paths, node, local);
-    let contract = std::fs::read_to_string(&p)
+    let contract = attestation::read_document(&p)
         .ok()
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
         .and_then(|v| v.get("contract").cloned());
@@ -1014,9 +1249,7 @@ fn persist_attestation(
     if let Some(c) = contract {
         doc["contract"] = c;
     }
-    std::fs::write(&p, serde_json::to_string_pretty(&doc).unwrap())
-        .map_err(|e| OuroError::Validation(format!("cannot persist advanced attestation: {e}")))?;
-    Ok(())
+    attestation::write_document(&p, &doc)
 }
 
 /// After a successful upgrade recreate, ROTATE the attestation onto the new identity (§2.10): the
@@ -1032,34 +1265,25 @@ fn rotate_attestation_for_upgrade(
     obs: &Observation,
     to_digest: &str,
 ) -> Result<()> {
-    let allow = convention::Allowlist::embedded()?;
-    let contract = allow.contract_for(to_digest, &obs.live.platform)?;
+    require_typed_mounts(&obs.live.mounts)?;
+    let allow = convention::Allowlist::load(&paths.home, false)?;
+    let (contract, allowed_image) = allow.contract_and_image_for(to_digest, &obs.live.platform)?;
     let immutable = ImmutableIdentity {
         role: old.immutable.role,
         contract_id: contract.contract_id.clone(),
         convention_version: contract.convention_version,
+        allowlist_version: allow.allowlist_version,
+        allowlist_digest: allow.signed_digest()?,
         host_key_sha256: old.immutable.host_key_sha256.clone(),
         machine_id: old.immutable.machine_id.clone(),
-        oci_index_digest: obs.live.image_config_digest.clone(),
-        platform_manifest_digest: obs.live.image_config_digest.clone(),
+        oci_index_digest: allowed_image.oci_index_digest.clone(),
+        platform_manifest_digest: allowed_image.platform_manifest_digest.clone(),
         image_config_digest: obs.live.image_config_digest.clone(),
+        platform: obs.live.platform.clone(),
         container_creation_epoch: obs.live.container_creation_epoch,
         entrypoint: obs.live.entrypoint.clone(),
         args: obs.live.args.clone(),
-        mounts: obs
-            .live
-            .mount_source_ids
-            .iter()
-            .map(|sid| TypedMount {
-                kind: "bind".into(),
-                source_id: sid.clone(),
-                destination: String::new(),
-                read_only: false,
-                owner: "root".into(),
-                mode: "0755".into(),
-                no_symlink: true,
-            })
-            .collect(),
+        mounts: obs.live.mounts.clone(),
         network: obs.live.network.clone(),
         genesis_hash: obs.live.genesis_hash.clone(),
         public_credential_ids: if obs.live.kes_opcert_id.is_empty() {
@@ -1081,14 +1305,9 @@ fn rotate_attestation_for_upgrade(
         },
     };
     let p = attestation_path_for(paths, node, local);
-    if let Some(parent) = p.parent() {
-        std::fs::create_dir_all(parent).ok();
-    }
     let mut doc = serde_json::to_value(&att).unwrap();
     doc["contract"] = json!({ "in_container_paths": contract.in_container_paths });
-    std::fs::write(&p, serde_json::to_string_pretty(&doc).unwrap())
-        .map_err(|e| OuroError::Validation(format!("cannot write rotated attestation: {e}")))?;
-    Ok(())
+    attestation::write_document(&p, &doc)
 }
 
 fn collect_params(args: &[String]) -> serde_json::Value {

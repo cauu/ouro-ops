@@ -85,7 +85,12 @@ fn net_flags(network: &str) -> Result<Vec<String>> {
 /// artifact is refused. In PREVIEW mode (`inbox = None`, plan/read display) a clearly-marked
 /// placeholder stands in for the resolved path so the plan can be shown without a staged artifact.
 /// A missing param is refused in both modes (the op cannot run without its artifact).
-fn resolve_artifact(intent: &Intent, param: &str, inbox: Option<&Path>) -> Result<String> {
+fn resolve_artifact(
+    intent: &Intent,
+    param: &str,
+    expected_type: crate::inbox::ArtifactType,
+    inbox: Option<&Path>,
+) -> Result<String> {
     let art_ref = intent
         .payload
         .get(param)
@@ -97,7 +102,9 @@ fn resolve_artifact(intent: &Intent, param: &str, inbox: Option<&Path>) -> Resul
             ))
         })?;
     match inbox {
-        Some(dir) => Ok(crate::inbox::resolve(dir, art_ref)?.display().to_string()),
+        Some(dir) => Ok(crate::inbox::resolve_typed(dir, art_ref, expected_type)?
+            .display()
+            .to_string()),
         None => Ok(format!("<inbox:{art_ref}>")),
     }
 }
@@ -134,7 +141,12 @@ pub fn build_plan(
         // then restart. NEVER touches the KES signing key or the air-gapped cold key — the operator
         // builds the opcert air-gapped and stages it; this executor only installs the public cert.
         "kes-rotation/rotate" => {
-            let opcert = resolve_artifact(intent, "opcert", inbox)?;
+            let opcert = resolve_artifact(
+                intent,
+                "opcert",
+                crate::inbox::ArtifactType::Opcert,
+                inbox,
+            )?;
             let _ = KEYS_DIR; // destination is the fixed OPCERT_DEST under the keys dir
             Ok(vec![
                 vec![s("docker"), s("cp"), opcert, format!("{cid}:{OPCERT_DEST}")],
@@ -145,7 +157,7 @@ pub fn build_plan(
         // then submit via the node socket on the attested network. The tx is built + signed
         // air-gapped by the operator (cold key never here); this executor only submits the bytes.
         "deploy/register-submit" => {
-            let tx = resolve_artifact(intent, "tx", inbox)?;
+            let tx = resolve_artifact(intent, "tx", crate::inbox::ArtifactType::Tx, inbox)?;
             let mut submit = vec![
                 s("docker"), s("exec"), cid.clone(), s("cardano-cli"), s("transaction"), s("submit"),
                 s("--tx-file"), s(TX_STAGE), s("--socket-path"), s(SOCKET),
@@ -348,8 +360,10 @@ mod tests {
         AdoptionAttestation {
             immutable: ImmutableIdentity {
                 role: Role::Bp, contract_id: "c".into(), convention_version: 1,
+                allowlist_version: 1, allowlist_digest: "sha256:a".into(),
                 host_key_sha256: "hk".into(), machine_id: "bp1".into(), oci_index_digest: "i".into(),
                 platform_manifest_digest: "p".into(), image_config_digest: "cfg".into(),
+                platform: "linux/amd64".into(),
                 container_creation_epoch: 1, entrypoint: vec![], args: vec![],
                 mounts: vec![TypedMount { kind: "bind".into(), source_id: "8:1:1".into(),
                     destination: "/data/db".into(), read_only: false, owner: "root".into(),

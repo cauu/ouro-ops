@@ -176,6 +176,17 @@ fn run_onboard(args: &[String]) -> Result<()> {
         .parse()
         .map_err(|_| OuroError::InvalidArgs("--port must be a number".to_string()))?;
     let user = flag_value(args, "--bootstrap-user")?.to_string();
+    if user.is_empty()
+        || user.len() > 32
+        || !user.bytes().next().map(|byte| byte.is_ascii_lowercase() || byte == b'_').unwrap_or(false)
+        || !user.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-'
+        })
+    {
+        return Err(OuroError::Validation(format!(
+            "--bootstrap-user must be a valid unix username [a-z_][a-z0-9_-]*: {user}"
+        )));
+    }
     let key_ref = CredentialRef::parse(flag_value(args, "--bootstrap-key")?)?;
     let dry_run = args.iter().any(|a| a == "--dry-run");
     let host_key = match optional_flag_value(args, "--host-key") {
@@ -201,6 +212,7 @@ fn run_onboard(args: &[String]) -> Result<()> {
             ))
         }
     };
+    validate_control_pubkey(&control_pubkey)?;
     let ouro_binary = match optional_flag_value(args, "--ouro-binary") {
         Some(p) => PathBuf::from(p),
         None => std::env::current_exe()
@@ -212,8 +224,29 @@ fn run_onboard(args: &[String]) -> Result<()> {
     let transport = crate::bootstrap::BootstrapTransport::new(dry_run);
 
     let mut pinned_fp = None;
-    if let Some(fp) = expected_host_key {
+    if let Some(fp) = expected_host_key.filter(|_| !dry_run) {
         pinned_fp = Some(pin_host_key(&host, port, &paths.known_hosts, Some(fp))?);
+    }
+
+    let target_facts = transport.detect_facts(&target, &key_path, host_key)?;
+    if let Some(facts) = &target_facts {
+        facts.require_supported()?;
+        match crate::bootstrap::binary_arch(&ouro_binary) {
+            Some(binary_arch) if Some(binary_arch) == facts.norm_arch() => {}
+            Some(binary_arch) => {
+                return Err(OuroError::Validation(format!(
+                    "--ouro-binary is {binary_arch} but the target is {}; supply a matching Linux binary",
+                    facts.norm_arch().unwrap_or(&facts.arch)
+                )))
+            }
+            None => {
+                return Err(OuroError::Validation(format!(
+                    "--ouro-binary {} is not a Linux ELF for {}",
+                    ouro_binary.display(),
+                    facts.norm_arch().unwrap_or(&facts.arch)
+                )))
+            }
+        }
     }
 
     let manifest = crate::onboard::execute_onboard(
@@ -239,6 +272,36 @@ fn run_onboard(args: &[String]) -> Result<()> {
     })))?;
     if !manifest.ok {
         return Err(OuroError::Validation("onboard did not complete cleanly".to_string()));
+    }
+    Ok(())
+}
+
+fn validate_control_pubkey(value: &str) -> Result<()> {
+    if value.contains('\r') || value.lines().count() != 1 {
+        return Err(OuroError::Validation(
+            "--control-pubkey must contain exactly one OpenSSH public key".into(),
+        ));
+    }
+    let mut fields = value.split_whitespace();
+    let algorithm = fields.next().unwrap_or("");
+    let encoded = fields.next().unwrap_or("");
+    let allowed = matches!(
+        algorithm,
+        "ssh-ed25519"
+            | "sk-ssh-ed25519@openssh.com"
+            | "ecdsa-sha2-nistp256"
+            | "ecdsa-sha2-nistp384"
+            | "ssh-rsa"
+    );
+    if !allowed
+        || encoded.len() < 16
+        || !encoded.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || byte == b'+' || byte == b'/' || byte == b'='
+        })
+    {
+        return Err(OuroError::Validation(
+            "--control-pubkey is not a supported OpenSSH public key".into(),
+        ));
     }
     Ok(())
 }
@@ -634,6 +697,11 @@ fn run_manifest(args: &[String]) -> Result<()> {
 }
 
 fn run_confirm(args: &[String]) -> Result<()> {
+    if args.first().map(String::as_str) == Some("adopt")
+        && args.get(1).map(String::as_str) == Some("create")
+    {
+        return crate::s0019_cli::run_adopt_confirm_create(&args[2..]);
+    }
     // S0019 p4-1: `confirm create --op <id> --node <id> --intent-hash <h>` mints a token bound to
     // the exact canonical intent (§2.5). Routed here so the greenfield `op` path reuses `confirm`.
     if args.first().map(String::as_str) == Some("create")

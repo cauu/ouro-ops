@@ -263,6 +263,7 @@ pub fn execute(
         key_path,
         host_key,
         control_pubkey,
+        AUTHKEY_STAGE,
         init_plan(&target.user, ouro_binary),
     )
     .map(|(m, ..)| m)
@@ -276,13 +277,14 @@ pub fn execute_plan(
     key_path: &Path,
     host_key: HostKeyCheck,
     control_pubkey: &str,
+    authkey_stage: &str,
     plan: Vec<Step>,
 ) -> Result<(InstallManifest, Vec<StepResult>, bool)> {
     let mut steps = Vec::new();
     let mut ok = true;
     let stage = write_temp(control_pubkey.trim_end().as_bytes())?;
-    let staged = transport.push(target, key_path, host_key, stage.path(), AUTHKEY_STAGE, "0644")?;
-    steps.push(outcome_result("stage control key", "push", Some(AUTHKEY_STAGE), &staged));
+    let staged = transport.push(target, key_path, host_key, stage.path(), authkey_stage, "0644")?;
+    steps.push(outcome_result("stage control key", "push", Some(authkey_stage), &staged));
     ok &= staged.status == 0;
     run_steps(transport, target, key_path, host_key, plan, &mut steps, &mut ok)?;
     Ok((manifest(target, steps.clone(), ok), steps, ok))

@@ -9,7 +9,7 @@ case "$1 $2" in
   "ps --format") echo "nodecid cardano-node run" ;;
   "inspect --format")
     case "$3" in
-      "{{.Image}}") echo "sha256:beddispatch" ;;
+      "{{.Image}}") echo "sha256:0bb21e45159327c4e6109704df256c3c297c725a4b2cdf6d0e1899e3a9df468f" ;;
       "{{.Created}}") echo "2026-07-15T10:00:00Z" ;;
       "{{json .Config.Entrypoint}}") echo '["cardano-node"]' ;;
       "{{json .Args}}") echo '["run"]' ;;
@@ -18,6 +18,8 @@ case "$1 $2" in
       "{{.State.StartedAt}}") cat /var/lib/ouro/started 2>/dev/null || echo "t0" ;;
       *) echo "" ;;
     esac ;;
+  "inspect nodecid")
+    echo '[{"Name":"/cardano-node","Mounts":[{"Type":"bind","Source":"/srv/data","Destination":"/data/db","RW":true}],"HostConfig":{"RestartPolicy":{"Name":"unless-stopped"},"NetworkMode":"bridge","PortBindings":{}},"Config":{"Env":[],"Entrypoint":["cardano-node"]},"Path":"cardano-node","Args":["run"]}]' ;;
   "exec nodecid")
     # docker exec nodecid sh -c '...'
     shift 2

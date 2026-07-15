@@ -60,6 +60,7 @@ fn security_code_digest() -> String {
         include_str!("intent.rs"), include_str!("readiness.rs"),
         include_str!("transaction.rs"), include_str!("upgrade.rs"),
         include_str!("s0019_confirmation.rs"),
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/allowlist.json")),
     ] {
         hasher.update((component.len() as u64).to_be_bytes());
         hasher.update(component.as_bytes());

@@ -7,16 +7,31 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import jsonschema
-
 ROOT = Path(__file__).resolve().parents[1]
 BIN = ROOT / "target/debug/ouro-ops"
 SCHEMA = json.loads((ROOT / "schemas/audit-event.schema.json").read_text())
 
 
-def run(home, *args):
+def validate_closed_audit_event(event):
+    """Schema-specific stdlib validator so the acceptance test has no undeclared dependency."""
+    assert isinstance(event, dict)
+    assert set(SCHEMA["required"]) <= set(event)
+    assert set(event) <= set(SCHEMA["properties"])
+    for name, value in event.items():
+        rule = SCHEMA["properties"][name]
+        if rule.get("type") == "string":
+            assert isinstance(value, str) and len(value) >= rule.get("minLength", 0)
+        elif rule.get("type") == "integer":
+            assert isinstance(value, int) and not isinstance(value, bool)
+            assert value >= rule.get("minimum", value)
+        if "enum" in rule:
+            assert value in rule["enum"]
+
+
+def run(home, *args, input_text=None):
     env = dict(os.environ, OURO_HOME=home)
-    r = subprocess.run([str(BIN), *args], env=env, text=True, capture_output=True)
+    r = subprocess.run([str(BIN), *args], env=env, text=True, capture_output=True,
+                       input=input_text)
     try:
         return r.returncode, json.loads(r.stdout or r.stderr)
     except Exception:
@@ -35,6 +50,17 @@ def main():
     cert.write_text('{"type":"NodeOperationalCertificate","cborHex":"aa"}')
     _, d = run(home, "inbox", "stage", "--type", "opcert", "--file", str(cert))
     assert d["status"] == "ok" and "@sha256:" in d["data"]["artifact_ref"], d
+    # The fixed target wrapper uses bounded stdin, not a control-local target path.
+    _, streamed = run(home, "inbox", "stage", "--local", "--type", "opcert", "--stdin",
+                      input_text=cert.read_text())
+    assert streamed["data"]["artifact_ref"] == d["data"]["artifact_ref"], streamed
+    creds = Path(home) / "credentials"
+    creds.mkdir(exist_ok=True)
+    (creds / "ouro-op").write_text("key")
+    _, dispatch = run(home, "inbox", "stage", "--type", "opcert", "--file", str(cert),
+                      "--dispatch", "10.0.0.9", "--plan")
+    argv = " ".join(dispatch["data"]["ssh_argv"])
+    assert "/usr/local/sbin/ouro-inbox-stage 'opcert'" in argv, dispatch
     # a junk artifact of the wrong shape is refused
     bad = Path(home) / "bad.bin"
     bad.write_text("not json")
@@ -50,10 +76,19 @@ def main():
                        "orchestration": "run"},
         "live": {"image_config_digest": cfg_digest(), "platform": "linux/amd64", "container_id": "cid",
                  "container_creation_epoch": 1, "entrypoint": ["cardano-node"], "args": ["run"],
-                 "mount_source_ids": ["8:1:1"], "topology_hash": "t", "config_hash": "c",
-                 "kes_opcert_id": "kes:5", "has_forging_keys": True, "host_key_sha256": "hk",
+                 "mounts": [{"kind": "bind", "source_id": "8:1", "destination": "/data/db",
+                             "read_only": False, "owner": "0:0", "mode": "0755", "no_symlink": True}],
+                 "topology_hash": "t", "config_hash": "c",
+                 "kes_opcert_id": "kes:5", "has_forging_keys": True, "host_key_sha256": "a" * 64,
                  "genesis_hash": "g", "network": "mainnet"}}))
-    run(home, "adopt", "--node", "bp1", "--role", "bp", "--approve-token", "x", "--observation", str(o))
+    _, preview = run(home, "adopt", "--node", "bp1", "--role", "bp",
+                     "--preview", "--observation", str(o))
+    data = preview["data"]
+    _, approval = run(home, "confirm", "adopt", "create", "--node", "bp1",
+                      "--candidate-hash", data["candidate_hash"],
+                      "--host-key", data["host_key_sha256"])
+    run(home, "adopt", "--node", "bp1", "--role", "bp",
+        "--approve-token", approval["data"]["approve_token"], "--observation", str(o))
     run(home, "op", "run", "--op", "observability/health", "--node", "bp1",
         "--param", "machine=bp1", "--observation", str(o))
     audit = Path(home) / "s0019-audit.jsonl"
@@ -61,8 +96,7 @@ def main():
     events = [json.loads(l) for l in audit.read_text().splitlines() if l.strip()]
     assert events, "at least one audit event"
     for ev in events:
-        jsonschema.Draft202012Validator(SCHEMA).validate(ev)  # schema-valid + closed
-        assert set(ev) <= set(SCHEMA["properties"]), "only closed fields"
+        validate_closed_audit_event(ev)
     assert any(e["event"] == "live_preflight" for e in events), events
 
     print("inbox stage + audit emission passed")

@@ -825,3 +825,45 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - p9-3 | stack: rust+python | command: cargo build -q -p ouro; python3
   tests/test_s0019_dispatch.py; git diff --check | result: pass | note: production binary builds,
   confined dispatch remains green, and the patch has no whitespace errors.
+
+## 19. Post-review Progress (append-only)
+- [~] p9-4 started: replace the trusted-string/placeholder allowlist with a pinned signature and
+  usable OCI identities; make adoption state durable and mount-complete; transport typed artifacts
+  to the target; and repair the real onboarding executor path.
+
+## 20. Post-review Item Status (append-only)
+- [x] p9-4 completed: embedded and external allowlists are Ed25519-verified before semantic use,
+  carry distinct 11.0.1 multi-arch index/platform-manifest/image-config digests for amd64+arm64,
+  and are loaded through a target-local monotonic floor on every adopt/op. Missing or forged floor
+  state on an adopted node fails closed; a release build cannot enable the debug-bed HMAC signer.
+  Control and target bind the complete signed document identity, and attestations record the exact
+  signed OCI tuple. Adoption now requires an expiring, preview/host-key-bound, durably single-use
+  approval and a final in-lock comparison. Attestations use 0640 temp+fsync+atomic-rename+parent-
+  fsync persistence; the production path is root:ouro-attest. The probe records bind device+inode,
+  destination, read-only state, uid:gid, mode and no-symlink, and the live gate compares the full
+  typed map. Inbox ingress streams in bounded chunks to a 0600 quarantine file, validates exact
+  type/id/digest plus Cardano envelope or Docker/OCI archive structure, and dispatches bytes over
+  stdin to a fixed target wrapper. Onboarding now stages the key at the path its plan consumes,
+  validates user/pubkey/platform/ELF architecture, installs the attestation group and inbox wrapper.
+
+## 21. Post-review Validation Evidence (append-only)
+- RTC-5 / TC-1 | stack: rust | command: cargo test -q -p ouro convention | result: pass | note:
+  Ed25519 tamper refusal, usable contract/OCI tuple validation, denylist/skew, floor ratchet and
+  missing/forged-floor fail-closed are covered. Official Docker Hub registry metadata for Blink
+  Labs cardano-node 11.0.1 supplied index d5ede0…, amd64 manifest/config 337e62…/0bb21e… and arm64
+  manifest/config 032119…/f31372…; no mutable tag is trusted at runtime.
+- RTC-5 / TC-2 / TC-3 | stack: python | command: python3 tests/test_s0019_pipeline.py | result:
+  pass | note: arbitrary adoption token refuses; preview-bound approval succeeds once; 0640 atomic
+  attestation binds three distinct OCI identities; typed mount permission drift and erased floor
+  both refuse before mutation.
+- RTC-5 / TC-4 | stack: rust+python | command: cargo test -q -p ouro inbox; python3
+  tests/test_s0019_inbox_audit.py | result: pass | note: streamed stdin/local ingress, fixed pinned
+  SSH wrapper plan, exact id/type/digest revalidation, wrong Cardano envelope type, replaced bytes,
+  oversize input, unsafe archive and malformed Docker/OCI metadata refuse.
+- RTC-5 / TC-2 | stack: rust | command: cargo test -q -p ouro onboard | result: pass | note:
+  dry executor stages the public key at /tmp/ouro-onboard-authkey, exactly the path consumed by the
+  install plan; principals/group/wrappers/sudoers ordering remains fail-closed.
+- RTC-5 / TC-2 / TC-6 / TC-9 | stack: other | command: bash fixtures/e2e/s0019-bed/run.sh |
+  result: pass | note: real signed test allowlist, device+inode bind evidence, adoption preview/
+  approval, atomic attestation, restart fencing, KES install/readiness, v1→v2 allowlist ratchet,
+  recreate and attestation rotation all pass on a real Docker container.

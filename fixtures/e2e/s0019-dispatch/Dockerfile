@@ -4,9 +4,12 @@
 # proving the full chain: SSH -> confined wrapper -> op --local -> auto-probe -> gates -> executor.
 FROM alpine:3.19
 RUN apk add --no-cache openssh sudo python3 bash coreutils \
- && mkdir -p /run/sshd /var/lib/ouro /usr/local/sbin /usr/local/bin /opt
+ && mkdir -p /run/sshd /var/lib/ouro /usr/local/sbin /usr/local/bin /opt /srv/data
 # The S0019 confined principals + op wrapper + sudoers (what `ouro-ops onboard` installs).
-RUN adduser -D -s /bin/bash ouro-op && adduser -D -s /bin/bash ouro-diag \
+RUN addgroup -S ouro-attest \
+ && adduser -D -s /bin/bash ouro-op && adduser -D -s /bin/bash ouro-diag \
+ && addgroup ouro-op ouro-attest && addgroup ouro-diag ouro-attest \
+ && chown root:ouro-attest /var/lib/ouro && chmod 0750 /var/lib/ouro \
  && printf '#!/bin/sh\nexec /usr/local/bin/ouro-ops op "$@"\n' > /usr/local/sbin/ouro-op-run \
  && chmod 0755 /usr/local/sbin/ouro-op-run \
  && printf 'ouro-op ALL=(root) NOPASSWD: /usr/local/sbin/ouro-op-run\n' > /etc/sudoers.d/ouro-op \

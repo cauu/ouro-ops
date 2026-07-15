@@ -384,9 +384,11 @@ mod tests {
             pre_attestation: AdoptionAttestation {
                 immutable: ImmutableIdentity {
                     role: Role::Bp, contract_id: "c".into(), convention_version: 1,
+                    allowlist_version: 1, allowlist_digest: "sha256:a".into(),
                     host_key_sha256: "hk".into(), machine_id: "bp1".into(),
                     oci_index_digest: "i".into(), platform_manifest_digest: "p".into(),
-                    image_config_digest: "cfg".into(), container_creation_epoch: 1,
+                    image_config_digest: "cfg".into(), platform: "linux/amd64".into(),
+                    container_creation_epoch: 1,
                     entrypoint: vec![], args: vec![], mounts: vec![], network: "mainnet".into(),
                     genesis_hash: "g".into(), public_credential_ids: vec![],
                     approval_evidence_hash: "e".into(),

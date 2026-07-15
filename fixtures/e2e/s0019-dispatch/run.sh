@@ -21,13 +21,16 @@ command -v docker >/dev/null 2>&1 || { echo "SKIP: docker not available"; exit 0
 echo "== build the Linux target image (onboard confinement + linux binary + stub node) =="
 cp "$LINUX_BIN" "$HERE/ouro-ops"; cp "$ROOT/ouro-skills/lib/ouro-probe.sh" "$HERE/ouro-probe.sh"
 docker build --no-cache --platform linux/arm64 -q -t "$IMG" "$HERE" >/dev/null || fail "image build"
-python3 -c "import json;a=json.load(open('$ROOT/data/allowlist.json'));a['contracts'][0]['allowed'][0]['image_config_digest']='sha256:beddispatch';a['contracts'][0]['allowed'][0]['oci_index_digest']='sha256:beddispatch';print(json.dumps(a))" > "$WORK/allow.json"
-docker run --rm --platform linux/arm64 -v "$WORK/allow.json:/var/lib/ouro/allow.json:ro" \
-  -e OURO_ALLOWLIST_FILE=/var/lib/ouro/allow.json -e OURO_PROBE_LIB=/opt/ouro-probe.sh \
+docker run --rm --platform linux/arm64 \
+  -e OURO_PROBE_LIB=/opt/ouro-probe.sh \
   -e OURO_ATTESTATION=/var/lib/ouro/node-attestation.json -e OURO_HOME=/var/lib/ouro \
   "$IMG" bash -c '
 set -e
-ouro-ops adopt --local --node bp1 --role bp --approve-token op-tok >/dev/null; echo ADOPTED
+PRE=$(ouro-ops adopt --local --node bp1 --role bp --preview)
+CAND=$(printf "%s" "$PRE" | python3 -c "import json,sys;print(json.load(sys.stdin)[\"data\"][\"candidate_hash\"])")
+HOSTKEY=$(printf "%s" "$PRE" | python3 -c "import json,sys;print(json.load(sys.stdin)[\"data\"][\"host_key_sha256\"])")
+ATOK=$(ouro-ops confirm adopt create --node bp1 --candidate-hash "$CAND" --host-key "$HOSTKEY" | python3 -c "import json,sys;print(json.load(sys.stdin)[\"data\"][\"approve_token\"])")
+ouro-ops adopt --local --node bp1 --role bp --approve-token "$ATOK" >/dev/null; echo ADOPTED
 IH=$(sudo -n /usr/local/sbin/ouro-op-run run --op runtime/restart --local --node bp1 --param machine=bp1 2>&1 | grep -o "intent-hash [0-9a-f]*" | awk "{print \$2}")
 [ -n "$IH" ] && echo "WRAPPER_REFUSED_NO_CONFIRM hash=$IH"
 TOK=$(ouro-ops confirm create --op runtime/restart --node bp1 --intent-hash "$IH" | python3 -c "import json,sys;print(json.load(sys.stdin)[\"data\"][\"confirm_token\"])")

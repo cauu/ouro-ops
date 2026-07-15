@@ -15,6 +15,10 @@ def main():
     tmp = tempfile.mkdtemp()
     binp = Path(tmp) / "bin"
     binp.mkdir()
+    data_mount = Path(tmp) / "data"
+    config_mount = Path(tmp) / "config"
+    data_mount.mkdir()
+    config_mount.mkdir()
     # docker stub: ps → one cardano-node container; inspect → fixed fields; exec → hashes/keys.
     (binp / "docker").write_text(
         '#!/usr/bin/env bash\n'
@@ -30,6 +34,7 @@ def main():
         '       "{{range .Mounts}}{{.Source}};{{end}}") echo "/srv/cardano/data;/srv/cardano/config;";;\n'
         '       "{{.HostConfig.RestartPolicy.Name}}") echo "unless-stopped";;\n'
         '     esac;;\n'
+        f'  "inspect cid-xyz") echo \'[{{"Name":"/node","Mounts":[{{"Type":"bind","Source":"{data_mount}","Destination":"/data/db","RW":true}},{{"Type":"bind","Source":"{config_mount}","Destination":"/opt/cardano/config","RW":false}}],"HostConfig":{{"RestartPolicy":{{"Name":"unless-stopped"}},"NetworkMode":"bridge","PortBindings":{{}}}},"Config":{{"Env":[],"Entrypoint":["cardano-node"]}},"Path":"cardano-node","Args":["run"]}}]\';;\n'
         '  "exec cid-xyz") shift 2; # sh -c ...\n'
         '     if echo "$*" | grep -q "cardano-cli query tip"; then echo "{\\"block\\":10,\\"slot\\":10}";\n'
         '     elif echo "$*" | grep -q netstat; then echo 2;\n'
@@ -40,7 +45,8 @@ def main():
     )
     (binp / "docker").chmod(0o755)
 
-    env = dict(os.environ, PATH=f"{binp}:{os.environ['PATH']}", OURO_READINESS_SAMPLE_DELAY="0")
+    env = dict(os.environ, PATH=f"{binp}:{os.environ['PATH']}", OURO_READINESS_SAMPLE_DELAY="0",
+               OURO_HOST_KEY_SHA256="a" * 64)
     r = subprocess.run(
         ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
         env=env, text=True, capture_output=True,
@@ -54,12 +60,15 @@ def main():
     assert live["image_config_digest"] == "sha256:cfg"
     assert live["container_id"] == "cid-xyz"
     assert live["entrypoint"] == ["cardano-node"] and live["args"] == ["run"]
-    assert len(live["mount_source_ids"]) == 2
+    assert len(live["mounts"]) == 2
+    assert all(m["kind"] == "bind" and m["source_id"].count(":") == 1 for m in live["mounts"])
+    assert {m["destination"] for m in live["mounts"]} == {"/data/db", "/opt/cardano/config"}
+    assert live["mounts"][1]["read_only"] is True
     assert live["has_forging_keys"] is True
     assert live["container_creation_epoch"] > 0
     # every key the Rust ObsLive/SupervisorObservation expects is present
     for k in ["image_config_digest", "platform", "container_id", "container_creation_epoch",
-              "entrypoint", "args", "mount_source_ids", "topology_hash", "config_hash",
+              "entrypoint", "args", "mounts", "topology_hash", "config_hash",
               "kes_opcert_id", "has_forging_keys", "host_key_sha256", "genesis_hash", "network"]:
         assert k in live, f"observation missing {k}"
     readiness = obs["readiness"]

@@ -16,10 +16,18 @@ use crate::Result;
 /// `ouro-ops op "$@"`, so the confined principal cannot invoke adopt/onboard/other subcommands.
 pub const OP_WRAPPER: &str = "#!/bin/sh\nexec /usr/local/bin/ouro-ops op \"$@\"\n";
 
+/// Separate fixed ingress wrapper. It accepts exactly one closed artifact kind and streams stdin
+/// into the target-local inbox; it cannot invoke any other ouro command.
+pub const INBOX_WRAPPER: &str = "#!/bin/sh\n\
+[ \"$#\" -eq 1 ] || exit 64\n\
+case \"$1\" in opcert|tx|image) ;; *) exit 64 ;; esac\n\
+exec /usr/local/bin/ouro-ops inbox stage --local --type \"$1\" --stdin\n";
+
 /// sudoers confines `ouro-op` to the op wrapper (NOPASSWD, env reset, fixed secure_path).
 pub const OP_SUDOERS: &str = concat!(
     "Defaults:ouro-op env_reset, secure_path=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\n",
     "ouro-op ALL=(root) NOPASSWD: /usr/local/sbin/ouro-op-run\n",
+    "ouro-op ALL=(root) NOPASSWD: /usr/local/sbin/ouro-inbox-stage\n",
 );
 
 /// sshd drop-in: pubkey-only, no root, only the two S0019 principals + the bootstrap account.
@@ -55,11 +63,13 @@ pub fn onboard_plan(bootstrap_user: &str, ouro_binary: &Path, confirm_secret: &s
         run(desc, &format!("id -u {user} >/dev/null 2>&1 || {cmd}"))
     };
     vec![
-        // Root-owned state dir for the attestation (§2.3).
-        run("prepare /var/lib/ouro", "install -d -m 0755 -o root -g root /var/lib/ouro"),
+        run("create attestation reader group", "getent group ouro-attest >/dev/null 2>&1 || groupadd --system ouro-attest"),
         // The two S0019 principals: ouro-op (write, via wrapper) and ouro-diag (read, unprivileged).
         principal("create ouro-op", "ouro-op", "useradd -m -s /bin/bash ouro-op"),
         principal("create ouro-diag", "ouro-diag", "useradd -m -s /bin/bash ouro-diag"),
+        run("grant attestation read group", "usermod -a -G ouro-attest ouro-op && usermod -a -G ouro-attest ouro-diag"),
+        // Root-owned state; only the dedicated read group can traverse/read attestations.
+        run("prepare /var/lib/ouro", "install -d -m 0750 -o root -g ouro-attest /var/lib/ouro && install -d -m 0700 -o root -g root /var/lib/ouro/inbox"),
         // The single binary (the same one that ran onboard, pushed to the target).
         Step::Push {
             desc: "install ouro-ops binary".into(),
@@ -73,6 +83,7 @@ pub fn onboard_plan(bootstrap_user: &str, ouro_binary: &Path, confirm_secret: &s
         run("own confirm secret", &format!("chown root:root {CONFIRM_SECRET_PATH}")),
         // Confinement: the op wrapper + sudoers, validated by visudo.
         content("install op wrapper", OP_WRAPPER.to_string(), "/usr/local/sbin/ouro-op-run", "0755"),
+        content("install inbox wrapper", INBOX_WRAPPER.to_string(), "/usr/local/sbin/ouro-inbox-stage", "0755"),
         content("install sudoers confinement", OP_SUDOERS.to_string(), "/etc/sudoers.d/ouro-op", "0440"),
         run("validate sudoers", "visudo -cf /etc/sudoers.d/ouro-op"),
         // Auth posture: pubkey-only, no root, only the S0019 principals + bootstrap.
@@ -117,6 +128,7 @@ pub fn execute_onboard(
         key_path,
         host_key,
         control_pubkey,
+        AUTHKEY_STAGE,
         onboard_plan(&target.user, ouro_binary, &confirm_secret),
     )
     .map(|(m, ..)| m)
@@ -137,11 +149,13 @@ mod tests {
         let d = descs(&plan);
         assert!(d.contains(&"create ouro-op") && d.contains(&"create ouro-diag"));
         assert!(d.contains(&"install op wrapper"));
+        assert!(d.contains(&"install inbox wrapper"));
         // The op wrapper only runs `ouro-ops op`, never tool run.
         assert!(OP_WRAPPER.contains("ouro-ops op \"$@\""));
         assert!(!OP_WRAPPER.contains("tool run"), "greenfield: no S0017 tool-run wrapper");
         // sudoers confines ouro-op to the op wrapper only.
         assert!(OP_SUDOERS.contains("ouro-op ALL=(root) NOPASSWD: /usr/local/sbin/ouro-op-run"));
+        assert!(OP_SUDOERS.contains("/usr/local/sbin/ouro-inbox-stage"));
         assert!(!OP_SUDOERS.contains("ouro-tool-run"));
     }
 
@@ -152,7 +166,7 @@ mod tests {
         let pos = |x: &str| d.iter().position(|s| *s == x).unwrap();
         assert!(pos("install ouro-ops binary") < pos("install op wrapper"));
         assert!(pos("install op wrapper") < pos("install control key (ouro-op)"));
-        assert!(pos("prepare /var/lib/ouro") == 0, "attestation dir first");
+        assert!(pos("create attestation reader group") == 0, "attestation group first");
         assert!(pos("reload sshd") == d.len() - 1, "reload sshd last");
     }
 
@@ -162,5 +176,30 @@ mod tests {
         assert!(c.contains("PermitRootLogin no") && c.contains("PasswordAuthentication no"));
         assert!(c.contains("AllowUsers ouro-op ouro-diag ubuntu"));
         assert!(!c.contains("ouro-exec"), "greenfield principals only");
+    }
+
+    #[test]
+    fn executor_stages_key_at_the_path_the_onboard_plan_consumes() {
+        let transport = BootstrapTransport::new(true);
+        let target = BootstrapTarget {
+            host: "10.0.0.10".into(),
+            port: 22,
+            user: "ubuntu".into(),
+        };
+        let (manifest, _, _) = crate::provision::execute_plan(
+            &transport,
+            &target,
+            Path::new("/k"),
+            HostKeyCheck::AcceptNew,
+            "ssh-ed25519 AAAA0123456789abcdef operator@control",
+            AUTHKEY_STAGE,
+            onboard_plan("ubuntu", Path::new("/tmp/ouro-ops"), "secret"),
+        )
+        .unwrap();
+        assert_eq!(manifest.steps[0].remote.as_deref(), Some(AUTHKEY_STAGE));
+        assert!(onboard_plan("ubuntu", Path::new("/tmp/ouro-ops"), "secret")
+            .iter()
+            .filter_map(|step| match step { Step::Run { cmd, .. } => Some(cmd), _ => None })
+            .any(|command| command.contains(AUTHKEY_STAGE)));
     }
 }

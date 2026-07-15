@@ -27,14 +27,13 @@ ouro_probe_inspect() {
 # Emit the observation JSON for the node. $1 = expected platform (e.g. linux/amd64).
 ouro_observe() {
   local platform="${1:-linux/amd64}"
-  local cid image_cfg created entrypoint args mounts count restart
+  local cid image_cfg created entrypoint args count restart
   cid="$(ouro_probe_container)"
   count="$(docker ps --format '{{.ID}} {{.Command}}' 2>/dev/null | grep -c cardano-node || echo 0)"
   image_cfg="$(ouro_probe_inspect "$cid" '{{.Image}}')"
   created="$(ouro_probe_inspect "$cid" '{{.Created}}')"
   entrypoint="$(ouro_probe_inspect "$cid" '{{json .Config.Entrypoint}}')"
   args="$(ouro_probe_inspect "$cid" '{{json .Args}}')"
-  mounts="$(ouro_probe_inspect "$cid" '{{range .Mounts}}{{.Source}};{{end}}')"
   restart="$(ouro_probe_inspect "$cid" '{{.HostConfig.RestartPolicy.Name}}')"
 
   # Node facts read INSIDE the container (paths from the layout contract); hashes only, no secrets.
@@ -54,7 +53,14 @@ ouro_observe() {
   kes_valid="$(docker exec "$cid" sh -c 'test -s /opt/cardano/config/keys/kes.skey && test -s /opt/cardano/config/keys/node.cert && echo true || echo false' 2>/dev/null)"
   peers="$(docker exec "$cid" sh -c "netstat -tn 2>/dev/null | awk '\$6 == \"ESTABLISHED\" {n++} END {print n+0}'" 2>/dev/null || echo 0)"
   local hostkey full_json
-  hostkey="$(sha256sum /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null | awk '{print $1}')"
+  hostkey="${OURO_HOST_KEY_SHA256:-}"
+  if [ -z "$hostkey" ] && [ -f /etc/ssh/ssh_host_ed25519_key.pub ]; then
+    if command -v sha256sum >/dev/null 2>&1; then
+      hostkey="$(sha256sum /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null | awk '{print $1}')"
+    else
+      hostkey="$(shasum -a 256 /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null | awk '{print $1}')"
+    fi
+  fi
   # Full inspect JSON — the CLOSED source for the upgrade recreate spec (§2.10): name, restart,
   # network mode, bind mounts (src:dst:ro), env, published ports, and the resolved command. These
   # are TARGET-SIDE facts (never agent strings); the executor recreates onto the new digest from them.
@@ -62,14 +68,14 @@ ouro_observe() {
 
   OURO_OBS_PLATFORM="$platform" OURO_OBS_CID="$cid" OURO_OBS_COUNT="$count" \
   OURO_OBS_IMAGE="$image_cfg" OURO_OBS_CREATED="$created" OURO_OBS_ENTRY="$entrypoint" \
-  OURO_OBS_ARGS="$args" OURO_OBS_MOUNTS="$mounts" OURO_OBS_RESTART="$restart" \
+  OURO_OBS_ARGS="$args" OURO_OBS_RESTART="$restart" \
   OURO_OBS_TOPO="$topo_hash" OURO_OBS_CFG="$cfg_hash" OURO_OBS_OPCERT="$opcert_id" \
   OURO_OBS_HASKEYS="$has_keys" OURO_OBS_GENESIS="$genesis_hash" OURO_OBS_NET="$network" \
   OURO_OBS_HOSTKEY="$hostkey" OURO_OBS_FULL="$full_json" \
   OURO_OBS_TIP1="$tip1" OURO_OBS_TIP2="$tip2" OURO_OBS_CREDS="$creds_ok" \
   OURO_OBS_KES_VALID="$kes_valid" OURO_OBS_PEERS="$peers" \
   python3 - <<'PY'
-import json, os, hashlib
+import json, os, stat
 def env(k): return os.environ.get(k, "") or ""
 def epoch(created):
     # docker Created is RFC3339; fall back to 0 if unparsable (no ambient clock use).
@@ -90,22 +96,63 @@ def tip_value(s):
         return int(value.get("slot", value.get("block", -1)))
     except Exception:
         return -1
-mounts = [m for m in env("OURO_OBS_MOUNTS").split(";") if m]
-# mount source id: a stable identifier per source (its own sha for the stub; a real probe records
-# device+inode). Kept closed — never the raw host path in the attestation fingerprint upstream.
-mount_ids = [hashlib.sha256(m.encode()).hexdigest()[:16] for m in mounts]
+def inspect_record():
+    try:
+        value = json.loads(env("OURO_OBS_FULL"))
+        return value[0] if isinstance(value, list) and len(value) == 1 else None
+    except Exception:
+        return None
+
+def typed_mounts():
+    record = inspect_record()
+    if record is None:
+        return []
+    result = []
+    for mount in (record.get("Mounts", []) or []):
+        source = mount.get("Source", "") or ""
+        try:
+            # Docker Desktop reports VM bind paths as /host_mnt/<host-path>. The stripped path is
+            # used only when the literal source is absent; Linux targets always stat the literal
+            # Docker source and therefore bind the real host device+inode.
+            candidates = [source]
+            if source.startswith("/var/"):
+                candidates.append("/private" + source)
+            if source.startswith("/host_mnt/"):
+                stripped = source[len("/host_mnt"):]
+                candidates.append(stripped)
+                if stripped.startswith("/var/"):
+                    candidates.append("/private" + stripped)
+            stat_source = next(candidate for candidate in candidates if os.path.lexists(candidate))
+            metadata = os.lstat(stat_source)
+            source_id = f"{metadata.st_dev}:{metadata.st_ino}"
+            owner = f"{metadata.st_uid}:{metadata.st_gid}"
+            mode = format(stat.S_IMODE(metadata.st_mode), "04o")
+            no_symlink = not stat.S_ISLNK(metadata.st_mode)
+        except Exception:
+            source_id, owner, mode, no_symlink = "", "", "", False
+        result.append({
+            "kind": mount.get("Type", "") or "",
+            "source_id": source_id,
+            "destination": mount.get("Destination", "") or "",
+            "read_only": not mount.get("RW", True),
+            "owner": owner,
+            "mode": mode,
+            "no_symlink": no_symlink,
+        })
+    return result
+
+mounts = typed_mounts()
 
 # Upgrade recreate spec (§2.10) — parsed from the full inspect JSON. Fail-closed: emit null when the
 # container shape is not the standard single-container bind-mounted layout, so the executor refuses
 # rather than recreate a container it cannot faithfully reproduce.
 def recreate_spec():
     try:
-        arr = json.loads(env("OURO_OBS_FULL"))
+        d = inspect_record()
     except Exception:
         return None
-    if not isinstance(arr, list) or len(arr) != 1:
+    if d is None:
         return None
-    d = arr[0]
     hc = d.get("HostConfig", {}) or {}
     cfg = d.get("Config", {}) or {}
     binds = []
@@ -134,14 +181,15 @@ obs = {
   "supervisor": {
     "runtime": "docker", "rootful": True, "rootless": False,
     "node_container_count": int(env("OURO_OBS_COUNT") or 0),
-    "uses_bind_mounts": bool(mounts), "daemon_socket": "/var/run/docker.sock",
+    "uses_bind_mounts": bool(mounts) and all(m["kind"] == "bind" for m in mounts),
+    "daemon_socket": "/var/run/docker.sock",
     "restart_policy": env("OURO_OBS_RESTART") or "unless-stopped", "orchestration": "run",
   },
   "live": {
     "image_config_digest": env("OURO_OBS_IMAGE"), "platform": env("OURO_OBS_PLATFORM"),
     "container_id": env("OURO_OBS_CID"), "container_creation_epoch": epoch(env("OURO_OBS_CREATED")),
     "entrypoint": jlist(env("OURO_OBS_ENTRY")), "args": jlist(env("OURO_OBS_ARGS")),
-    "mount_source_ids": mount_ids,
+    "mounts": mounts,
     "topology_hash": env("OURO_OBS_TOPO"), "config_hash": env("OURO_OBS_CFG"),
     "kes_opcert_id": env("OURO_OBS_OPCERT"), "has_forging_keys": env("OURO_OBS_HASKEYS") == "true",
     "host_key_sha256": env("OURO_OBS_HOSTKEY"), "genesis_hash": env("OURO_OBS_GENESIS"),

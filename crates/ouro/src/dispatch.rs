@@ -21,6 +21,7 @@ use std::path::Path;
 /// exactly what `onboard.rs` installs (`OP_WRAPPER`/`OP_SUDOERS`), so the dispatch principal, the
 /// sudoers grant, and the sshd `AllowUsers` all agree on `ouro-op`.
 pub const OP_WRAPPER: &str = "/usr/local/sbin/ouro-op-run";
+pub const INBOX_WRAPPER: &str = "/usr/local/sbin/ouro-inbox-stage";
 
 /// The confined write principal `ouro-ops onboard` creates (must match `onboard.rs`).
 pub const OP_PRINCIPAL: &str = "ouro-op";
@@ -67,6 +68,23 @@ pub fn op_dispatch_argv(
     // §2.8 parity: the target compares the complete security identity before executing.
     argv.push("--expect-embedded".into());
     argv.push(shell_quote(expected_security_digest));
+    argv
+}
+
+/// SSH argv for bounded stdin artifact ingress. The only dynamic selector is the closed artifact
+/// kind; bytes travel on stdin and are validated/finalized by the root-owned target wrapper.
+pub fn inbox_dispatch_argv(
+    host: &str,
+    port: u16,
+    key: &Path,
+    known_hosts: &Path,
+    artifact_type: &str,
+) -> Vec<String> {
+    let mut argv = base_ssh(port, key, known_hosts, OP_PRINCIPAL, host);
+    argv.push("sudo".into());
+    argv.push("-n".into());
+    argv.push(INBOX_WRAPPER.into());
+    argv.push(shell_quote(artifact_type));
     argv
 }
 
@@ -140,5 +158,20 @@ mod tests {
         assert!(j.contains("ubuntu@10.0.0.2"), "bootstrap account");
         assert!(j.contains("ouro-ops adopt --local"), "adopt --local on target");
         assert!(j.contains("'bp1'"));
+    }
+
+    #[test]
+    fn inbox_dispatch_is_pinned_and_fixed() {
+        let argv = inbox_dispatch_argv(
+            "10.0.0.3",
+            22,
+            Path::new("/creds/ouro-op"),
+            Path::new("/kh"),
+            "opcert",
+        );
+        let joined = argv.join(" ");
+        assert!(joined.contains("ouro-op@10.0.0.3"));
+        assert!(joined.contains("StrictHostKeyChecking=yes"));
+        assert!(joined.contains("sudo -n /usr/local/sbin/ouro-inbox-stage 'opcert'"));
     }
 }

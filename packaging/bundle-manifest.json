@@ -22,7 +22,7 @@
     "kes-rotation/scripts/rotate.sh": "1f44485145908a112e894df4ab75077d9e6a5a7c7f814fbc1cdde99353a89ffc",
     "lib/ouro-attested.sh": "dee534a05268894341c26d6607425a856e38cd78ba8152bca8ea8cc67bf111f0",
     "lib/ouro-lib.sh": "43d8d8dff3f767603c5d534e5849dff5778535478d0dd110fbd76e52830fc774",
-    "lib/ouro-probe.sh": "751b55b85819eae3a568e117e3ae2fb3f730c2d1f454b5c59a49b73358efdb37",
+    "lib/ouro-probe.sh": "40995e3189734c3336a07da5a990a9cb54f748b2dc773087bebea06b588f6967",
     "observability/SKILL.md": "3ddf7fbafe0899309b30a9345dfe98195516ecb56602091dd1a0ee5e7dc35271",
     "observability/scripts/health.sh": "c8a7862ef9572aaa065589c76652cd5a03189987ea1aef16c9518367c0b91f61",
     "observability/scripts/install-gateway.sh": "8be5e1f07516aa6a08bc44699b37e2f7a927aa456223a329dd25b4db9ef82c15",
@@ -47,10 +47,10 @@
     "upgrade/scripts/verify.sh": "5c77cb2e4b82e1b67c8681d5fb5f197b4b5c4a306eb90b7e668e771d40eb9ff4"
   },
   "decision_hash": "1720f146b26278f4586a94c42f16e5a3e2abfd7782732cf3dc5d9db32421175f",
-  "embedded_digest": "70a50929f8c17b97f753d28a591a955bcac5fa9e661f8e5c98ae0dd557045b8c",
+  "embedded_digest": "0cf4eb8900c6cfbb176bcea352b3c6c764c219e7a29643d6a6fcfa15b266f3c9",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
   "schema_hash": "8c0f40bc9ec0c47cea54851f0b9f966b1a62d79c225da3bd7caf5823917468bb",
-  "skills_hash": "ead700053b416791499bb41ba5749bdc291d2dd3ddfcc5551eec86e04ae55ede"
+  "skills_hash": "a14c5dbb4aa38f18389a415fcb19113d681930ab215546aacd5fe789194fcdc7"
 }

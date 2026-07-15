@@ -25,7 +25,7 @@ pub mod v1 {
 }
 
 /// Closed projection of what the adopt-time probe observed on the host (no raw daemon JSON).
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SupervisorObservation {
     /// `docker` | `podman` | `containerd` | ...
     pub runtime: String,
