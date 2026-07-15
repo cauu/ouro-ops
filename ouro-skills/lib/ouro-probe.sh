@@ -38,13 +38,21 @@ ouro_observe() {
   restart="$(ouro_probe_inspect "$cid" '{{.HostConfig.RestartPolicy.Name}}')"
 
   # Node facts read INSIDE the container (paths from the layout contract); hashes only, no secrets.
-  local topo_hash cfg_hash opcert_id has_keys genesis_hash network
+  local topo_hash cfg_hash opcert_id has_keys genesis_hash network tip1 tip2 creds_ok kes_valid peers
   topo_hash="$(docker exec "$cid" sh -c 'sha256sum /opt/cardano/config/mainnet/topology.json 2>/dev/null' 2>/dev/null | awk '{print $1}')"
   cfg_hash="$(docker exec "$cid" sh -c 'sha256sum /opt/cardano/config/mainnet/config.json 2>/dev/null' 2>/dev/null | awk '{print $1}')"
   opcert_id="$(docker exec "$cid" sh -c 'test -f /opt/cardano/config/keys/node.cert && sha256sum /opt/cardano/config/keys/node.cert' 2>/dev/null | awk '{print $1}')"
   has_keys="$(docker exec "$cid" sh -c 'test -f /opt/cardano/config/keys/kes.skey && echo true || echo false' 2>/dev/null)"
   genesis_hash="$(docker exec "$cid" sh -c 'sha256sum /opt/cardano/config/mainnet/shelley-genesis.json 2>/dev/null' 2>/dev/null | awk '{print $1}')"
   network="mainnet"
+  # Bounded readiness evidence. Two socket queries are sampled on the target; slot is preferred over
+  # block because a low-stake BP need not forge, while the network tip should still advance.
+  tip1="$(docker exec "$cid" cardano-cli query tip --socket-path /ipc/node.socket --mainnet 2>/dev/null || true)"
+  sleep "${OURO_READINESS_SAMPLE_DELAY:-2}"
+  tip2="$(docker exec "$cid" cardano-cli query tip --socket-path /ipc/node.socket --mainnet 2>/dev/null || true)"
+  creds_ok="$(docker exec "$cid" sh -c 'test -f /opt/cardano/config/keys/kes.skey && test -f /opt/cardano/config/keys/vrf.skey && test -f /opt/cardano/config/keys/node.cert && echo true || echo false' 2>/dev/null)"
+  kes_valid="$(docker exec "$cid" sh -c 'test -s /opt/cardano/config/keys/kes.skey && test -s /opt/cardano/config/keys/node.cert && echo true || echo false' 2>/dev/null)"
+  peers="$(docker exec "$cid" sh -c "netstat -tn 2>/dev/null | awk '\$6 == \"ESTABLISHED\" {n++} END {print n+0}'" 2>/dev/null || echo 0)"
   local hostkey full_json
   hostkey="$(sha256sum /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null | awk '{print $1}')"
   # Full inspect JSON — the CLOSED source for the upgrade recreate spec (§2.10): name, restart,
@@ -58,6 +66,8 @@ ouro_observe() {
   OURO_OBS_TOPO="$topo_hash" OURO_OBS_CFG="$cfg_hash" OURO_OBS_OPCERT="$opcert_id" \
   OURO_OBS_HASKEYS="$has_keys" OURO_OBS_GENESIS="$genesis_hash" OURO_OBS_NET="$network" \
   OURO_OBS_HOSTKEY="$hostkey" OURO_OBS_FULL="$full_json" \
+  OURO_OBS_TIP1="$tip1" OURO_OBS_TIP2="$tip2" OURO_OBS_CREDS="$creds_ok" \
+  OURO_OBS_KES_VALID="$kes_valid" OURO_OBS_PEERS="$peers" \
   python3 - <<'PY'
 import json, os, hashlib
 def env(k): return os.environ.get(k, "") or ""
@@ -74,6 +84,12 @@ def jlist(s):
         return v if isinstance(v, list) else []
     except Exception:
         return []
+def tip_value(s):
+    try:
+        value = json.loads(s)
+        return int(value.get("slot", value.get("block", -1)))
+    except Exception:
+        return -1
 mounts = [m for m in env("OURO_OBS_MOUNTS").split(";") if m]
 # mount source id: a stable identifier per source (its own sha for the stub; a real probe records
 # device+inode). Kept closed — never the raw host path in the attestation fingerprint upstream.
@@ -130,6 +146,15 @@ obs = {
     "kes_opcert_id": env("OURO_OBS_OPCERT"), "has_forging_keys": env("OURO_OBS_HASKEYS") == "true",
     "host_key_sha256": env("OURO_OBS_HOSTKEY"), "genesis_hash": env("OURO_OBS_GENESIS"),
     "network": env("OURO_OBS_NET"),
+  },
+  "readiness": {
+    "node_running": bool(env("OURO_OBS_CID")),
+    "socket_answers": tip_value(env("OURO_OBS_TIP1")) >= 0 and tip_value(env("OURO_OBS_TIP2")) >= 0,
+    "tip_block": tip_value(env("OURO_OBS_TIP1")),
+    "tip_block_next": tip_value(env("OURO_OBS_TIP2")),
+    "kes_opcert_valid": env("OURO_OBS_KES_VALID") == "true",
+    "credential_loaded": env("OURO_OBS_CREDS") == "true",
+    "established_peers": int(env("OURO_OBS_PEERS") or 0),
   },
   "recreate": recreate_spec(),
 }

@@ -793,3 +793,35 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   restart, three-step KES backup/install/restart, attestation advance and v1→v2 recreate all pass.
 - p9-2 | stack: rust | command: cargo build -q -p ouro; git diff --check | result: pass | note:
   production binary builds and durable journal changes have no whitespace errors.
+
+## 16. Post-review Progress (append-only)
+- [~] p9-3 started: enforce the existing readiness model in real verification, require a signed
+  target-consumed fleet permit for restart/recreate operations, and make upgrade compatibility and
+  rollback capability derive from the exact signed N→N+1 transition contract.
+
+## 17. Post-review Item Status (append-only)
+- [x] p9-3 completed: the target probe supplies two tip samples plus process/socket/KES/opcert/
+  credential/peer signals and every real or recovered verify evaluates them; restart/recreate
+  operations require an expiring HMAC-signed permit bound to pool, node, operation, role, fencing
+  token and quorum inputs, then durably consume it target-side with equal/stale-token replay refusal;
+  BP-last and relay quorum are re-evaluated at the target. Upgrade accepts only an exact allowlisted
+  N→N+1 transition, and advertises rollback only for backward-compatible or snapshotted transitions.
+  Fleet coordination deliberately uses one shared durable authority directory: multiple controllers
+  are safe only when they share that authority; this implementation does not claim distributed
+  consensus across disconnected controller homes.
+
+## 18. Post-review Validation Evidence (append-only)
+- RTC-5 / TC-6 | stack: rust+python | command: cargo test -q -p ouro; python3 tests/test_probe.py |
+  result: pass | note: 140 Rust tests include every unhealthy readiness mode; probe shape and two-tip
+  sampling pass, and readiness is consumed by live and recovery verification rather than left as a
+  standalone model.
+- RTC-5 / TC-8 | stack: rust+python | command: cargo test -q -p ouro; python3
+  tests/test_s0019_pipeline.py | result: pass | note: signed permit tampering, expiry, quorum,
+  BP-last, target mismatch, equal/stale fencing replay and missing-permit writes all refuse.
+- RTC-5 / TC-9 | stack: other | command: bash fixtures/e2e/s0019-bed/run.sh | result: pass | note:
+  real container restart consumes a permit and refuses replay; KES rotate verifies readiness; an
+  explicit signed v1→v2 transition recreates the container and advances attestation while an
+  unallowlisted target is refused.
+- p9-3 | stack: rust+python | command: cargo build -q -p ouro; python3
+  tests/test_s0019_dispatch.py; git diff --check | result: pass | note: production binary builds,
+  confined dispatch remains green, and the patch has no whitespace errors.

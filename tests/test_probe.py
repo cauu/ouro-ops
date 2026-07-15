@@ -31,14 +31,16 @@ def main():
         '       "{{.HostConfig.RestartPolicy.Name}}") echo "unless-stopped";;\n'
         '     esac;;\n'
         '  "exec cid-xyz") shift 2; # sh -c ...\n'
-        '     if echo "$*" | grep -q kes.skey; then echo true;\n'
+        '     if echo "$*" | grep -q "cardano-cli query tip"; then echo "{\\"block\\":10,\\"slot\\":10}";\n'
+        '     elif echo "$*" | grep -q netstat; then echo 2;\n'
+        '     elif echo "$*" | grep -q kes.skey; then echo true;\n'
         '     elif echo "$*" | grep -q node.cert; then echo "opcerthash  /x";\n'
         '     else echo "deadbeef  /x"; fi;;\n'
         'esac\n'
     )
     (binp / "docker").chmod(0o755)
 
-    env = dict(os.environ, PATH=f"{binp}:{os.environ['PATH']}")
+    env = dict(os.environ, PATH=f"{binp}:{os.environ['PATH']}", OURO_READINESS_SAMPLE_DELAY="0")
     r = subprocess.run(
         ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
         env=env, text=True, capture_output=True,
@@ -60,6 +62,10 @@ def main():
               "entrypoint", "args", "mount_source_ids", "topology_hash", "config_hash",
               "kes_opcert_id", "has_forging_keys", "host_key_sha256", "genesis_hash", "network"]:
         assert k in live, f"observation missing {k}"
+    readiness = obs["readiness"]
+    for k in ["node_running", "socket_answers", "tip_block", "tip_block_next",
+              "kes_opcert_valid", "credential_loaded", "established_peers"]:
+        assert k in readiness, f"readiness missing {k}"
 
     print("probe observation JSON passed")
 

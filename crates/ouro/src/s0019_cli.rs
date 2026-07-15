@@ -57,6 +57,80 @@ pub fn run_inbox(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Mint one short-lived, signed disruptive-step permit under the pool-wide authority. Controllers
+/// MUST share the same durable OURO_HOME authority; its kernel lock serializes acquisitions.
+pub fn run_fleet(args: &[String]) -> Result<()> {
+    if args.first().map(String::as_str) != Some("permit")
+        || args.get(1).map(String::as_str) != Some("create")
+    {
+        return Err(OuroError::InvalidArgs(
+            "expected: ouro-ops fleet permit create --pool-id <id> --node <id> --op <id> \
+             --role <bp|relay> --online-relays <n> --min-online-relays <n> \
+             --relays-remaining <n> --holder <id> [--ttl 2m]"
+                .into(),
+        ));
+    }
+    let args = &args[2..];
+    let pool_id = flag(args, "--pool-id")?;
+    let node = flag(args, "--node")?;
+    let operation = flag(args, "--op")?;
+    let role = flag(args, "--role")?;
+    let holder = flag(args, "--holder")?;
+    crate::intent::validate_machine_id(pool_id)?;
+    crate::intent::validate_machine_id(node)?;
+    crate::intent::validate_machine_id(holder)?;
+    parity::require_registered_write(operation)?;
+    if !matches!(role, "bp" | "relay") {
+        return Err(OuroError::Validation("--role must be bp|relay".into()));
+    }
+    let parse_u32 = |name: &str| -> Result<u32> {
+        flag(args, name)?.parse().map_err(|_| {
+            OuroError::Validation(format!("{name} must be an unsigned integer"))
+        })
+    };
+    let online_relays = parse_u32("--online-relays")?;
+    let min_online_relays = parse_u32("--min-online-relays")?;
+    let relays_remaining = parse_u32("--relays-remaining")?;
+    crate::fleet::require_quorum(online_relays, min_online_relays, role == "relay")?;
+    crate::fleet::require_bp_last(role == "bp", relays_remaining)?;
+    let ttl = crate::confirm::parse_ttl(optional(args, "--ttl").unwrap_or("2m"))?;
+    let ttl_seconds = u64::try_from(ttl.num_seconds())
+        .map_err(|_| OuroError::Validation("fleet permit ttl must be positive".into()))?;
+    if !(30..=300).contains(&ttl_seconds) {
+        return Err(OuroError::Validation("fleet permit ttl must be 30s..5m".into()));
+    }
+    let now = crate::s0019_confirmation::current_epoch()?;
+    let paths = ConfigPaths::discover();
+    let authority = crate::fleet::PoolAuthority::at(&paths.home.join("fleet-authority"), pool_id);
+    let lease = authority.acquire(pool_id, holder, now, ttl_seconds)?;
+    let secret = crate::confirm::load_or_create_secret(&paths.tool_run_secret)?;
+    let permit = crate::fleet::StepPermit {
+        pool_id: pool_id.into(),
+        node_id: node.into(),
+        operation_id: operation.into(),
+        role: role.into(),
+        fencing_token: lease.fencing_token,
+        expiry_epoch: lease.expiry_epoch,
+        online_relays,
+        min_online_relays,
+        relays_remaining,
+        permit_id: uuid::Uuid::new_v4().simple().to_string(),
+        signature: String::new(),
+    }
+    .sign(secret.as_bytes())?;
+    let encoded = serde_json::to_string(&permit)
+        .map_err(|e| OuroError::Validation(format!("fleet permit serialize: {e}")))?;
+    output::print_json(&ToolOutput::ok("ouro.fleet.permit.create", true).with_data(json!({
+        "fleet_permit": encoded,
+        "pool_id": pool_id,
+        "node": node,
+        "operation": operation,
+        "fencing_token": permit.fencing_token,
+        "expires_at_epoch": permit.expiry_epoch,
+    })))?;
+    Ok(())
+}
+
 /// p5-5 — append a closed-field audit event (§2.13). Hashes/ids only, never raw config/secret data.
 fn audit_emit(paths: &ConfigPaths, event: &str, node: &str, extra: serde_json::Value) {
     let mut ev = serde_json::Map::new();
@@ -99,10 +173,24 @@ fn tx_dir(paths: &ConfigPaths) -> PathBuf {
 struct Observation {
     supervisor: SupervisorObservation,
     live: ObsLive,
+    /// Role-specific post-write readiness evidence gathered target-side. Required for every real
+    /// write verification; optional only so old observation fixtures fail at verify, not parse.
+    #[serde(default)]
+    readiness: Option<ObsReadiness>,
     /// The upgrade recreate spec (§2.10), target-gathered from `docker inspect`. `None` (or an
     /// unmodeled shape) means the executor refuses to recreate rather than guess.
     #[serde(default)]
     recreate: Option<crate::executor::RecreateSpec>,
+}
+#[derive(serde::Deserialize, Clone)]
+struct ObsReadiness {
+    node_running: bool,
+    socket_answers: bool,
+    tip_block: i64,
+    tip_block_next: i64,
+    kes_opcert_valid: bool,
+    credential_loaded: bool,
+    established_peers: u32,
 }
 #[derive(serde::Deserialize, Clone)]
 struct ObsLive {
@@ -137,6 +225,38 @@ impl ObsLive {
             has_forging_keys: self.has_forging_keys,
         }
     }
+}
+
+fn require_readiness(
+    att: &AdoptionAttestation,
+    observation: &Observation,
+    allow_rotated_container: bool,
+) -> Result<()> {
+    let evidence = observation.readiness.as_ref().ok_or_else(|| {
+        OuroError::Validation(
+            "target probe did not provide readiness evidence — refusing to verify write (§2.6a)"
+                .into(),
+        )
+    })?;
+    crate::readiness::Readiness {
+        role: att.immutable.role,
+        node_running: evidence.node_running,
+        container_id_matches: if allow_rotated_container {
+            !observation.live.container_id.is_empty()
+                && observation.live.container_id != att.state.container_id
+        } else {
+            observation.live.container_id == att.state.container_id
+        },
+        socket_answers: evidence.socket_answers,
+        network_ok: observation.live.network == att.immutable.network,
+        genesis_ok: observation.live.genesis_hash == att.immutable.genesis_hash,
+        tip_block: evidence.tip_block,
+        tip_block_next: evidence.tip_block_next,
+        kes_opcert_valid: evidence.kes_opcert_valid,
+        credential_loaded: evidence.credential_loaded,
+        established_peers: evidence.established_peers,
+    }
+    .evaluate()
 }
 
 fn read_observation(args: &[String]) -> Result<Observation> {
@@ -362,13 +482,17 @@ pub fn run_op(args: &[String]) -> Result<()> {
 
     // Build the intent from --param k=v flags (agent supplies PARAMETERS, never commands).
     let payload = collect_params(args);
+    let fleet_permit_raw = optional(args, "--fleet-permit");
     let intent = Intent {
         schema_version: 1,
         operation_id: op.clone(),
         node_id: node.clone(),
         pre_state_generation: att.state.state_generation,
         pre_state_hash: att.closed_fingerprint(),
-        expected_post_state: String::new(),
+        // The canonical confirmation hash binds the exact fleet authorization as well as payload.
+        expected_post_state: fleet_permit_raw
+            .map(|permit| crate::intent::sha256_hex(permit.as_bytes()))
+            .unwrap_or_default(),
         nonce: format!("{}-{}", node, att.state.state_generation),
         expiry_epoch: 0,
         payload,
@@ -400,6 +524,50 @@ pub fn run_op(args: &[String]) -> Result<()> {
     let guard = crate::gate::require_attested_node(
         &att, &tx_dir(&paths).join("locks"), &node, &audit_id, &probe,
     )?;
+    let fleet_sensitive = spec.touched.iter().any(|resource| {
+        matches!(*resource, "container:restart" | "container:recreate")
+    });
+    let fleet_permit = if fleet_sensitive {
+        let encoded = fleet_permit_raw.ok_or_else(|| {
+            OuroError::Validation(format!(
+                "{op} is disruptive and requires a signed --fleet-permit (§2.9)"
+            ))
+        })?;
+        let permit: crate::fleet::StepPermit = serde_json::from_str(encoded)
+            .map_err(|e| OuroError::Validation(format!("malformed fleet permit: {e}")))?;
+        let shared = std::path::Path::new(crate::onboard::CONFIRM_SECRET_PATH);
+        let secret = if local && shared.exists() {
+            std::fs::read_to_string(shared).map_err(|e| {
+                OuroError::Validation(format!("cannot read shared fleet secret: {e}"))
+            })?
+        } else {
+            crate::confirm::load_or_create_secret(&paths.tool_run_secret)?
+        };
+        permit.verify(
+            &node,
+            &op,
+            match att.immutable.role { Role::Bp => "bp", Role::Relay => "relay" },
+            secret.trim().as_bytes(),
+            crate::s0019_confirmation::current_epoch()?,
+        )?;
+        Some(permit)
+    } else {
+        None
+    };
+    // Upgrade safety is signed metadata, not an inference from "both images are allowlisted".
+    let upgrade_transition = if op == "upgrade/step" {
+        let target = intent.payload.get("image").and_then(|value| value.as_str())
+            .ok_or_else(|| OuroError::Validation("upgrade/step lost target image".into()))?;
+        let observation = read_observation(args)?;
+        let allowlist = convention::Allowlist::embedded()?;
+        let transition = allowlist
+            .transition_for(&att.immutable.image_config_digest, target)?
+            .clone();
+        crate::upgrade::validate_transition(&transition, &allowlist, &observation.live.platform)?;
+        Some(transition)
+    } else {
+        None
+    };
 
     // Confirm gate for dangerous writes (§2.5): the token must be bound to THIS canonical intent.
     let verified_confirmation = if spec.mutability == Mutability::Dangerous {
@@ -450,6 +618,10 @@ pub fn run_op(args: &[String]) -> Result<()> {
         output::print_json(&ToolOutput::ok("ouro.op.plan", false).with_data(json!({
             "op": op, "node": node, "mutability": format!("{:?}", spec.mutability),
             "intent_hash": canon, "touched": spec.touched, "executor_plan": steps,
+            "upgrade_transition": upgrade_transition.as_ref(),
+            "upgrade_failure_outcome": upgrade_transition.as_ref()
+                .map(crate::upgrade::failure_outcome)
+                .map(|outcome| format!("{outcome:?}")),
             "note": "plan mode — all gates passed; no mutation (real target execution is target-side)",
         })))?;
         return Ok(());
@@ -472,8 +644,9 @@ pub fn run_op(args: &[String]) -> Result<()> {
             .and_then(|v| v.as_str())
             .ok_or_else(|| OuroError::Validation("upgrade/step needs image (an allowlisted digest)".into()))?;
         let obs = read_observation(args)?;
-        // The target image must resolve to an allowlisted contract for this platform (§2.1).
-        convention::Allowlist::embedded()?.contract_for(to_digest, &obs.live.platform)?;
+        let transition = upgrade_transition.as_ref().ok_or_else(|| {
+            OuroError::Validation("upgrade transition was not validated before planning".into())
+        })?;
         let spec = obs.recreate.ok_or_else(|| {
             OuroError::Validation(
                 "upgrade/step: the probe could not model the container run-spec (non-standard \
@@ -482,8 +655,12 @@ pub fn run_op(args: &[String]) -> Result<()> {
             )
         })?;
         let commit = crate::executor::recreate_argv(&spec, &att.state.container_id, to_digest)?;
-        let rb = crate::executor::upgrade_rollback_plan(&att, &spec)?;
-        (commit, Some(rb))
+        let rb = if crate::upgrade::rollback_possible(transition) {
+            Some(crate::executor::upgrade_rollback_plan(&att, &spec)?)
+        } else {
+            None
+        };
+        (commit, rb)
     } else {
         crate::executor::recoverable_plans(
             &intent, &att, &inbox, &tx_dir(&paths).join("rollback").join(&canon),
@@ -524,6 +701,7 @@ pub fn run_op(args: &[String]) -> Result<()> {
     };
     let verify = || {
         let live = read_observation(args)?;
+        require_readiness(&att, &live, is_upgrade)?;
         if is_upgrade {
             if live.live.image_config_digest != to_digest_owned {
                 return Err(OuroError::Validation(
@@ -572,6 +750,10 @@ pub fn run_op(args: &[String]) -> Result<()> {
     };
     // Consume only after every fail-closed preflight/plan has succeeded, but before the transaction
     // can enter Committing. A crash or failed mutation then burns the approval permanently.
+    if let Some(permit) = &fleet_permit {
+        crate::fleet::TargetFence::at(&tx_dir(&paths).join("fleet-fence"), &node)
+            .accept(permit, crate::s0019_confirmation::current_epoch()?)?;
+    }
     if let Some(confirmation) = &verified_confirmation {
         crate::s0019_confirmation::consume(
             &tx_dir(&paths).join("confirm-used").join(format!("{node}.log")), confirmation,
@@ -724,6 +906,11 @@ fn verify_recovery_record(
         ));
     }
     let observation = read_observation(args)?;
+    require_readiness(
+        &durable.pre_attestation,
+        &observation,
+        record.operation_id == "upgrade/step",
+    )?;
     match record.operation_id.as_str() {
         "upgrade/step" => {
             let expected = durable.intent.payload.get("image").and_then(|value| value.as_str())

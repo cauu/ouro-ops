@@ -26,5 +26,6 @@
       ]
     }
   ],
-  "denylist": []
+  "denylist": [],
+  "transitions": []
 }

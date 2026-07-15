@@ -20,10 +20,11 @@ pub struct TransitionMeta {
     pub to_convention_version: u32,
     pub from_image_config_digest: String,
     pub to_image_config_digest: String,
-    /// The new node can read the old chain DB unchanged.
-    pub db_format_compatible: bool,
-    /// A tested backward-compatible downgrade image exists (old node can read data the new one wrote).
-    pub downgrade_supported: bool,
+    /// The new node can read the old chain DB unchanged (N data → N+1 runtime).
+    pub db_forward_compatible: bool,
+    /// The old node can read any DB writes made by N+1 (N+1 data → N runtime). This, not forward
+    /// compatibility, is what makes a runtime downgrade safe.
+    pub db_backward_compatible: bool,
     /// A crash-consistent volume snapshot was taken before the upgrade (with capacity checked).
     pub snapshot_taken: bool,
 }
@@ -47,8 +48,7 @@ pub fn plan_rollout(relays: &[&str], bp: &str) -> Vec<RolloutStep> {
 
 /// Whether a true rollback (restore runtime + attestation to N) is possible for this transition.
 pub fn rollback_possible(meta: &TransitionMeta) -> bool {
-    // The new node preserved DB compat, OR we can downgrade, OR we can restore a snapshot.
-    meta.db_format_compatible || meta.downgrade_supported || meta.snapshot_taken
+    meta.db_backward_compatible || meta.snapshot_taken
 }
 
 /// The honest outcome the spec/operator must be told when an upgrade step fails.
@@ -82,7 +82,20 @@ pub fn validate_transition(
             meta.from_convention_version, meta.to_convention_version
         )));
     }
-    allowlist.contract_for(&meta.to_image_config_digest, platform)?;
+    let from = allowlist.contract_for(&meta.from_image_config_digest, platform)?;
+    let to = allowlist.contract_for(&meta.to_image_config_digest, platform)?;
+    if from.convention_version != meta.from_convention_version
+        || to.convention_version != meta.to_convention_version
+    {
+        return Err(OuroError::Validation(
+            "upgrade transition versions do not match the signed layout contracts".into(),
+        ));
+    }
+    if !meta.db_forward_compatible {
+        return Err(OuroError::Validation(
+            "N+1 cannot read the existing chain DB; an in-place step is unsupported".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -96,8 +109,8 @@ mod tests {
             to_convention_version: 2,
             from_image_config_digest: "sha256:old".into(),
             to_image_config_digest: "sha256:new".into(),
-            db_format_compatible: true,
-            downgrade_supported: false,
+            db_forward_compatible: true,
+            db_backward_compatible: false,
             snapshot_taken: false,
         }
     }
@@ -113,13 +126,13 @@ mod tests {
 
     #[test]
     fn rollback_only_when_recoverable_else_honest_resync() {
-        // DB-compatible → rollback possible.
-        assert_eq!(failure_outcome(&meta()), FailureOutcome::RollbackToN);
-        // Migrated DB, no downgrade, no snapshot → honest re-sync, no false rollback promise.
+        // Forward-compatible alone does NOT prove that the old runtime can read N+1 writes.
+        assert_eq!(failure_outcome(&meta()), FailureOutcome::ReSyncRequired);
         let mut m = meta();
-        m.db_format_compatible = false;
-        assert_eq!(failure_outcome(&m), FailureOutcome::ReSyncRequired);
+        m.db_backward_compatible = true;
+        assert_eq!(failure_outcome(&m), FailureOutcome::RollbackToN);
         // A snapshot restores the rollback path.
+        m.db_backward_compatible = false;
         m.snapshot_taken = true;
         assert_eq!(failure_outcome(&m), FailureOutcome::RollbackToN);
     }

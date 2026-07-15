@@ -31,6 +31,10 @@ pub struct Allowlist {
     /// them. A denylist entry ALWAYS wins over an allow.
     #[serde(default)]
     pub denylist: Vec<String>,
+    /// Signed, explicit N→N+1 runtime transitions. Merely allowlisting two images does not prove DB
+    /// compatibility in either direction.
+    #[serde(default)]
+    pub transitions: Vec<crate::upgrade::TransitionMeta>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -116,6 +120,25 @@ impl Allowlist {
                 OuroError::Validation(format!(
                     "image {image_config_digest} ({platform}) is not on the allowlist — this node \
                      does not conform to a supported convention (S0019 §2.1); refused"
+                ))
+            })
+    }
+
+    pub fn transition_for(
+        &self,
+        from_image_config_digest: &str,
+        to_image_config_digest: &str,
+    ) -> Result<&crate::upgrade::TransitionMeta> {
+        self.transitions
+            .iter()
+            .find(|transition| {
+                transition.from_image_config_digest == from_image_config_digest
+                    && transition.to_image_config_digest == to_image_config_digest
+            })
+            .ok_or_else(|| {
+                OuroError::Validation(format!(
+                    "no signed N→N+1 transition metadata for {from_image_config_digest} → \
+                     {to_image_config_digest}; allowlisting images alone is insufficient"
                 ))
             })
     }

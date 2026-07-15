@@ -128,9 +128,11 @@ pub fn registry() -> &'static [OperationSpec] {
         },
         OperationSpec {
             operation_id: "config/render",
-            mutability: Mutability::Reversible,
+            // The current executor applies already-rendered on-disk config by restarting the node;
+            // availability impact makes this dangerous until an actual render-only path exists.
+            mutability: Mutability::Dangerous,
             params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
-            touched: &["file:config"],
+            touched: &["file:config", "container:restart"],
             may_expose_secret: false,
         },
         OperationSpec {
@@ -210,9 +212,13 @@ impl Intent {
     /// single-use confirm-token, so the confirmed intent == the validated == the executed one.
     pub fn canonical_hash(&self) -> String {
         let canon = canonical_json(&serde_json::to_value(self).unwrap_or(serde_json::Value::Null));
-        let digest = Sha256::digest(canon.as_bytes());
-        digest.iter().map(|byte| format!("{byte:02x}")).collect()
+        sha256_hex(canon.as_bytes())
     }
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// Validate a node identifier before it is ever used in an attestation, lock, journal, or seal
@@ -387,7 +393,7 @@ mod tests {
     fn dangerous_ops_flagged_confirm_required() {
         assert_eq!(lookup("kes-rotation/rotate").unwrap().mutability, Mutability::Dangerous);
         assert_eq!(lookup("runtime/restart").unwrap().mutability, Mutability::Dangerous);
-        assert_eq!(lookup("config/render").unwrap().mutability, Mutability::Reversible);
+        assert_eq!(lookup("config/render").unwrap().mutability, Mutability::Dangerous);
     }
 
     #[test]

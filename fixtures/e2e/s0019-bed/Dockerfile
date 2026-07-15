@@ -5,7 +5,7 @@ FROM busybox:1.36
 RUN mkdir -p /ipc /data/db /opt/cardano/config/mainnet /opt/cardano/config/keys /usr/local/bin
 # Fake cardano-cli (answers `query tip` etc.) and cardano-node (keeps the process alive; its argv
 # contains "cardano-node" so the probe finds it).
-RUN printf '#!/bin/sh\necho "{\\"block\\":1,\\"era\\":\\"Conway\\"}"\n' > /usr/local/bin/cardano-cli \
+RUN printf '#!/bin/sh\nn=$(cat /tmp/ouro-tip 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > /tmp/ouro-tip; echo "{\\"block\\":$n,\\"slot\\":$n,\\"era\\":\\"Conway\\"}"\n' > /usr/local/bin/cardano-cli \
  && printf '#!/bin/sh\nwhile true; do sleep 1; done\n' > /usr/local/bin/cardano-node \
  && chmod +x /usr/local/bin/cardano-cli /usr/local/bin/cardano-node
 # Convention files (non-secret) + a BP key set so the role check (bp requires opcert) passes.
@@ -13,5 +13,6 @@ RUN echo '{"Producers":[]}' > /opt/cardano/config/mainnet/topology.json \
  && echo '{"NodeVersion":1}'  > /opt/cardano/config/mainnet/config.json \
  && echo '{"genesis":true}'   > /opt/cardano/config/mainnet/shelley-genesis.json \
  && echo 'opcert'             > /opt/cardano/config/keys/node.cert \
- && echo 'kes'                > /opt/cardano/config/keys/kes.skey
+ && echo 'kes'                > /opt/cardano/config/keys/kes.skey \
+ && echo 'vrf'                > /opt/cardano/config/keys/vrf.skey
 CMD ["cardano-node", "run", "--socket-path", "/ipc/node.socket", "--database-path", "/data/db"]

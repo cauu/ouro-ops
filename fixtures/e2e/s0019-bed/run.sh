@@ -13,6 +13,7 @@ NAME="ouro-s0019-bed-$$"
 WORK="$(mktemp -d)"
 export OURO_HOME="$WORK/home"
 export OURO_ATTESTATION="$WORK/node-attestation.json"
+export OURO_READINESS_SAMPLE_DELAY=0
 mkdir -p "$OURO_HOME"
 
 pass() { echo "  PASS  $*"; }
@@ -59,24 +60,34 @@ pass "adopt wrote the attestation; container untouched"
 [ "$(docker inspect --format '{{.State.Running}}' "$NAME")" = "true" ] || fail "adopt disrupted the node"
 pass "adopt was non-disruptive (node still running)"
 
+fleet_permit() {
+  "$BIN" fleet permit create --pool-id bedpool --node bp1 --op "$1" --role bp \
+    --online-relays 1 --min-online-relays 1 --relays-remaining 0 --holder bedctl \
+    | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["fleet_permit"])'
+}
+RPERMIT="$(fleet_permit runtime/restart)" || fail "restart fleet permit"
+
 echo "== dangerous write without confirm → refused =="
-OUT="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 2>&1)"
+OUT="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 --fleet-permit "$RPERMIT" 2>&1)"
 echo "$OUT" | grep -q "dangerous write" || fail "restart without confirm was not refused; got: $OUT"
 pass "restart refused without an operator confirm-token"
 
 echo "== mint the intent-bound confirm-token, then run the real restart =="
-IH="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 2>&1 | grep -o 'intent-hash [0-9a-f]*' | awk '{print $2}')"
+IH="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 --fleet-permit "$RPERMIT" 2>&1 | grep -o 'intent-hash [0-9a-f]*' | awk '{print $2}')"
 [ -n "$IH" ] || fail "no intent hash"
 TOK="$("$BIN" confirm create --op runtime/restart --node bp1 --intent-hash "$IH" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["confirm_token"])')"
 START0="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
-"$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 --confirm-token "$TOK" >/dev/null || fail "confirmed restart failed"
+"$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 --fleet-permit "$RPERMIT" --confirm-token "$TOK" >/dev/null || fail "confirmed restart failed"
 START1="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
 [ "$START0" != "$START1" ] || fail "container did not actually restart"
 pass "REAL docker restart executed (StartedAt advanced) through the sealed executor"
+REPLAY="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 --fleet-permit "$RPERMIT" --confirm-token "$TOK" 2>&1)"
+echo "$REPLAY" | grep -qiE 'stale|replay|already used' || fail "fleet/confirm replay was not refused: $REPLAY"
+pass "target-side fencing refused replay of the same disruptive-step permit"
 
 echo "== live drift is refused (swap the container id in the observation) =="
 python3 -c "import json;o=json.load(open('$WORK/obs.json'));o['live']['container_id']='deadbeef';json.dump(o,open('$WORK/drift.json','w'))"
-DOUT="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 --observation "$WORK/drift.json" --confirm-token "$TOK" 2>&1)"
+DOUT="$("$BIN" op run --op runtime/restart --local --node bp1 --param machine=bp1 --observation "$WORK/drift.json" --fleet-permit "$RPERMIT" --confirm-token "$TOK" 2>&1)"
 echo "$DOUT" | grep -q "drift" || fail "drift not refused; got: $DOUT"
 pass "live drift refused before mutation"
 
@@ -85,7 +96,8 @@ pass "live drift refused before mutation"
 # keys mount AND restart. Proves build_plan's multi-step sequence runs for real, not just restart.
 echo "== kes-rotation without a staged opcert → refused (no silent restart) =="
 RREF="kes-not-staged@sha256:$(printf 'x%.0s' {1..64})"
-NOUT="$("$BIN" op run --op kes-rotation/rotate --local --node bp1 --param machine=bp1 --param opcert="$RREF" --confirm-token "$TOK" 2>&1)"
+KPERMIT="$(fleet_permit kes-rotation/rotate)" || fail "KES fleet permit"
+NOUT="$("$BIN" op run --op kes-rotation/rotate --local --node bp1 --param machine=bp1 --param opcert="$RREF" --fleet-permit "$KPERMIT" --confirm-token "$TOK" 2>&1)"
 echo "$NOUT" | grep -qiE 'confirm|dangerous|artifact|refus' || fail "kes with unstaged opcert not refused; got: $NOUT"
 pass "kes-rotation refused a non-staged / unconfirmed opcert (no silent restart)"
 
@@ -93,11 +105,11 @@ echo "== stage a real opcert artifact, then run the REAL kes-rotation sequence =
 printf '{"type":"NodeOperationalCertificate","description":"","cborHex":"82008278"}' > "$WORK/opcert.json"
 OREF="$("$BIN" inbox stage --type opcert --file "$WORK/opcert.json" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["artifact_ref"])')"
 [ -n "$OREF" ] || fail "opcert not staged"
-KIH="$("$BIN" op run --op kes-rotation/rotate --local --node bp1 --param machine=bp1 --param opcert="$OREF" 2>&1 | grep -o 'intent-hash [0-9a-f]*' | awk '{print $2}')"
+KIH="$("$BIN" op run --op kes-rotation/rotate --local --node bp1 --param machine=bp1 --param opcert="$OREF" --fleet-permit "$KPERMIT" 2>&1 | grep -o 'intent-hash [0-9a-f]*' | awk '{print $2}')"
 [ -n "$KIH" ] || fail "no kes intent hash"
 KTOK="$("$BIN" confirm create --op kes-rotation/rotate --node bp1 --intent-hash "$KIH" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["confirm_token"])')"
 KSTART0="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
-"$BIN" op run --op kes-rotation/rotate --local --node bp1 --param machine=bp1 --param opcert="$OREF" --confirm-token "$KTOK" >/dev/null || fail "confirmed kes-rotation failed"
+"$BIN" op run --op kes-rotation/rotate --local --node bp1 --param machine=bp1 --param opcert="$OREF" --fleet-permit "$KPERMIT" --confirm-token "$KTOK" >/dev/null || fail "confirmed kes-rotation failed"
 KSTART1="$(docker inspect --format '{{.State.StartedAt}}' "$NAME")"
 INSTALLED="$(docker exec "$NAME" cat /opt/cardano/config/keys/node.cert 2>/dev/null)"
 echo "$INSTALLED" | grep -q 'NodeOperationalCertificate' || fail "opcert was NOT docker-cp'd into the keys mount; got: $INSTALLED"
@@ -118,21 +130,34 @@ V2CFG="$(docker inspect --format '{{.Id}}' "$IMG2")"
 [ -n "$V2CFG" ] && [ "$V2CFG" != "$IMG_CFG" ] || fail "v2 digest not distinct from v1"
 python3 - "$ROOT/data/allowlist.json" "$IMG_CFG" "$V2CFG" > "$WORK/allowlist.json" <<'PY'
 import json, sys
-a = json.load(open(sys.argv[1]))
-v1, v2 = sys.argv[2], sys.argv[3]
-base = a["contracts"][0]["allowed"][0]
+a = json.load(open(sys.argv[1])); v1, v2 = sys.argv[2], sys.argv[3]
+c1 = a["contracts"][0]
+base = c1["allowed"][0]
 base["image_config_digest"] = v1; base["oci_index_digest"] = v1
+c1["allowed"] = [base]
+c2 = json.loads(json.dumps(c1))
+c2["convention_version"] = c1["convention_version"] + 1
+c2["contract_id"] = c1["contract_id"] + "-v2"
 nxt = json.loads(json.dumps(base)); nxt["image_config_digest"] = v2; nxt["oci_index_digest"] = v2
-a["contracts"][0]["allowed"] = [base, nxt]
+c2["allowed"] = [nxt]
+a["contracts"] = [c1, c2]
+a["transitions"] = [{
+  "from_convention_version": c1["convention_version"],
+  "to_convention_version": c2["convention_version"],
+  "from_image_config_digest": v1, "to_image_config_digest": v2,
+  "db_forward_compatible": True, "db_backward_compatible": True,
+  "snapshot_taken": False,
+}]
 json.dump(a, sys.stdout)
 PY
 pass "v2 image built with a distinct config digest; allowlist pins both baselines"
 
 echo "== upgrade v1 → v2: recreate onto the new digest, preserve the db bind, rotate attestation =="
-UIH="$("$BIN" op run --op upgrade/step --local --node bp1 --param machine=bp1 --param image="$V2CFG" 2>&1 | grep -o 'intent-hash [0-9a-f]*' | awk '{print $2}')"
+UPERMIT="$(fleet_permit upgrade/step)" || fail "upgrade fleet permit"
+UIH="$("$BIN" op run --op upgrade/step --local --node bp1 --param machine=bp1 --param image="$V2CFG" --fleet-permit "$UPERMIT" 2>&1 | grep -o 'intent-hash [0-9a-f]*' | awk '{print $2}')"
 [ -n "$UIH" ] || fail "no upgrade intent hash"
 UTOK="$("$BIN" confirm create --op upgrade/step --node bp1 --intent-hash "$UIH" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["confirm_token"])')"
-"$BIN" op run --op upgrade/step --local --node bp1 --param machine=bp1 --param image="$V2CFG" --confirm-token "$UTOK" >/dev/null || fail "confirmed upgrade failed"
+"$BIN" op run --op upgrade/step --local --node bp1 --param machine=bp1 --param image="$V2CFG" --fleet-permit "$UPERMIT" --confirm-token "$UTOK" >/dev/null || fail "confirmed upgrade failed"
 NEWIMG="$(docker inspect --format '{{.Image}}' "$NAME" 2>/dev/null)"
 [ "$NEWIMG" = "$V2CFG" ] || fail "container not recreated onto v2 (got: $NEWIMG)"
 docker inspect --format '{{range .Mounts}}{{.Destination}} {{end}}' "$NAME" | grep -q '/data/db' || fail "db bind mount not preserved across the upgrade"
@@ -141,7 +166,7 @@ pass "REAL upgrade: container recreated onto v2, /data/db bind preserved, attest
 
 echo "== a non-allowlisted target image is refused =="
 BADIMG="sha256:$(printf 'f%.0s' {1..64})"
-BOUT="$("$BIN" op run --op upgrade/step --local --node bp1 --param machine=bp1 --param image="$BADIMG" --confirm-token "$UTOK" 2>&1)"
+BOUT="$("$BIN" op run --op upgrade/step --local --node bp1 --param machine=bp1 --param image="$BADIMG" --fleet-permit "$UPERMIT" --confirm-token "$UTOK" 2>&1)"
 echo "$BOUT" | grep -qiE 'allowlist|not on|refus|denied' || fail "non-allowlisted upgrade target not refused; got: $BOUT"
 pass "upgrade to a non-allowlisted image digest refused"
 

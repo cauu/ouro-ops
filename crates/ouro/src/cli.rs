@@ -60,6 +60,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "adopt" => crate::s0019_cli::run_adopt(&args[2..])?,
         "op" => crate::s0019_cli::run_op(&args[2..])?,
         "inbox" => crate::s0019_cli::run_inbox(&args[2..])?,
+        "fleet" => crate::s0019_cli::run_fleet(&args[2..])?,
         "kes" => run_kes(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
         "manifest" => run_manifest(&args[2..])?,

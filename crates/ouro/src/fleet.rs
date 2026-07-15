@@ -11,6 +11,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
+
 use crate::{OuroError, Result};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -27,23 +30,53 @@ pub struct Lease {
 /// current one and past any expired holder.
 pub struct PoolAuthority {
     path: PathBuf,
+    pool_id: String,
 }
 
 impl PoolAuthority {
     pub fn at(dir: &Path, pool_id: &str) -> PoolAuthority {
-        PoolAuthority { path: dir.join(format!("{pool_id}.lease.json")) }
+        PoolAuthority {
+            path: dir.join(format!("{pool_id}.lease.json")),
+            pool_id: pool_id.to_string(),
+        }
     }
 
-    fn read(&self) -> Option<Lease> {
-        serde_json::from_str(&std::fs::read_to_string(&self.path).ok()?).ok()
+    fn read(&self) -> Result<Option<Lease>> {
+        let text = match std::fs::read_to_string(&self.path) {
+            Ok(value) => value,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        serde_json::from_str(&text)
+            .map(Some)
+            .map_err(|e| OuroError::Validation(format!("malformed fleet lease: {e}")))
     }
 
     fn write(&self, lease: &Lease) -> Result<()> {
         if let Some(p) = self.path.parent() {
-            std::fs::create_dir_all(p).ok();
+            std::fs::create_dir_all(p)?;
         }
-        std::fs::write(&self.path, serde_json::to_string(lease).unwrap())
-            .map_err(|e| OuroError::Validation(format!("lease write: {e}")))
+        let tmp = self.path.with_extension("json.tmp");
+        let bytes = serde_json::to_vec(lease)
+            .map_err(|e| OuroError::Validation(format!("lease serialize: {e}")))?;
+        {
+            use std::io::Write;
+            let mut options = std::fs::OpenOptions::new();
+            options.create(true).truncate(true).write(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options.open(&tmp)?;
+            file.write_all(&bytes)?;
+            file.sync_all()?;
+        }
+        std::fs::rename(&tmp, &self.path)?;
+        if let Some(parent) = self.path.parent() {
+            std::fs::File::open(parent)?.sync_all()?;
+        }
+        Ok(())
     }
 
     /// Acquire the lease. Fails if a non-expired lease is held by ANOTHER holder. On success the
@@ -55,7 +88,14 @@ impl PoolAuthority {
         now_epoch: u64,
         ttl_secs: u64,
     ) -> Result<Lease> {
-        let prev = self.read();
+        if pool_id != self.pool_id {
+            return Err(OuroError::Validation("fleet authority pool id mismatch".into()));
+        }
+        let parent = self.path.parent().unwrap_or_else(|| Path::new("."));
+        let _lock = crate::gate::NodeLock::acquire(
+            &parent.join("locks"), pool_id, holder,
+        )?;
+        let prev = self.read()?;
         if let Some(l) = &prev {
             let live = l.expiry_epoch > now_epoch;
             if live && l.holder != holder {
@@ -82,17 +122,39 @@ impl PoolAuthority {
 /// refused — this is what actually fences a superseded controller at the point of action.
 pub struct TargetFence {
     path: PathBuf,
+    node_id: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct FenceState {
+    pool_id: String,
+    node_id: String,
+    highest_fencing_token: u64,
 }
 
 impl TargetFence {
     pub fn at(dir: &Path, node_id: &str) -> TargetFence {
-        TargetFence { path: dir.join(format!("{node_id}.fence")) }
+        TargetFence {
+            path: dir.join(format!("{node_id}.fence")),
+            node_id: node_id.to_string(),
+        }
     }
-    fn highest(&self) -> u64 {
+    fn state(&self) -> Result<Option<FenceState>> {
         std::fs::read_to_string(&self.path)
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(0)
+            .map(|text| serde_json::from_str(&text))
+            .or_else(|error| {
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    return Ok(Ok(FenceState {
+                        pool_id: String::new(),
+                        node_id: self.node_id.clone(),
+                        highest_fencing_token: 0,
+                    }));
+                }
+                Err(error)
+            })
+            .map_err(OuroError::from)?
+            .map(Some)
+            .map_err(|e| OuroError::Validation(format!("malformed target fence: {e}")))
     }
     /// Verify + record a step permit's fencing token. Refuses a token below the highest seen; a
     /// valid, at-or-above token ratchets the fence forward.
@@ -100,19 +162,52 @@ impl TargetFence {
         if permit.expiry_epoch <= now_epoch {
             return Err(OuroError::Validation("step permit expired (§2.9)".into()));
         }
-        let high = self.highest();
-        if permit.fencing_token < high {
+        if permit.node_id != self.node_id {
+            return Err(OuroError::Validation("step permit node does not match target fence".into()));
+        }
+        let state = self.state()?.unwrap();
+        if !state.pool_id.is_empty() && state.pool_id != permit.pool_id {
             return Err(OuroError::Validation(format!(
-                "step permit fencing token {} is stale (target has honored {}) — a superseded \
-                 controller is fenced (§2.9)",
+                "target {} is already fenced to pool {}; permit for pool {} refused",
+                self.node_id, state.pool_id, permit.pool_id
+            )));
+        }
+        let high = state.highest_fencing_token;
+        if permit.fencing_token <= high {
+            return Err(OuroError::Validation(format!(
+                "step permit fencing token {} is stale/replayed (target has honored {}) — a \
+                 superseded or replaying controller is fenced (§2.9)",
                 permit.fencing_token, high
             )));
         }
         if let Some(p) = self.path.parent() {
-            std::fs::create_dir_all(p).ok();
+            std::fs::create_dir_all(p)?;
         }
-        std::fs::write(&self.path, permit.fencing_token.to_string())
-            .map_err(|e| OuroError::Validation(format!("fence write: {e}")))?;
+        let tmp = self.path.with_extension("fence.tmp");
+        {
+            use std::io::Write;
+            let mut options = std::fs::OpenOptions::new();
+            options.create(true).truncate(true).write(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options.open(&tmp)?;
+            let state = FenceState {
+                pool_id: permit.pool_id.clone(),
+                node_id: permit.node_id.clone(),
+                highest_fencing_token: permit.fencing_token,
+            };
+            let bytes = serde_json::to_vec(&state)
+                .map_err(|e| OuroError::Validation(format!("fence serialize: {e}")))?;
+            file.write_all(&bytes)?;
+            file.sync_all()?;
+        }
+        std::fs::rename(&tmp, &self.path)?;
+        if let Some(parent) = self.path.parent() {
+            std::fs::File::open(parent)?.sync_all()?;
+        }
         Ok(())
     }
 }
@@ -122,8 +217,75 @@ impl TargetFence {
 pub struct StepPermit {
     pub pool_id: String,
     pub node_id: String,
+    pub operation_id: String,
+    pub role: String,
     pub fencing_token: u64,
     pub expiry_epoch: u64,
+    pub online_relays: u32,
+    pub min_online_relays: u32,
+    pub relays_remaining: u32,
+    pub permit_id: String,
+    pub signature: String,
+}
+
+impl StepPermit {
+    fn signing_message(&self) -> String {
+        format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            self.pool_id, self.node_id, self.operation_id, self.role, self.fencing_token,
+            self.expiry_epoch, self.online_relays, self.min_online_relays,
+            self.relays_remaining, self.permit_id
+        )
+    }
+
+    pub fn sign(mut self, secret: &[u8]) -> Result<Self> {
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret)
+            .map_err(|_| OuroError::Validation("invalid fleet signing key".into()))?;
+        mac.update(self.signing_message().as_bytes());
+        self.signature = mac.finalize().into_bytes().iter().map(|b| format!("{b:02x}")).collect();
+        Ok(self)
+    }
+
+    pub fn verify(
+        &self,
+        expected_node: &str,
+        expected_operation: &str,
+        expected_role: &str,
+        secret: &[u8],
+        now_epoch: u64,
+    ) -> Result<()> {
+        if self.node_id != expected_node
+            || self.operation_id != expected_operation
+            || self.role != expected_role
+        {
+            return Err(OuroError::Validation("fleet permit target/operation/role mismatch".into()));
+        }
+        if self.expiry_epoch <= now_epoch {
+            return Err(OuroError::Validation("fleet step permit expired (§2.9)".into()));
+        }
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret)
+            .map_err(|_| OuroError::Validation("invalid fleet signing key".into()))?;
+        mac.update(self.signing_message().as_bytes());
+        let signature = decode_hex(&self.signature)?;
+        mac.verify_slice(&signature)
+            .map_err(|_| OuroError::Validation("fleet step permit signature mismatch".into()))?;
+        require_quorum(
+            self.online_relays,
+            self.min_online_relays,
+            self.role == "relay",
+        )?;
+        require_bp_last(self.role == "bp", self.relays_remaining)
+    }
+}
+
+fn decode_hex(value: &str) -> Result<Vec<u8>> {
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(OuroError::Validation("malformed fleet permit signature".into()));
+    }
+    (0..value.len()).step_by(2).map(|index| {
+        u8::from_str_radix(&value[index..index + 2], 16)
+            .map_err(|_| OuroError::Validation("malformed fleet permit signature".into()))
+    }).collect()
 }
 
 /// Quorum re-evaluation immediately before a disruptive step (§2.9): taking `about_to_stop` offline
@@ -167,6 +329,16 @@ mod tests {
         d
     }
 
+    fn permit(token: u64, expiry: u64) -> StepPermit {
+        StepPermit {
+            pool_id: "p".into(), node_id: "relay1".into(),
+            operation_id: "runtime/restart".into(), role: "relay".into(),
+            fencing_token: token, expiry_epoch: expiry,
+            online_relays: 2, min_online_relays: 1, relays_remaining: 1,
+            permit_id: format!("permit-{token}"), signature: String::new(),
+        }.sign(b"secret").unwrap()
+    }
+
     #[test]
     fn lease_is_exclusive_and_fences() {
         let d = dir("lease");
@@ -185,13 +357,20 @@ mod tests {
         let d = dir("fence");
         let fence = TargetFence::at(&d, "relay1");
         // Controller B (token 2) acts first → target honors token 2.
-        let p2 = StepPermit { pool_id: "p".into(), node_id: "relay1".into(), fencing_token: 2, expiry_epoch: 5000 };
+        let p2 = permit(2, 5000);
+        p2.verify("relay1", "runtime/restart", "relay", b"secret", 1000).unwrap();
         assert!(fence.accept(&p2, 1000).is_ok());
         // A superseded controller A (token 1) is now fenced at the point of action.
-        let p1 = StepPermit { pool_id: "p".into(), node_id: "relay1".into(), fencing_token: 1, expiry_epoch: 5000 };
+        let p1 = permit(1, 5000);
         assert!(fence.accept(&p1, 1000).is_err(), "stale token fenced");
+        assert!(fence.accept(&p2, 1000).is_err(), "equal-token replay fenced");
+        let mut wrong_pool = permit(3, 5000);
+        wrong_pool.pool_id = "other-pool".into();
+        wrong_pool.signature.clear();
+        wrong_pool = wrong_pool.sign(b"secret").unwrap();
+        assert!(fence.accept(&wrong_pool, 1000).is_err(), "target pool binding enforced");
         // An expired permit is refused.
-        let p3 = StepPermit { pool_id: "p".into(), node_id: "relay1".into(), fencing_token: 3, expiry_epoch: 100 };
+        let p3 = permit(3, 100);
         assert!(fence.accept(&p3, 1000).is_err(), "expired permit refused");
         std::fs::remove_dir_all(&d).ok();
     }
@@ -210,5 +389,19 @@ mod tests {
         assert!(require_bp_last(true, 2).is_err(), "bp refused while relays pending");
         assert!(require_bp_last(true, 0).is_ok(), "bp allowed once relays done");
         assert!(require_bp_last(false, 2).is_ok(), "relay steps unaffected");
+    }
+
+    #[test]
+    fn signed_permit_binds_policy_and_refuses_quorum_lie_after_tamper() {
+        let signed = permit(1, 5000);
+        assert!(signed.verify("relay1", "runtime/restart", "relay", b"secret", 1000).is_ok());
+        let mut tampered = signed.clone();
+        tampered.online_relays = 99;
+        assert!(tampered.verify("relay1", "runtime/restart", "relay", b"secret", 1000).is_err());
+        let mut unsafe_permit = permit(2, 5000);
+        unsafe_permit.online_relays = 1;
+        unsafe_permit.signature.clear();
+        unsafe_permit = unsafe_permit.sign(b"secret").unwrap();
+        assert!(unsafe_permit.verify("relay1", "runtime/restart", "relay", b"secret", 1000).is_err());
     }
 }

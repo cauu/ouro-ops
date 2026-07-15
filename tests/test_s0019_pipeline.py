@@ -44,6 +44,15 @@ def run(home, *args):
     return r.returncode, out
 
 
+def fleet_permit(home, operation):
+    _, out = run(home, "fleet", "permit", "create", "--pool-id", "testpool",
+                 "--node", "bp1", "--op", operation, "--role", "bp",
+                 "--online-relays", "1", "--min-online-relays", "1",
+                 "--relays-remaining", "0", "--holder", "testctl")
+    assert out["status"] == "ok", out
+    return out["data"]["fleet_permit"]
+
+
 def main():
     home = tempfile.mkdtemp()
     o = obs(home)
@@ -57,10 +66,17 @@ def main():
     _, d = run(home, "adopt", "--node", "bp1", "--role", "bp",
                "--approve-token", "op-tok", "--observation", o)
     assert d["status"] == "ok" and d["data"]["state_generation"] == 0, d
+    fp = fleet_permit(home, "runtime/restart")
+
+    # Disruptive operations fail closed without a signed pool-wide step permit.
+    _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
+               "--param", "machine=bp1", "--observation", o, "--plan")
+    assert d["status"] == "error" and "fleet-permit" in json.dumps(d), d
 
     # 2. dangerous write without a confirm-token → refuse
     _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
-               "--param", "machine=bp1", "--observation", o, "--plan")
+               "--param", "machine=bp1", "--observation", o,
+               "--fleet-permit", fp, "--plan")
     assert d["status"] == "error" and "dangerous write" in json.dumps(d), d
 
     # 3. hostile param → refuse (closed schema)
@@ -87,7 +103,8 @@ def main():
     #    running confirm create with the hash printed by a dry validate — simpler: the op refusal
     #    text carries the confirm command with the hash. Extract it.
     _, ref = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
-                 "--param", "machine=bp1", "--observation", o, "--plan")
+                 "--param", "machine=bp1", "--observation", o,
+                 "--fleet-permit", fp, "--plan")
     msg = json.dumps(ref)
     import re
     m = re.search(r"--intent-hash ([0-9a-f]+)", msg)
@@ -98,19 +115,22 @@ def main():
                  "--intent-hash", ihash)
     token = tok["data"]["confirm_token"]
     _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
-               "--param", "machine=bp1", "--observation", o, "--confirm-token", token, "--plan")
+               "--param", "machine=bp1", "--observation", o, "--fleet-permit", fp,
+               "--confirm-token", token, "--plan")
     assert d["status"] == "ok", f"confirmed dangerous op should pass gates: {d}"
 
     # 5a. a stale control security identity is rejected on the target-side path.
     _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
-               "--param", "machine=bp1", "--observation", o, "--confirm-token", token,
+               "--param", "machine=bp1", "--observation", o, "--fleet-permit", fp,
+               "--confirm-token", token,
                "--expect-embedded", "stale-control", "--plan")
     assert d["status"] == "error" and "security identity mismatch" in json.dumps(d), d
 
     # 6. live drift (container recreated) → refuse before mutation
     o2 = obs(home + "/d2" if False else home, container_id="cid-swapped")
     _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
-               "--param", "machine=bp1", "--observation", o2, "--confirm-token", token, "--plan")
+               "--param", "machine=bp1", "--observation", o2, "--fleet-permit", fp,
+               "--confirm-token", token, "--plan")
     assert d["status"] == "error" and "drift" in json.dumps(d), d
 
     print("S0019 pipeline (adopt + op gates) passed")
