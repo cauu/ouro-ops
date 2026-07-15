@@ -196,6 +196,13 @@ pub fn run_op(args: &[String]) -> Result<()> {
     let plan = args.iter().any(|a| a == "--plan");
     let paths = ConfigPaths::discover();
 
+    // p5-1 — SSH DISPATCH: with `--dispatch <host>`, the op runs ON THE TARGET (as the confined
+    // `ouro-exec` principal through the fixed wrapper), not control-local. The remote runs the same
+    // command with `--local`, reading the target-side attestation and executing there.
+    if let Some(host) = optional(args, "--dispatch") {
+        return dispatch_op(host, &op, &node, args, &paths, plan);
+    }
+
     // §2.8 — legacy write entry points are disabled unless registered.
     parity::require_registered_write(&op)?;
 
@@ -311,6 +318,57 @@ pub fn run_confirm_create(args: &[String]) -> Result<()> {
         "op": op, "node": node, "intent_hash": hash, "diff": diff, "confirm_token": token,
     })))?;
     Ok(())
+}
+
+/// p5-1 — build (and, unless `--plan`, run) the SSH dispatch of an `op` to the target. The remote
+/// command is the same op args with `--dispatch` stripped and `--local` appended. Real SSH exec is
+/// bed-level (p5-6); `--plan` prints the confined remote command for inspection.
+fn dispatch_op(
+    host: &str,
+    op: &str,
+    node: &str,
+    args: &[String],
+    paths: &ConfigPaths,
+    plan: bool,
+) -> Result<()> {
+    // The SSH client key is the operator's credential (creds://<name>), resolved to a local path.
+    let key_ref = optional(args, "--ssh-key").unwrap_or("creds://ouro-exec");
+    let key = crate::secrets::CredentialRef::parse(key_ref)?.resolve(&paths.credentials_dir)?;
+    // Remote args = original op args with our control-only flags removed, plus --local.
+    let mut remote: Vec<String> = vec!["run".into()];
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "run" => {}
+            "--dispatch" | "--ssh-key" | "--observation" => i += 1, // control-only; skip flag+value
+            "--plan" => {}
+            other => remote.push(other.to_string()),
+        }
+        i += 1;
+    }
+    remote.push("--local".into());
+    let argv = crate::dispatch::op_dispatch_argv(
+        host,
+        22,
+        &key,
+        &paths.known_hosts,
+        &remote,
+        &crate::skills::embedded_digest(),
+    );
+    if plan {
+        output::print_json(&ToolOutput::ok("ouro.op.dispatch.plan", false).with_data(json!({
+            "op": op, "node": node, "target": host, "principal": "ouro-exec",
+            "ssh_argv": argv,
+            "note": "dispatch plan — confined + host-key-pinned; real SSH exec is bed-level (p5-6)",
+        })))?;
+        return Ok(());
+    }
+    let out = std::process::Command::new("ssh")
+        .args(&argv)
+        .output()
+        .map_err(|e| OuroError::Validation(format!("ssh dispatch failed: {e}")))?;
+    output::forward_tool_stdout(&out.stdout)?;
+    std::process::exit(out.status.code().unwrap_or(255));
 }
 
 fn load_attestation(paths: &ConfigPaths, node: &str) -> Result<AdoptionAttestation> {

@@ -6,6 +6,7 @@ pub mod config;
 pub mod confirm;
 pub mod attestation;
 pub mod convention;
+pub mod dispatch;
 pub mod domain;
 pub mod error;
 pub mod executor;

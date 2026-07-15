@@ -267,7 +267,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p4-3 web onboarding prompt templates aligned to the adopt + intent commands (interaction unchanged; English prompt)
 - [x] p4-4 dispatch-level end-to-end negative tests: TC-1..10 promoted from unit to dispatch (unmanaged refuse, hostile intent refuse, confirm binding, live drift, crash recovery, fleet quorum) on the container bed
 - [x] p4-5 (fix) register the ops the greenfield SKILLs/web reference: add a READ tier (Mutability::Read) so `observability/health` passes the attested gate with no confirm/transaction, and register `upgrade/step` (dangerous). Closes the SKILL↔registry inconsistency that refused those two commands.
-- [ ] p5-1 SSH dispatch for `adopt`/`op` (control → target, confined principal); the commands actually reach the target instead of running control-local
+- [x] p5-1 SSH dispatch for `adopt`/`op` (control → target, confined principal); the commands actually reach the target instead of running control-local
 - [ ] p5-2 target-side probe: gather the live observation on the target (container inspect + node argv + cardano-cli reads) instead of a hand-supplied `--observation` file
 - [ ] p5-3 real executor invocation: run the fixed argv on the target as the transaction's commit/verify/rollback (wire `executor::build_argv` into the transaction; readiness proxies as verify)
 - [ ] p5-4 attestation stored target-side (root-owned `/var/lib/ouro/node-attestation.json`), read by `ouro-attested.sh`; adopt writes it there
@@ -442,6 +442,14 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   **Also appended p5 (target-side integration): SSH dispatch + real probe + real executor + target
   attestation + inbox/audit/fleet wiring + container-bed e2e — the work that makes `op run` actually
   operate a real node (today it runs control-local with file seams).**
+- 2026-07-15 p5-1 completed: `crates/ouro/src/dispatch.rs` — SSH dispatch argv for the greenfield
+  commands. `op_dispatch_argv` runs `ouro-ops op` on the target as the confined `ouro-exec`
+  principal through a fixed wrapper (`/usr/local/sbin/ouro-op-run`), host key PINNED
+  (StrictHostKeyChecking=yes + ouro known_hosts), parity carried via `--expect-embedded`, every
+  dynamic field shell-quoted; `adopt_dispatch_argv` uses the operator's bootstrap account. Wired
+  `--dispatch <host>` into `op run`: strips control-only flags, appends `--local`, and (with
+  `--plan`) prints the confined remote command; real SSH exec is bed-level (p5-6). 3 rust tests +
+  a CLI dispatch-plan assertion. 119 rust + all python green.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -453,6 +461,10 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p5-1 | stack: python | command: cargo test dispatch (+full 119); tests/test_s0019_dispatch.py |
+  result: pass | note: op dispatch argv is confined (ouro-exec + fixed wrapper) + host-key pinned +
+  parity + shell-quoted hostile arg; adopt dispatch uses the bootstrap account; CLI --dispatch
+  --plan emits the confined remote command with --local.
 - p4-5 | stack: python | command: cargo test (116); tests/test_s0019_completeness.py; skill_docs |
   result: pass | note: observability/health runs as a read (argv docker exec ... query tip, no
   confirm); upgrade/step registered + requires confirm; registry ⊆ operations table holds.

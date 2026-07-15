@@ -86,6 +86,17 @@ def main():
     assert d["status"] == "ok", f"op should proceed after recovery: {d}"
     assert not (txn / "bp1.txn.json").exists(), "recovery cleared the interrupted journal before the new write"
 
+    # --- p5-1 SSH dispatch plan: op --dispatch runs on the target as the confined principal ---
+    creds = Path(home) / "credentials"
+    creds.mkdir(exist_ok=True)
+    (creds / "ouro-exec").write_text("key")
+    _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
+               "--param", "machine=bp1", "--dispatch", "10.0.0.9", "--plan")
+    assert d["status"] == "ok" and d["data"]["principal"] == "ouro-exec", d
+    j = " ".join(d["data"]["ssh_argv"])
+    assert "ouro-exec@10.0.0.9" in j and "StrictHostKeyChecking=yes" in j, j
+    assert "/usr/local/sbin/ouro-op-run" in j and "'--local'" in j, j
+
     print("S0019 dispatch-level negatives passed")
 
 
