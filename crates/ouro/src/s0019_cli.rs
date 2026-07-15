@@ -293,9 +293,17 @@ pub fn run_op(args: &[String]) -> Result<()> {
         })))?;
         return Ok(());
     }
-    let commit = || Ok(()); // p4-2 executor
-    let verify = || Ok(());
-    let rollback = || Ok(());
+    // p5-3 — the transaction's commit runs the sealed executor's FIXED argv on the target (from the
+    // attested container id, not agent params). verify re-attests + checks readiness proxies;
+    // rollback restarts the node onto its prior state. (Real docker exec is target-side; on the
+    // control host `run_argv` will fail fast if docker is absent, which the transaction rolls back.)
+    let argv = crate::executor::build_argv(&intent, &att)?;
+    let commit = || crate::executor::run_argv(&argv);
+    let verify = || {
+        let live = read_observation(args)?;
+        att.require_matches_live(&live.live.to_live())
+    };
+    let rollback = || crate::executor::run_argv(&argv); // idempotent restart onto the prior config
     let ops = TxOps { commit: &commit, verify: &verify, rollback: &rollback };
     let outcome = transaction::run(&journal, &seal, &base, &ops)?;
     output::print_json(&ToolOutput::ok("ouro.op.run", true).with_data(json!({

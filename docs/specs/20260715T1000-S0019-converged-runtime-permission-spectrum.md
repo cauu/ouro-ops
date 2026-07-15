@@ -269,7 +269,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p4-5 (fix) register the ops the greenfield SKILLs/web reference: add a READ tier (Mutability::Read) so `observability/health` passes the attested gate with no confirm/transaction, and register `upgrade/step` (dangerous). Closes the SKILL↔registry inconsistency that refused those two commands.
 - [x] p5-1 SSH dispatch for `adopt`/`op` (control → target, confined principal); the commands actually reach the target instead of running control-local
 - [x] p5-2 target-side probe: gather the live observation on the target (container inspect + node argv + cardano-cli reads) instead of a hand-supplied `--observation` file
-- [ ] p5-3 real executor invocation: run the fixed argv on the target as the transaction's commit/verify/rollback (wire `executor::build_argv` into the transaction; readiness proxies as verify)
+- [x] p5-3 real executor invocation: run the fixed argv on the target as the transaction's commit/verify/rollback (wire `executor::build_argv` into the transaction; readiness proxies as verify)
 - [ ] p5-4 attestation stored target-side (root-owned `/var/lib/ouro/node-attestation.json`), read by `ouro-attested.sh`; adopt writes it there
 - [ ] p5-5 `ouro-ops inbox stage` command (content-addressed ingress) + audit event emission (§2.13 schema) + fleet lease/step-permit + real control↔target parity wired into the op pipeline
 - [ ] p5-6 container-bed end-to-end: adopt a real blinklabs container, run each op for real (docker), crash-injection + rollback, on the bed
@@ -457,6 +457,12 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   { supervisor{...}, live{...} } JSON the Rust pipeline consumes — replacing the hand-supplied
   `--observation` file. All docker access is in lib (supervisor gate exempts the whole lib/ layer).
   Secrets are never read — hashes/ids only. Stub-tested (test_probe.py); real gathering is bed-level.
+- 2026-07-15 p5-3 completed (§2.6): `executor::run_argv` runs a FIXED argv as a direct exec (never
+  a shell); wired as the transaction's commit in the non-plan `op run` path — commit =
+  run_argv(build_argv) (attested container id, no agent interpolation), verify = re-attest against a
+  fresh observation, rollback = idempotent restart. The no-op commit is gone. run_argv unit-tested
+  (true/false/empty/missing-prog); real docker exec is target-side (p5-6). 120 rust + all python
+  green.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -468,6 +474,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p5-3 | stack: rust | command: cargo test executor (+full 120) | result: pass | note: run_argv
+  returns ok on exit 0, error on nonzero/empty/missing program; transaction commit now runs the
+  sealed argv (build_argv), verify re-attests, rollback restarts — no more no-op commit.
 - p5-2 | stack: python | command: python3 tests/test_probe.py; tests/test_supervisor_gate.py |
   result: pass | note: with docker stubs the probe emits a well-formed observation with every key
   the Rust ObsLive/SupervisorObservation expects (image/cid/epoch/entrypoint/args/mounts/hashes/

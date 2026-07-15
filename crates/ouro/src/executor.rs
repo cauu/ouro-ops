@@ -62,6 +62,27 @@ pub fn build_argv(intent: &Intent, att: &AdoptionAttestation) -> Result<Vec<Stri
     }
 }
 
+/// Run a FIXED argv (the first element is the program). This is the transaction's commit action on
+/// the target — a direct exec, never a shell. Returns Ok on exit 0, else a typed error. The argv
+/// came from `build_argv` (attested facts only), so nothing agent-supplied is interpolated here.
+pub fn run_argv(argv: &[String]) -> Result<()> {
+    let Some((prog, rest)) = argv.split_first() else {
+        return Err(OuroError::Validation("empty executor argv".into()));
+    };
+    let out = std::process::Command::new(prog)
+        .args(rest)
+        .output()
+        .map_err(|e| OuroError::Validation(format!("executor {prog} failed to start: {e}")))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(OuroError::Validation(format!(
+            "executor {prog} exited {}",
+            out.status.code().unwrap_or(-1)
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,6 +134,14 @@ mod tests {
     #[test]
     fn unknown_op_has_no_executor() {
         assert!(build_argv(&intent("evil/wipe", json!({})), &att()).is_err());
+    }
+
+    #[test]
+    fn run_argv_reports_exit_status() {
+        assert!(run_argv(&["true".into()]).is_ok(), "exit 0 → ok");
+        assert!(run_argv(&["false".into()]).is_err(), "nonzero → error");
+        assert!(run_argv(&[]).is_err(), "empty argv → error");
+        assert!(run_argv(&["this-binary-does-not-exist-xyz".into()]).is_err(), "missing prog → error");
     }
 
     #[test]
