@@ -264,10 +264,13 @@ pub fn run_op(args: &[String]) -> Result<()> {
         state: TxState::Prepared,
     };
     if plan {
+        // Show the FIXED argv the sealed executor WOULD run (from the attested container id, not
+        // the agent's params) — proof of what a real run does, with no mutation.
+        let argv = crate::executor::build_argv(&intent, &att).unwrap_or_default();
         output::print_json(&ToolOutput::ok("ouro.op.plan", false).with_data(json!({
             "op": op, "node": node, "mutability": format!("{:?}", spec.mutability),
-            "intent_hash": canon, "touched": spec.touched,
-            "note": "plan mode — all gates passed; no mutation (real executor is p4-2)",
+            "intent_hash": canon, "touched": spec.touched, "executor_argv": argv,
+            "note": "plan mode — all gates passed; no mutation (real target execution is target-side)",
         })))?;
         return Ok(());
     }

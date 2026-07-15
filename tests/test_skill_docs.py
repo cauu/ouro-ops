@@ -4,23 +4,37 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILLS = [
+# S0019 greenfield skills (judgment frameworks; writes via `ouro-ops op run`, adopt-first).
+S0019_SKILLS = [
+    ROOT / "ouro-skills/adopt/SKILL.md",
+    ROOT / "ouro-skills/config/SKILL.md",
     ROOT / "ouro-skills/deploy/SKILL.md",
     ROOT / "ouro-skills/upgrade/SKILL.md",
     ROOT / "ouro-skills/runtime/SKILL.md",
     ROOT / "ouro-skills/observability/SKILL.md",
     ROOT / "ouro-skills/kes-rotation/SKILL.md",
     ROOT / "ouro-skills/troubleshooting/SKILL.md",
+]
+# S0017 skills kept for the legacy dispatch model (disabled at the mechanism by S0019 §2.8, but the
+# decision docs remain readable).
+LEGACY_SKILLS = [
     ROOT / "ouro-skills/detect/SKILL.md",
     ROOT / "ouro-skills/onboard/SKILL.md",
 ]
+SKILLS = S0019_SKILLS + LEGACY_SKILLS
 FORBIDDEN = [" ssh ", " scp ", " docker ", " bash ", "sudo ", "rsync "]
+# Universal red lines every skill must carry.
 REQUIRED_RED_LINES = [
-    "ouro-ops tool run",
     "no secret directory access",
     "cold, KES secret, or VRF",
-    "exit 30",
-    "exit 40",
+]
+# S0019 skills must show the data-not-instructions red line and use a greenfield command surface
+# (write skills → `ouro-ops op run`; read skills → `ouro-ops diag exec`; adoption → `ouro-ops adopt`).
+S0019_REQUIRED = ["DATA"]
+S0019_COMMANDS = ["ouro-ops op run", "ouro-ops diag exec", "ouro-ops adopt"]
+# Legacy skills keep the S0017 contract.
+LEGACY_REQUIRED = [
+    "ouro-ops tool run",
 ]
 
 
@@ -49,7 +63,8 @@ def main():
             f"{path} front matter needs integer skill_version, got {meta.get('skill_version')!r}"
         assert re.match(r"^(>=|>|=|\^|~)?\d+\.\d+\.\d+", meta.get("requires_ouro", "")), \
             f"{path} front matter needs semver requires_ouro, got {meta.get('requires_ouro')!r}"
-        assert "Decision Tree" in text
+        # A decision layer (S0017 "Decision Tree" or S0019 "Decision guidance"), stops, red lines.
+        assert "Decision Tree" in text or "Decision guidance" in text, f"{path} lacks a decision layer"
         assert "Stop Conditions" in text
         assert "Red Lines" in text
         lowered = f" {text.lower()} "
@@ -57,6 +72,14 @@ def main():
             assert word not in lowered, f"{path} contains forbidden primitive {word!r}"
         for phrase in REQUIRED_RED_LINES:
             assert phrase in text, f"{path} lacks red line {phrase!r}"
+        if path in S0019_SKILLS:
+            for phrase in S0019_REQUIRED:
+                assert phrase in text, f"{path} lacks required phrase {phrase!r}"
+            assert any(c in text for c in S0019_COMMANDS), \
+                f"{path} references no greenfield command surface {S0019_COMMANDS}"
+        else:
+            for phrase in LEGACY_REQUIRED:
+                assert phrase in text, f"{path} lacks required phrase {phrase!r}"
     print("skill docs passed")
 
 

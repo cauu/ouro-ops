@@ -263,7 +263,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p3-2 node-runtime N→N+1 upgrade with DB-compat + attestation rotation; ouro-diag honest labeling/sandbox — §2.10, §2.11
 - [x] p3-3 threat-model/trust-matrix table; audit event schema; supported/retired/unsupported operation table — §2.12, §2.13, §2.15
 - [x] p4-1 CLI wiring: `ouro-ops adopt` (conformance → evidence-bound approval → attestation) + intent-based `tool run` (recover → parity → build+validate intent → live re-attest gate → confirm-gate → crash-durable transaction → sealed executor) + `confirm create` bound to the canonical intent — integrates §2.1–2.9
-- [ ] p4-2 greenfield SKILL.md decision trees (adopt/observability/troubleshooting/runtime/kes-rotation/deploy/config/upgrade) as judgment frameworks (invariants/stop/red-lines, writes = intents, dangerous = operator-approved confirm) + sealed per-op executor scripts (fixed argv) — §1.D/§2.5/§2.6
+- [x] p4-2 greenfield SKILL.md decision trees (adopt/observability/troubleshooting/runtime/kes-rotation/deploy/config/upgrade) as judgment frameworks (invariants/stop/red-lines, writes = intents, dangerous = operator-approved confirm) + sealed per-op executor scripts (fixed argv) — §1.D/§2.5/§2.6
 - [ ] p4-3 web onboarding prompt templates aligned to the adopt + intent commands (interaction unchanged; English prompt)
 - [ ] p4-4 dispatch-level end-to-end negative tests: TC-1..10 promoted from unit to dispatch (unmanaged refuse, hostile intent refuse, confirm binding, live drift, crash recovery, fleet quorum) on the container bed
 
@@ -401,6 +401,17 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   live-observation probe + docker executor are the target-side seam — probe reads a closed
   `--observation` JSON and the executor runs in `--plan` mode (gates fire, no mutation) until p4-2.
   test_s0019_pipeline.py exercises all gates via the CLI.
+- 2026-07-15 p4-2 completed (§1.D/§2.5/§2.6): 8 greenfield SKILL.md decision docs rewritten as
+  JUDGMENT FRAMEWORKS (Purpose / Invariants(mechanism-enforced) / Decision guidance(judgment, not
+  a rigid script) / Stop / Red lines): adopt(new)+config(new)+runtime+kes-rotation+deploy+
+  observability+troubleshooting+upgrade. Writes = `ouro-ops op run` intents (agent gives params);
+  reads = `ouro-ops diag exec` (honest unprivileged, not read-only); dangerous = operator-approved
+  confirm; data-not-instructions red line throughout. Sealed executor `crates/ouro/src/executor.rs`
+  builds a FIXED argv per op from the ATTESTED container id (not agent params) — proven a hostile
+  param never reaches argv; wired into `op run --plan` (shows the exact argv). skill-docs gate made
+  S0019-aware (op-run/diag/adopt command surface + DATA red line; legacy skills keep tool-run).
+  **Decision (recorded):** S0017 SKILL decision docs replaced in place by the greenfield set (detect/
+  onboard kept as legacy). 116 rust + all python green.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -412,6 +423,10 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p4-2 | stack: python | command: python3 tests/test_skill_docs.py; cargo test executor (+full 116)
+  | result: pass | note: 8 greenfield judgment-framework SKILLs pass the S0019-aware gate; executor
+  builds fixed argv from the attested container id (docker restart cid-real-42, not agent bp1);
+  hostile param never reaches argv; op run --plan shows the argv.
 - p4-1 | stack: python | command: python3 tests/test_s0019_pipeline.py; cargo test (112) | result:
   pass | note: adopt writes attestation (gen 0); op on unadopted node → not_ouro_managed; dangerous
   write without confirm refused; hostile param refused; legacy op disabled; confirm-token bound to
