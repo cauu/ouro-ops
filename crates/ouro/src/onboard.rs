@@ -35,9 +35,14 @@ pub fn sshd_conf(bootstrap_user: &str) -> String {
 
 const AUTHKEY_STAGE: &str = "/tmp/ouro-onboard-authkey";
 
-/// The greenfield onboard plan (S0019). Idempotent; installs the S0019 confinement, binary, and
-/// the /var/lib/ouro dir the adoption attestation lives in.
-pub fn onboard_plan(bootstrap_user: &str, ouro_binary: &Path) -> Vec<Step> {
+/// Fixed target path for the SHARED confirm secret (p6-3): a control-minted confirm-token is bound
+/// with this HMAC key, and the target verifies with the SAME key, so the operator's approval on the
+/// control machine is honored by the target. Provisioned here (root-owned, 0400 for ouro-op).
+pub const CONFIRM_SECRET_PATH: &str = "/var/lib/ouro/confirm.secret";
+
+/// The greenfield onboard plan (S0019). Idempotent; installs the S0019 confinement, binary, the
+/// /var/lib/ouro dir the adoption attestation lives in, and the shared confirm secret.
+pub fn onboard_plan(bootstrap_user: &str, ouro_binary: &Path, confirm_secret: &str) -> Vec<Step> {
     let run = |desc: &str, cmd: &str| Step::Run { desc: desc.into(), cmd: cmd.into() };
     let content = |desc: &str, content: String, remote: &str, mode: &str| Step::PushContent {
         desc: desc.into(),
@@ -62,6 +67,10 @@ pub fn onboard_plan(bootstrap_user: &str, ouro_binary: &Path) -> Vec<Step> {
             remote: "/usr/local/bin/ouro-ops".into(),
             mode: "0755".into(),
         },
+        // Shared confirm secret (p6-3): the target verifies a control-minted confirm-token with the
+        // SAME HMAC key, so the operator's approval on control is honored here.
+        content("install shared confirm secret", confirm_secret.to_string(), CONFIRM_SECRET_PATH, "0400"),
+        run("own confirm secret", &format!("chown root:root {CONFIRM_SECRET_PATH}")),
         // Confinement: the op wrapper + sudoers, validated by visudo.
         content("install op wrapper", OP_WRAPPER.to_string(), "/usr/local/sbin/ouro-op-run", "0755"),
         content("install sudoers confinement", OP_SUDOERS.to_string(), "/etc/sudoers.d/ouro-op", "0440"),
@@ -98,13 +107,17 @@ pub fn execute_onboard(
     control_pubkey: &str,
     ouro_binary: &Path,
 ) -> Result<InstallManifest> {
+    // The shared confirm secret provisioned to the target = the control's own confirm/tool-run
+    // secret, so a control-minted confirm-token verifies target-side (p6-3).
+    let paths = crate::config::ConfigPaths::discover();
+    let confirm_secret = crate::confirm::load_or_create_secret(&paths.tool_run_secret)?;
     execute_plan(
         transport,
         target,
         key_path,
         host_key,
         control_pubkey,
-        onboard_plan(&target.user, ouro_binary),
+        onboard_plan(&target.user, ouro_binary, &confirm_secret),
     )
     .map(|(m, ..)| m)
 }
@@ -120,7 +133,7 @@ mod tests {
 
     #[test]
     fn plan_installs_s0019_confinement_not_s0017() {
-        let plan = onboard_plan("ubuntu", Path::new("/tmp/ouro-ops"));
+        let plan = onboard_plan("ubuntu", Path::new("/tmp/ouro-ops"), "secret");
         let d = descs(&plan);
         assert!(d.contains(&"create ouro-op") && d.contains(&"create ouro-diag"));
         assert!(d.contains(&"install op wrapper"));
@@ -134,7 +147,7 @@ mod tests {
 
     #[test]
     fn ordering_binary_and_wrapper_before_keys() {
-        let plan = onboard_plan("ubuntu", Path::new("/tmp/ouro-ops"));
+        let plan = onboard_plan("ubuntu", Path::new("/tmp/ouro-ops"), "secret");
         let d = descs(&plan);
         let pos = |x: &str| d.iter().position(|s| *s == x).unwrap();
         assert!(pos("install ouro-ops binary") < pos("install op wrapper"));

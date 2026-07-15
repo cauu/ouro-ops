@@ -183,6 +183,16 @@ fn run_probe() -> Result<String> {
 pub fn run_adopt(args: &[String]) -> Result<()> {
     let node = flag(args, "--node")?.to_string();
     let local = args.iter().any(|a| a == "--local");
+
+    // p6-3 — SSH DISPATCH: `adopt --dispatch <host>` runs `ouro-ops adopt --local` on the target as
+    // the operator's bootstrap account (adoption is a privileged onboarding-class action).
+    if let Some(host) = optional(args, "--dispatch") {
+        let paths = ConfigPaths::discover();
+        let node = flag(args, "--node")?.to_string();
+        let plan = args.iter().any(|a| a == "--plan");
+        return dispatch_adopt(host, &node, args, &paths, plan);
+    }
+
     let role = match flag(args, "--role")? {
         "bp" => Role::Bp,
         "relay" => Role::Relay,
@@ -356,9 +366,18 @@ pub fn run_op(args: &[String]) -> Result<()> {
                  pass --confirm-token (§2.5)"
             ))
         })?;
-        let secret = crate::confirm::load_or_create_secret(&paths.tool_run_secret)?;
+        // p6-3 — on the target (`--local`) the confirm-token is verified with the SHARED secret
+        // onboard provisioned (so a control-minted token is honored); the bed / control path falls
+        // back to the local tool-run secret.
+        let shared = std::path::Path::new(crate::onboard::CONFIRM_SECRET_PATH);
+        let secret = if local && shared.exists() {
+            std::fs::read_to_string(shared)
+                .map_err(|e| OuroError::Validation(format!("cannot read shared confirm secret: {e}")))?
+        } else {
+            crate::confirm::load_or_create_secret(&paths.tool_run_secret)?
+        };
         let diff = format!("{op} on {node}");
-        readiness::verify_confirm(token, &canon, &diff, secret.as_bytes())?;
+        readiness::verify_confirm(token, &canon, &diff, secret.trim().as_bytes())?;
     }
 
     // A managed READ (e.g. observability/health) passes the attested gate but takes no confirm and
@@ -469,6 +488,38 @@ fn dispatch_op(
             "op": op, "node": node, "target": host, "principal": "ouro-exec",
             "ssh_argv": argv,
             "note": "dispatch plan — confined + host-key-pinned; real SSH exec is bed-level (p5-6)",
+        })))?;
+        return Ok(());
+    }
+    let out = std::process::Command::new("ssh")
+        .args(&argv)
+        .output()
+        .map_err(|e| OuroError::Validation(format!("ssh dispatch failed: {e}")))?;
+    output::forward_tool_stdout(&out.stdout)?;
+    std::process::exit(out.status.code().unwrap_or(255));
+}
+
+/// p6-3 — SSH-dispatch `adopt` to the target (as the bootstrap account), running `adopt --local`
+/// there. Control-only flags are stripped; the target self-probes (p6-2).
+fn dispatch_adopt(host: &str, node: &str, args: &[String], paths: &ConfigPaths, plan: bool) -> Result<()> {
+    let user = optional(args, "--bootstrap-user").unwrap_or("root");
+    let key_ref = optional(args, "--ssh-key").unwrap_or("creds://bootstrap");
+    let key = crate::secrets::CredentialRef::parse(key_ref)?.resolve(&paths.credentials_dir)?;
+    let mut remote: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--dispatch" | "--ssh-key" | "--bootstrap-user" | "--observation" => i += 1,
+            "--plan" => {}
+            other => remote.push(other.to_string()),
+        }
+        i += 1;
+    }
+    let argv = crate::dispatch::adopt_dispatch_argv(host, 22, user, &key, &paths.known_hosts, &remote);
+    if plan {
+        output::print_json(&ToolOutput::ok("ouro.adopt.dispatch.plan", false).with_data(json!({
+            "node": node, "target": host, "principal": user, "ssh_argv": argv,
+            "note": "dispatch plan — bootstrap account runs `ouro-ops adopt --local` on the target",
         })))?;
         return Ok(());
     }

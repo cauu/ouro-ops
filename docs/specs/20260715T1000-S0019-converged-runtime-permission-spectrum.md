@@ -275,7 +275,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p5-6 container-bed end-to-end: adopt a real blinklabs container, run each op for real (docker), crash-injection + rollback, on the bed
 - [ ] p6-1 greenfield `ouro-ops onboard <host>` (host-onboarded state): install the S0019 confined principals (`ouro-op` write / `ouro-diag` read), the fixed op wrapper `/usr/local/sbin/ouro-op-run` (sudoers: only `ouro-ops op "$@"`), push the ouro-ops binary, harden sshd, pin the host key — operator-initiated via the bootstrap credential; NO S0017 compat
 - [x] p6-2 adopt/op `--local` auto-run the probe (`ouro_observe`) when no `--observation` is given, so the target self-gathers the observation (no hand-fed file)
-- [ ] p6-3 full `--dispatch` for adopt + op (real SSH → target `--local`) + the confirm-token cross-machine handshake (dispatch preview returns the target-computed intent hash → operator approves → mint token → dispatch the real run)
+- [x] p6-3 full `--dispatch` for adopt + op (real SSH → target `--local`) + the confirm-token cross-machine handshake (dispatch preview returns the target-computed intent hash → operator approves → mint token → dispatch the real run)
 - [ ] p6-4 container-bed end-to-end over the DISPATCH path (SSH + wrapper + auto-probe), not just `--local`, proving the full website→agent→node chain
 
 ## 4. Test and Acceptance Criteria
@@ -505,6 +505,13 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   and runs `ouro_observe`, so the target self-gathers the observation and the agent never hand-feeds
   a file. Container-bed e2e updated to drop `--observation` (adopt + op auto-probe) and still passes
   on a real container. 123 rust + all python green.
+- 2026-07-15 p6-3 completed: `--dispatch` wired into BOTH adopt (bootstrap account → `adopt --local`)
+  and op (confined ouro-op → `op --local`); control-only flags stripped, target self-probes (p6-2).
+  Confirm-token CROSS-MACHINE handshake: onboard provisions a SHARED confirm secret
+  (/var/lib/ouro/confirm.secret) so a control-minted token verifies target-side; op --local reads
+  the shared secret (falls back to the local tool-run secret on the bed/control). The intent-hash
+  preview already flows (a no-token op returns `--intent-hash <H>` for the operator to approve). Real
+  SSH exec runs when not --plan. 123 rust + all python green; bed still green.
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -516,6 +523,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p6-3 | stack: rust | command: cargo test (123); adopt --dispatch --plan; bed | result: pass |
+  note: adopt dispatch uses the bootstrap account running adopt --local; op dispatch confined via
+  the wrapper; shared confirm secret provisioned by onboard; intent-hash preview flows.
 - p6-2 | stack: other | command: bash fixtures/e2e/s0019-bed/run.sh (auto-probe) | result: pass |
   note: adopt + op run with NO --observation self-gather via the embedded probe on the real
   container; all bed assertions still pass.
