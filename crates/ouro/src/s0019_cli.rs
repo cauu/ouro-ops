@@ -305,7 +305,7 @@ pub fn run_op(args: &[String]) -> Result<()> {
     let paths = ConfigPaths::discover();
 
     // p5-1 — SSH DISPATCH: with `--dispatch <host>`, the op runs ON THE TARGET (as the confined
-    // `ouro-exec` principal through the fixed wrapper), not control-local. The remote runs the same
+    // `ouro-op` principal through the fixed wrapper), not control-local. The remote runs the same
     // command with `--local`, reading the target-side attestation and executing there.
     if let Some(host) = optional(args, "--dispatch") {
         return dispatch_op(host, &op, &node, args, &paths, plan);
@@ -465,7 +465,7 @@ fn dispatch_op(
     plan: bool,
 ) -> Result<()> {
     // The SSH client key is the operator's credential (creds://<name>), resolved to a local path.
-    let key_ref = optional(args, "--ssh-key").unwrap_or("creds://ouro-exec");
+    let key_ref = optional(args, "--ssh-key").unwrap_or("creds://ouro-op");
     let key = crate::secrets::CredentialRef::parse(key_ref)?.resolve(&paths.credentials_dir)?;
     // Remote args = original op args with our control-only flags removed, plus --local.
     let mut remote: Vec<String> = vec!["run".into()];
@@ -490,7 +490,7 @@ fn dispatch_op(
     );
     if plan {
         output::print_json(&ToolOutput::ok("ouro.op.dispatch.plan", false).with_data(json!({
-            "op": op, "node": node, "target": host, "principal": "ouro-exec",
+            "op": op, "node": node, "target": host, "principal": "ouro-op",
             "ssh_argv": argv,
             "note": "dispatch plan — confined + host-key-pinned; real SSH exec is bed-level (p5-6)",
         })))?;

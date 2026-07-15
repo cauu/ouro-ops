@@ -89,12 +89,13 @@ def main():
     # --- p5-1 SSH dispatch plan: op --dispatch runs on the target as the confined principal ---
     creds = Path(home) / "credentials"
     creds.mkdir(exist_ok=True)
-    (creds / "ouro-exec").write_text("key")
+    # p7-1: the op channel logs in as ouro-op (the write principal onboard installs), not ouro-exec.
+    (creds / "ouro-op").write_text("key")
     _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
                "--param", "machine=bp1", "--dispatch", "10.0.0.9", "--plan")
-    assert d["status"] == "ok" and d["data"]["principal"] == "ouro-exec", d
+    assert d["status"] == "ok" and d["data"]["principal"] == "ouro-op", d
     j = " ".join(d["data"]["ssh_argv"])
-    assert "ouro-exec@10.0.0.9" in j and "StrictHostKeyChecking=yes" in j, j
+    assert "ouro-op@10.0.0.9" in j and "ouro-exec@" not in j and "StrictHostKeyChecking=yes" in j, j
     assert "/usr/local/sbin/ouro-op-run" in j and "'--local'" in j, j
 
     print("S0019 dispatch-level negatives passed")

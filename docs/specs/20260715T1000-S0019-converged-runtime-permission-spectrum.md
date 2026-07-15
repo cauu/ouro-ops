@@ -280,7 +280,8 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p7-1 close the closed-loop review gaps (P0): unify the write principal on `ouro-op` across `dispatch.rs` (op channel) + `ssh.rs` comment + the website machine block so the SSH login user, the sudoers grant, and sshd `AllowUsers` all agree with what `onboard.rs` installs (was split `ouro-exec`/`ouro-op` → real dispatch could not authenticate); rebuild + reinstall the control-host `ouro-ops` so `adopt`/`op`/`onboard`/`inbox` exist (installed binary was 0.1.0 / S0017-only)
 - [x] p7-2 remove S0017 residue from the website copy: `ouro-ops tool run` → `ouro-ops op run` and `ouro-exec` → `ouro-op` in the trust panels + machHints (EN/zh-CN/zh-TW/JA)
 - [x] p7-3 real sealed executor (P1): build a SEQUENCE of fixed argvs; install digest-resolved inbox artifacts from attested facts — opcert via `docker cp` (public cert; KES/cold secret NEVER touched), signed tx via `cardano-cli transaction submit --tx-file`, image via `docker load` + recreate; REFUSE (not a misleading `docker restart`) when a required artifact is absent; fix the bogus `config/render` `--version` argv
-- [ ] p7-4 container-bed proof of a real artifact-op sequence (opcert install / tx submit) through the sealed executor; honest note that the docker-level sequence is bed-proven while cardano-node semantic effect needs a real node
+- [x] p7-1-fix1 finish the principal rename missed in p7-1: dispatch preview `principal` field, the default `--ssh-key` cred (`creds://ouro-op`), the dispatch comment, and the python dispatch test all now assert `ouro-op` (not `ouro-exec`)
+- [x] p7-4 container-bed proof of a real artifact-op sequence (opcert install / tx submit) through the sealed executor; honest note that the docker-level sequence is bed-proven while cardano-node semantic effect needs a real node
 
 ## 4. Test and Acceptance Criteria
 > Acceptance MATRIX — must FALSIFY the security claims, with adversarial interleavings, not just
@@ -525,6 +526,16 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   topology/config do not perform their mutation; config/render even runs a bogus `--version`);
   P2-D website copy still says S0017 `tool run`; P1-E dispatch real path never run e2e. p6-1 checkbox
   was also left unchecked though onboard.rs was implemented + committed (59fafe3) — corrected.
+- 2026-07-15 p7-4 completed: extended the p5-6 container bed with a REAL artifact-op sequence —
+  stage an opcert into the inbox, mint the intent-bound confirm-token, run `op run --op
+  kes-rotation/rotate`; asserts (1) an unstaged/unconfirmed opcert is refused (no silent restart),
+  then (2) the digest-resolved opcert is `docker cp`'d into the container's keys mount AND the
+  container restarts (StartedAt advances). Proves build_plan's multi-step sequence runs for real on a
+  live container. Honest scope: the docker-level sequence is bed-proven; the cardano-node semantic
+  effect of a real opcert/tx needs a real synced node. Bed: "S0019 container-bed e2e: ALL PASS".
+- 2026-07-15 p7-1-fix1 completed: the p7-1 rename left `ouro-exec` in the op-dispatch preview
+  (`principal` field), the default `--ssh-key` credential, a comment, and the python dispatch test.
+  Unified all on `ouro-op`. 130 rust + all python gates green.
 - 2026-07-15 p7-3 completed: rewrote the sealed executor from single-argv stubs into a fixed argv
   SEQUENCE per op (`build_plan` → `run_plan`). Real behaviour now: kes-rotation `docker cp` installs
   the digest-resolved opcert (public node.cert) into the keys mount then restarts — refuses if no
@@ -570,6 +581,8 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p7-4 | stack: other | command: bash fixtures/e2e/s0019-bed/run.sh | result: pass | note: real kes-rotation sequence on a live container — unstaged opcert refused; staged opcert digest-resolved, docker-cp'd into keys mount, then restart (StartedAt advanced); node.cert now the installed cert. cardano semantic effect needs a real node.
+- p7-1-fix1 | stack: python | command: python3 tests/test_s0019_dispatch.py | result: pass | note: dispatch preview principal + login user + default cred all ouro-op; asserts no ouro-exec@ remains.
 - p7-3 | stack: rust | command: cargo test -q -p ouro | result: pass | note: 130 tests; new coverage: kes installs resolved opcert (real inbox digest re-verify), deploy submits resolved tx, config/render is a real restart not --version, health reads tip on attested network, upgrade honestly refuses recreate (points to rollout, no fake restart), rollback = restart, run_plan stops at first failure.
 - p7-2 | stack: node | command: python3 tests/test_web_generator.py | result: pass | note: static CSP/no-network gates pass; grep confirms no tool-run/ouro-exec residue remains.
 - p7-1 | stack: rust | command: cargo test -q -p ouro | result: pass | note: 123 tests; dispatch op-channel now ouro-op (asserts !ouro-exec@), matches onboard principals.
