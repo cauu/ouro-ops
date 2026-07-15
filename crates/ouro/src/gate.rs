@@ -14,8 +14,8 @@
 //! composes it. `LiveProbe` is the closure the target-side probe supplies.
 
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::Path;
 
 use crate::attestation::{AdoptionAttestation, LiveObservation};
 use crate::{OuroError, Result};
@@ -23,8 +23,16 @@ use crate::{OuroError, Result};
 /// Exclusive per-node lock. Advisory (a lock file with the holder's audit id); the point is that
 /// two ouro writers cannot both proceed. Released on drop.
 pub struct NodeLock {
-    path: PathBuf,
     _file: File,
+}
+
+#[cfg(unix)]
+mod unix_lock {
+    use std::os::raw::c_int;
+    pub const LOCK_EX: c_int = 2;
+    pub const LOCK_NB: c_int = 4;
+    pub const LOCK_UN: c_int = 8;
+    extern "C" { pub fn flock(fd: c_int, operation: c_int) -> c_int; }
 }
 
 impl NodeLock {
@@ -33,29 +41,43 @@ impl NodeLock {
         std::fs::create_dir_all(lock_root)
             .map_err(|e| OuroError::Validation(format!("cannot create lock dir: {e}")))?;
         let path = lock_root.join(format!("{node_id}.lock"));
-        // O_CREATE|O_EXCL: creation fails if the lock already exists → held by another writer.
-        match OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(mut f) => {
-                let _ = f.write_all(audit_id.as_bytes());
-                Ok(NodeLock { path, _file: f })
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+        let mut file = OpenOptions::new().read(true).write(true).create(true).open(&path)
+            .map_err(|e| OuroError::Validation(format!("cannot open node lock: {e}")))?;
+        #[cfg(unix)]
+        {
+            use std::os::fd::AsRawFd;
+            // Kernel flock is released when the process dies, so recovery cannot be blocked by a
+            // stale create_new lock file after kill/OOM/reboot.
+            let acquired = unsafe {
+                unix_lock::flock(file.as_raw_fd(), unix_lock::LOCK_EX | unix_lock::LOCK_NB)
+            } == 0;
+            if !acquired {
                 let mut held = String::new();
-                let _ = File::open(&path).and_then(|mut f| f.read_to_string(&mut held));
-                Err(OuroError::Validation(format!(
+                let _ = File::open(&path).and_then(|mut holder| holder.read_to_string(&mut held));
+                return Err(OuroError::Validation(format!(
                     "node {node_id} is locked by another operation (holder audit {}) — refused \
                      (single-writer, §2.4)",
                     held.trim()
-                )))
+                )));
             }
-            Err(e) => Err(OuroError::Validation(format!("cannot take node lock: {e}"))),
         }
+        #[cfg(not(unix))]
+        return Err(OuroError::Validation("the S0019 node lock requires a Unix target".into()));
+        file.set_len(0)?;
+        file.seek(SeekFrom::Start(0))?;
+        file.write_all(audit_id.as_bytes())?;
+        file.sync_all()?;
+        Ok(NodeLock { _file: file })
     }
 }
 
 impl Drop for NodeLock {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        #[cfg(unix)]
+        {
+            use std::os::fd::AsRawFd;
+            let _ = unsafe { unix_lock::flock(self._file.as_raw_fd(), unix_lock::LOCK_UN) };
+        }
     }
 }
 
@@ -76,6 +98,13 @@ impl<'a> AttestedGuard<'a> {
     pub fn recheck_before_commit(&self) -> Result<()> {
         let live = (self.probe)()?;
         self.attestation.require_matches_live(&live)
+    }
+
+    /// Later steps may follow an intended content change; the held lock excludes other Ouro writers
+    /// while this still catches an image/container/mount swap before the next executor step.
+    pub fn recheck_identity_before_commit(&self) -> Result<()> {
+        let live = (self.probe)()?;
+        self.attestation.require_identity_matches(&live)
     }
 }
 

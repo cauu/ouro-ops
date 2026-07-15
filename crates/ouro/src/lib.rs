@@ -25,6 +25,7 @@ pub mod readiness;
 pub mod render;
 pub mod secrets;
 pub mod s0019_cli;
+pub mod s0019_confirmation;
 pub mod skills;
 pub mod state;
 pub mod transaction;

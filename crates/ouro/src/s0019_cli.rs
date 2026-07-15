@@ -22,7 +22,7 @@ use crate::intent::{Intent, Mutability};
 use crate::output::{self, ToolOutput};
 use crate::supervisor::SupervisorObservation;
 use crate::transaction::{self, Journal, JournalRecord, TxOps, TxState, WriteSeal};
-use crate::{convention, parity, readiness, OuroError, Result};
+use crate::{convention, parity, OuroError, Result};
 
 /// Where the attestation lives. On the TARGET (`--local`, p5-4) it is the single root-owned file
 /// `/var/lib/ouro/node-attestation.json` (overridable via OURO_ATTESTATION, matching
@@ -186,6 +186,7 @@ fn run_probe() -> Result<String> {
 /// (writes metadata only). Refuses a non-conforming node (never adapts).
 pub fn run_adopt(args: &[String]) -> Result<()> {
     let node = flag(args, "--node")?.to_string();
+    crate::intent::validate_machine_id(&node)?;
     let local = args.iter().any(|a| a == "--local");
 
     // p6-3 — SSH DISPATCH: `adopt --dispatch <host>` runs `ouro-ops adopt --local` on the target as
@@ -305,6 +306,7 @@ pub fn run_op(args: &[String]) -> Result<()> {
     let args = &args[1..];
     let op = flag(args, "--op")?.to_string();
     let node = flag(args, "--node")?.to_string();
+    crate::intent::validate_machine_id(&node)?;
     let plan = args.iter().any(|a| a == "--plan");
     let paths = ConfigPaths::discover();
 
@@ -321,6 +323,12 @@ pub fn run_op(args: &[String]) -> Result<()> {
     // Load the attestation (must be adopted, §1.C / §2.4).
     let local = args.iter().any(|a| a == "--local");
     let att = load_attestation(&paths, &node, local)?;
+    if att.immutable.machine_id != node {
+        return Err(OuroError::Validation(format!(
+            "target binding mismatch: --node {node} does not match adopted machine {} — refused",
+            att.immutable.machine_id
+        )));
+    }
 
     // Recovery pass BEFORE any new write (§2.6): reconcile an interrupted transaction.
     let journal = Journal::at(&tx_dir(&paths), &node);
@@ -351,18 +359,34 @@ pub fn run_op(args: &[String]) -> Result<()> {
     };
     // Validate against the deny-by-default registry + closed schema (§2.5).
     let spec = intent.validate(0)?;
+    let payload_machine = intent.payload.get("machine").and_then(|value| value.as_str())
+        .ok_or_else(|| OuroError::Validation("intent payload is missing its machine binding".into()))?;
+    if payload_machine != node || payload_machine != att.immutable.machine_id {
+        return Err(OuroError::Validation(format!(
+            "target binding mismatch: payload machine {payload_machine} != adopted machine {} — refused",
+            att.immutable.machine_id
+        )));
+    }
 
-    // Parity: this binary must match itself (control-side); a real dispatch also checks the target.
+    // Dispatched writes carry the control's complete security identity; local invocations still
+    // validate the local identity structure but do not claim control↔target parity.
     let id = parity::SecurityIdentity::local();
     parity::require_parity(&id, &id)?;
+    if let Some(expected) = optional(args, "--expect-embedded") {
+        parity::require_expected_wire_digest(expected)?;
+    }
 
-    // Live re-attestation (§2.4): compare the observation to the attestation before any mutation.
-    let obs = read_observation(args)?;
-    att.require_matches_live(&obs.live.to_live())?;
+    // Hold the crash-releasing node lock through terminal transaction state. The guard performs the
+    // initial full re-attestation and is called again immediately at the commit boundary.
+    let canon = intent.canonical_hash();
+    let audit_id = format!("op-{canon}");
+    let probe = || read_observation(args).map(|observation| observation.live.to_live());
+    let guard = crate::gate::require_attested_node(
+        &att, &tx_dir(&paths).join("locks"), &node, &audit_id, &probe,
+    )?;
 
     // Confirm gate for dangerous writes (§2.5): the token must be bound to THIS canonical intent.
-    let canon = intent.canonical_hash();
-    if spec.mutability == Mutability::Dangerous {
+    let verified_confirmation = if spec.mutability == Mutability::Dangerous {
         let token = optional(args, "--confirm-token").ok_or_else(|| {
             OuroError::Validation(format!(
                 "{op} is a dangerous write — present the plan to the operator, get their go-ahead, \
@@ -381,8 +405,13 @@ pub fn run_op(args: &[String]) -> Result<()> {
             crate::confirm::load_or_create_secret(&paths.tool_run_secret)?
         };
         let diff = format!("{op} on {node}");
-        readiness::verify_confirm(token, &canon, &diff, secret.trim().as_bytes())?;
-    }
+        Some(crate::s0019_confirmation::verify(
+            token, &canon, &diff, secret.trim().as_bytes(),
+            crate::s0019_confirmation::current_epoch()?,
+        )?)
+    } else {
+        None
+    };
 
     // A managed READ (e.g. observability/health) passes the attested gate but takes no confirm and
     // no write transaction — it does not mutate. Return the fixed read argv (target-side executor
@@ -470,7 +499,10 @@ pub fn run_op(args: &[String]) -> Result<()> {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let commit = || crate::executor::run_plan(&commit_plan);
+    let commit = || {
+        guard.recheck_before_commit()?;
+        crate::executor::run_plan(&commit_plan)
+    };
     let verify = || {
         let live = read_observation(args)?;
         if is_upgrade {
@@ -503,6 +535,13 @@ pub fn run_op(args: &[String]) -> Result<()> {
         }
     };
     let rollback = || crate::executor::run_plan(&rb_plan); // restart / recreate onto the prior config
+    // Consume only after every fail-closed preflight/plan has succeeded, but before the transaction
+    // can enter Committing. A crash or failed mutation then burns the approval permanently.
+    if let Some(confirmation) = &verified_confirmation {
+        crate::s0019_confirmation::consume(
+            &tx_dir(&paths).join("confirm-used").join(format!("{node}.log")), confirmation,
+        )?;
+    }
     let ops = TxOps { commit: &commit, verify: &verify, rollback: &rollback };
     let outcome = transaction::run(&journal, &seal, &base, &ops)?;
     audit_emit(&paths, "committed", &node, json!({"operation_id": op, "intent_hash": canon, "outcome": format!("{outcome:?}")}));
@@ -517,13 +556,26 @@ pub fn run_op(args: &[String]) -> Result<()> {
 pub fn run_confirm_create(args: &[String]) -> Result<()> {
     let op = flag(args, "--op")?;
     let node = flag(args, "--node")?;
+    crate::intent::validate_machine_id(node)?;
+    parity::require_registered_write(op)?;
     let hash = flag(args, "--intent-hash")?;
+    if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(OuroError::Validation(
+            "--intent-hash must be the 64-hex SHA-256 emitted by `ouro-ops op run`".into(),
+        ));
+    }
+    let ttl = crate::confirm::parse_ttl(optional(args, "--ttl").unwrap_or("5m"))?;
+    let ttl_seconds = u64::try_from(ttl.num_seconds())
+        .map_err(|_| OuroError::Validation("confirmation ttl must be positive".into()))?;
     let paths = ConfigPaths::discover();
     let secret = crate::confirm::load_or_create_secret(&paths.tool_run_secret)?;
     let diff = format!("{op} on {node}");
-    let token = readiness::bind_confirm(hash, &diff, secret.as_bytes());
+    let (token, expires_at) = crate::s0019_confirmation::mint(
+        hash, &diff, secret.as_bytes(), crate::s0019_confirmation::current_epoch()?, ttl_seconds,
+    )?;
     output::print_json(&ToolOutput::ok("ouro.confirm.create", false).with_data(json!({
-        "op": op, "node": node, "intent_hash": hash, "diff": diff, "confirm_token": token,
+        "op": op, "node": node, "intent_hash": hash, "diff": diff,
+        "confirm_token": token, "expires_at_epoch": expires_at, "single_use": true,
     })))?;
     Ok(())
 }
@@ -561,7 +613,7 @@ fn dispatch_op(
         &key,
         &paths.known_hosts,
         &remote,
-        &crate::skills::embedded_digest(),
+        &parity::SecurityIdentity::local().wire_digest(),
     );
     if plan {
         output::print_json(&ToolOutput::ok("ouro.op.dispatch.plan", false).with_data(json!({

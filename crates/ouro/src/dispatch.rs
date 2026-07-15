@@ -6,7 +6,8 @@
 //!   installs) through a fixed root-owned wrapper that only ever runs `ouro-ops op "$@"` (a sudoers
 //!   allowlist keyed to `ouro-op`) — so a confined principal cannot
 //!   invoke other subcommands. Host key is PINNED (StrictHostKeyChecking=yes + ouro known_hosts),
-//!   so a swapped target key is refused. Parity (§2.8) rides as `--expect-embedded`.
+//!   so a swapped target key is refused. Parity (§2.8) rides as `--expect-embedded` (the retained
+//!   flag name now carries the complete security identity digest, not only Skills).
 //! - `adopt` dispatch runs as the operator's bootstrap account (adoption is an onboarding-class,
 //!   privileged action, like S0017 init) and runs `ouro-ops adopt --local "$@"` on the target.
 //!
@@ -54,7 +55,7 @@ pub fn op_dispatch_argv(
     key: &Path,
     known_hosts: &Path,
     remote_args: &[String],
-    embedded_digest: &str,
+    expected_security_digest: &str,
 ) -> Vec<String> {
     let mut argv = base_ssh(port, key, known_hosts, OP_PRINCIPAL, host);
     argv.push("sudo".into());
@@ -63,9 +64,9 @@ pub fn op_dispatch_argv(
     for a in remote_args {
         argv.push(shell_quote(a));
     }
-    // §2.8 parity: the target compares this to its own embedded digest before executing.
+    // §2.8 parity: the target compares the complete security identity before executing.
     argv.push("--expect-embedded".into());
-    argv.push(shell_quote(embedded_digest));
+    argv.push(shell_quote(expected_security_digest));
     argv
 }
 

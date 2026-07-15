@@ -10,8 +10,7 @@
 //! injection: it is either an enumerated value or it is refused.
 
 use serde::{Deserialize, Serialize};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use sha2::{Digest, Sha256};
 
 use crate::{OuroError, Result};
 
@@ -211,9 +210,22 @@ impl Intent {
     /// single-use confirm-token, so the confirmed intent == the validated == the executed one.
     pub fn canonical_hash(&self) -> String {
         let canon = canonical_json(&serde_json::to_value(self).unwrap_or(serde_json::Value::Null));
-        let mut h = DefaultHasher::new();
-        canon.hash(&mut h);
-        format!("{:016x}", h.finish())
+        let digest = Sha256::digest(canon.as_bytes());
+        digest.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
+}
+
+/// Validate a node identifier before it is ever used in an attestation, lock, journal, or seal
+/// path. Keeping this identical to `ParamKind::MachineId` prevents path traversal and prevents the
+/// envelope target from being less constrained than the payload target.
+pub fn validate_machine_id(value: &str) -> Result<()> {
+    if !value.is_empty()
+        && value.len() <= 32
+        && value.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        Ok(())
+    } else {
+        Err(OuroError::Validation("machine id must be [a-z0-9-]{1,32}".into()))
     }
 }
 
@@ -224,16 +236,10 @@ fn validate_param(p: &ParamSpec, v: &serde_json::Value) -> Result<()> {
             Some(s) if allowed.contains(&s) => Ok(()),
             _ => bad(&format!("must be one of {allowed:?}")),
         },
-        ParamKind::MachineId => match v.as_str() {
-            Some(s)
-                if !s.is_empty()
-                    && s.len() <= 32
-                    && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') =>
-            {
-                Ok(())
-            }
-            _ => bad("must be a [a-z0-9-]{1,32} machine id"),
-        },
+        ParamKind::MachineId => v
+            .as_str()
+            .ok_or_else(|| OuroError::Validation(format!("param {} must be a machine id", p.name)))
+            .and_then(validate_machine_id),
         ParamKind::ArtifactRef => match v.as_str() {
             // <id>@sha256:<64hex> — an immutable content reference, never a path.
             Some(s) => {
@@ -389,6 +395,9 @@ mod tests {
         let a = canonical_json(&json!({"b":1,"a":2}));
         let b = canonical_json(&json!({"a":2,"b":1}));
         assert_eq!(a, b, "canonical form independent of key order");
+        let hash = intent("runtime/restart", json!({"machine":"bp1"})).canonical_hash();
+        assert_eq!(hash.len(), 64, "intent confirmation uses a full SHA-256 digest");
+        assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
     }
 
     #[test]

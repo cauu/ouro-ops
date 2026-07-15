@@ -68,6 +68,15 @@ def main():
                "--param", "machine=bp1; rm -rf /", "--observation", o, "--plan")
     assert d["status"] == "error", d
 
+    # 3a. every target selector is bound to the adopted machine; a valid-but-different id refuses.
+    _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
+               "--param", "machine=relay1", "--observation", o, "--plan")
+    assert d["status"] == "error" and "target binding mismatch" in json.dumps(d), d
+    # Node ids are validated before they can become attestation/journal/lock paths.
+    _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "../bp1",
+               "--param", "machine=bp1", "--observation", o, "--plan")
+    assert d["status"] == "error" and "machine id" in json.dumps(d), d
+
     # 4. unregistered / legacy op → refuse
     _, d = run(home, "op", "run", "--op", "deploy/takeover", "--node", "bp1",
                "--param", "machine=bp1", "--observation", o, "--plan")
@@ -84,12 +93,19 @@ def main():
     m = re.search(r"--intent-hash ([0-9a-f]+)", msg)
     assert m, f"no intent hash in refusal: {msg}"
     ihash = m.group(1)
+    assert len(ihash) == 64, ihash
     _, tok = run(home, "confirm", "create", "--op", "runtime/restart", "--node", "bp1",
                  "--intent-hash", ihash)
     token = tok["data"]["confirm_token"]
     _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
                "--param", "machine=bp1", "--observation", o, "--confirm-token", token, "--plan")
     assert d["status"] == "ok", f"confirmed dangerous op should pass gates: {d}"
+
+    # 5a. a stale control security identity is rejected on the target-side path.
+    _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
+               "--param", "machine=bp1", "--observation", o, "--confirm-token", token,
+               "--expect-embedded", "stale-control", "--plan")
+    assert d["status"] == "error" and "security identity mismatch" in json.dumps(d), d
 
     # 6. live drift (container recreated) → refuse before mutation
     o2 = obs(home + "/d2" if False else home, container_id="cid-swapped")

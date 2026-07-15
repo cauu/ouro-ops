@@ -7,6 +7,8 @@
 //! an older/mutable validator under weaker rules while the node fingerprint still matches. All
 //! legacy S0017 write entry points are refused unless migrated into the deny-by-default registry.
 
+use sha2::{Digest, Sha256};
+
 use crate::{intent, skills, OuroError, Result};
 
 /// The security identity a side presents. Derived from embedded, root-owned, content-addressed
@@ -26,12 +28,44 @@ impl SecurityIdentity {
     pub fn local() -> SecurityIdentity {
         SecurityIdentity {
             build_id: env!("CARGO_PKG_VERSION").to_string(),
-            executor_digest: skills::embedded_digest(),
+            executor_digest: security_code_digest(),
             intent_schema_version: 1,
             registry_len: intent::registry().len(),
             min_security_version: crate::version::current(),
         }
     }
+
+    /// Compact control→target identity covering every field checked by `require_parity`.
+    pub fn wire_digest(&self) -> String {
+        let material = format!(
+            "{}\n{}\n{}\n{}\n{}.{}.{}",
+            self.build_id, self.executor_digest, self.intent_schema_version, self.registry_len,
+            self.min_security_version.0, self.min_security_version.1, self.min_security_version.2
+        );
+        sha256(material.as_bytes())
+    }
+}
+
+fn sha256(bytes: &[u8]) -> String {
+    Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Digest security-deciding Rust source together with embedded Skills/assets. `include_str!` makes
+/// builds from the same source portable across control/target platforms while detecting stale code.
+fn security_code_digest() -> String {
+    let mut hasher = Sha256::new();
+    for component in [
+        include_str!("attestation.rs"), include_str!("convention.rs"),
+        include_str!("executor.rs"), include_str!("fleet.rs"), include_str!("gate.rs"),
+        include_str!("intent.rs"), include_str!("readiness.rs"),
+        include_str!("transaction.rs"), include_str!("upgrade.rs"),
+        include_str!("s0019_confirmation.rs"),
+    ] {
+        hasher.update((component.len() as u64).to_be_bytes());
+        hasher.update(component.as_bytes());
+    }
+    hasher.update(skills::embedded_digest().as_bytes());
+    hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// §2.8 — require control↔target parity before accepting an intent. The executor digest + intent
@@ -39,6 +73,12 @@ impl SecurityIdentity {
 /// code), and the target must be at or above the control's minimum security version (anti-
 /// downgrade). Actionable error routes to re-adopt/upgrade.
 pub fn require_parity(control: &SecurityIdentity, target: &SecurityIdentity) -> Result<()> {
+    if control.build_id != target.build_id {
+        return Err(OuroError::Validation(format!(
+            "ouro build mismatch: control {} vs target {} — update the target binary (§2.8)",
+            control.build_id, target.build_id
+        )));
+    }
     if control.executor_digest != target.executor_digest {
         return Err(OuroError::Validation(format!(
             "executor parity mismatch: control executor {}… vs target {}… — the target runs \
@@ -53,6 +93,12 @@ pub fn require_parity(control: &SecurityIdentity, target: &SecurityIdentity) -> 
             control.intent_schema_version, target.intent_schema_version
         )));
     }
+    if control.registry_len != target.registry_len {
+        return Err(OuroError::Validation(format!(
+            "intent registry mismatch: control has {} operations vs target {} (§2.8)",
+            control.registry_len, target.registry_len
+        )));
+    }
     if target.min_security_version < control.min_security_version {
         return Err(OuroError::Validation(format!(
             "target security version {:?} is below the control minimum {:?} — anti-downgrade \
@@ -61,6 +107,19 @@ pub fn require_parity(control: &SecurityIdentity, target: &SecurityIdentity) -> 
         )));
     }
     Ok(())
+}
+
+/// Target-side dispatch gate for the compact security identity supplied by the control binary.
+pub fn require_expected_wire_digest(expected: &str) -> Result<()> {
+    let actual = SecurityIdentity::local().wire_digest();
+    if expected == actual {
+        Ok(())
+    } else {
+        Err(OuroError::Validation(format!(
+            "control→target security identity mismatch: expected {}… but target is {}… — update the target binary (§2.8)",
+            &expected[..expected.len().min(12)], &actual[..actual.len().min(12)]
+        )))
+    }
 }
 
 /// Legacy S0017 write tools that are DISABLED in the S0019 world: a write may run only if it is in
@@ -116,6 +175,16 @@ mod tests {
         let mut target = control.clone();
         target.executor_digest = "sha256:different".into();
         assert!(require_parity(&control, &target).is_err());
+    }
+
+    #[test]
+    fn wire_digest_covers_all_parity_fields() {
+        let id = SecurityIdentity::local();
+        assert!(require_expected_wire_digest(&id.wire_digest()).is_ok());
+        let mut changed = id.clone();
+        changed.registry_len += 1;
+        assert_ne!(id.wire_digest(), changed.wire_digest());
+        assert!(require_parity(&id, &changed).is_err());
     }
 
     #[test]

@@ -720,3 +720,53 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   (2.12); audit schema (2.13); evidence-bound adoption approval (2.14); supported/retired/unsupported
   operation table (2.15). Execution plan + acceptance matrix expanded to match. Ready to activate;
   the protocol items (p1/p2) must be specified + tested before any dispatched write goes live.
+
+## 8. Post-review Repair Plan (append-only)
+- [~] p9-1 bind every op to the adopted machine identity; replace replayable S0019 confirmations
+  with expiring, single-use, intent-bound tokens; wire the central node lock/live gate and the
+  control→target security identity parity check into the real `op run` path.
+- [ ] p9-2 make the journal carry a recoverable execution description and pre-state; replace no-op
+  startup recovery with operation-aware verify/rollback; report rollback as a failed requested op.
+- [ ] p9-3 connect readiness, fleet lease/quorum/BP-last and upgrade transition/DB-compat checks to
+  production execution; make rollback promises operation-specific and honest.
+- [ ] p9-4 close production plumbing: cryptographically verified usable allowlist, durable atomic
+  attestation, typed/transported inbox artifacts, and executable onboarding paths.
+- [ ] p9-5 align Skills/audit with implemented guarantees and rebuild adversarial dispatch-level
+  acceptance evidence for the repaired TC-1..TC-10 path.
+
+## 9. Post-review Acceptance Additions (append-only)
+- RTC-1 target binding: `--node`, payload `machine`, attestation `machine_id`, lock/journal paths and
+  executor target are one validated identity; mismatch/traversal refuses before mutation.
+- RTC-2 confirmation: token MAC binds the full SHA-256 canonical intent + diff, expires, is consumed
+  once target-side, and replay/mismatch/expiry all refuse before mutation.
+- RTC-3 live gate/parity: the real local/dispatched path holds a crash-releasing exclusive node lock
+  through terminal transaction state, re-probes immediately before commit, and refuses a stale
+  control security identity covering the security-deciding Rust code and embedded assets.
+- RTC-4 recovery: every non-terminal journal state has enough durable data for deterministic
+  verify/rollback after process death; no no-op recovery may clear an uncertain write.
+- RTC-5 production closure: operation semantics, readiness/fleet/upgrade guards, artifact transport,
+  onboarding, Skills and audit evidence match the executable path without stronger prose claims.
+
+## 10. Post-review Execution Log (append-only)
+- 2026-07-15 p9-1 started after user-approved code review remediation; no new spec created because
+  S0019 remains active and has not received explicit acceptance/closure.
+
+## 11. Post-review Item Status (append-only)
+- [x] p9-1 completed: node ids are validated before path use and the envelope/payload/attestation
+  identities must agree; canonical intents use SHA-256; dangerous approvals are MAC-bound, 30s–15m
+  expiring and durably single-use target-side; kernel `flock` makes node locks crash-releasing; the
+  real op path holds the live guard to terminal state and re-probes at commit; dispatch parity now
+  covers build/schema/registry/floor plus security-deciding Rust sources and embedded assets.
+
+## 12. Post-review Validation Evidence (append-only)
+- RTC-1 | stack: python | command: python3 tests/test_s0019_pipeline.py | result: pass | note:
+  valid-but-wrong payload machine and traversal-shaped node id both refuse before executor planning.
+- RTC-2 | stack: rust | command: cargo test -q -p ouro | result: pass | note: 135 tests; new token
+  test proves exact intent+diff binding, expiry and durable replay refusal; intent hash is 64-hex SHA-256.
+- RTC-3 | stack: rust | command: cargo test -q -p ouro | result: pass | note: live gate uses
+  crash-releasing flock; parity wire digest changes with registry/security identity and stale expected
+  identity refuses; full crate suite green.
+- RTC-3 | stack: python | command: python3 tests/test_s0019_dispatch.py | result: pass | note:
+  dispatch remains confined/pinned and carries target-side parity input; existing negative gates green.
+- p9-1 | stack: rust | command: cargo build -q -p ouro; git diff --check | result: pass | note:
+  production binary builds and patch has no whitespace errors.
