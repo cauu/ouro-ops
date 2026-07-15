@@ -8,6 +8,8 @@
 
 use std::path::Path;
 
+use serde::Serialize;
+
 use crate::bootstrap::{BootstrapTarget, BootstrapTransport, HostKeyCheck};
 use crate::provision::{execute_plan, InstallManifest, Step};
 use crate::Result;
@@ -48,6 +50,30 @@ const AUTHKEY_STAGE: &str = "/tmp/ouro-onboard-authkey";
 /// control machine is honored by the target. Provisioned here (root-owned, 0400 for ouro-op).
 pub const CONFIRM_SECRET_PATH: &str = "/var/lib/ouro/confirm.secret";
 
+pub const SSHD_DROP_IN_PATH: &str = "/etc/ssh/sshd_config.d/20-ouro-s0019.conf";
+
+/// Non-secret, fully rendered SSH policy returned by onboard preview/execute output. Agents must
+/// inspect this typed value instead of trying to reconstruct dynamic formatting from binary
+/// strings (which cannot reveal the runtime `bootstrap_user` interpolation).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SshAccessPolicy {
+    pub drop_in: &'static str,
+    pub allow_users: Vec<String>,
+    pub bootstrap_user: String,
+    pub bootstrap_user_preserved: bool,
+    pub rendered_config: String,
+}
+
+pub fn ssh_access_policy(bootstrap_user: &str) -> SshAccessPolicy {
+    SshAccessPolicy {
+        drop_in: SSHD_DROP_IN_PATH,
+        allow_users: vec!["ouro-op".into(), "ouro-diag".into(), bootstrap_user.into()],
+        bootstrap_user: bootstrap_user.into(),
+        bootstrap_user_preserved: true,
+        rendered_config: sshd_conf(bootstrap_user),
+    }
+}
+
 /// The greenfield onboard plan (S0019). Idempotent; installs the S0019 confinement, binary, the
 /// /var/lib/ouro dir the adoption attestation lives in, and the shared confirm secret.
 pub fn onboard_plan(bootstrap_user: &str, ouro_binary: &Path, confirm_secret: &str) -> Vec<Step> {
@@ -87,7 +113,12 @@ pub fn onboard_plan(bootstrap_user: &str, ouro_binary: &Path, confirm_secret: &s
         content("install sudoers confinement", OP_SUDOERS.to_string(), "/etc/sudoers.d/ouro-op", "0440"),
         run("validate sudoers", "visudo -cf /etc/sudoers.d/ouro-op"),
         // Auth posture: pubkey-only, no root, only the S0019 principals + bootstrap.
-        content("harden sshd (pubkey-only)", sshd_conf(bootstrap_user), "/etc/ssh/sshd_config.d/20-ouro-s0019.conf", "0644"),
+        content(
+            "harden sshd (pubkey-only)",
+            sshd_conf(bootstrap_user),
+            SSHD_DROP_IN_PATH,
+            "0644",
+        ),
         // Control key -> BOTH principals' authorized_keys (staged root-owned, then install-chowned).
         run("prepare ouro-op .ssh", "install -d -m 0700 -o ouro-op -g ouro-op /home/ouro-op/.ssh"),
         run(
@@ -176,6 +207,16 @@ mod tests {
         assert!(c.contains("PermitRootLogin no") && c.contains("PasswordAuthentication no"));
         assert!(c.contains("AllowUsers ouro-op ouro-diag ubuntu"));
         assert!(!c.contains("ouro-exec"), "greenfield principals only");
+    }
+
+    #[test]
+    fn typed_ssh_policy_exposes_the_runtime_bootstrap_user() {
+        let policy = ssh_access_policy("cardano");
+        assert_eq!(policy.drop_in, SSHD_DROP_IN_PATH);
+        assert_eq!(policy.allow_users, ["ouro-op", "ouro-diag", "cardano"]);
+        assert_eq!(policy.bootstrap_user, "cardano");
+        assert!(policy.bootstrap_user_preserved);
+        assert!(policy.rendered_config.contains("AllowUsers ouro-op ouro-diag cardano"));
     }
 
     #[test]

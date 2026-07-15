@@ -272,6 +272,7 @@ fn run_onboard(args: &[String]) -> Result<()> {
         "expected_host_key_supplied": expected_host_key.is_some(),
         "state": state,
         "planned_state": planned_state,
+        "ssh_access_policy": crate::onboard::ssh_access_policy(&target.user),
         "security_note": "bootstrap credential is NOT mechanism-isolated from the agent \
             (convenience mode, P0-1, carried from S0017). Closing this is a separate hardening spec.",
     })))?;

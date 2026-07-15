@@ -87,6 +87,13 @@ def main():
     assert "does NOT expose remaining KES periods" in kes
     assert "Use managed health to determine" not in kes, \
         "KES Skill must not infer KES lifetime from the fixed tip-only health read"
+    onboard = (ROOT / "ouro-skills/onboard/SKILL.md").read_text()
+    for phrase in [
+        "data.ssh_access_policy",
+        "bootstrap_user_preserved: true",
+        "Never infer runtime-formatted values from static binary string fragments",
+    ]:
+        assert phrase in onboard, f"onboard Skill lacks rendered-policy guard {phrase!r}"
     print("skill docs passed")
 
 

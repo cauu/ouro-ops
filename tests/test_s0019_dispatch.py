@@ -88,6 +88,13 @@ def main():
     assert preview["pinned_host_key"] is None, preview
     assert preview["host_key_status"] == "not_checked_in_dry_run", preview
     assert preview["expected_host_key_supplied"] is True, preview
+    access = preview["ssh_access_policy"]
+    assert access["drop_in"] == "/etc/ssh/sshd_config.d/20-ouro-s0019.conf", access
+    assert access["allow_users"] == ["ouro-op", "ouro-diag", "cardano"], access
+    assert access["bootstrap_user"] == "cardano", access
+    assert access["bootstrap_user_preserved"] is True, access
+    assert "AllowUsers ouro-op ouro-diag cardano" in access["rendered_config"], access
+    assert "AAAA0123456789abcdef" not in json.dumps(access), access
     assert all(
         not step["changed"] and step["planned"] and not step["executed"]
         for step in preview["manifest"]["steps"]

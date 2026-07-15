@@ -29,6 +29,10 @@ and the shared confirmation trust needed by later `ouro-ops op run --dispatch` o
   `ouro-ops onboard --host <target> --port 22 --bootstrap-user <account> --bootstrap-key
   creds://<name> --control-pubkey <operator-public-key-file> --ouro-binary <matching-linux-binary>
   [--expected-host-key <sha256>]`.
+- In the preview, inspect `data.ssh_access_policy` as the authoritative RENDERED policy. Require its
+  `allow_users` to contain `ouro-op`, `ouro-diag` and the exact named bootstrap account, require
+  `bootstrap_user_preserved: true`, and show the operator its `rendered_config` before approval.
+  Stop on any mismatch. Never infer runtime-formatted values from static binary string fragments.
 - Require an `ok` install manifest and a non-empty pinned host key. Then continue with the adopt
   skill; a later managed operation uses `ouro-ops op run --dispatch <host> --ssh-key
   creds://<name>` through `ouro-op`.
