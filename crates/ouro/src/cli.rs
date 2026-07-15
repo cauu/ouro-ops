@@ -1034,8 +1034,8 @@ fn run_tool(args: &[String]) -> Result<()> {
             Err(OuroError::Validation(
                 "detect/runtime is retired in S0019: use `ouro-ops adopt --dispatch <host> \
                  --bootstrap-user <account> --ssh-key creds://<name> --node <id> --role <bp|relay> \
-                 --preview` for unmanaged conformance detection; managed operations re-attest the \
-                 target automatically"
+                 --spec <pool-spec> --preview` for unmanaged conformance detection; managed \
+                 operations re-attest the target automatically"
                     .to_string(),
             ))
         }

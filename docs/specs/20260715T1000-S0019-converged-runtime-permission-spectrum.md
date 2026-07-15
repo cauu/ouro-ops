@@ -1378,3 +1378,32 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   operator-only procedure rather than an ordinary Skill intent; the momentary relay TCP check
   narrows but cannot atomically eliminate the permit-to-commit race and is not Cardano readiness;
   inbox global quota/GC and universal external-command timeouts remain P2 follow-up work.
+
+## 36. p10-4 Final Release and Independent Live Replay (append-only)
+- 2026-07-16T04:40+0800 [~] p10-4 started. Build/install the final macOS arm64 control binary and
+  static Linux x86_64 target binary, converge only the S0019 management plane on `bp1` then
+  `relay1`, prove exact idempotence and embedded identity, and hand the final installed build to an
+  independent fresh agent for non-deploy, non-disruptive replay.
+- 2026-07-16T04:50+0800 [~] p10-4-fix1 started after the independent final-binary replay reached
+  both real targets and found that the control `adopt --dispatch ... --preview` ran a separate
+  identity preflight but omitted the mandatory `--expect-embedded` parity argument from the actual
+  target adoption argv. Repair the dispatch constructor so every adoption SSH command carries the
+  exact control security identity once, add a structural regression, rebuild/reconverge both target
+  management binaries and repeat the live preview. No adoption apply is authorized.
+- 2026-07-16T05:11+0800 [x] p10-4-fix1 completed. The adoption SSH constructor now appends the
+  control security identity exactly once to every privileged target invocation, including both the
+  identity-only preflight and the actual preview/apply argv; callers cannot supply or override that
+  internal flag. The same fresh replay also found and repaired the retired Detect response's stale
+  recovery command by adding its mandatory `--spec <pool-spec>` input.
+- LETC-3 | stack: rust | command: `cargo test -p ouro` | result: pass | note: 174/174; adoption
+  dispatch regression asserts one exact parity argument on the actual target argv.
+- LETC-4 | stack: python | command: `make python-test` | result: pass | note: complete suite includes
+  transport-only adoption argv construction and executable Detect recovery-copy regression.
+- LETC-4 | stack: rust | command: `cargo clippy --all-targets --all-features -- -D warnings` |
+  result: pass | note: zero warnings after the dispatch repair.
+- LETC-4 | stack: other | command: `bash ci/l2-integration.sh` | result: pass | note: all L2 gates
+  and 174 Rust tests passed on the repaired tree.
+- LETC-3 | stack: other | command: independent final-binary `adopt --dispatch ... --preview` on
+  `bp1` and `relay1` | result: pass | note: both actual target commands crossed the parity gate and
+  safely refused only at the signed allowlist because live config digest `sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a`
+  is not published; no attestation or node mutation occurred.

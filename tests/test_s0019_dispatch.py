@@ -365,6 +365,34 @@ def main():
     assert "-F /dev/null" in j and "IdentityAgent=none" in j and "IdentitiesOnly=yes" in j, j
     assert "'--plan'" not in j, "transport plan itself is not forwarded"
 
+    # Every privileged adoption dispatch, not merely its separate identity preflight, carries the
+    # exact control security identity once. This is a transport-only argv inspection: no SSH runs.
+    host_key_parts = failure_key.with_suffix(".pub").read_text().split()
+    (Path(home) / "known_hosts").write_text(
+        f"192.0.2.1 {host_key_parts[0]} {host_key_parts[1]}\n"
+    )
+    _, adopt_plan = run(
+        home,
+        "adopt",
+        "--dispatch",
+        "192.0.2.1",
+        "--bootstrap-user",
+        "cardano",
+        "--ssh-key",
+        "creds://bp1",
+        "--spec",
+        str(ROOT / "examples/pool-spec.minimal.yaml"),
+        "--node",
+        "bp1",
+        "--role",
+        "bp",
+        "--plan",
+    )
+    assert adopt_plan["status"] == "ok", adopt_plan
+    adopt_argv = " ".join(adopt_plan["data"]["ssh_argv"])
+    assert adopt_argv.count("--expect-embedded") == 1, adopt_argv
+    assert security_digest(home) in adopt_argv, adopt_argv
+
     # A transport failure is one bounded typed record, not a silent exit 255. Remote stderr is
     # untrusted DATA but retaining a bounded excerpt makes host-key/auth failures diagnosable.
     transport_bin = Path(home) / "transport-bin"
@@ -478,6 +506,7 @@ def main():
     ):
         _, retired = run(home, *detect_args)
         assert retired["status"] == "error" and "retired in S0019" in json.dumps(retired), retired
+        assert "--spec <pool-spec>" in json.dumps(retired), retired
 
     # Nested agent-facing help must be discoverable without supplying the operation's required
     # arguments first.

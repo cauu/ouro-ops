@@ -109,6 +109,7 @@ pub fn adopt_dispatch_argv(
     key: &Path,
     known_hosts: &Path,
     remote_args: &[String],
+    expected_security_digest: &str,
 ) -> crate::Result<Vec<String>> {
     crate::onboard::validate_bootstrap_user(bootstrap_user)?;
     let mut argv = base_ssh(port, key, known_hosts, bootstrap_user, host);
@@ -125,6 +126,10 @@ pub fn adopt_dispatch_argv(
     for a in remote_args {
         argv.push(shell_quote(a));
     }
+    // The real privileged adoption command is independently parity-bound; a separate identity
+    // preflight is useful evidence but cannot substitute for this commit-time argument.
+    argv.push("--expect-embedded".into());
+    argv.push(shell_quote(expected_security_digest));
     Ok(argv)
 }
 
@@ -176,12 +181,15 @@ mod tests {
         let argv = adopt_dispatch_argv(
             "10.0.0.2", 22, "ubuntu", Path::new("/creds/bp1"),
             Path::new("/kh"), &["--node".into(), "bp1".into(), "--role".into(), "bp".into()],
+            "sha256:abc",
         ).unwrap();
         let j = argv.join(" ");
         assert!(j.contains("ubuntu@10.0.0.2"), "bootstrap account");
         assert!(j.contains("sudo -n env -i HOME=/root OURO_HOME=/var/lib/ouro"));
         assert!(j.contains("/usr/local/bin/ouro-ops adopt --local"), "adopt --local on target");
         assert!(j.contains("'bp1'"));
+        assert!(j.contains("--expect-embedded 'sha256:abc'"), "parity carried");
+        assert_eq!(j.matches("--expect-embedded").count(), 1, "parity flag exactly once");
     }
 
     #[test]
@@ -189,6 +197,7 @@ mod tests {
         assert!(adopt_dispatch_argv(
             "10.0.0.2", 22, "-oProxyCommand=touch /tmp/pwned", Path::new("/creds/bp1"),
             Path::new("/kh"), &[],
+            "sha256:abc",
         ).is_err());
     }
 

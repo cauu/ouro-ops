@@ -2630,8 +2630,15 @@ fn dispatch_adopt(host: &str, node: &str, args: &[String], paths: &ConfigPaths, 
         remote.push("--expected-image".into());
         remote.push(image.clone());
     }
+    let expected_identity = parity::SecurityIdentity::local().wire_digest();
     let argv = crate::dispatch::adopt_dispatch_argv(
-        host, 22, user, &key, &paths.known_hosts, &remote,
+        host,
+        22,
+        user,
+        &key,
+        &paths.known_hosts,
+        &remote,
+        &expected_identity,
     )?;
     if plan {
         output::print_json(&ToolOutput::ok("ouro.adopt.dispatch.plan", false).with_data(json!({
@@ -2640,18 +2647,14 @@ fn dispatch_adopt(host: &str, node: &str, args: &[String], paths: &ConfigPaths, 
         })))?;
         return Ok(());
     }
-    let expected_identity = parity::SecurityIdentity::local().wire_digest();
     let identity_argv = crate::dispatch::adopt_dispatch_argv(
         host,
         22,
         user,
         &key,
         &paths.known_hosts,
-        &[
-            "--identity-only".into(),
-            "--expect-embedded".into(),
-            expected_identity.clone(),
-        ],
+        &["--identity-only".into()],
+        &expected_identity,
     )?;
     let identity_out = crate::ssh::bounded_ssh(
         &identity_argv,
