@@ -255,8 +255,20 @@ pub fn run_op(args: &[String]) -> Result<()> {
         readiness::verify_confirm(token, &canon, &diff, secret.as_bytes())?;
     }
 
+    // A managed READ (e.g. observability/health) passes the attested gate but takes no confirm and
+    // no write transaction — it does not mutate. Return the fixed read argv (target-side executor
+    // gathers + returns the data); no journal is touched.
+    if spec.mutability == Mutability::Read {
+        let argv = crate::executor::build_argv(&intent, &att).unwrap_or_default();
+        output::print_json(&ToolOutput::ok("ouro.op.read", false).with_data(json!({
+            "op": op, "node": node, "intent_hash": canon, "executor_argv": argv,
+            "note": "managed read — no mutation; target-side executor gathers the data",
+        })))?;
+        return Ok(());
+    }
+
     // Crash-durable transaction (§2.6). In --plan mode the executor is a no-op (gates proven, no
-    // mutation); real docker executors land in p4-2.
+    // mutation); real target execution is target-side (p5).
     let base = JournalRecord {
         audit_id: format!("op-{canon}"),
         operation_id: op.clone(),

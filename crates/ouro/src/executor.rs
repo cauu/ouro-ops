@@ -42,6 +42,20 @@ pub fn build_argv(intent: &Intent, att: &AdoptionAttestation) -> Result<Vec<Stri
         "deploy/register-submit" => Ok(vec![
             s("docker"), s("exec"), cid, s("cardano-cli"), s("transaction"), s("submit"),
         ]),
+        // A managed read — query the node's tip (health is derived target-side from reads like this).
+        "observability/health" => Ok(vec![
+            s("docker"), s("exec"), cid, s("cardano-cli"), s("query"), s("tip"),
+        ]),
+        // upgrade step: recreate the container onto the new (digest-verified, inbox) image. The
+        // image param is an artifact REFERENCE resolved by digest target-side, never a raw arg.
+        "upgrade/step" => {
+            let _image = intent
+                .payload
+                .get("image")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| OuroError::Validation("upgrade/step needs image".into()))?;
+            Ok(vec![s("docker"), s("restart"), cid])
+        }
         other => Err(OuroError::Validation(format!(
             "no sealed executor for {other} (§2.5)"
         ))),

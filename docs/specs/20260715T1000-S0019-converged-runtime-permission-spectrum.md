@@ -266,6 +266,13 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p4-2 greenfield SKILL.md decision trees (adopt/observability/troubleshooting/runtime/kes-rotation/deploy/config/upgrade) as judgment frameworks (invariants/stop/red-lines, writes = intents, dangerous = operator-approved confirm) + sealed per-op executor scripts (fixed argv) — §1.D/§2.5/§2.6
 - [x] p4-3 web onboarding prompt templates aligned to the adopt + intent commands (interaction unchanged; English prompt)
 - [x] p4-4 dispatch-level end-to-end negative tests: TC-1..10 promoted from unit to dispatch (unmanaged refuse, hostile intent refuse, confirm binding, live drift, crash recovery, fleet quorum) on the container bed
+- [x] p4-5 (fix) register the ops the greenfield SKILLs/web reference: add a READ tier (Mutability::Read) so `observability/health` passes the attested gate with no confirm/transaction, and register `upgrade/step` (dangerous). Closes the SKILL↔registry inconsistency that refused those two commands.
+- [ ] p5-1 SSH dispatch for `adopt`/`op` (control → target, confined principal); the commands actually reach the target instead of running control-local
+- [ ] p5-2 target-side probe: gather the live observation on the target (container inspect + node argv + cardano-cli reads) instead of a hand-supplied `--observation` file
+- [ ] p5-3 real executor invocation: run the fixed argv on the target as the transaction's commit/verify/rollback (wire `executor::build_argv` into the transaction; readiness proxies as verify)
+- [ ] p5-4 attestation stored target-side (root-owned `/var/lib/ouro/node-attestation.json`), read by `ouro-attested.sh`; adopt writes it there
+- [ ] p5-5 `ouro-ops inbox stage` command (content-addressed ingress) + audit event emission (§2.13 schema) + fleet lease/step-permit + real control↔target parity wired into the op pipeline
+- [ ] p5-6 container-bed end-to-end: adopt a real blinklabs container, run each op for real (docker), crash-injection + rollback, on the bed
 
 ## 4. Test and Acceptance Criteria
 > Acceptance MATRIX — must FALSIFY the security claims, with adversarial interleavings, not just
@@ -426,6 +433,15 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   target-side seam (not run here); every GATE and refuse path is exercised through the CLI. Fleet
   quorum/fencing is proven at unit level (fleet.rs) — no multi-controller CLI surface yet.
   **S0019 p1-1..p4-4 all complete — awaiting user acceptance (spec NOT closed).**
+- 2026-07-15 p4-5 completed (defect fix): the greenfield SKILLs + web referenced `observability/
+  health` and `upgrade/step`, which were NOT in the registry → refused as unknown writes. Added a
+  READ tier (Mutability::Read): a managed read passes the attested gate but takes no confirm and no
+  write transaction (observability/health returns the fixed read argv). Registered `upgrade/step`
+  (dangerous, image via inbox artifact). Operations table + completeness gate updated. Discovered by
+  the honest post-implementation self-audit the user asked for. 116 rust + all python green.
+  **Also appended p5 (target-side integration): SSH dispatch + real probe + real executor + target
+  attestation + inbox/audit/fleet wiring + container-bed e2e — the work that makes `op run` actually
+  operate a real node (today it runs control-local with file seams).**
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -437,6 +453,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p4-5 | stack: python | command: cargo test (116); tests/test_s0019_completeness.py; skill_docs |
+  result: pass | note: observability/health runs as a read (argv docker exec ... query tip, no
+  confirm); upgrade/step registered + requires confirm; registry ⊆ operations table holds.
 - p4-4 | stack: python | command: python3 tests/test_s0019_dispatch.py; full cargo test (116) +
   all python | result: pass | note: adopt refuse paths (supervisor/digest/role); write-seal refuse;
   crash-committed journal recovered + cleared before the new write; full suite green.

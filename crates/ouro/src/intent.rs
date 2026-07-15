@@ -36,6 +36,8 @@ pub struct Intent {
 /// Risk class → whether a confirm-token human gate is required.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mutability {
+    /// A managed READ (no mutation) — attested gate only; no confirm, no write transaction.
+    Read,
     /// config/topology/restart-of-relay etc. — verify+rollback, no human gate.
     Reversible,
     /// key-touching / irreversible / availability-affecting — confirm-token required.
@@ -126,6 +128,23 @@ pub fn registry() -> &'static [OperationSpec] {
             mutability: Mutability::Reversible,
             params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
             touched: &["file:config"],
+            may_expose_secret: false,
+        },
+        OperationSpec {
+            operation_id: "observability/health",
+            mutability: Mutability::Read, // a managed read — no confirm, no write transaction
+            params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
+            touched: &["read:health"],
+            may_expose_secret: false,
+        },
+        OperationSpec {
+            operation_id: "upgrade/step",
+            mutability: Mutability::Dangerous, // availability-affecting; image via inbox artifact
+            params: &[
+                ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true },
+                ParamSpec { name: "image", kind: ParamKind::ArtifactRef, required: true },
+            ],
+            touched: &["container:recreate"],
             may_expose_secret: false,
         },
     ]
@@ -305,7 +324,10 @@ mod tests {
         // Every registered op has a mutability + no secret exposure.
         for op in registry() {
             assert!(!op.may_expose_secret, "{} must not expose secrets", op.operation_id);
-            assert!(matches!(op.mutability, Mutability::Reversible | Mutability::Dangerous));
+            assert!(matches!(
+                op.mutability,
+                Mutability::Read | Mutability::Reversible | Mutability::Dangerous
+            ));
         }
     }
 

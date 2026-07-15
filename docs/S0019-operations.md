@@ -13,6 +13,8 @@ manual commands.
 | kes-rotation/rotate | dangerous | yes | opcert via inbox artifact (§2.7) |
 | deploy/register-submit | dangerous | yes | irreversible on-chain; tx via inbox |
 | config/render | reversible | no | render-only; activation is a separate step |
+| observability/health | read | no | managed read; no mutation, no confirm |
+| upgrade/step | dangerous | yes | one N→N+1 step; image via inbox artifact |
 
 ## Retired (S0017 tools NOT carried into S0019; disabled by §2.8)
 - kes-rotation/generate-offline, kes-rotation/push-offline — folded into the sealed kes-rotation/rotate intent + inbox artifacts.
