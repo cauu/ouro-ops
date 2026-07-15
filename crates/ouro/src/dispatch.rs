@@ -1,9 +1,10 @@
 //! S0019 p5-1 — SSH dispatch for the greenfield commands, so `adopt`/`op` actually REACH the
 //! target instead of running control-local.
 //!
-//! Two channels, mirroring S0017's confinement:
-//! - `op` dispatch runs as the confined `ouro-exec` principal through a fixed root-owned wrapper
-//!   that only ever runs `ouro-ops op "$@"` (a sudoers allowlist) — so a confined principal cannot
+//! Two channels:
+//! - `op` dispatch runs as the confined `ouro-op` principal (the write principal `ouro-ops onboard`
+//!   installs) through a fixed root-owned wrapper that only ever runs `ouro-ops op "$@"` (a sudoers
+//!   allowlist keyed to `ouro-op`) — so a confined principal cannot
 //!   invoke other subcommands. Host key is PINNED (StrictHostKeyChecking=yes + ouro known_hosts),
 //!   so a swapped target key is refused. Parity (§2.8) rides as `--expect-embedded`.
 //! - `adopt` dispatch runs as the operator's bootstrap account (adoption is an onboarding-class,
@@ -15,8 +16,13 @@
 
 use std::path::Path;
 
-/// The fixed confined wrapper the `ouro-exec` sudoers entry allows for the S0019 op channel.
+/// The fixed confined wrapper the `ouro-op` sudoers entry allows for the S0019 op channel. This is
+/// exactly what `onboard.rs` installs (`OP_WRAPPER`/`OP_SUDOERS`), so the dispatch principal, the
+/// sudoers grant, and the sshd `AllowUsers` all agree on `ouro-op`.
 pub const OP_WRAPPER: &str = "/usr/local/sbin/ouro-op-run";
+
+/// The confined write principal `ouro-ops onboard` creates (must match `onboard.rs`).
+pub const OP_PRINCIPAL: &str = "ouro-op";
 
 fn shell_quote(v: &str) -> String {
     // Single-quote and escape embedded single quotes: 'a'\''b'. ssh reassembles argv into a remote
@@ -40,7 +46,7 @@ fn base_ssh(port: u16, key: &Path, known_hosts: &Path, user: &str, host: &str) -
     ]
 }
 
-/// SSH argv to run an `ouro-ops op` command on the target as the confined `ouro-exec` principal,
+/// SSH argv to run an `ouro-ops op` command on the target as the confined `ouro-op` principal,
 /// through the fixed wrapper. `remote_args` are the op arguments (e.g. `["run","--op",...,"--local"]`).
 pub fn op_dispatch_argv(
     host: &str,
@@ -50,7 +56,7 @@ pub fn op_dispatch_argv(
     remote_args: &[String],
     embedded_digest: &str,
 ) -> Vec<String> {
-    let mut argv = base_ssh(port, key, known_hosts, "ouro-exec", host);
+    let mut argv = base_ssh(port, key, known_hosts, OP_PRINCIPAL, host);
     argv.push("sudo".into());
     argv.push("-n".into());
     argv.push(OP_WRAPPER.into()); // only ever runs `ouro-ops op "$@"`
@@ -101,7 +107,8 @@ mod tests {
             "sha256:abc",
         );
         let j = argv.join(" ");
-        assert!(j.contains("ouro-exec@10.0.0.1"), "confined principal");
+        assert!(j.contains("ouro-op@10.0.0.1"), "confined principal");
+        assert!(!j.contains("ouro-exec@"), "must be the onboard-installed ouro-op, not ouro-exec");
         assert!(j.contains("StrictHostKeyChecking=yes"), "host key pinned");
         assert!(j.contains("UserKnownHostsFile=/home/op/.ouro/known_hosts"));
         assert!(j.contains("sudo -n /usr/local/sbin/ouro-op-run"), "fixed wrapper");

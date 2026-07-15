@@ -141,7 +141,7 @@ impl SshRunner {
             format!("UserKnownHostsFile={}", known_hosts.display()),
             "-o".to_string(),
             "StrictHostKeyChecking=yes".to_string(),
-            // Always ouro-diag — never the spec's ssh.user (that is ouro-exec, the write
+            // Always ouro-diag — never the spec's ssh.user (that is ouro-op, the write
             // channel). The two principals stay distinguishable in the target's auth log.
             format!("ouro-diag@{}", target.host),
             format!("timeout {}s sh -c {}", timeout_s, shell_quote(command)),

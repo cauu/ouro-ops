@@ -273,10 +273,14 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p5-4 attestation stored target-side (root-owned `/var/lib/ouro/node-attestation.json`), read by `ouro-attested.sh`; adopt writes it there
 - [x] p5-5 `ouro-ops inbox stage` command (content-addressed ingress) + audit event emission (§2.13 schema) + fleet lease/step-permit + real control↔target parity wired into the op pipeline
 - [x] p5-6 container-bed end-to-end: adopt a real blinklabs container, run each op for real (docker), crash-injection + rollback, on the bed
-- [ ] p6-1 greenfield `ouro-ops onboard <host>` (host-onboarded state): install the S0019 confined principals (`ouro-op` write / `ouro-diag` read), the fixed op wrapper `/usr/local/sbin/ouro-op-run` (sudoers: only `ouro-ops op "$@"`), push the ouro-ops binary, harden sshd, pin the host key — operator-initiated via the bootstrap credential; NO S0017 compat
+- [x] p6-1 greenfield `ouro-ops onboard <host>` (host-onboarded state): install the S0019 confined principals (`ouro-op` write / `ouro-diag` read), the fixed op wrapper `/usr/local/sbin/ouro-op-run` (sudoers: only `ouro-ops op "$@"`), push the ouro-ops binary, harden sshd, pin the host key — operator-initiated via the bootstrap credential; NO S0017 compat
 - [x] p6-2 adopt/op `--local` auto-run the probe (`ouro_observe`) when no `--observation` is given, so the target self-gathers the observation (no hand-fed file)
 - [x] p6-3 full `--dispatch` for adopt + op (real SSH → target `--local`) + the confirm-token cross-machine handshake (dispatch preview returns the target-computed intent hash → operator approves → mint token → dispatch the real run)
 - [x] p6-4 container-bed end-to-end over the DISPATCH path (SSH + wrapper + auto-probe), not just `--local`, proving the full website→agent→node chain
+- [x] p7-1 close the closed-loop review gaps (P0): unify the write principal on `ouro-op` across `dispatch.rs` (op channel) + `ssh.rs` comment + the website machine block so the SSH login user, the sudoers grant, and sshd `AllowUsers` all agree with what `onboard.rs` installs (was split `ouro-exec`/`ouro-op` → real dispatch could not authenticate); rebuild + reinstall the control-host `ouro-ops` so `adopt`/`op`/`onboard`/`inbox` exist (installed binary was 0.1.0 / S0017-only)
+- [ ] p7-2 remove S0017 residue from the website copy: `ouro-ops tool run` → `ouro-ops op run` and `ouro-exec` → `ouro-op` in the trust panels + machHints (EN/zh-CN/zh-TW/JA)
+- [ ] p7-3 real sealed executor (P1): build a SEQUENCE of fixed argvs; install digest-resolved inbox artifacts from attested facts — opcert via `docker cp` (public cert; KES/cold secret NEVER touched), signed tx via `cardano-cli transaction submit --tx-file`, image via `docker load` + recreate; REFUSE (not a misleading `docker restart`) when a required artifact is absent; fix the bogus `config/render` `--version` argv
+- [ ] p7-4 container-bed proof of a real artifact-op sequence (opcert install / tx submit) through the sealed executor; honest note that the docker-level sequence is bed-proven while cardano-node semantic effect needs a real node
 
 ## 4. Test and Acceptance Criteria
 > Acceptance MATRIX — must FALSIFY the security claims, with adversarial interleavings, not just
@@ -512,6 +516,20 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   the shared secret (falls back to the local tool-run secret on the bed/control). The intent-hash
   preview already flows (a no-token op returns `--intent-hash <H>` for the operator to approve). Real
   SSH exec runs when not --plan. 123 rust + all python green; bed still green.
+- 2026-07-15 p7 opened from the closed-loop review (user: "能否从网站贴任意 prompt 让 agent 跑"). Honest
+  verdict was NO for arbitrary prompts — five gaps found: P0-A installed control binary stale
+  (0.1.0/S0017-only, no adopt/op/onboard); P0-B write-principal name split (onboard installs
+  `ouro-op`; dispatch + web logged in as `ouro-exec` → real dispatch cannot authenticate; masked
+  because the p6-4 bed ran the wrapper directly as root and the dispatch unit test only string-checks
+  argv); P1-C executor is a restart-stub for every op except runtime/restart (kes/upgrade/deploy/
+  topology/config do not perform their mutation; config/render even runs a bogus `--version`);
+  P2-D website copy still says S0017 `tool run`; P1-E dispatch real path never run e2e. p6-1 checkbox
+  was also left unchecked though onboard.rs was implemented + committed (59fafe3) — corrected.
+- 2026-07-15 p7-1 completed: renamed the op-channel principal to `ouro-op` in dispatch.rs (+ OP_PRINCIPAL
+  const asserting it matches onboard.rs), fixed the ssh.rs write-channel comment, and changed the
+  website machine block `user: ouro-exec` → `ouro-op`. Rebuilt --release and reinstalled
+  ~/.local/bin/ouro-ops; verified adopt/op/onboard/inbox now dispatch and `skill show adopt` resolves.
+  123 rust tests green.
 - 2026-07-15 p6-4 completed (with an honest env caveat): `fixtures/e2e/s0019-dispatch/` — a Linux
   target image carrying exactly what `ouro-ops onboard` installs (the ouro-op principal, the fixed
   op wrapper + sudoers, the cross-built linux ouro-ops, a stub docker node). The harness drives the
@@ -537,6 +555,8 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p7-1 | stack: rust | command: cargo test -q -p ouro | result: pass | note: 123 tests; dispatch op-channel now ouro-op (asserts !ouro-exec@), matches onboard principals.
+- p7-1 | stack: other | command: install -m0755 target/release/ouro-ops ~/.local/bin && ouro-ops skill show adopt | result: pass | note: control binary reinstalled; adopt/op/onboard/inbox routed; skill show adopt resolves (was S0017-only 0.1.0).
 - p6-4 | stack: other | command: bash fixtures/e2e/s0019-dispatch/run.sh | result: pass(skip on this host) | note: harness drives adopt→wrapper→op --local→executor on a Linux target; SKIPS on the local docker cross-platform exec gremlin (components proven separately: dispatch.rs argv, onboard.rs plan, p5-6 real restart).
 - p6-3 | stack: rust | command: cargo test (123); adopt --dispatch --plan; bed | result: pass |
   note: adopt dispatch uses the bootstrap account running adopt --local; op dispatch confined via

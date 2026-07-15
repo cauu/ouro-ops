@@ -723,7 +723,7 @@ function yaml(d) {
   for (const m of d.machines) {
     L.push(`  - id: ${m.id}`,`    role: ${m.role}`);
     if (m.role==="relay") L.push(`    public_endpoint: { host: ${m.host}, port: ${m.port} }`);
-    L.push(`    ssh: { host: ${m.host}, port: 22, user: ouro-exec, key_ref: "creds://${m.id}" }`);
+    L.push(`    ssh: { host: ${m.host}, port: 22, user: ouro-op, key_ref: "creds://${m.id}" }`);
   }
   if (isUpgrade) L.push("upgrade:",`  min_online_relays: ${d.quorum}`);
   if (isDeploy) L.push("sync:",`  mode: ${d.sync}`);
