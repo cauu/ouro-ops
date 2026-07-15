@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""S0019 p4-4 — dispatch/CLI-level negative tests beyond the p4-1 pipeline: adopt refuse paths,
+crash recovery before a new write, and the write-seal. (Real container-bed docker execution and
+crash injection mid-docker are the target-side seam; here every GATE and refuse path is exercised
+through the CLI.)"""
+import json
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+BIN = ROOT / "target/debug/ouro-ops"
+
+
+def cfg_digest():
+    return json.loads((ROOT / "data/allowlist.json").read_text())["contracts"][0]["allowed"][0]["image_config_digest"]
+
+
+def obs_doc(home, sup=None, **live_over):
+    live = {"image_config_digest": cfg_digest(), "platform": "linux/amd64", "container_id": "cid1",
+            "container_creation_epoch": 1000, "entrypoint": ["cardano-node"], "args": ["run"],
+            "mount_source_ids": ["8:1:1"], "topology_hash": "t0", "config_hash": "c0",
+            "kes_opcert_id": "kes:5", "has_forging_keys": True, "host_key_sha256": "hk",
+            "genesis_hash": "gh", "network": "mainnet"}
+    live.update(live_over)
+    supervisor = {"runtime": "docker", "rootful": True, "rootless": False, "node_container_count": 1,
+                  "uses_bind_mounts": True, "daemon_socket": "/var/run/docker.sock",
+                  "restart_policy": "unless-stopped", "orchestration": "run"}
+    if sup:
+        supervisor.update(sup)
+    p = Path(home) / f"obs-{abs(hash(json.dumps(live)+json.dumps(supervisor)))}.json"
+    p.write_text(json.dumps({"supervisor": supervisor, "live": live}))
+    return str(p)
+
+
+def run(home, *args):
+    env = dict(os.environ, OURO_HOME=home)
+    r = subprocess.run([str(BIN), *args], env=env, text=True, capture_output=True)
+    try:
+        return r.returncode, json.loads(r.stdout or r.stderr)
+    except Exception:
+        return r.returncode, {"status": "error", "raw": (r.stdout + r.stderr)[:200]}
+
+
+def adopt(home, o, role="bp", node="bp1"):
+    return run(home, "adopt", "--node", node, "--role", role, "--approve-token", "op", "--observation", o)
+
+
+def main():
+    home = tempfile.mkdtemp()
+
+    # --- adopt refuse paths (TC-2) ---
+    # non-conforming supervisor (rootless)
+    _, d = adopt(home, obs_doc(home, sup={"rootless": True}))
+    assert d["status"] == "error" and "conform" in json.dumps(d), d
+    # non-allowlisted image digest
+    _, d = adopt(home, obs_doc(home, image_config_digest="sha256:" + "e" * 64))
+    assert d["status"] == "error" and ("allowlist" in json.dumps(d) or "not on" in json.dumps(d)), d
+    # relay bearing forging keys
+    _, d = adopt(home, obs_doc(home, has_forging_keys=True), role="relay", node="relay1")
+    assert d["status"] == "error" and "forging" in json.dumps(d), d
+    # a conforming relay WITHOUT forging keys adopts fine
+    _, d = adopt(home, obs_doc(home, has_forging_keys=False, container_id="rcid"), role="relay", node="relay1")
+    assert d["status"] == "ok", d
+
+    # --- adopt a good bp for the rest ---
+    o = obs_doc(home)
+    _, d = adopt(home, o)
+    assert d["status"] == "ok", d
+
+    # --- write-seal refuses any op (TC-6) ---
+    txn = Path(home) / "txn"
+    txn.mkdir(exist_ok=True)
+    (txn / "bp1.txn.json").write_text(json.dumps(
+        {"audit_id": "a", "operation_id": "runtime/restart", "node_id": "bp1", "state": "sealed"}))
+    _, d = run(home, "op", "run", "--op", "config/render", "--node", "bp1",
+               "--param", "machine=bp1", "--observation", o, "--plan")
+    assert d["status"] == "error" and "sealed" in json.dumps(d), d
+
+    # --- crash recovery before a new write (TC-6): journal at 'committed' is reconciled + cleared ---
+    (txn / "bp1.txn.json").write_text(json.dumps(
+        {"audit_id": "a", "operation_id": "config/render", "node_id": "bp1", "state": "committed"}))
+    _, d = run(home, "op", "run", "--op", "config/render", "--node", "bp1",
+               "--param", "machine=bp1", "--observation", o, "--plan")
+    assert d["status"] == "ok", f"op should proceed after recovery: {d}"
+    assert not (txn / "bp1.txn.json").exists(), "recovery cleared the interrupted journal before the new write"
+
+    print("S0019 dispatch-level negatives passed")
+
+
+if __name__ == "__main__":
+    main()

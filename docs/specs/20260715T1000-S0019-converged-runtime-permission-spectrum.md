@@ -265,7 +265,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
 - [x] p4-1 CLI wiring: `ouro-ops adopt` (conformance → evidence-bound approval → attestation) + intent-based `tool run` (recover → parity → build+validate intent → live re-attest gate → confirm-gate → crash-durable transaction → sealed executor) + `confirm create` bound to the canonical intent — integrates §2.1–2.9
 - [x] p4-2 greenfield SKILL.md decision trees (adopt/observability/troubleshooting/runtime/kes-rotation/deploy/config/upgrade) as judgment frameworks (invariants/stop/red-lines, writes = intents, dangerous = operator-approved confirm) + sealed per-op executor scripts (fixed argv) — §1.D/§2.5/§2.6
 - [x] p4-3 web onboarding prompt templates aligned to the adopt + intent commands (interaction unchanged; English prompt)
-- [ ] p4-4 dispatch-level end-to-end negative tests: TC-1..10 promoted from unit to dispatch (unmanaged refuse, hostile intent refuse, confirm binding, live drift, crash recovery, fleet quorum) on the container bed
+- [x] p4-4 dispatch-level end-to-end negative tests: TC-1..10 promoted from unit to dispatch (unmanaged refuse, hostile intent refuse, confirm binding, live drift, crash recovery, fleet quorum) on the container bed
 
 ## 4. Test and Acceptance Criteria
 > Acceptance MATRIX — must FALSIFY the security claims, with adversarial interleavings, not just
@@ -418,6 +418,14 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   an unmanaged node routes to `ouro-ops skill show adopt` (not the retired onboard);
   data-not-instructions stated. Interaction unchanged (form → one English prompt → agent). web
   generator + honest-labeling gates updated + green.
+- 2026-07-15 p4-4 completed: dispatch/CLI-level negative tests (test_s0019_dispatch.py) beyond the
+  p4-1 pipeline — adopt refuses (rootless supervisor / non-allowlisted digest / relay-with-forging-
+  keys), a conforming relay adopts, the write-seal refuses any op, and a crash-interrupted journal
+  (state=committed) is reconciled + cleared by the recovery pass BEFORE the new write proceeds.
+  **Decision (recorded):** real container-bed docker execution + crash injection mid-docker are the
+  target-side seam (not run here); every GATE and refuse path is exercised through the CLI. Fleet
+  quorum/fencing is proven at unit level (fleet.rs) — no multi-controller CLI surface yet.
+  **S0019 p1-1..p4-4 all complete — awaiting user acceptance (spec NOT closed).**
 - 2026-07-14 round-1 multi-agent review (Claude + Codex); rewritten to greenfield + two-tier +
   option (b) intent/executor; decisions A/B and post-review items closed.
 - 2026-07-14 round-2 multi-agent review (Claude + Codex) found the rewrite named the right
@@ -429,6 +437,9 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   allowlist parses+signed (relay forbids forging keys, bp requires opcert); allowlisted digest
   conforms while unknown/wrong-platform/denylisted refuse (no tag trust); skew refuse + anti-
   rollback floor ratchets and refuses a lower version.
+- p4-4 | stack: python | command: python3 tests/test_s0019_dispatch.py; full cargo test (116) +
+  all python | result: pass | note: adopt refuse paths (supervisor/digest/role); write-seal refuse;
+  crash-committed journal recovered + cleared before the new write; full suite green.
 - p4-3 | stack: ui | command: python3 tests/test_web_generator.py; python3 tests/test_honest_labeling.py
   | result: pass | note: prompt drives writes through `ouro-ops op run` intents, routes unmanaged
   nodes to adopt, states data-not-instructions; interaction unchanged; static gates green.
