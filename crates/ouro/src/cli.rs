@@ -270,20 +270,10 @@ fn run_onboard(args: &[String]) -> Result<()> {
         .parse()
         .map_err(|_| OuroError::InvalidArgs("--port must be a number".to_string()))?;
     let user = flag_value(args, "--bootstrap-user")?.to_string();
-    if user.is_empty()
-        || user.len() > 32
-        || !user.bytes().next().map(|byte| byte.is_ascii_lowercase() || byte == b'_').unwrap_or(false)
-        || !user.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-'
-        })
-    {
-        return Err(OuroError::Validation(format!(
-            "--bootstrap-user must be a valid unix username [a-z_][a-z0-9_-]*: {user}"
-        )));
-    }
+    crate::onboard::validate_bootstrap_user(&user)?;
     let key_ref = CredentialRef::parse(flag_value(args, "--bootstrap-key")?)?;
     let dry_run = args.iter().any(|a| a == "--dry-run");
-    let host_key = match optional_flag_value(args, "--host-key") {
+    let mut host_key = match optional_flag_value(args, "--host-key") {
         Some("yes") => crate::bootstrap::HostKeyCheck::Yes,
         _ => crate::bootstrap::HostKeyCheck::AcceptNew,
     };
@@ -307,6 +297,9 @@ fn run_onboard(args: &[String]) -> Result<()> {
         }
     };
     validate_control_pubkey(&control_pubkey)?;
+    if !dry_run {
+        validate_control_key_matches(&key_path, &control_pubkey)?;
+    }
     let ouro_binary = match optional_flag_value(args, "--ouro-binary") {
         Some(p) => PathBuf::from(p),
         None => std::env::current_exe()
@@ -315,11 +308,13 @@ fn run_onboard(args: &[String]) -> Result<()> {
     let expected_host_key = optional_flag_value(args, "--expected-host-key");
 
     let target = crate::bootstrap::BootstrapTarget { host: host.clone(), port, user };
-    let transport = crate::bootstrap::BootstrapTransport::new(dry_run);
+    let mut transport = crate::bootstrap::BootstrapTransport::new(dry_run);
 
     let mut pinned_fp = None;
     if let Some(fp) = expected_host_key.filter(|_| !dry_run) {
         pinned_fp = Some(pin_host_key(&host, port, &paths.known_hosts, Some(fp))?);
+        host_key = crate::bootstrap::HostKeyCheck::Yes;
+        transport = transport.with_known_hosts(paths.known_hosts.clone());
     }
 
     let target_facts = transport.detect_facts(&target, &key_path, host_key)?;
@@ -358,21 +353,45 @@ fn run_onboard(args: &[String]) -> Result<()> {
 
     let (state, planned_state, host_key_status) =
         onboard_output_semantics(dry_run, manifest.ok, pinned_fp.is_some());
-    output::print_json(&ToolOutput::ok("ouro.onboard", manifest.ok && !dry_run).with_data(json!({
+    let manifest_ok = manifest.ok;
+    let changed = manifest.steps.iter().any(|step| step.changed);
+    let convergence = if dry_run {
+        "preview"
+    } else if !manifest_ok && changed {
+        "failed_after_change"
+    } else if !manifest_ok {
+        "verification_failed"
+    } else if changed {
+        "applied"
+    } else {
+        "already_converged"
+    };
+    let data = json!({
         "manifest": manifest,
         "dry_run": dry_run,
+        "convergence": convergence,
         "pinned_host_key": pinned_fp,
         "host_key_status": host_key_status,
         "expected_host_key_supplied": expected_host_key.is_some(),
         "state": state,
         "planned_state": planned_state,
         "ssh_access_policy": crate::onboard::ssh_access_policy(&target.user),
+        "effective_ssh_policy_verified": manifest_ok && !dry_run,
         "security_note": "bootstrap credential is NOT mechanism-isolated from the agent \
             (convenience mode, P0-1, carried from S0017). Closing this is a separate hardening spec.",
-    })))?;
-    if !manifest.ok {
-        return Err(OuroError::Validation("onboard did not complete cleanly".to_string()));
+    });
+    if !manifest_ok {
+        let mut failure = ToolOutput::failure(
+            "ouro.onboard",
+            "verification_failed",
+            "onboard did not complete cleanly; the SSH rollback guard remains armed when needed",
+        )
+        .with_data(data);
+        failure.changed = changed;
+        output::print_json(&failure)?;
+        return Err(OuroError::Reported(10));
     }
+    output::print_json(&ToolOutput::ok("ouro.onboard", changed).with_data(data))?;
     Ok(())
 }
 
@@ -418,6 +437,38 @@ fn validate_control_pubkey(value: &str) -> Result<()> {
     {
         return Err(OuroError::Validation(
             "--control-pubkey is not a supported OpenSSH public key".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn public_key_identity(value: &str) -> Option<String> {
+    let mut fields = value.split_whitespace();
+    Some(format!("{} {}", fields.next()?, fields.next()?))
+}
+
+/// Prove locally, before host-key pinning or any remote write, that the selected bootstrap private
+/// key is exactly the private half of the public key being installed for the S0019 principals.
+fn validate_control_key_matches(private_key: &std::path::Path, control_pubkey: &str) -> Result<()> {
+    let derived = Command::new("ssh-keygen")
+        .args(["-y", "-f"])
+        .arg(private_key)
+        .output()
+        .map_err(|error| {
+            OuroError::Validation(format!(
+                "cannot derive the selected bootstrap credential's public key: {error}"
+            ))
+        })?;
+    if !derived.status.success() {
+        return Err(OuroError::Validation(
+            "cannot derive the selected bootstrap credential's public key non-interactively"
+                .into(),
+        ));
+    }
+    let derived = String::from_utf8_lossy(&derived.stdout);
+    if public_key_identity(&derived) != public_key_identity(control_pubkey) {
+        return Err(OuroError::Validation(
+            "--control-pubkey does not match the selected --bootstrap-key credential".into(),
         ));
     }
     Ok(())
@@ -1844,5 +1895,42 @@ mod tests_embedded_resolution {
             onboard_output_semantics(false, false, false),
             ("onboard-failed", None, "not_pinned")
         );
+    }
+
+    #[test]
+    fn public_key_identity_ignores_comments_but_not_key_material() {
+        let derived = "ssh-ed25519 AAAA0123456789abcdef\n";
+        let same = "ssh-ed25519 AAAA0123456789abcdef operator@control";
+        let other = "ssh-ed25519 BBBB0123456789abcdef operator@control";
+        assert_eq!(public_key_identity(derived), public_key_identity(same));
+        assert_ne!(public_key_identity(derived), public_key_identity(other));
+    }
+
+    #[test]
+    fn selected_private_key_must_match_the_installed_control_key() {
+        let dir = std::env::temp_dir().join(format!(
+            "ouro-onboard-key-match-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let key_a = dir.join("a");
+        let key_b = dir.join("b");
+        for key in [&key_a, &key_b] {
+            assert!(Command::new("ssh-keygen")
+                .args(["-q", "-t", "ed25519", "-N", "", "-f"])
+                .arg(key)
+                .status()
+                .unwrap()
+                .success());
+        }
+        let pub_a = std::fs::read_to_string(key_a.with_extension("pub")).unwrap();
+        let pub_b = std::fs::read_to_string(key_b.with_extension("pub")).unwrap();
+        assert!(validate_control_key_matches(&key_a, &pub_a).is_ok());
+        assert!(validate_control_key_matches(&key_a, &pub_b).is_err());
+        std::fs::remove_dir_all(dir).ok();
     }
 }

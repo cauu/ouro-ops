@@ -553,7 +553,7 @@ mod tests {
         assert!(pos("remove ouro-diag") < pos("remove install ledger"));
         assert!(pos("remove install ledger") == descs.len() - 1);
         // The shared `node` account is spared by default; --remove-node adds it.
-        assert!(!descs.iter().any(|d| *d == "remove node"));
+        assert!(!descs.contains(&"remove node"));
         assert!(deinit_plan(true).iter().any(|s| s.desc() == "remove node"));
         // p1-9: principal removal is ledger-gated (only `created` principals are deleted).
         for step in deinit_plan(true) {

@@ -137,21 +137,105 @@ def main():
     assert d["status"] == "ok" and d["changed"] is False, d
     preview = d["data"]
     assert preview["dry_run"] is True and preview["state"] == "preview", preview
+    assert preview["convergence"] == "preview", preview
     assert preview["planned_state"] == "host-onboarded", preview
     assert preview["pinned_host_key"] is None, preview
     assert preview["host_key_status"] == "not_checked_in_dry_run", preview
     assert preview["expected_host_key_supplied"] is True, preview
+    assert preview["effective_ssh_policy_verified"] is False, preview
     access = preview["ssh_access_policy"]
     assert access["drop_in"] == "/etc/ssh/sshd_config.d/20-ouro-s0019.conf", access
     assert access["allow_users"] == ["ouro-op", "ouro-diag", "cardano"], access
     assert access["bootstrap_user"] == "cardano", access
     assert access["bootstrap_user_preserved"] is True, access
     assert "AllowUsers ouro-op ouro-diag cardano" in access["rendered_config"], access
+    assert access["legacy_s0017_paths_retired"] == [
+        "/etc/ssh/sshd_config.d/10-ouro.conf",
+        "/etc/sudoers.d/ouro-exec",
+        "/usr/local/sbin/ouro-tool-run",
+    ], access
+    descs = [step["desc"] for step in preview["manifest"]["steps"]]
+    assert "retire S0017 privilege path" in descs, descs
+    assert "guarded install, validate and reload SSH policy" in descs, descs
+    assert descs[0] == "read-only SSH policy and principal preflight", descs
+    assert "arm SSH policy rollback" in descs, descs
+    assert descs.index("stage hardened sshd policy") < descs.index("arm SSH policy rollback"), descs
+    assert descs.index("arm SSH policy rollback") < descs.index(
+        "guarded install, validate and reload SSH policy"
+    ), descs
+    assert descs[-5] == "guarded install, validate and reload SSH policy", descs
+    assert descs[-4:-1] == [
+        "fresh SSH login (bootstrap: cardano)",
+        "fresh SSH login (write principal: ouro-op)",
+        "fresh SSH login (diagnostic principal: ouro-diag)",
+    ], descs
+    assert descs[-1] == "disarm verified SSH policy rollback", descs
     assert "AAAA0123456789abcdef" not in json.dumps(access), access
     assert all(
         not step["changed"] and step["planned"] and not step["executed"]
         for step in preview["manifest"]["steps"]
     ), preview["manifest"]
+
+    # A real-mode fresh-login verification failure emits exactly one typed JSON record. The fake
+    # transport reports a converged read-only probe, then rejects only the ouro-op fresh session;
+    # no provisioning write is simulated.
+    failure_key = Path(home) / "failure-id-ed25519"
+    subprocess.run(
+        ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(failure_key)],
+        check=True,
+    )
+    _, registered_failure = run(
+        home,
+        "creds",
+        "register",
+        "--name",
+        "failure",
+        "--path",
+        str(failure_key),
+    )
+    assert registered_failure["status"] == "ok", registered_failure
+    fakebin = Path(home) / "fakebin"
+    fakebin.mkdir()
+    fake_ssh = fakebin / "ssh"
+    fake_ssh.write_text(
+        "#!/bin/sh\n"
+        "case \"$*\" in\n"
+        "  *uname\\ -s*) printf 'os=Linux\\narch=x86_64\\nid=ubuntu\\nid_like=debian\\nsystemd=yes\\n'; exit 0;;\n"
+        "  *ouro-op@*\\ true) exit 1;;\n"
+        "  *) exit 0;;\n"
+        "esac\n"
+    )
+    fake_ssh.chmod(0o700)
+    linux_elf = Path(home) / "ouro-ops-linux"
+    elf = bytearray(20)
+    elf[:4] = b"\x7fELF"
+    elf[18:20] = (0x3E).to_bytes(2, "little")
+    linux_elf.write_bytes(elf)
+    failed = subprocess.run(
+        [
+            str(BIN),
+            "onboard",
+            "--host",
+            "192.0.2.1",
+            "--bootstrap-user",
+            "cardano",
+            "--bootstrap-key",
+            "creds://failure",
+            "--control-pubkey",
+            str(failure_key.with_suffix(".pub")),
+            "--ouro-binary",
+            str(linux_elf),
+        ],
+        env=dict(os.environ, OURO_HOME=home, PATH=f"{fakebin}:{os.environ['PATH']}"),
+        text=True,
+        capture_output=True,
+    )
+    lines = failed.stdout.splitlines()
+    assert failed.returncode == 10 and len(lines) == 1, (failed.returncode, failed.stdout, failed.stderr)
+    failure = json.loads(lines[0])
+    assert failure["status"] == "error" and failure["changed"] is False, failure
+    assert failure["data"]["convergence"] == "verification_failed", failure
+    assert failure["data"]["effective_ssh_policy_verified"] is False, failure
 
     # --- adopt refuse paths (TC-2) ---
     # non-conforming supervisor (rootless)

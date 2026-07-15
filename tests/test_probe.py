@@ -19,12 +19,17 @@ def main():
     config_mount = Path(tmp) / "config"
     data_mount.mkdir()
     config_mount.mkdir()
-    # docker stub: ps → one cardano-node container; inspect → fixed fields; exec → hashes/keys.
+    # docker stub: ps → the production Blink Labs image shape whose entrypoint command does not
+    # contain `cardano-node`; inspect → fixed fields; exec → hashes/keys.
     (binp / "docker").write_text(
         '#!/usr/bin/env bash\n'
         'case "$1 $2" in\n'
-        '  "ps --filter") echo "cid-xyz";;\n'
-        '  "ps --format") echo "cid-xyz cardano-node run";;\n'
+        '  "ps --no-trunc")\n'
+        '     if test -n "$OURO_TEST_NO_NODE"; then\n'
+        '       echo "other-id|postgres:16-alpine|db|postgres";\n'
+        '     else\n'
+        '       echo "cid-xyz|ghcr.io/blinklabs-io/cardano-node:10.5.4-1|cardano-node|/usr/local/bin/entrypoint run";\n'
+        '     fi;;\n'
         '  "inspect --format")\n'
         '     case "$3" in\n'
         '       "{{.Image}}") echo "sha256:cfg";;\n'
@@ -75,6 +80,16 @@ def main():
     for k in ["node_running", "socket_answers", "tip_block", "tip_block_next",
               "kes_opcert_valid", "credential_loaded", "established_peers"]:
         assert k in readiness, f"readiness missing {k}"
+
+    # An unrelated running container is not a node candidate and still produces a numeric zero.
+    no_node = subprocess.run(
+        ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
+        env=dict(env, OURO_TEST_NO_NODE="1"), text=True, capture_output=True,
+    )
+    assert no_node.returncode == 0, no_node.stderr
+    missing = json.loads(no_node.stdout)
+    assert missing["supervisor"]["node_container_count"] == 0, missing
+    assert missing["readiness"]["node_running"] is False, missing
 
     print("probe observation JSON passed")
 

@@ -8,15 +8,18 @@
 # entrypoint/args, mounts) and the node (topology/config hashes, kes/opcert id, forging-key
 # presence) — never any secret material. Missing facts are emitted as empty/false, never guessed.
 
-# Resolve the single cardano-node container id, or empty. Match by the process command (the node's
-# argv contains cardano-node) — an empty first result falls back, not just a non-zero exit.
+# Resolve the running cardano-node candidates from Docker's image reference or the exact
+# conventional container name. The Blink Labs image starts through `/usr/local/bin/entrypoint
+# run`, so `.Command` does not contain `cardano-node`; `ancestor=cardano-node` also misses a fully
+# qualified `ghcr.io/blinklabs-io/cardano-node:<tag>` reference. The allowlist subsequently binds
+# the selected candidate to its image config digest, so this is discovery rather than trust.
+ouro_probe_containers() {
+  docker ps --no-trunc --format '{{.ID}}|{{.Image}}|{{.Names}}|{{.Command}}' 2>/dev/null |
+    awk -F '|' '$2 ~ /(^|\/)cardano-node(:|@|$)/ || $3 == "cardano-node" {print $1}'
+}
+
 ouro_probe_container() {
-  local cid
-  cid="$(docker ps --filter 'ancestor=cardano-node' --format '{{.ID}}' 2>/dev/null | head -1)"
-  if [ -z "$cid" ]; then
-    cid="$(docker ps --no-trunc --format '{{.ID}} {{.Command}}' 2>/dev/null | awk '/cardano-node/{print $1; exit}')"
-  fi
-  printf '%s' "$cid"
+  ouro_probe_containers | head -1
 }
 
 # docker inspect a single --format field for a container.
@@ -29,7 +32,7 @@ ouro_observe() {
   local platform="${1:-linux/amd64}"
   local cid image_cfg created entrypoint args count restart
   cid="$(ouro_probe_container)"
-  count="$(docker ps --format '{{.ID}} {{.Command}}' 2>/dev/null | grep -c cardano-node || echo 0)"
+  count="$(ouro_probe_containers | awk 'NF {n++} END {print n+0}')"
   image_cfg="$(ouro_probe_inspect "$cid" '{{.Image}}')"
   created="$(ouro_probe_inspect "$cid" '{{.Created}}')"
   entrypoint="$(ouro_probe_inspect "$cid" '{{json .Config.Entrypoint}}')"

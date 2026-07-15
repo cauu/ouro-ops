@@ -22,13 +22,13 @@
     "kes-rotation/scripts/rotate.sh": "1f44485145908a112e894df4ab75077d9e6a5a7c7f814fbc1cdde99353a89ffc",
     "lib/ouro-attested.sh": "dee534a05268894341c26d6607425a856e38cd78ba8152bca8ea8cc67bf111f0",
     "lib/ouro-lib.sh": "43d8d8dff3f767603c5d534e5849dff5778535478d0dd110fbd76e52830fc774",
-    "lib/ouro-probe.sh": "40995e3189734c3336a07da5a990a9cb54f748b2dc773087bebea06b588f6967",
+    "lib/ouro-probe.sh": "edca8a275bf435b709c28b4de10b2accfc430c5c7b58ff57dc08c36c26ec5201",
     "observability/SKILL.md": "fe13b0e1a03dc2df50c9b079016b305058ba2e3ec045bc96c37d55473c75eb97",
     "observability/scripts/health.sh": "c8a7862ef9572aaa065589c76652cd5a03189987ea1aef16c9518367c0b91f61",
     "observability/scripts/install-gateway.sh": "8be5e1f07516aa6a08bc44699b37e2f7a927aa456223a329dd25b4db9ef82c15",
     "observability/scripts/rollback.sh": "74a7182079d42080e105a5c14a22a5cd7054337ca09e20c31e0e15c59b6ad468",
     "observability/scripts/verify.sh": "924fea543b05a321bea8d1319b82e01900dce28b146d21f075602cb56d23eca5",
-    "onboard/SKILL.md": "ee2c1dfb22482eb4c1d5734ed34db623d879b9e13c21c749654112125a4de900",
+    "onboard/SKILL.md": "d9f99cd7e7acbc76013acb788eb5492afdbb716e259c5b3aaef1fafebad2b12d",
     "runtime/SKILL.md": "119ef54e7ccf3af3ff401bbb128238f804e2cd9ac96185b5c363b8dc71f7ee0a",
     "runtime/scripts/restart.sh": "3757f89a98385fd797d7d323b82296a6eb67d16785a5776fc385ecc45f80b8dc",
     "runtime/scripts/topology-apply.sh": "95cea9a21eb93eca7de8db72849d9c3a0f9054ac02e9a3b29825be633980aa64",
@@ -46,11 +46,11 @@
     "upgrade/scripts/upgrade-one.sh": "bdb9aeb009fea89027ede2f6b05a0b3ef0fd5e672c6c80f77df22b6662d8187c",
     "upgrade/scripts/verify.sh": "5c77cb2e4b82e1b67c8681d5fb5f197b4b5c4a306eb90b7e668e771d40eb9ff4"
   },
-  "decision_hash": "6eaf9374b40a47e75d67f07d2d92732a9fd22efc644ec1a8dd815e227f3c370b",
-  "embedded_digest": "5387995c5f539d3db7307cda9b6c53509930552fb50a10c173d8bda79c2175a8",
+  "decision_hash": "c65e2ef558993e320855a7964c16fa091218fd24ba8da4702f3ba28c3f64dff0",
+  "embedded_digest": "0ee37fef6f856dc58ba0212a5e19ee549ee93a8db0f9ca4029484ee8ff0d4182",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
   "schema_hash": "8c0f40bc9ec0c47cea54851f0b9f966b1a62d79c225da3bd7caf5823917468bb",
-  "skills_hash": "a14c5dbb4aa38f18389a415fcb19113d681930ab215546aacd5fe789194fcdc7"
+  "skills_hash": "cfb56eec89b90a34920a69d2efe45ac5f7713ea07aa8737e51e1be49733bebf0"
 }

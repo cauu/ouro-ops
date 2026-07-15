@@ -117,7 +117,8 @@ mod tests {
 
     #[test]
     fn every_non_v1_shape_refused() {
-        let cases: &[(&str, fn(&mut SupervisorObservation))] = &[
+        type Case = (&'static str, fn(&mut SupervisorObservation));
+        let cases: &[Case] = &[
             ("rootless", |o| o.rootless = true),
             ("podman", |o| o.runtime = "podman".into()),
             ("non-rootful", |o| o.rootful = false),

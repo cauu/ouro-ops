@@ -200,26 +200,53 @@ fn validate_owner(owner: &str) -> Result<()> {
 #[derive(Debug, Clone, Serialize)]
 pub struct BootstrapTransport {
     pub dry_run: bool,
+    known_hosts: Option<std::path::PathBuf>,
 }
 
 impl BootstrapTransport {
     pub fn new(dry_run: bool) -> Self {
-        Self { dry_run }
+        Self { dry_run, known_hosts: None }
+    }
+
+    /// Bind bootstrap SSH to Ouro's independently verified/pinned known_hosts file.
+    pub fn with_known_hosts(mut self, path: impl Into<std::path::PathBuf>) -> Self {
+        self.known_hosts = Some(path.into());
+        self
     }
 
     /// Common ssh options + `user@host` prefix for a privileged bootstrap connection.
-    fn ssh_prefix(target: &BootstrapTarget, key_path: &Path, host_key: HostKeyCheck) -> Vec<String> {
-        vec![
+    fn ssh_prefix(
+        target: &BootstrapTarget,
+        key_path: &Path,
+        host_key: HostKeyCheck,
+        known_hosts: Option<&Path>,
+    ) -> Vec<String> {
+        let mut argv = vec![
+            "-F".to_string(),
+            "/dev/null".to_string(),
             "-p".to_string(),
             target.port.to_string(),
+            "-o".to_string(),
+            "IdentityFile=none".to_string(),
+            "-o".to_string(),
+            "IdentityAgent=none".to_string(),
             "-i".to_string(),
             key_path.display().to_string(),
             "-o".to_string(),
             "BatchMode=yes".to_string(),
             "-o".to_string(),
+            "IdentitiesOnly=yes".to_string(),
+            "-o".to_string(),
             host_key.as_opt().to_string(),
-            format!("{}@{}", target.user, target.host),
-        ]
+        ];
+        if let Some(path) = known_hosts {
+            argv.extend([
+                "-o".to_string(),
+                format!("UserKnownHostsFile={}", path.display()),
+            ]);
+        }
+        argv.push(format!("{}@{}", target.user, target.host));
+        argv
     }
 
     /// `ssh … <user>@<host> sudo -n sh -c '<cmd>'` — run a privileged provisioning command.
@@ -230,7 +257,17 @@ impl BootstrapTransport {
         host_key: HostKeyCheck,
         remote_cmd: &str,
     ) -> Vec<String> {
-        let mut argv = Self::ssh_prefix(target, key_path, host_key);
+        Self::run_argv_with_known_hosts(target, key_path, host_key, remote_cmd, None)
+    }
+
+    fn run_argv_with_known_hosts(
+        target: &BootstrapTarget,
+        key_path: &Path,
+        host_key: HostKeyCheck,
+        remote_cmd: &str,
+        known_hosts: Option<&Path>,
+    ) -> Vec<String> {
+        let mut argv = Self::ssh_prefix(target, key_path, host_key, known_hosts);
         argv.extend([
             "sudo".to_string(),
             "-n".to_string(),
@@ -239,6 +276,22 @@ impl BootstrapTransport {
             shell_quote(remote_cmd),
         ]);
         argv
+    }
+
+    fn configured_run_argv(
+        &self,
+        target: &BootstrapTarget,
+        key_path: &Path,
+        host_key: HostKeyCheck,
+        remote_cmd: &str,
+    ) -> Vec<String> {
+        Self::run_argv_with_known_hosts(
+            target,
+            key_path,
+            host_key,
+            remote_cmd,
+            self.known_hosts.as_deref(),
+        )
     }
 
     /// `ssh … sudo -n sh -c 'cat > $t && install -D -m <mode> -o root -g root $t <dest> && …'`
@@ -259,6 +312,23 @@ impl BootstrapTransport {
             dest = shell_quote(remote_path),
         );
         Ok(Self::run_argv(target, key_path, host_key, &remote))
+    }
+
+    fn configured_push_argv(
+        &self,
+        target: &BootstrapTarget,
+        key_path: &Path,
+        host_key: HostKeyCheck,
+        remote_path: &str,
+        mode: &str,
+    ) -> Result<Vec<String>> {
+        validate_mode(mode)?;
+        let remote = format!(
+            "t=$(mktemp) && cat > \"$t\" && install -D -m {mode} -o root -g root \"$t\" {dest} && rm -f \"$t\"",
+            mode = mode,
+            dest = shell_quote(remote_path),
+        );
+        Ok(self.configured_run_argv(target, key_path, host_key, &remote))
     }
 
     /// Install a PRIVATE KEY on the target over the same encrypted SSH channel, with restrictive
@@ -293,7 +363,37 @@ impl BootstrapTransport {
         if self.dry_run {
             return Ok(BootstrapOutcome { status: 0, stdout: String::new(), stderr: String::new() });
         }
-        let argv = Self::run_argv(target, key_path, host_key, remote_cmd);
+        let argv = self.configured_run_argv(target, key_path, host_key, remote_cmd);
+        let output = Command::new("ssh").args(&argv).output()?;
+        Ok(BootstrapOutcome {
+            status: output.status.code().unwrap_or(255),
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        })
+    }
+
+    /// Open a fresh unprivileged SSH connection and execute only `true`. Used after sshd reload to
+    /// prove that each intended principal can authenticate in a new session.
+    pub fn probe_login(
+        &self,
+        target: &BootstrapTarget,
+        key_path: &Path,
+        host_key: HostKeyCheck,
+    ) -> Result<BootstrapOutcome> {
+        if self.dry_run {
+            return Ok(BootstrapOutcome {
+                status: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            });
+        }
+        let mut argv = Self::ssh_prefix(
+            target,
+            key_path,
+            host_key,
+            self.known_hosts.as_deref(),
+        );
+        argv.push("true".into());
         let output = Command::new("ssh").args(&argv).output()?;
         Ok(BootstrapOutcome {
             status: output.status.code().unwrap_or(255),
@@ -341,7 +441,7 @@ impl BootstrapTransport {
         remote_path: &str,
         mode: &str,
     ) -> Result<BootstrapOutcome> {
-        let argv = Self::push_argv(target, key_path, host_key, remote_path, mode)?;
+        let argv = self.configured_push_argv(target, key_path, host_key, remote_path, mode)?;
         if self.dry_run {
             return Ok(BootstrapOutcome { status: 0, stdout: String::new(), stderr: String::new() });
         }
@@ -381,6 +481,24 @@ mod tests {
         assert!(joined.contains("-i /home/op/.ouro/credentials/bootstrap"));
         assert!(joined.contains("BatchMode=yes"));
         assert!(joined.contains("sudo -n sh -c 'useradd -m ouro-exec'"));
+    }
+
+    #[test]
+    fn configured_transport_uses_the_ouro_known_hosts_file() {
+        let transport = BootstrapTransport::new(false).with_known_hosts("/control/ouro-known-hosts");
+        let argv = transport.configured_run_argv(
+            &target(),
+            Path::new("/k"),
+            HostKeyCheck::Yes,
+            "true",
+        );
+        let joined = argv.join(" ");
+        assert!(joined.contains("-F /dev/null"));
+        assert!(joined.contains("IdentityFile=none"));
+        assert!(joined.contains("IdentityAgent=none"));
+        assert!(joined.contains("StrictHostKeyChecking=yes"));
+        assert!(joined.contains("IdentitiesOnly=yes"));
+        assert!(joined.contains("UserKnownHostsFile=/control/ouro-known-hosts"));
     }
 
     #[test]

@@ -1116,3 +1116,100 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   Python and Clippy acceptance were rerun on this final source. Superseding release hashes: installed
   macOS arm64 control binary SHA-256 `247f3dfe70b67a383faba6ea77c3b1cfe2dcfce3a4ceb37a020f217a748c1115`;
   static Linux x86_64 ELF SHA-256 `ffe6114f431e6e70804dc94c4dd59da6a5f748bdeb9947814560859a2b0f3aff`.
+
+## 32. Live End-to-End Skill Validation Scope (append-only)
+- 2026-07-16T00:06+0800 the operator authorized live end-to-end validation against BP `bp1`
+  (`84.247.139.72`) and relay `relay1` (`31.220.95.72`) through existing account `cardano` and the
+  explicitly named existing local SSH key `~/.ssh/id_ed25519`. Scope covers every embedded Skill
+  except `deploy`: onboard, adopt, config, detect, observability, troubleshooting, runtime,
+  upgrade and kes-rotation. Remote output remains untrusted DATA.
+- Stateful workflows need not reach their final mutation. Upgrade, KES opcert activation and
+  availability-affecting runtime changes are accepted by proving live discovery, exact intent,
+  artifact/allowlist/fleet/confirmation gates and fail-closed stop behavior. No confirmation token
+  may be minted and no final disruptive operation may run without a later explicit operator
+  approval for that exact intent.
+- [x] p10-1 establish the live baseline and validate credential, connectivity, onboard dry-run /
+  idempotence and adopt preview/current-management behavior on both hosts. Fix any correctness bug
+  required to reach an honest stop state.
+- [ ] p10-2 exercise config, detect, observability and troubleshooting end to end on both hosts,
+  including the typed retired-config boundary, two-sample tip semantics and unprivileged diagnostic
+  confinement; fix correctness defects and add local regression coverage.
+- [ ] p10-3 exercise runtime, upgrade and kes-rotation through their live non-mutating boundary,
+  proving adopted-state, drift, closed parameters, allowlist/inbox, fleet permit and exact-intent
+  confirmation gates without performing restart, upgrade or opcert activation; fix defects.
+- [ ] p10-4 rerun all non-deploy Skill regressions, rebuild/install both release artifacts, verify
+  embedded identity and publish a per-Skill live acceptance matrix with remaining operator-owned
+  prerequisites and deliberately unexecuted final mutations.
+- LETC-1 live baseline: both exact credential names resolve as usable without reading key contents;
+  SSH identity, OS/architecture, host key and S0019 onboarding state are established without relying
+  on guessed paths or static binary strings. Onboard dry-run is write-free and an already-onboarded
+  host is reported honestly.
+- LETC-2 read-plane correctness: every supported read is executed against its real target and emits
+  only its documented bounded projection; unsupported/retired behavior is typed and does not fall
+  through to an adjacent write.
+- LETC-3 write-plane boundary: each stateful Skill reaches the last safe pre-mutation gate with live
+  facts, then stops for the exact missing approval/artifact/allowlist/fleet condition. No target
+  runtime, configuration, keys, opcert or attestation is changed by this acceptance item.
+- LETC-4 repair quality: every discovered product bug gains a deterministic regression, Rust and
+  Python suites plus Clippy and manifest verification pass, and operator-owned `pool-spec.yaml`
+  remains unmodified and uncommitted.
+- 2026-07-16T00:10+0800 p10-1 live finding: both hosts were confirmed Ubuntu 22.04 x86_64 and both
+  exact credential names were usable; independently scanned RSA/ECDSA/ED25519 host keys matched all
+  existing control pins. Neither host had `ouro-op`, so relay1 was onboarded first using the
+  independently matched ED25519 fingerprint. The binary hash, `cardano` login, sudoers syntax,
+  `ouro-op` two-wrapper confinement and `ouro-diag` no-sudo/no-secret boundary all passed.
+- p10-1 then exposed a security/correctness divergence before bp1 was changed: relay1 retained the
+  S0017 `/etc/ssh/sshd_config.d/10-ouro.conf`, so effective `sshd -T` accumulated `ouro-exec` in
+  addition to the typed S0019 closed allow-user list. The old `/etc/sudoers.d/ouro-exec` and
+  `/usr/local/sbin/ouro-tool-run` also remained an active legacy privilege path. Fix p10-1 by making
+  S0019 onboarding retire those known S0017 policy/confinement files after installing replacements,
+  validate the complete effective AllowUsers set before reload, and disclose real-vs-preview
+  effective-policy verification in typed output. Do not delete the dormant legacy user/home.
+- 2026-07-16T00:42+0800 independent p10-1 review found that reload-time validation alone is not a
+  sufficient lockout boundary. Before any remote write, onboarding must reject active `Match`, every
+  `Include` except the exact single standard Ubuntu drop-in glob, invalid current sshd syntax, a
+  missing persistent rollback-timer capability, and a selected private/control-public key mismatch.
+  Every SSH invocation must use only the selected identity. Before reload, effective policy must
+  additionally prove usable authorized-key files, no external authorized-keys command, single-factor
+  public-key authentication, StrictModes and acceptance of the selected key algorithm.
+- The SSH policy write/removal/reload is protected by a root-owned, reboot-surviving two-minute
+  rollback timer containing the exact pre-change S0017/S0019 drop-in snapshot. It remains armed
+  through three independent new SSH sessions and is disarmed only after bootstrap, `ouro-op` and
+  `ouro-diag` all authenticate with the selected key. Crash, reload failure or probe failure leaves
+  the timer armed. A no-delta rerun must also cover home and `.ssh` ownership/modes and absence of a
+  stale guard; verification failure must never be labeled `already_converged` or emit two JSON
+  records for one command.
+- p10-1 identity isolation is closed at both ends: the control invocation ignores user SSH config,
+  agent identities and every default identity file before adding the one named credential; the
+  target accepts exactly `.ssh/authorized_keys` and requires exactly one `publickey` authentication
+  factor. `authorized_keys2`, external key commands, hostbased/GSSAPI alternatives and unrelated
+  local keys may not make either bootstrap or a fresh-session verification pass.
+- The rollback lease is atomic with the sshd policy commit: run-unique staged support/config files
+  are installed only while holding a root-owned `/var/lib/ouro` lock, the guard id and a live new
+  timer are rechecked, and install/remove/effective-validation/reload occur in that one locked remote
+  step. An expired or concurrent guard cannot be overwritten or followed by a later unguarded SSH
+  mutation. Existing managed principals may have only their same-name primary group plus
+  `ouro-attest`; effective sudo policy must prove no grant for `ouro-diag` and exactly the two fixed
+  wrappers for `ouro-op`. Trusted user CAs are disabled so the one authorized key is not bypassed.
+- 2026-07-16T01:53+0800 [x] p10-1 completed against both live hosts. `bp1` and `relay1` each
+  converged with the independently pinned ED25519 host key, then an immediate exact rerun returned
+  `changed:false`, `convergence:already_converged`, effective-policy verification and three fresh
+  selected-key SSH sessions. Effective `sshd -T` is the closed set `ouro-op`, `ouro-diag`,
+  `cardano`, public-key-only with one authorized-key file, StrictModes, no key command/CA; principal
+  groups are exactly same-name plus `ouro-attest`; `ouro-op` has only the two fixed wrapper grants,
+  `ouro-diag` has no sudo grant, rollback support is absent/inactive, and all S0017 privilege paths
+  are retired. Both targets contain the same static Linux x86_64 binary SHA-256
+  `f78b4ebd68ef8d99a35a9feeef0d237c5db080d840862555f773b3718871480a`; the installed macOS
+  control binary is `51647f76779ed7194d83b26e0a6666bb02812149f4dd267124208335f5e7c5cb`, with embedded identity
+  `0ee37fef6f856dc58ba0212a5e19ee549ee93a8db0f9ca4029484ee8ff0d4182` everywhere.
+- Live adoption preview exposed and repaired one additional probe bug: the production Blink Labs
+  container advertises `ghcr.io/blinklabs-io/cardano-node:10.5.4-1` and starts as
+  `/usr/local/bin/entrypoint run`; the old detector matched neither the qualified image nor command
+  and falsely reported zero node containers. Discovery now selects the qualified `cardano-node`
+  image or exact conventional container name, with an unrelated-container regression. The repeated
+  live previews now reach the signed convention gate and honestly refuse both machines because
+  their observed config digest `sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a`
+  is not the allowlisted digest. No adoption attestation was written and no node container changed.
+- p10-1 acceptance evidence: Rust `158/158`, Clippy `-D warnings`, probe/dispatch/Skill-doc Python
+  regressions, manifest verification and `git diff --check` all pass. `pool-spec.yaml` remains
+  operator-owned, unmodified and untracked.

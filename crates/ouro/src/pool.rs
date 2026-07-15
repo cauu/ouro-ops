@@ -145,7 +145,7 @@ mod tests {
             overview["pool"]["network"],
             serde_json::json!(spec.pool.network.as_str())
         );
-        assert!(overview["relays"].as_array().unwrap().len() >= 1);
+        assert!(!overview["relays"].as_array().unwrap().is_empty());
         let text = serde_json::to_string(&overview).unwrap();
         assert!(!text.contains("creds://"));
     }

@@ -35,9 +35,19 @@ and the shared confirmation trust needed by later `ouro-ops op run --dispatch` o
 - In the preview, inspect `data.ssh_access_policy` as the authoritative RENDERED policy. Require its
   `allow_users` to contain `ouro-op`, `ouro-diag` and the exact named bootstrap account, require
   `bootstrap_user_preserved: true`, and show the operator its `rendered_config` before approval.
-  Stop on any mismatch. Never infer runtime-formatted values from static binary string fragments.
+  Also show `legacy_s0017_paths_retired`: onboarding removes the known S0017 sshd/sudoers/wrapper
+  files after installing their S0019 replacements. Stop on any mismatch.
+  Never infer runtime-formatted values from static binary string fragments.
 - Require an `ok` install manifest and a non-empty pinned host key. Then continue with the adopt
-  skill; a later managed operation uses `ouro-ops op run --dispatch <host> --ssh-key
+  skill only when the real run also reports `effective_ssh_policy_verified: true`; this proves the
+  installer rejected active `Match`/nonstandard Include policy before any remote write, proved that
+  the named private key matches the control public key, validated the complete global `sshd -T`
+  root/pubkey/password/keyboard/authorized-key/AllowUsers boundary, and opened identity-pinned fresh
+  post-reload sessions as the bootstrap, write and diagnostic principals. The two sshd drop-ins
+  are protected by a persistent two-minute rollback timer until all three sessions pass; a crash or
+  failed login leaves automatic recovery armed. A real no-delta rerun reports
+  `convergence: already_converged`, `changed: false`; it does not reinstall files. A later managed
+  operation uses `ouro-ops op run --dispatch <host> --ssh-key
   creds://<name>` through `ouro-op`.
 - There is currently no automated S0019 de-onboard operation. `ouro-ops deinit` belongs to the
   retired S0017 layout and must not be presented as an inverse for this flow; host removal is an

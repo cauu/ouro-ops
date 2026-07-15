@@ -95,6 +95,8 @@ def main():
         "ouro-ops creds check --name <name>",
         "ouro-ops creds register --name <name>",
         "never key contents",
+        "legacy_s0017_paths_retired",
+        "effective_ssh_policy_verified: true",
     ]:
         assert phrase in onboard, f"onboard Skill lacks rendered-policy guard {phrase!r}"
     adopt = (ROOT / "ouro-skills/adopt/SKILL.md").read_text()
