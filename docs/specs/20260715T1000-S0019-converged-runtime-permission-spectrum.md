@@ -926,3 +926,63 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   fixtures/e2e/s0019-bed/run.sh | result: pass | note: real target health JSON, restart, full durable
   audit phases, permit/token replay refusal, public-opcert backup/install/restart plus attestation
   advance, allowlisted v1→v2 recreate and non-allowlisted refusal all pass on Docker.
+
+## 25. Website-prompt Agent UAT Repair (append-only)
+- 2026-07-15T21:58+0800 user clarified the required manual acceptance path: configure an operation
+  on the website, copy its one atomic prompt verbatim into a fresh zero-context AI-agent task, and
+  judge the agent's autonomous execution and approval pauses. CLI-by-CLI operator instructions are
+  supporting diagnostics, not the product UAT. This is the interaction contract already required
+  by §1.D and p4-3, so it is a pre-closure S0019 repair rather than a new scope/spec.
+- [~] p9-6 align the website's operation cards and generated prompts with the repaired S0019
+  registry, embedded Skills and real dispatch CLI; add exact semantic gates and publish the
+  transcript-based fresh-agent UAT procedure.
+- WATC-1 prompt truth: generated prompts contain only current operation identities and semantics
+  (`deploy/register-submit`, `upgrade/step`, `kes-rotation/install-opcert`, `runtime/restart`,
+  `observability/health`, unprivileged `diag exec`); retired config/topology/old-KES identities and
+  claims of node standup, private-KES rotation, telemetry-gateway install or read-only diagnosis
+  are absent.
+- WATC-2 executable routing: the prompt carries the operation-scoped pool data, exact `--node` +
+  `--param machine` binding, target dispatch/credential routing, typed artifact/digest requirements,
+  fleet-permit-before-confirm ordering where disruptive, and correct `diag --dispatch --spec`
+  routing. Missing operator-owned inputs are questions/stop conditions, never guessed values.
+- WATC-3 agent autonomy: a fresh agent is told to verify the installed binary, read the embedded
+  Skill, summarize and pause before writes, treat output as data, ask for explicit approval before
+  minting any one-time token, and route unmanaged nodes through onboard/adopt without inventing
+  credentials or reconfiguring non-conforming nodes.
+- WATC-4 regression gate: the static website test asserts every generated operation mapping and
+  rejects the known stale strings/commands, while the Skill-doc gate rejects contradictions that
+  would make the fresh agent overclaim observability or diagnostic isolation.
+- 2026-07-15T22:09+0800 p9-6 completed: the website now presents the six truthful S0019 surfaces
+  (signed registration submit, allowlisted N→N+1, public-opcert install, adopted-node restart,
+  managed tip reads, unprivileged diagnosis). Each generated prompt carries the real target
+  dispatch/credential binding and typed operation shape; artifact operations stage only public
+  signed bytes; disruptive operations preserve fleet-permit-before-confirm; observability emits one
+  exact command per machine; troubleshooting routes through `diag exec --dispatch --spec`.
+  The copied prompt explicitly drives a fresh agent through binary verification, embedded Skill
+  reading, plan summary, human approval pauses, onboard/adopt recovery and deny-by-default stops.
+  Related Skill contradictions were removed: fixed health does not expose KES remaining periods,
+  and diagnostics are consistently described as unprivileged rather than read-only. The embedded
+  manifest was regenerated. S0019 remains active for the operator's fresh-agent transcript UAT.
+- [x] p9-6 completed: website prompt and embedded Skill contract are ready for operator UAT.
+
+## 26. Website-prompt Validation Evidence (append-only)
+- WATC-1 / WATC-2 / WATC-3 | stack: ui | command: in-app browser manual generation of deploy,
+  upgrade, kes-rotation, runtime, observability and troubleshooting prompts | result: pass | note:
+  all six visible cards and generated prompts use current semantics; KES contains install-opcert +
+  public artifact staging and no retired id; health contains exact dispatched machine-bound reads;
+  runtime asks for one exact target; upgrade requires a preloaded allowlisted config digest and BP-
+  last; deploy contains signed-tx staging/network binding; troubleshooting is unprivileged and uses
+  diag dispatch/spec routing.
+- WATC-3 | stack: ui | command: website Copy prompt → disclosure → Copy anyway → clipboard
+  comparison | result: pass | note: disclosure lists all three generated target host identities plus
+  network identity; clipboard text exactly equals the visible generated prompt and carries the
+  `skill show`, approval-pause and all-machine routing contract.
+- WATC-1 / WATC-2 / WATC-4 | stack: python | command: env PATH=/tmp/ouro-ops-test-venv/bin:$PATH
+  make python-test | result: pass | note: 32/32 standalone Python gates pass; web gate requires all
+  current operation ids/routes/approval guards and rejects stale KES/topology/gateway/standup claims;
+  Skill gate rejects read-only-diagnostic and KES-from-tip contradictions.
+- WATC-4 | stack: rust | command: cargo test -q -p ouro; cargo clippy -p ouro -- -D warnings |
+  result: pass | note: 145/145 Rust tests and zero Clippy warnings; embedded asset hashes match the
+  regenerated bundle manifest.
+- p9-6 | stack: other | command: git diff --check | result: pass | note: patch is whitespace-clean;
+  operator-owned untracked pool-spec.yaml remains untouched and excluded from the item.

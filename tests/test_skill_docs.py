@@ -77,9 +77,16 @@ def main():
                 assert phrase in text, f"{path} lacks required phrase {phrase!r}"
             assert any(c in text for c in S0019_COMMANDS), \
                 f"{path} references no greenfield command surface {S0019_COMMANDS}"
+            assert "L3 diagnostics are read-only" not in text, \
+                f"{path} contradicts the unprivileged-but-not-read-only diagnostic boundary"
         else:
             for phrase in LEGACY_REQUIRED:
                 assert phrase in text, f"{path} lacks required phrase {phrase!r}"
+
+    kes = (ROOT / "ouro-skills/kes-rotation/SKILL.md").read_text()
+    assert "does NOT expose remaining KES periods" in kes
+    assert "Use managed health to determine" not in kes, \
+        "KES Skill must not infer KES lifetime from the fixed tip-only health read"
     print("skill docs passed")
 
 
