@@ -28,9 +28,10 @@ const EMBEDDED_ALLOWLIST: &str =
 /// Raw 32-byte Ed25519 public key used to sign `data/allowlist.json`. The private release key is
 /// intentionally not present in the repository or binary.
 const RELEASE_VERIFY_KEY_HEX: &str =
-    "49b8291148d4ec505aaf7cf36ad359f4463fef85f4b2e72a353551bd29eed51f";
+    "3ceb1920f30d3768a7b979c563b4e1738dc7708e8ed6e91d6e32bd7a0df165dd";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Allowlist {
     pub allowlist_version: u32,
     /// Signature over the payload; verified against the pinned release key by S0018 infra. The
@@ -48,6 +49,7 @@ pub struct Allowlist {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct LayoutContract {
     pub convention_version: u32,
     pub contract_id: String,
@@ -57,6 +59,7 @@ pub struct LayoutContract {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct InContainerPaths {
     pub socket: String,
     pub db: String,
@@ -67,18 +70,21 @@ pub struct InContainerPaths {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct RoleRules {
     pub bp: RoleRule,
     pub relay: RoleRule,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct RoleRule {
     pub requires_opcert: bool,
     pub forbids_forging_keys: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AllowedImage {
     pub platform: String,
     pub oci_index_digest: String,
@@ -187,6 +193,27 @@ impl Allowlist {
 }
 
 fn parse_verified(text: &str) -> Result<Allowlist> {
+    let (signature, canonical) = unsigned_payload(text)?;
+    verify_signature(&signature, &canonical)?;
+
+    let allowlist: Allowlist = serde_json::from_str(text)
+        .map_err(|e| OuroError::Validation(format!("allowlist is malformed: {e}")))?;
+    allowlist.validate_usability()?;
+    Ok(allowlist)
+}
+
+/// Prepare one strict, semantically usable release candidate and return the exact bytes production
+/// verification signs. This is intentionally shared with the macOS-only release signer so no
+/// second language can invent a subtly different JSON canonicalization.
+pub fn release_candidate(text: &str) -> Result<(Allowlist, Vec<u8>)> {
+    let (_, canonical) = unsigned_payload(text)?;
+    let allowlist: Allowlist = serde_json::from_str(text)
+        .map_err(|e| OuroError::Validation(format!("allowlist is malformed: {e}")))?;
+    allowlist.validate_usability()?;
+    Ok((allowlist, canonical))
+}
+
+fn unsigned_payload(text: &str) -> Result<(String, Vec<u8>)> {
     let mut document: serde_json::Value = serde_json::from_str(text)
         .map_err(|e| OuroError::Validation(format!("allowlist is malformed: {e}")))?;
     let signature = document
@@ -196,12 +223,7 @@ fn parse_verified(text: &str) -> Result<Allowlist> {
         .ok_or_else(|| OuroError::Validation("allowlist has no signature".into()))?;
     let canonical = serde_json::to_vec(&document)
         .map_err(|e| OuroError::Validation(format!("cannot canonicalize allowlist: {e}")))?;
-    verify_signature(&signature, &canonical)?;
-
-    let allowlist: Allowlist = serde_json::from_str(text)
-        .map_err(|e| OuroError::Validation(format!("allowlist is malformed: {e}")))?;
-    allowlist.validate_usability()?;
-    Ok(allowlist)
+    Ok((signature, canonical))
 }
 
 fn verify_signature(signature: &str, canonical: &[u8]) -> Result<()> {
@@ -462,6 +484,11 @@ mod tests {
         let a = Allowlist::embedded().expect("embedded allowlist parses");
         assert!(a.signature.starts_with("ed25519:"));
         assert!(!a.contracts.is_empty());
+        assert_eq!(a.allowlist_version, 2);
+        assert!(
+            a.transitions.is_empty(),
+            "baseline admission is not an upgrade transition"
+        );
         // The blinklabs baseline contract is present with the standard layout.
         let c = &a.contracts[0];
         assert_eq!(c.in_container_paths.socket, "/ipc/node.socket");
@@ -470,6 +497,20 @@ mod tests {
         assert!(valid_digest(&c.allowed[0].oci_index_digest));
         assert!(valid_digest(&c.allowed[0].platform_manifest_digest));
         assert!(valid_digest(&c.allowed[0].image_config_digest));
+        let (_, live) = a
+            .contract_and_image_for(
+                "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a",
+                "linux/amd64",
+            )
+            .expect("10.5.4-1 live baseline is admitted");
+        assert_eq!(
+            live.oci_index_digest,
+            "sha256:6de965784be4134deccb94ca8d92c11dfb3e140a9d0616210f29a1836fdb13d7"
+        );
+        assert_eq!(
+            live.platform_manifest_digest,
+            "sha256:e4f7b5e761b0c739ebb4bd40359415817bfd782fcd4f427de0e1fa3109295983"
+        );
     }
 
     #[test]
@@ -480,6 +521,42 @@ mod tests {
         let mut unsigned: serde_json::Value = serde_json::from_str(EMBEDDED_ALLOWLIST).unwrap();
         unsigned["signature"] = serde_json::Value::String("EMBEDDED-TRUSTED".into());
         assert!(parse_verified(&serde_json::to_string(&unsigned).unwrap()).is_err());
+
+        // Trust-root rotation is real: reconstructing the exact v1 document/signature must not
+        // verify under the new pinned authority.
+        let mut old: serde_json::Value = serde_json::from_str(EMBEDDED_ALLOWLIST).unwrap();
+        old["allowlist_version"] = serde_json::json!(1);
+        old["signature"] = serde_json::json!(
+            "ed25519:338fb06966c7cda4094f6cc27b63003d8877791bf68cee1f11d2d19bdeb40e5c1f229ca3bbdb36d9b2f66e0bb1dbf64fe6b1cf457f35eebc8f558605209c0a08"
+        );
+        old.pointer_mut("/contracts/0/allowed")
+            .and_then(serde_json::Value::as_array_mut)
+            .unwrap()
+            .retain(|image| {
+                image["image_config_digest"]
+                    != "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a"
+            });
+        assert!(parse_verified(&serde_json::to_string(&old).unwrap()).is_err());
+    }
+
+    #[test]
+    fn release_candidate_rejects_ambiguous_or_unknown_fields() {
+        let duplicate = EMBEDDED_ALLOWLIST.replacen(
+            "\"allowlist_version\": 2,",
+            "\"allowlist_version\": 2,\n  \"allowlist_version\": 2,",
+            1,
+        );
+        assert!(
+            release_candidate(&duplicate).is_err(),
+            "duplicate field refused"
+        );
+
+        let mut unknown: serde_json::Value = serde_json::from_str(EMBEDDED_ALLOWLIST).unwrap();
+        unknown["release_key_hint"] = serde_json::json!("untrusted");
+        assert!(
+            release_candidate(&serde_json::to_string(&unknown).unwrap()).is_err(),
+            "unknown field refused"
+        );
     }
 
     #[test]

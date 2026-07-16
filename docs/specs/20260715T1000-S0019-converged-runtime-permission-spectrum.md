@@ -1440,3 +1440,105 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   the signed allowlist before adoption or an actual upgrade can proceed.
 - Delivery scope is complete but this active spec remains open under the immutable-spec rule until
   the operator explicitly declares it finished, replaced or cancelled.
+
+## 37. Add the Live Blink Labs 10.5.4-1 Baseline (append-only)
+- 2026-07-16T10:51+0800 operator change request: admit the currently deployed official
+  `ghcr.io/blinklabs-io/cardano-node:10.5.4-1` Linux/amd64 image as a supported v1 adoption
+  baseline. This does not authorize an upgrade transition or any node/container mutation.
+- [~] p10-5 resolve the immutable OCI index, Linux/amd64 platform manifest and image-config tuple
+  from both the live node and the official registry; add it to allowlist version 2 under the existing
+  `blinklabs-cardano-node-v1` contract; sign the canonical payload with the existing pinned release
+  Ed25519 authority; verify tamper rejection, manifest/parity regeneration and live adoption preview.
+- LATC-1 identity: live and registry metadata agree on one exact immutable index/manifest/config
+  tuple for `10.5.4-1`; a tag alone is never admitted.
+- LATC-2 trust: the updated document verifies under the existing pinned release public key, version
+  increases monotonically to 2 and the private release key is neither added to the repository nor
+  exposed in command output.
+- LATC-3 scope: adoption preview reaches a conforming candidate for both nodes without writing an
+  attestation; `transitions` remains unchanged because no upgrade path was requested or tested.
+- LATC-4 quality: Rust, Python, Clippy, manifest verification and `git diff --check` pass; the
+  operator-owned untracked `pool-spec.yaml` remains untouched.
+- 2026-07-16T10:55+0800 p10-5 identity evidence: relay1 live Docker metadata and the official GHCR
+  index agree on Linux/amd64 tuple index
+  `sha256:6de965784be4134deccb94ca8d92c11dfb3e140a9d0616210f29a1836fdb13d7`, platform manifest
+  `sha256:e4f7b5e761b0c739ebb4bd40359415817bfd782fcd4f427de0e1fa3109295983`, config
+  `sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a`.
+  The proposed unsigned canonical v2 payload has SHA-256
+  `6cd7ba009991d637ee0d4ed23ce51087d034c50fe7e0eccd961842e30842364f`.
+- 2026-07-16T10:55+0800 p10-5 external blocker: production verification is pinned to Ed25519
+  public key `49b8291148d4ec505aaf7cf36ad359f4463fef85f4b2e72a353551bd29eed51f`;
+  its private release key is intentionally absent from the repository/binary, and this control
+  environment exposes neither a signing-key location nor an external allowlist signer. No unsigned
+  or placeholder-signature edit is made. Completion and commit are delayed until the operator
+  supplies the existing signer/key location or explicitly authorizes a trust-root rotation.
+- 2026-07-16T11:20+0800 p10-5 release-key custody investigation: read-only macOS `security`
+  metadata queries covered the user login Keychain, both local synchronized `keychain-2.db`
+  stores, the Keychain metadata store and the System Keychain. No label, service, account or
+  description matched `ouro`, `allowlist`, `blinklabs`, `cardano`, `ed25519` or signing-key terms;
+  the pinned public-key fingerprint was absent and the login Keychain exposed no valid private-key
+  identity. Exact generic-password service/label probes also returned no match. No password value
+  or private material was requested, and 1Password was not accessed. There is therefore no evidence
+  that the existing release authority was retained in the local password manager; the authorized
+  trust-root rotation remains required before p10-5 can be signed.
+- 2026-07-16T12:43+0800 operator authorized the trust-root rotation and local macOS Keychain
+  custody, while explicitly prohibiting 1Password access. A new release authority was created under
+  service `io.ouro-ops.allowlist-release`, account `production-ed25519-2026-07`; its public key is
+  `3ceb1920f30d3768a7b979c563b4e1738dc7708e8ed6e91d6e32bd7a0df165dd`. The creation-only helper
+  disclosed no private material, and Keychain ACL inspection reports zero trusted applications.
+  The release-only Rust signer reads the item through an interactive macOS authorization, requires
+  the expected public key, shares production canonicalization, self-verifies and atomically writes
+  only a signed document. Production `ouro-ops` artifacts do not contain the Keychain selectors.
+- LATC-1 | stack: other | command: live Docker inspect plus official GHCR OCI metadata | result:
+  pass | note: both nodes and the registry agree on immutable Linux/amd64 tuple index
+  `sha256:6de965784be4134deccb94ca8d92c11dfb3e140a9d0616210f29a1836fdb13d7`, manifest
+  `sha256:e4f7b5e761b0c739ebb4bd40359415817bfd782fcd4f427de0e1fa3109295983`, config
+  `sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a`.
+- LATC-2 | stack: rust | command: release signer plus convention verification/tamper tests | result:
+  pass | note: canonical unsigned payload hash
+  `6cd7ba009991d637ee0d4ed23ce51087d034c50fe7e0eccd961842e30842364f` was signed as allowlist
+  version 2 under the new pinned public key; exact tuple presence and empty `transitions` are
+  asserted, while unknown/duplicate fields, tampering and the prior v1 signature/root are rejected.
+  The private key was neither printed nor added to the repository.
+- 2026-07-16T12:43+0800 p10-5 live replay found and repaired one independent observability bug:
+  the embedded probe assumed `netstat`, but the supported Blink Labs image exposes `ss`. The probe
+  now prefers `ss -Htn state established`, retains a `netstat` fallback and reports zero only when
+  neither command exists. An ss-only image regression proves the peer count, and the embedded bundle
+  manifest was regenerated and verified.
+- 2026-07-16T12:43+0800 operator accepted the LATC-3 clarification: p10-5 requires both nodes to
+  pass the signed allowlist gate without writes; a later, independent security-policy gate may
+  safely refuse a nonconforming node. This preserves the requested allowlist-only scope and does
+  not authorize weakening the gate or reshaping live forging-key permissions.
+- LATC-3 | stack: other | command: final live `adopt --dispatch ... --preview` against `bp1` and
+  `relay1` | result: pass | note: both targets verified allowlist version 2 and the admitted config
+  digest. Relay reached a conforming candidate with 69 established peers, synced tip and responsive
+  socket. BP then safely refused because its live key directory is mode `0770`, not owner-only;
+  this is an independent policy nonconformance, not an allowlist failure. Neither preview wrote an
+  attestation or mutated/restarted a container; both containers retained their IDs, start times and
+  zero restart counts.
+- LATC-4 | stack: rust | command: `cargo test -p ouro` | result: pass | note: 175/175 including
+  rotated-root, exact v2 tuple, tamper and release-candidate regressions.
+- LATC-4 | stack: rust | command: `cargo test --features release-signer --bin
+  ouro-allowlist-signer` | result: pass | note: 2/2 strict signer argument and canonical-input tests.
+- LATC-4 | stack: python | command: `make python-test` | result: pass | note: complete suite includes
+  ss-only observability and dynamic signed-allowlist version assertions.
+- LATC-4 | stack: other | command: `bash ci/l2-integration.sh` | result: pass | note: all L2 gates
+  plus 175 Rust tests passed.
+- LATC-4 | stack: rust | command: `cargo clippy --all-targets --all-features -- -D warnings` |
+  result: pass | note: zero warnings.
+- LATC-4 | stack: other | command: final release build, `manifest verify`, local/remote SHA-256 and
+  security-identity parity | result: pass | note: macOS artifact SHA-256
+  `a451456c4cb63b9f57043d33cafbf7746d61942021fe42aff8577fe0dfb59a12`; static Linux artifact and
+  both installed copies SHA-256
+  `2a0f3f898a999cc9cdb66fcfd93f76a56463f4ac492083deddc5689cd3c262fc`; all report identity
+  `983e4342e9fadbf3c35479e175ee329060f40ad6b5870cfa186bff2aa52d3a9c`, and embedded manifest
+  digest `b4b89f01f97168900bc2a9bd559d53f163326168da5755b6ad2247b8151866c` verifies.
+- LATC-4 | stack: other | command: final one-at-a-time `onboard --apply` plus exact rerun on both
+  targets | result: pass | note: only the S0019 management plane changed; each rerun returned
+  `changed:false` and `already_converged`, with pinned host key, verified effective SSH policy and
+  fresh `cardano`, `ouro-op`, `ouro-diag` sessions. The node containers were not touched.
+- 2026-07-16T12:43+0800 [x] p10-5 completed. Signed allowlist version 2 admits only the exact
+  Blink Labs `10.5.4-1` Linux/amd64 immutable tuple; `transitions` remains empty. Release signing is
+  separated behind an opt-in build feature and interactive Keychain custody, the final management
+  artifacts carry the rotated verifier, the live allowlist path succeeds on both nodes, and the BP
+  continues to fail closed at its independent owner-only permission gate. Operator-owned untracked
+  `pool-spec.yaml` remains untouched and excluded from delivery.

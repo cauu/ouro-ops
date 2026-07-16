@@ -1,6 +1,6 @@
 {
-  "allowlist_version": 1,
-  "signature": "ed25519:338fb06966c7cda4094f6cc27b63003d8877791bf68cee1f11d2d19bdeb40e5c1f229ca3bbdb36d9b2f66e0bb1dbf64fe6b1cf457f35eebc8f558605209c0a08",
+  "allowlist_version": 2,
+  "signature": "ed25519:77fbad082cf45f2b2e15cd793a03583c9ba02f024f4f6c2711fd4547a3d7f3f7c3ce662522f569113d13ad82f9b9b29193224a5b21d1588d6f26c9c482488701",
   "contracts": [
     {
       "convention_version": 1,
@@ -14,8 +14,14 @@
         "genesis": "/opt/cardano/config/mainnet/shelley-genesis.json"
       },
       "role_rules": {
-        "bp": { "requires_opcert": true, "forbids_forging_keys": false },
-        "relay": { "requires_opcert": false, "forbids_forging_keys": true }
+        "bp": {
+          "requires_opcert": true,
+          "forbids_forging_keys": false
+        },
+        "relay": {
+          "requires_opcert": false,
+          "forbids_forging_keys": true
+        }
       },
       "allowed": [
         {
@@ -29,6 +35,12 @@
           "oci_index_digest": "sha256:d5ede07a890e9b6a0a5182cdba9dbaf73756336762235e0934a11690beedae02",
           "platform_manifest_digest": "sha256:03211991d65a019073657fe8ad5be1ac8a4cd889bc9b17660faa34ba8b67078d",
           "image_config_digest": "sha256:f313721b677fbe9a64e9a25ed1f5790c47bf0b3e88f48bad22d822e243f47179"
+        },
+        {
+          "platform": "linux/amd64",
+          "oci_index_digest": "sha256:6de965784be4134deccb94ca8d92c11dfb3e140a9d0616210f29a1836fdb13d7",
+          "platform_manifest_digest": "sha256:e4f7b5e761b0c739ebb4bd40359415817bfd782fcd4f427de0e1fa3109295983",
+          "image_config_digest": "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a"
         }
       ]
     }

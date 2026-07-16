@@ -47,7 +47,8 @@ def main():
         '  "exec cid-xyz") shift 2; # sh -c ...\n'
         '     if echo "$*" | grep -q "cardano-cli query tip"; then echo "{\\"block\\":10,\\"slot\\":10,\\"syncProgress\\":\\"100.00\\"}";\n'
         '     elif echo "$*" | grep -q "kes-period-info"; then printf "✓ period is valid\\n✓ counter agrees\\n{\\"qKesCurrentKesPeriod\\":10,\\"qKesStartKesInterval\\":9,\\"qKesEndKesInterval\\":20,\\"qKesOnDiskOperationalCertificateNumber\\":5,\\"qKesNodeStateOperationalCertificateNumber\\":5}\\n";\n'
-        '     elif echo "$*" | grep -q netstat; then echo 2;\n'
+        '     elif echo "$*" | grep -q "ss -Htn state established"; then echo 2;\n'
+        '     elif echo "$*" | grep -q netstat; then echo 0;\n'
         '     elif echo "$*" | grep -q kes.skey; then echo true;\n'
         '     elif echo "$*" | grep -q node.cert; then echo "opcerthash  /x";\n'
         '     else echo "deadbeef  /x"; fi;;\n'
@@ -93,6 +94,7 @@ def main():
     assert readiness["tip_block"] == readiness["tip_block_next"] == 10
     assert readiness["tip_synced"] is True, "healthy no-new-block sample must remain ready"
     assert readiness["kes_opcert_valid"] is True and readiness["forging_credentials_ready"] is True
+    assert readiness["established_peers"] == 2, "ss-only Blink Labs image peers must be detected"
     assert obs["recreate"] is not None, "inherited nonempty OCI labels remain a valid baseline"
 
     # An explicit container user is not modeled by the sealed recreate argv. The probe must return

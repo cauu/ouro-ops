@@ -157,7 +157,11 @@ def main():
     attestation = Path(home) / "attestations" / "bp1.json"
     assert stat.S_IMODE(attestation.stat().st_mode) == 0o640
     attested = json.loads(attestation.read_text())["immutable"]
-    assert attested["allowlist_version"] == 1 and len(attested["allowlist_digest"]) == 71
+    expected_allowlist_version = json.loads(
+        (ROOT / "data/allowlist.json").read_text()
+    )["allowlist_version"]
+    assert attested["allowlist_version"] == expected_allowlist_version
+    assert len(attested["allowlist_digest"]) == 71
     assert len({attested["oci_index_digest"], attested["platform_manifest_digest"],
                 attested["image_config_digest"]}) == 3, attested
     identity = fleet_identity(home)

@@ -15,6 +15,7 @@ use crate::{OuroError, Result};
 /// Signed transition metadata for one N→N+1 hop (verified against the release key like the
 /// allowlist; embedded-trusted until the S0018 feed exists).
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct TransitionMeta {
     pub from_convention_version: u32,
     pub to_convention_version: u32,

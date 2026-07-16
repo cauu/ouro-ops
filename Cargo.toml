@@ -3,6 +3,7 @@ name = "ouro"
 version = "0.1.0"
 edition = "2021"
 description = "Deterministic Cardano stake pool operations CLI"
+default-run = "ouro-ops"
 
 [lib]
 path = "crates/ouro/src/lib.rs"
@@ -10,6 +11,14 @@ path = "crates/ouro/src/lib.rs"
 [[bin]]
 name = "ouro-ops"
 path = "crates/ouro/src/main.rs"
+
+[[bin]]
+name = "ouro-allowlist-signer"
+path = "crates/ouro/src/bin/ouro_allowlist_signer.rs"
+required-features = ["release-signer"]
+
+[features]
+release-signer = ["dep:security-framework", "dep:zeroize"]
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
@@ -26,3 +35,7 @@ serde_yaml = "0.9"
 thiserror = "2"
 tar = "0.4"
 uuid = { version = "1", features = ["v4", "serde"] }
+zeroize = { version = "1", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = { version = "3.7", optional = true, features = ["OSX_10_15"] }

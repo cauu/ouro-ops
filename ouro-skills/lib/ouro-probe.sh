@@ -86,7 +86,9 @@ ouro_observe() {
     preview) kes_info="$(docker exec "$cid" cardano-cli query kes-period-info --socket-path /ipc/node.socket --op-cert-file /opt/cardano/config/keys/node.cert --testnet-magic 2 --output-json 2>/dev/null || true)" ;;
     *) kes_info="" ;;
   esac
-  peers="$(docker exec "$cid" sh -c "netstat -tn 2>/dev/null | awk '\$6 == \"ESTABLISHED\" {n++} END {print n+0}'" 2>/dev/null || echo 0)"
+  # Blink Labs images currently ship `ss` but not `netstat`. Prefer iproute2's `ss`, retain a
+  # net-tools fallback for older images, and fail closed to zero when neither command exists.
+  peers="$(docker exec "$cid" sh -c "if command -v ss >/dev/null 2>&1; then ss -Htn state established 2>/dev/null | awk 'NF {n++} END {print n+0}'; elif command -v netstat >/dev/null 2>&1; then netstat -tn 2>/dev/null | awk '\$6 == \"ESTABLISHED\" {n++} END {print n+0}'; else echo 0; fi" 2>/dev/null || echo 0)"
   local hostkey full_json image_json
   hostkey="${OURO_HOST_KEY_SHA256:-}"
   if [ -z "$hostkey" ] && [ -f /etc/ssh/ssh_host_ed25519_key.pub ]; then
