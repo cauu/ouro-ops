@@ -898,12 +898,104 @@ struct Observation {
 struct ObsReadiness {
     node_running: bool,
     socket_answers: bool,
+    /// The legacy readiness metric prefers slot over block. The explicit fields below preserve the
+    /// actual cardano-cli tip vocabulary for stateless observability without changing S0019 write
+    /// verification semantics or invalidating old fixtures.
     tip_block: i64,
     tip_block_next: i64,
+    #[serde(default)]
+    tip_block_height: Option<i64>,
+    #[serde(default)]
+    tip_slot: Option<i64>,
+    #[serde(default)]
+    tip_era: Option<String>,
+    #[serde(default)]
+    sync_progress: Option<String>,
     tip_synced: bool,
     kes_opcert_valid: bool,
     forging_credentials_ready: bool,
     established_peers: u32,
+}
+
+/// The only S0020 target-side read entry point. It is deliberately closed and stateless: the
+/// ephemeral runner gathers one live observation and does not consult attestation, Ouro home,
+/// transaction journals, allowlist floors or an installed target version.
+pub fn run_target(args: &[String]) -> Result<()> {
+    if args.first().map(String::as_str) != Some("observe") {
+        return Err(OuroError::InvalidArgs(
+            "expected internal target observe --node <id>".into(),
+        ));
+    }
+    let args = &args[1..];
+    validate_closed_args(args, &["--node"], &[], &[])?;
+    let node = flag(args, "--node")?;
+    crate::intent::validate_machine_id(node)?;
+    let observation = read_observation(&[])?;
+    output::print_json(&stateless_observation_output(node, &observation))
+}
+
+fn stateless_observation_output(node: &str, observation: &Observation) -> ToolOutput {
+    let readiness = observation.readiness.as_ref();
+    let runtime_policy = match convention::Allowlist::active_verified() {
+        Ok(allowlist) => match allowlist.contract_and_image_for(
+            &observation.live.image_config_digest,
+            &observation.live.platform,
+        ) {
+            Ok((contract, image)) => json!({
+                "supported": true,
+                "contract_id": contract.contract_id,
+                "convention_version": contract.convention_version,
+                "oci_index_digest": image.oci_index_digest,
+                "platform_manifest_digest": image.platform_manifest_digest,
+            }),
+            Err(error) => json!({
+                "supported": false,
+                "detail": error.to_string(),
+                "effect": "informational_for_read; typed writes remain policy-gated",
+            }),
+        },
+        Err(error) => json!({
+            "supported": null,
+            "detail": error.to_string(),
+            "effect": "policy unavailable; live read evidence is still returned",
+        }),
+    };
+    let mut result = ToolOutput::ok("ouro.observe", false).with_data(json!({
+        "op": "observability/health",
+        "node": node,
+        "assurance": "live_observation",
+        "management_state": "not_required",
+        "result": {
+            "node_running": readiness.map(|value| value.node_running).unwrap_or(false),
+            "socket_answers": readiness.map(|value| value.socket_answers).unwrap_or(false),
+            "tip_synced": readiness.map(|value| value.tip_synced).unwrap_or(false),
+            "tip": {
+                "block": readiness.and_then(|value| value.tip_block_height),
+                "slot": readiness.and_then(|value| value.tip_slot),
+                "era": readiness.and_then(|value| value.tip_era.as_deref()),
+                "sync_progress": readiness.and_then(|value| value.sync_progress.as_deref()),
+            },
+            "network": observation.live.network,
+            "container": {
+                "running_count": observation.supervisor.node_container_count,
+                "runtime": observation.supervisor.runtime,
+                "id": observation.live.container_id,
+                "name": observation.live.container_name,
+                "image_reference": observation.live.image_reference,
+                "image_config_digest": observation.live.image_config_digest,
+                "platform": observation.live.platform,
+            },
+            "runtime_policy": runtime_policy,
+        },
+        "not_claimed": [
+            "block production",
+            "end-to-end peer reachability",
+            "disk capacity or growth safety",
+            "future availability",
+        ],
+    }));
+    result.machine = Some(node.to_string());
+    result
 }
 #[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, Eq)]
 struct ObsLive {
@@ -1669,6 +1761,34 @@ fn run_op_inner(args: &[String]) -> Result<()> {
         ));
     }
     let paths = ConfigPaths::discover();
+
+    // S0020 p1-2: reads do not depend on prior ownership metadata. A dispatched read streams the
+    // control-selected runner; a local/debug read directly runs the same sealed live probe.
+    if op == "observability/health" {
+        if let Some(host) = optional(args, "--dispatch") {
+            for internal in [
+                "--local",
+                "--observation",
+                "--expect-embedded",
+                "--expect-allowlist",
+            ] {
+                if args.iter().any(|arg| arg == internal) {
+                    return Err(OuroError::Validation(format!(
+                        "{internal} is target-internal and cannot be supplied to control dispatch"
+                    )));
+                }
+            }
+            return dispatch_op(host, &op, &node, args, &paths, transport_plan);
+        }
+        if transport_plan {
+            return Err(OuroError::InvalidArgs(
+                "--transport-plan requires --dispatch <host>".into(),
+            ));
+        }
+        let observation = read_observation(args)?;
+        return output::print_json(&stateless_observation_output(&node, &observation));
+    }
+
     if adoption_pending_path(&paths, &node).exists() {
         return Err(OuroError::Validation(format!(
             "adoption_reconciliation_required: node {node} has a pending adoption commit/audit marker; no operations are allowed until operator reconciliation"
@@ -2533,6 +2653,9 @@ fn dispatch_op(
     paths: &ConfigPaths,
     transport_plan: bool,
 ) -> Result<()> {
+    if op == "observability/health" {
+        return dispatch_stateless_observe(host, node, args, paths, transport_plan);
+    }
     // The SSH client key is the operator's credential (creds://<name>), resolved to a local path.
     let key_ref = optional(args, "--ssh-key").unwrap_or("creds://ouro-op");
     let key = crate::secrets::CredentialRef::parse(key_ref)?.resolve(&paths.credentials_dir)?;
@@ -2576,6 +2699,91 @@ fn dispatch_op(
         "managed operation SSH dispatch",
     ).map_err(|e| OuroError::Validation(format!("ssh dispatch failed: {e}")))?;
     finish_ssh_dispatch("ouro.op.dispatch", &out)
+}
+
+fn dispatch_stateless_observe(
+    host: &str,
+    node: &str,
+    args: &[String],
+    paths: &ConfigPaths,
+    transport_plan: bool,
+) -> Result<()> {
+    for forbidden in [
+        "--confirm-token",
+        "--fleet-pool-id",
+        "--fleet-spec-digest",
+        "--fleet-min-online-relays",
+        "--fleet-permit",
+    ] {
+        if args.iter().any(|arg| arg == forbidden) {
+            return Err(OuroError::Validation(format!(
+                "{forbidden} is not valid for stateless observability"
+            )));
+        }
+    }
+    let params = collect_params(args)?;
+    if let Some(object) = params.as_object() {
+        if object.keys().any(|key| key != "machine")
+            || object
+                .get("machine")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|machine| machine != node)
+        {
+            return Err(OuroError::Validation(
+                "observability accepts only an optional machine=<node> parameter".into(),
+            ));
+        }
+    }
+
+    let default_key_ref = format!("creds://{node}");
+    let key_ref = optional(args, "--ssh-key").unwrap_or(&default_key_ref);
+    let key = crate::secrets::CredentialRef::parse(key_ref)?.resolve(&paths.credentials_dir)?;
+    let runner = crate::runner::linux_x86_64()?;
+    let target_args = vec![
+        "target".to_string(),
+        "observe".to_string(),
+        "--node".to_string(),
+        node.to_string(),
+    ];
+    let argv = crate::dispatch::ephemeral_runner_dispatch_argv(
+        host,
+        22,
+        "cardano",
+        &key,
+        &paths.known_hosts,
+        &runner.sha256,
+        &target_args,
+    )?;
+    if transport_plan {
+        output::print_json(
+            &ToolOutput::ok("ouro.observe.dispatch.transport_plan", false).with_data(json!({
+                "op": "observability/health",
+                "node": node,
+                "target": host,
+                "principal": "cardano",
+                "runner": {
+                    "platform": runner.platform,
+                    "sha256": runner.sha256,
+                    "size_bytes": runner.bytes.len(),
+                    "source": "control_build",
+                },
+                "ssh_argv": argv,
+                "target_validated": false,
+                "persistent_target_install": false,
+                "note": "transport-only inspection; no SSH session or live observation ran",
+            })),
+        )?;
+        return Ok(());
+    }
+    let out = crate::ssh::bounded_ssh_with_input(
+        &argv,
+        &runner.bytes,
+        std::time::Duration::from_secs(5 * 60),
+        256 * 1024,
+        "ephemeral observability SSH dispatch",
+    )
+    .map_err(|error| OuroError::Validation(format!("ssh dispatch failed: {error}")))?;
+    finish_ssh_dispatch("ouro.observe.dispatch", &out)
 }
 
 /// p6-3 — SSH-dispatch `adopt` to the target (as the bootstrap account), running `adopt --local`

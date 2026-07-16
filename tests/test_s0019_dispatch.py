@@ -487,7 +487,12 @@ def main():
             str(BIN), "op", "run", "--op", "observability/health", "--node", "bp1",
             "--param", "machine=bp1", "--dispatch", "192.0.2.1", "--ssh-key", "creds://bp1",
         ],
-        env=dict(os.environ, OURO_HOME=home, PATH=f"{transport_bin}:{os.environ['PATH']}"),
+        env=dict(
+            os.environ,
+            OURO_HOME=home,
+            OURO_EPHEMERAL_RUNNER=str(linux_elf),
+            PATH=f"{transport_bin}:{os.environ['PATH']}",
+        ),
         text=True,
         capture_output=True,
     )

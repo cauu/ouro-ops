@@ -45,7 +45,7 @@ def main():
         f'  "inspect cid-xyz") echo \'[{{"Id":"cid-xyz000000000000","Name":"/cardano-node","Mounts":[{{"Type":"bind","Source":"{data_mount}","Destination":"/data/db","RW":true,"Mode":"rw","Propagation":"rprivate"}},{{"Type":"bind","Source":"{config_mount}","Destination":"/opt/cardano/config","RW":false,"Mode":"ro","Propagation":"rprivate"}},{{"Type":"bind","Source":"{ipc_mount}","Destination":"/ipc","RW":true,"Mode":"rw","Propagation":"rprivate"}}],"HostConfig":{{"RestartPolicy":{{"Name":"unless-stopped","MaximumRetryCount":0}},"NetworkMode":"bridge","PortBindings":{{}}}},"NetworkSettings":{{"Networks":{{"bridge":{{"Aliases":null,"IPAMConfig":null}}}}}},"Config":{{"Hostname":"cid-xyz00000","Image":"ghcr.io/blinklabs-io/cardano-node:10.5.4-1","Env":["CARDANO_BLOCK_PRODUCER=true","CARDANO_NETWORK=mainnet"],"Labels":{{"org.opencontainers.image.title":"cardano-node"}},"Entrypoint":["/usr/local/bin/entrypoint"]}},"Path":"/usr/local/bin/entrypoint","Args":["run"]}}]\';;\n'
         '  "image inspect") echo \'[{"Os":"linux","Architecture":"amd64","Config":{"Env":[],"Entrypoint":["/usr/local/bin/entrypoint"],"Cmd":[],"Labels":{"org.opencontainers.image.title":"cardano-node"}}}]\';;\n'
         '  "exec cid-xyz") shift 2; # sh -c ...\n'
-        '     if echo "$*" | grep -q "cardano-cli query tip"; then echo "{\\"block\\":10,\\"slot\\":10,\\"syncProgress\\":\\"100.00\\"}";\n'
+        '     if echo "$*" | grep -q "cardano-cli query tip"; then echo "{\\"block\\":9,\\"slot\\":10,\\"era\\":\\"Conway\\",\\"syncProgress\\":\\"100.00\\"}";\n'
         '     elif echo "$*" | grep -q "kes-period-info"; then printf "✓ period is valid\\n✓ counter agrees\\n{\\"qKesCurrentKesPeriod\\":10,\\"qKesStartKesInterval\\":9,\\"qKesEndKesInterval\\":20,\\"qKesOnDiskOperationalCertificateNumber\\":5,\\"qKesNodeStateOperationalCertificateNumber\\":5}\\n";\n'
         '     elif echo "$*" | grep -q "ss -Htn state established"; then echo 2;\n'
         '     elif echo "$*" | grep -q netstat; then echo 0;\n'
@@ -88,10 +88,13 @@ def main():
               "host_key_sha256", "genesis_hash", "network"]:
         assert k in live, f"observation missing {k}"
     readiness = obs["readiness"]
-    for k in ["node_running", "socket_answers", "tip_block", "tip_block_next", "tip_synced",
+    for k in ["node_running", "socket_answers", "tip_block", "tip_block_next",
+              "tip_block_height", "tip_slot", "tip_era", "sync_progress", "tip_synced",
               "kes_opcert_valid", "forging_credentials_ready", "established_peers"]:
         assert k in readiness, f"readiness missing {k}"
     assert readiness["tip_block"] == readiness["tip_block_next"] == 10
+    assert readiness["tip_block_height"] == 9 and readiness["tip_slot"] == 10
+    assert readiness["tip_era"] == "Conway" and readiness["sync_progress"] == "100.00"
     assert readiness["tip_synced"] is True, "healthy no-new-block sample must remain ready"
     assert readiness["kes_opcert_valid"] is True and readiness["forging_credentials_ready"] is True
     assert readiness["established_peers"] == 2, "ss-only Blink Labs image peers must be detected"

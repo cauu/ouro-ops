@@ -24,10 +24,7 @@ fn collect(dir: &Path, root: &Path, out: &mut Vec<(String, PathBuf)>) {
                 .to_string_lossy()
                 .replace('\\', "/");
             // Only embed the asset kinds the runtime needs: decision docs and shell assets.
-            if rel.ends_with("/SKILL.md")
-                || rel.ends_with(".sh")
-                || rel.ends_with(".schema.json")
-            {
+            if rel.ends_with("/SKILL.md") || rel.ends_with(".sh") || rel.ends_with(".schema.json") {
                 out.push((rel, path));
             }
         }
@@ -52,6 +49,28 @@ fn main() {
     }
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+
+    // S0020 p1-2 — the control release carries the target-architecture runner. Building the Linux
+    // runner itself leaves this file empty; the subsequent macOS control build points the private
+    // build input at that repository-built artifact. The path is a build input, never a public CLI
+    // parameter, so an agent cannot select arbitrary executable bytes for target dispatch.
+    println!("cargo:rerun-if-env-changed=OURO_EMBED_LINUX_X86_64_RUNNER");
+    let runner_dest = out_dir.join("ephemeral_linux_x86_64_runner.bin");
+    match std::env::var_os("OURO_EMBED_LINUX_X86_64_RUNNER") {
+        Some(source) => {
+            let source = PathBuf::from(source);
+            println!("cargo:rerun-if-changed={}", source.display());
+            fs::copy(&source, &runner_dest).unwrap_or_else(|error| {
+                panic!(
+                    "copy Linux/x86_64 runner {} to {}: {error}",
+                    source.display(),
+                    runner_dest.display()
+                )
+            });
+        }
+        None => fs::write(&runner_dest, []).expect("create empty runner build input"),
+    }
+
     let dest = out_dir.join("embedded_skills.rs");
     let mut f = fs::File::create(&dest).expect("create embedded_skills.rs");
     writeln!(

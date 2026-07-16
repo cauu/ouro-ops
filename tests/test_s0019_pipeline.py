@@ -273,11 +273,13 @@ def main():
                *policy, "--plan")
     assert d["status"] == "error" and "drift" in json.dumps(d), d
 
-    # 8. erasing the allowlist floor on an adopted node fails closed; it does not reset to v1.
+    # 8. S0020 reads do not consult the persistent allowlist floor or attestation. The active
+    # signed image policy remains visible in the result and remains authoritative for writes.
     (Path(home) / "allowlist-floor.json").unlink()
     _, d = run(home, "op", "run", "--op", "observability/health", "--node", "bp1",
                "--param", "machine=bp1", "--observation", o2)
-    assert d["status"] == "error" and "anti-rollback floor is missing" in json.dumps(d), d
+    assert d["status"] == "ok" and d["data"]["management_state"] == "not_required", d
+    assert d["data"]["assurance"] == "live_observation", d
 
     print("S0019 pipeline (adopt + op gates) passed")
 

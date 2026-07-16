@@ -133,6 +133,20 @@ def tip_value(s):
         return int(value.get("slot", value.get("block", -1)))
     except Exception:
         return -1
+def tip_int(s, key):
+    try:
+        value = json.loads(s)
+        raw = value.get(key)
+        return int(raw) if raw is not None else None
+    except Exception:
+        return None
+def tip_text(s, key):
+    try:
+        value = json.loads(s)
+        raw = value.get(key)
+        return str(raw) if raw is not None else None
+    except Exception:
+        return None
 def tip_synced(s):
     try:
         value = json.loads(s)
@@ -362,6 +376,10 @@ obs = {
     "socket_answers": tip_value(env("OURO_OBS_TIP1")) >= 0 and tip_value(env("OURO_OBS_TIP2")) >= 0,
     "tip_block": tip_value(env("OURO_OBS_TIP1")),
     "tip_block_next": tip_value(env("OURO_OBS_TIP2")),
+    "tip_block_height": tip_int(env("OURO_OBS_TIP2"), "block"),
+    "tip_slot": tip_int(env("OURO_OBS_TIP2"), "slot"),
+    "tip_era": tip_text(env("OURO_OBS_TIP2"), "era"),
+    "sync_progress": tip_text(env("OURO_OBS_TIP2"), "syncProgress"),
     "tip_synced": tip_synced(env("OURO_OBS_TIP2")),
     "kes_opcert_valid": kes_state(env("OURO_OBS_KES_INFO")),
     "forging_credentials_ready": (

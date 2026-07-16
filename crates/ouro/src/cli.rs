@@ -61,6 +61,8 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "onboard" => run_onboard(&args[2..])?,
         "adopt" => crate::s0019_cli::run_adopt(&args[2..])?,
         "op" => crate::s0019_cli::run_op(&args[2..])?,
+        // Closed target-side surface used only by the S0020 ephemeral runner transport.
+        "target" => crate::s0019_cli::run_target(&args[2..])?,
         "inbox" => crate::s0019_cli::run_inbox(&args[2..])?,
         "fleet" => crate::s0019_cli::run_fleet(&args[2..])?,
         "kes" => run_kes(&args[2..])?,

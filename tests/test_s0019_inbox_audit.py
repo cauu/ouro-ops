@@ -122,7 +122,9 @@ def main():
         assert ev["at_epoch"] > 0, ev
     assert (audit.stat().st_mode & 0o777) == 0o600
     assert any(e["event"] == "adopt" for e in events), events
-    assert any(e["event"] == "live_preflight" for e in events), events
+    # S0020 observability is a stateless live read and does not append to the old target ownership
+    # audit stream merely to establish permission to observe.
+    assert not any(e["event"] == "live_preflight" for e in events), events
     assert any(e["event"] == "refusal" and e.get("operation_id") == "config/render"
                for e in events), events
 

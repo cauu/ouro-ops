@@ -145,6 +145,15 @@ no target state is destroyed merely to test the new path.
   `sudo env -i` and removes the directory through an exit trap. Added bounded concurrent SSH stdin
   streaming so a static runner cannot deadlock against stdout/stderr pipe capacity. No current
   operation is switched in this item; target behavior remains unchanged until p1-2.
+- 2026-07-16T15:02+0800 [~] p1-2 started. Route observability through the ephemeral runner and
+  derive its typed result directly from the sealed live probe without loading adoption attestation,
+  target-installed CLI identity or persistent Ouro management state.
+- 2026-07-16T15:05+0800 [x] p1-2 completed. `observability/health` now streams the control-build's
+  digest-bound static Linux runner as `cardano`, invokes only `target observe --node <id>`, returns
+  live cardano-cli tip fields with `assurance: live_observation` and
+  `management_state: not_required`, and treats signed runtime policy as informational for reads
+  while retaining it as a write gate. Missing attestation, allowlist floor and installed target CLI
+  are absent from the path. Unsupported image policy is reported without suppressing safe facts.
 
 ## 6. Validation Evidence (append-only)
 - ERTC-1 | stack: rust | command: `cargo test -p ouro ephemeral_runner -- --nocapture` | result:
@@ -158,6 +167,35 @@ no target state is destroyed merely to test the new path.
   note: zero warnings for the transport primitive and tests.
 - ERTC-7 | stack: other | command: `git diff --check` | result: pass | note: p1-1 patch is whitespace
   clean and operator-owned `pool-spec.yaml` remains untracked.
+- ERTC-2 | stack: integration | command: `python3 tests/test_s0020_observability.py` | result: pass |
+  note: no-attestation local and closed target reads return real-shaped tip evidence; unsupported
+  image policy is informational; control transport preview has only cardano + random tmp runner;
+  an SSH stub consumes the exact selected bytes and its typed result is forwarded unchanged.
+- ERTC-2 | stack: bed | command: `target/release/ouro-ops op run --op observability/health --node
+  bp1 --dispatch 84.247.139.72 --ssh-key creds://bp1` | result: pass | note: the freshly embedded
+  static Linux runner returned mainnet Conway tip block 13684676 / slot 192618980, sync 100.00,
+  socket answering and signed Blink Labs 10.5.4-1 policy support without target ownership state.
+- ERTC-2 | stack: bed | command: `target/release/ouro-ops op run --op observability/health --node
+  relay1 --dispatch 31.220.95.72 --ssh-key creds://relay1` | result: pass | note: the same control
+  artifact returned mainnet Conway tip block 13684678 / slot 192618989, sync 100.00 and socket
+  answering without target ownership state.
+- ERTC-1 | stack: bed | command: pinned read-only SSH `find /tmp -maxdepth 1 -type d -name
+  'ouro-run.*' -print` on BP and relay after the reads | result: pass | note: both outputs were empty;
+  per-invocation target runner directories were removed.
+- ERTC-5 | stack: other | command: `cargo zigbuild --release --target
+  x86_64-unknown-linux-musl -p ouro`; then `OURO_EMBED_LINUX_X86_64_RUNNER=<built-elf> cargo build
+  --release -p ouro`; release transport preview | result: pass | note: the 5,565,896-byte static
+  Linux/x86_64 ELF digest `b7153a0b…abbdf7` is embedded in the 11 MiB arm64 macOS control and
+  selected automatically; no public runner path exists.
+- ERTC-7 | stack: rust | command: `cargo test -p ouro` | result: pass | note: 180/180 library tests,
+  binary tests and doc tests pass; the updated committed bundle manifest matches the embedded live
+  probe.
+- ERTC-7 | stack: python | command: `python3 tests/test_probe.py`; S0020 observability; S0019
+  pipeline/inbox-audit/dispatch regression scripts | result: pass | note: live probe vocabulary,
+  new stateless contract and retained write/adoption negative gates all pass together.
+- ERTC-7 | stack: rust | command: `cargo clippy -p ouro --lib --tests -- -D warnings`; targeted
+  rustfmt check; `git diff --check` | result: pass | note: zero warnings or changed-file formatting /
+  whitespace errors; operator-owned `pool-spec.yaml` remains untracked.
 
 ## 7. Change Requests (append-only)
 - 2026-07-16T14:41+0800 operator replaced S0019's persistent target CLI/attestation model with the

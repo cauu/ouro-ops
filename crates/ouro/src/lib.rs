@@ -23,6 +23,7 @@ pub mod pool;
 pub mod provision;
 pub mod readiness;
 pub mod render;
+pub mod runner;
 pub mod secrets;
 pub mod s0019_cli;
 pub mod s0019_confirmation;
