@@ -135,7 +135,38 @@ def main():
     credentials = home / "credentials"
     credentials.mkdir()
     (credentials / "bp1").write_text("test-only-ssh-key")
-    (home / "known_hosts").write_text("192.0.2.1 ssh-ed25519 test\n")
+    (home / "known_hosts").write_text("[192.0.2.1]:2222 ssh-ed25519 test\n")
+    pool_spec = home / "pool-spec.yaml"
+    pool_spec.write_text(
+        """spec_version: 1
+pool:
+  network: mainnet
+  network_magic: 764824073
+  genesis_hashes:
+    shelley: 1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81
+topology_mode: p2p
+machines:
+  - id: bp1
+    role: bp
+    ssh:
+      host: 192.0.2.1
+      port: 2222
+      user: cardano
+      key_ref: creds://bp1
+  - id: relay1
+    role: relay
+    public_endpoint:
+      host: 192.0.2.2
+      port: 3001
+    ssh:
+      host: 192.0.2.2
+      port: 22
+      user: cardano
+      key_ref: creds://relay1
+upgrade:
+  min_online_relays: 0
+"""
+    )
     runner = home / "ouro-ops-linux-x86_64"
     runner_bytes = b"repository-built-linux-runner-fixture\x00\xff"
     runner.write_bytes(runner_bytes)
@@ -154,6 +185,8 @@ def main():
         "192.0.2.1",
         "--ssh-key",
         "creds://bp1",
+        "--spec",
+        str(pool_spec),
         "--transport-plan",
         extra_env=runner_env,
     )
@@ -165,6 +198,7 @@ def main():
     remote = " ".join(data["ssh_argv"])
     for expected in [
         "cardano@192.0.2.1",
+        " -p 2222 ",
         "StrictHostKeyChecking=yes",
         "mktemp -d /tmp/ouro-run.XXXXXXXXXX",
         "trap cleanup EXIT",
@@ -174,6 +208,21 @@ def main():
         assert expected in remote, (expected, remote)
     assert "/usr/local/bin/ouro-ops" not in remote and "ouro-op-run" not in remote
     assert "not_ouro_managed" not in json.dumps(preview_value)
+
+    # Host/key are not independently composable selectors: a swapped host or credential refuses
+    # before any SSH process can start.
+    for selector, replacement, needle in (
+        ("192.0.2.1", "192.0.2.99", "does not match pool-spec host"),
+        ("creds://bp1", "creds://relay1", "does not match the pool-spec credential"),
+    ):
+        args = [
+            "op", "run", "--op", "observability/health", "--node", "bp1",
+            "--dispatch", "192.0.2.1", "--ssh-key", "creds://bp1",
+            "--spec", str(pool_spec), "--transport-plan",
+        ]
+        args[args.index(selector)] = replacement
+        refused, refused_value = invoke(home, *args, extra_env=runner_env)
+        assert refused.returncode != 0 and needle in json.dumps(refused_value), refused_value
 
     # A fake SSH transport consumes stdin and returns one target ToolOutput. This proves the public
     # command streams the exact selected bytes and transparently forwards the typed result.
@@ -204,6 +253,8 @@ def main():
         "192.0.2.1",
         "--ssh-key",
         "creds://bp1",
+        "--spec",
+        str(pool_spec),
         extra_env={**runner_env, "OURO_TEST_TRANSPORT_LOG": str(log)},
         path=fakebin,
     )

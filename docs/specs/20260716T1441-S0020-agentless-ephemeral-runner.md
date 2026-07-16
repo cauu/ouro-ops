@@ -412,3 +412,21 @@ no target state is destroyed merely to test the new path.
 - ERTC-9/12 | stack: rust | command: `cargo test -p ouro`; `cargo clippy -p ouro --lib --tests -- -D
   warnings`; `git diff --check` | result: pass | note: 185 Rust tests pass; target permit parsing,
   binding and commit-time quorum checks compile without warnings or whitespace errors.
+
+## 11. p4-3 Execution and Evidence (append-only)
+- 2026-07-16T21:47+0800 [~] p4-3 started. Require the operator pool spec for dispatched health
+  reads and reject any caller-composed host, port, principal or credential that does not match the
+  declared machine id before constructing SSH argv.
+- 2026-07-16T21:47+0800 [x] p4-3 completed. Stateless observability now resolves the machine from
+  `--spec`, enforces the exact dispatch host, `cardano` user and optional credential selector, uses
+  the spec port and resolves only the spec credential. Current Skills, website prompts and README
+  include the same spec-bound command. Local/debug fixture reads and the closed target probe remain
+  spec-independent internal seams.
+- ERTC-10 | stack: python | command: `python3 tests/test_s0020_observability.py`; `python3
+  tests/test_s0019_dispatch.py` | result: pass | note: non-default spec port 2222 reaches the sealed
+  transport; swapped host/key selectors refuse before SSH; live typed output and legacy negative
+  dispatch behavior remain green.
+- ERTC-10/12 | stack: rust/python | command: `cargo test -p ouro`; `cargo clippy -p ouro --lib
+  --tests -- -D warnings`; `python3 tests/test_skill_docs.py`; `python3 tests/test_web_generator.py`;
+  `git diff --check` | result: pass | note: 185 Rust tests, embedded manifest parity, Skills and
+  website command gates pass with the spec-bound observability contract.

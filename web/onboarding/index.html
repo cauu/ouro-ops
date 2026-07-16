@@ -726,7 +726,7 @@ function prompt(d) {
   const bpHost = d.bp ? d.bp.host : "bp1";
   const relays = d.relays.map(r => r.id).join(", ");
   const healthCommands = d.machines.map(m =>
-    `ouro-ops op run --op observability/health --dispatch ${m.host} --ssh-key creds://${m.id} --node ${m.id} --param machine=${m.id}`
+    `ouro-ops op run --op observability/health --spec pool-spec.yaml --dispatch ${m.host} --ssh-key creds://${m.id} --node ${m.id} --param machine=${m.id}`
   ).join("\n   ");
   const opLabel = d.op === "upgrade" ? `upgrade to cardano-node ${d.nodever}` : d.op;
   const cmd = {

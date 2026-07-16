@@ -49,7 +49,8 @@ target/debug/ouro-ops spec validate --spec examples/pool-spec.minimal.yaml
 
 # 固定只读 tip（host/key 从 operator-owned spec 映射）
 target/debug/ouro-ops op run --op observability/health \
-  --dispatch <host> --ssh-key creds://<name> --node <id> --param machine=<id>
+  --spec <pool-spec> --dispatch <host> --ssh-key creds://<name> \
+  --node <id> --param machine=<id>
 
 # live-state-bound restart plan（不会重启）
 target/debug/ouro-ops op run --op runtime/restart --spec <pool-spec> \

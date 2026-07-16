@@ -17,7 +17,8 @@ adoption ceremony: every read/plan obtains fresh live facts through the current 
 
 ## Decision Tree
 - To observe a declared machine, run `ouro-ops op run --op observability/health --dispatch <host>
-  --ssh-key creds://<name> --node <id> --param machine=<id>` and interpret only returned evidence.
+  --ssh-key creds://<name> --spec <pool-spec> --node <id> --param machine=<id>` and interpret only
+  returned evidence.
 - To assess a proposed write, run that operation's `--spec <pool-spec> ... --plan`. The result is the
   authoritative live compatibility assessment; a transport preview is not.
 - Do not run legacy standalone detector/adoption commands as a prerequisite. A current plan already

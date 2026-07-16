@@ -20,8 +20,9 @@ does not by itself prove forging, KES lifetime, peer health, disk capacity, or f
 
 ## Decision guidance (use your judgment; this is not a rigid script)
 - Read `pool-spec.yaml`, then for EVERY machine run:
-  `ouro-ops op run --op observability/health --dispatch <spec-host> --ssh-key
-  creds://<spec-name> --node <id> --param machine=<id>`.
+  `ouro-ops op run --op observability/health --spec <pool-spec> --dispatch <spec-host>
+  --ssh-key creds://<spec-name> --node <id> --param machine=<id>`. The CLI binds the id to that
+  spec's host, port, `cardano` principal and credential; never mix selectors between machines.
 - Do not add `--plan`: this operation is already a fixed read, and a transport preview is not health
   evidence. The command chooses and sends the runner automatically; never ask for a target binary
   path or try to install/synchronize one.

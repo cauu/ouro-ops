@@ -3615,9 +3615,34 @@ fn dispatch_stateless_observe(
         }
     }
 
-    let default_key_ref = format!("creds://{node}");
-    let key_ref = optional(args, "--ssh-key").unwrap_or(&default_key_ref);
-    let key = crate::secrets::CredentialRef::parse(key_ref)?.resolve(&paths.credentials_dir)?;
+    let spec_path = flag(args, "--spec")?;
+    let spec = PoolSpec::from_file(Path::new(spec_path))?;
+    let machine = spec.machines.iter().find(|machine| machine.id == node).ok_or_else(|| {
+        OuroError::Validation(format!(
+            "observability node {node:?} is not declared in pool spec {spec_path}"
+        ))
+    })?;
+    if machine.ssh.host != host {
+        return Err(OuroError::Validation(format!(
+            "observability dispatch host {host:?} does not match pool-spec host {:?} for {node}",
+            machine.ssh.host
+        )));
+    }
+    if machine.ssh.user != "cardano" {
+        return Err(OuroError::Validation(format!(
+            "S0020 observability uses cardano; pool spec declares {:?} for {node}",
+            machine.ssh.user
+        )));
+    }
+    let supplied_key = optional(args, "--ssh-key")
+        .map(crate::secrets::CredentialRef::parse)
+        .transpose()?;
+    if supplied_key.as_ref().is_some_and(|key| key != &machine.ssh.key_ref) {
+        return Err(OuroError::Validation(format!(
+            "observability --ssh-key does not match the pool-spec credential for {node}"
+        )));
+    }
+    let key = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
     let runner = crate::runner::linux_x86_64()?;
     let target_args = vec![
         "target".to_string(),
@@ -3627,7 +3652,7 @@ fn dispatch_stateless_observe(
     ];
     let argv = crate::dispatch::ephemeral_runner_dispatch_argv(
         host,
-        22,
+        machine.ssh.port,
         "cardano",
         &key,
         &paths.known_hosts,

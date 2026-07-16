@@ -18,7 +18,7 @@ a restart must never be presented as configuration delivery.
 
 ## Decision guidance (use your judgment; this is not a rigid script)
 - Read the current target evidence with `ouro-ops op run --op observability/health --dispatch
-  <host> --ssh-key creds://<name> --node <id> --param machine=<id>`.
+  <host> --ssh-key creds://<name> --spec <pool-spec> --node <id> --param machine=<id>`.
 - If more evidence is necessary, use the Troubleshooting Skill's `ouro-ops diag exec` boundary.
 - If the request requires generating, copying, or activating configuration bytes, state that the
   current typed operation surface does not support it and STOP before any write.

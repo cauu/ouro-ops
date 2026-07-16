@@ -521,7 +521,8 @@ upgrade:
     transport = subprocess.run(
         [
             str(BIN), "op", "run", "--op", "observability/health", "--node", "bp1",
-            "--param", "machine=bp1", "--dispatch", "192.0.2.1", "--ssh-key", "creds://bp1",
+            "--param", "machine=bp1", "--dispatch", "10.0.0.9", "--ssh-key", "creds://bp1",
+            "--spec", str(transport_spec),
         ],
         env=dict(
             os.environ,
