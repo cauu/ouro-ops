@@ -467,3 +467,34 @@ no target state is destroyed merely to test the new path.
   verify --against packaging/bundle-manifest.json`; `git diff --check` | result: pass | note: 186
   Rust tests, the full Python suite, L2 integration, zero-warning Clippy, embedded bundle parity and
   whitespace gates pass. Operator-owned untracked `pool-spec.yaml` remains untouched.
+
+## 14. Fresh-Agent Troubleshooting Acceptance (append-only)
+- [x] p4-6 give a context-free agent the current embedded troubleshooting Skill, website-shaped
+  temporary pool spec and existing named credentials, require diagnostic-only iteration on the real
+  BP/relay, and accept only a command-supported operational conclusion rather than SSH reachability.
+- ERTC-13 troubleshooting conclusion: a fresh agent must use only audited `diag exec`, distinguish
+  remote command findings from transport success, tie material facts to commands, state evidence
+  limits, and either identify a supported typed repair or explicitly conclude that no repair is
+  justified. No remote mutation, secret access or repository-owned pool spec access is allowed.
+- 2026-07-16T22:22+0800 [~] p4-6 started. Spawn a no-context subagent outside the repository with
+  the current CLI path, BP/relay identities and diagnostic goal. Require it to load the embedded
+  Skill and independently choose one observational command at a time.
+- 2026-07-16T22:22+0800 [x] p4-6 completed. After receiving the same complete declarative spec shape
+  that the website prompt supplies, the fresh agent validated both existing named credentials and
+  reached a bounded conclusion: both nodes are operating normally on available evidence and no
+  typed repair is justified. Its initial attempt from field facts alone was intentionally discarded;
+  troubleshooting requires the operator-supplied full spec rather than agent-invented schema.
+- ERTC-13 | stack: fresh-agent bed | command: current `ouro-ops skill show troubleshooting`, then 21
+  real `ouro-ops diag exec --dispatch <machine-id> --spec <temporary-spec> -- <diagnostic-command>`
+  invocations | result: pass | note: BP `cardano-node` existed under containerd and advanced from
+  block 13685932 to 13685935; relay container `10.5.4-1` was running with restart count zero and
+  advanced from 13685933 to 13685936; relay port 3001 was listening and reachable from BP. Both had
+  substantial free disk/memory. Relay disk use at 75% was labeled monitoring information, not an
+  incident. BP Docker metadata remained an explicit permission-limited evidence gap.
+- ERTC-10/13 | stack: audit | command: `ouro-ops audit log --limit 100` | result: pass | note: all 21
+  fresh-agent diagnostic invocations have paired machine-bound `start` and `finish` records. Remote
+  exit 1 for BP Docker permission and exit 3 for inactive host systemd were preserved as delivered
+  diagnostic DATA, while later process/container evidence prevented false failure conclusions.
+- ERTC-13 | stack: other | command: inspect subagent command ledger and remove its unique `/tmp`
+  workspace | result: pass | note: no `op run`, install, restart, signal, permission change, secret
+  path or repository `pool-spec.yaml` access occurred; the temporary spec/workspace was removed.
