@@ -1584,3 +1584,29 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   SHA-256 `a451456c4cb63b9f57043d33cafbf7746d61942021fe42aff8577fe0dfb59a12`, reports security identity
   `983e4342e9fadbf3c35479e175ee329060f40ad6b5870cfa186bff2aa52d3a9c`, and verifies embedded
   manifest digest `b4b89f01f97168900bc2a9bd559d53f163326168da5755b6ad2247b8151866c2`.
+- OATC-1 | stack: other | command: second context-free subagent receives only the generated
+  observability prompt, then runs `ouro-ops --version` and `ouro-ops skill show observability` |
+  result: pass | note: agent independently identified both health commands as reads, the local spec
+  creation as the only planned file write, optional diagnosis as outside scope, and waited for an
+  explicit go-ahead before contacting either target.
+- OATC-2 | stack: other | command: fresh agent runs `ouro-ops op run --op
+  observability/health --dispatch 84.247.139.72 --ssh-key creds://bp1 --node bp1 --param
+  machine=bp1` and the corresponding `31.220.95.72`/`creds://relay1`/`relay1` invocation | result:
+  pass | note: both were real target dispatches under final control identity `983e4342…`; each
+  returned bounded JSON, exit 10, `changed:false`, and exact `not_ouro_managed: ... has no adoption
+  attestation` refusal. Neither a plan nor a control-local result was substituted.
+- OATC-3 | stack: other | command: fresh-agent final evidence report | result: pass | note: no tip
+  evidence was returned, so the agent reported no health success and explicitly left block, slot,
+  era, sync percentage, tip movement, forging, KES lifetime, peers, disk capacity and full-node
+  health unmeasured.
+- OATC-4 | stack: other | command: fresh-agent transcript plus post-run workspace/hash check |
+  result: pass | note: no adopt, onboard, diag, confirm, attestation creation, remote mutation or
+  container restart occurred. The prompt's descriptive spec was isolated under `/tmp`; the
+  test-created workspace symlink was removed, and operator-owned `pool-spec.yaml` remains byte
+  unchanged at SHA-256 `2729fcad5a7e5291be3553e60995ab929a895083a9f13656a55216bf8fb35912`.
+- 2026-07-16T13:13+0800 [x] p10-6 completed. A genuinely fresh agent traversed the public
+  observability prompt from installed-binary verification and embedded Skill discovery through
+  human wait/approval, isolated spec creation, both real target reads and evidence-bounded final
+  reporting. The agent-facing chain behaves correctly. Current production observability cannot
+  return tip data because neither node has an adoption attestation; it fails closed and recommends
+  the separately approved adoption workflow rather than bypassing or silently repairing state.
