@@ -544,6 +544,17 @@ upgrade:
     assert str(image_path) not in remote and "/usr/local/bin/ouro-ops" not in remote
     assert "ouro-op-run" not in remote and "OURO_EPHEMERAL_PAYLOAD" in remote
     assert ssh_count.read_text().splitlines() == ["1"]
+    audit_events = [json.loads(line) for line in (home / "s0019-audit.jsonl").read_text().splitlines()]
+    apply_events = [
+        event
+        for event in audit_events
+        if event.get("intent_hash") == preload_candidate
+    ]
+    assert [event["event"] for event in apply_events] == [
+        "apply_attempt",
+        "apply_succeeded",
+    ], apply_events
+    assert apply_events[-1]["outcome"] == "verified_success"
 
     replay, replay_value = invoke(
         home,

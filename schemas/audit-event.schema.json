@@ -11,7 +11,8 @@
       "enum": [
         "adopt", "live_preflight", "intent_approval", "prepared", "committing",
         "committed", "verifying", "verified", "rolling_back", "rolled_back",
-        "sealed", "recovery", "attestation_rotation", "refusal"
+        "sealed", "recovery", "attestation_rotation", "refusal", "apply_attempt",
+        "apply_succeeded", "apply_failed", "apply_rolled_back", "apply_ambiguous"
       ]
     },
     "audit_id": { "type": "string", "minLength": 1 },

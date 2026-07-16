@@ -1270,24 +1270,60 @@ fn run_diag(args: &[String]) -> Result<()> {
 /// is audited on control; transport is host-key pinned and output/deadline bounded. The command's
 /// own exit code is DATA in the payload — a failing probe is still a delivered diagnosis (this
 /// tool only errors on transport failure).
-fn run_diag_exec(args: &[String]) -> Result<()> {
-    let machine_id = flag_value(args, "--dispatch")?;
-    let spec_path = flag_value(args, "--spec")?;
-    let timeout_s: u32 = optional_flag_value(args, "--timeout")
-        .unwrap_or("30")
-        .parse()
+fn parse_diag_exec_args(args: &[String]) -> Result<(&str, &str, u32, &[String])> {
+    let sep = args.iter().position(|arg| arg == "--").ok_or_else(|| {
+        OuroError::InvalidArgs("missing `--` separator before the diagnostic command".to_string())
+    })?;
+    let mut dispatch = None;
+    let mut spec = None;
+    let mut timeout = None;
+    let mut index = 0;
+    while index < sep {
+        let name = args[index].as_str();
+        if !matches!(name, "--dispatch" | "--spec" | "--timeout") {
+            return Err(OuroError::InvalidArgs(format!(
+                "unexpected diagnostic control argument {name:?}"
+            )));
+        }
+        let value = args.get(index + 1).filter(|_| index + 1 < sep).ok_or_else(|| {
+            OuroError::InvalidArgs(format!("missing value for diagnostic argument {name}"))
+        })?;
+        if value.starts_with("--") {
+            return Err(OuroError::InvalidArgs(format!(
+                "missing value for diagnostic argument {name}"
+            )));
+        }
+        let slot = match name {
+            "--dispatch" => &mut dispatch,
+            "--spec" => &mut spec,
+            "--timeout" => &mut timeout,
+            _ => unreachable!(),
+        };
+        if slot.replace(value.as_str()).is_some() {
+            return Err(OuroError::InvalidArgs(format!(
+                "duplicate diagnostic argument {name}"
+            )));
+        }
+        index += 2;
+    }
+    let machine = dispatch.ok_or_else(|| OuroError::InvalidArgs("missing --dispatch".into()))?;
+    let spec = spec.ok_or_else(|| OuroError::InvalidArgs("missing --spec".into()))?;
+    let timeout_s = timeout.unwrap_or("30").parse::<u32>()
         .map_err(|_| OuroError::InvalidArgs("--timeout must be seconds (max 300)".to_string()))?;
-    let timeout_s = timeout_s.clamp(1, 300);
-    let sep = args
-        .iter()
-        .position(|a| a == "--")
-        .ok_or_else(|| OuroError::InvalidArgs(
-            "missing `--` separator before the diagnostic command".to_string(),
-        ))?;
+    if !(1..=300).contains(&timeout_s) {
+        return Err(OuroError::InvalidArgs(
+            "--timeout must be between 1 and 300 seconds".to_string(),
+        ));
+    }
     let command = &args[sep + 1..];
     if command.first().is_none_or(|program| program.is_empty()) {
         return Err(OuroError::InvalidArgs("empty diagnostic command".to_string()));
     }
+    Ok((machine, spec, timeout_s, command))
+}
+
+fn run_diag_exec(args: &[String]) -> Result<()> {
+    let (machine_id, spec_path, timeout_s, command) = parse_diag_exec_args(args)?;
 
     let spec = PoolSpec::from_file(&PathBuf::from(spec_path))?;
     spec.validate()?;
@@ -1313,17 +1349,37 @@ fn run_diag_exec(args: &[String]) -> Result<()> {
 
     let store = AuditStore::open(&paths.audit_db)?;
     let audit_id = store.begin_invocation("diag/exec", Some(machine_id))?;
-    let outcome = SshRunner::new(false).diag_exec(
+    let outcome = match SshRunner::new(false).diag_exec(
         &machine.ssh,
         &key_path,
         &paths.known_hosts,
         command,
         timeout_s,
-    )?;
-    store.finish_invocation(&audit_id, "diag/exec")?;
+    ) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            store.record_terminal(
+                &audit_id,
+                "diag/exec",
+                Some(machine_id),
+                "crash",
+                Some(20),
+                "diagnostic transport failed before a remote result",
+            )?;
+            return Err(error);
+        }
+    };
 
     // ssh exit 255 = transport-level failure (unreachable, key not authorized, host-key mismatch).
     if outcome.status == 255 {
+        store.record_terminal(
+            &audit_id,
+            "diag/exec",
+            Some(machine_id),
+            "crash",
+            Some(20),
+            "diagnostic SSH transport returned exit 255",
+        )?;
         return Err(OuroError::Validation(format!(
             "diag transport to {machine_id} failed as {}: {} — verify the existing SSH account, \
              named credential and pinned host key",
@@ -1331,6 +1387,14 @@ fn run_diag_exec(args: &[String]) -> Result<()> {
             outcome.stderr.lines().last().unwrap_or("(no stderr)")
         )));
     }
+    store.record_terminal(
+        &audit_id,
+        "diag/exec",
+        Some(machine_id),
+        "finish",
+        Some(0),
+        &format!("diagnostic result delivered with remote exit {}", outcome.status),
+    )?;
 
     const CAP: usize = 16 * 1024;
     let cap = |s: &str| -> (String, bool) {

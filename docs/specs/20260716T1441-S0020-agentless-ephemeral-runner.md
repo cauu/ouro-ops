@@ -430,3 +430,22 @@ no target state is destroyed merely to test the new path.
   --tests -- -D warnings`; `python3 tests/test_skill_docs.py`; `python3 tests/test_web_generator.py`;
   `git diff --check` | result: pass | note: 185 Rust tests, embedded manifest parity, Skills and
   website command gates pass with the spec-bound observability contract.
+
+## 12. p4-4 Execution and Evidence (append-only)
+- 2026-07-16T21:57+0800 [~] p4-4 started. Give every dispatched stateless apply an explicit attempt
+  and outcome record, distinguish verified success, typed failure, verified rollback and ambiguous
+  transport/untyped outcomes, and parse diagnostic control flags as a closed pre-SSH grammar.
+- 2026-07-16T21:57+0800 [x] p4-4 completed. Control records `apply_attempt` only after approval is
+  consumed and immediately before dispatch, then records exactly one classified terminal apply
+  outcome before forwarding the target result. Already-audited failures no longer acquire a false
+  outer refusal. Diagnostics reject unknown, duplicate, missing and out-of-range control flags before
+  SSH and close every begun invocation with `finish` or `crash`, including SSH exit 255.
+- ERTC-10 | stack: python | command: `python3 tests/test_s0020_stateless_apply.py`; `python3
+  tests/test_s0020_product_flow.py`; `python3 tests/test_s0019_inbox_audit.py` | result: pass | note:
+  a real success produces attempt plus verified-success; diagnostic success produces start plus
+  finish; transport exit 255 produces start plus crash; misspelled and duplicate flags never reach
+  the fake SSH boundary.
+- ERTC-10/12 | stack: rust | command: `cargo test -p ouro`; `cargo clippy -p ouro --lib --tests --
+  -D warnings`; `git diff --check` | result: pass | note: 186 Rust tests pass, including rollback
+  versus ambiguity classification; the updated audit schema matches the embedded bundle manifest
+  and the repair compiles without warnings or whitespace errors.

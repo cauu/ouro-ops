@@ -757,7 +757,8 @@ fn audit_emit(
     const EVENTS: &[&str] = &[
         "adopt", "live_preflight", "intent_approval", "prepared", "committing",
         "committed", "verifying", "verified", "rolling_back", "rolled_back", "sealed",
-        "recovery", "attestation_rotation", "refusal",
+        "recovery", "attestation_rotation", "refusal", "apply_attempt", "apply_succeeded",
+        "apply_failed", "apply_rolled_back", "apply_ambiguous",
     ];
     const EXTRA_FIELDS: &[&str] = &[
         "operation_id", "intent_hash", "approval_evidence_hash", "pre_state_generation",
@@ -2531,6 +2532,7 @@ pub fn run_op(args: &[String]) -> Result<()> {
     let operation = optional(args, "--op").unwrap_or("unknown").to_string();
     match run_op_inner(args) {
         Ok(()) => Ok(()),
+        Err(error) if error.is_reported() || error.is_audited() => Err(error),
         Err(error) => {
             audit_refusal(args, &operation, &error).map_err(|audit_error| {
                 OuroError::Validation(format!(
@@ -3839,6 +3841,30 @@ fn dispatch_stateless_plan(
     finish_ssh_dispatch("ouro.op.plan.dispatch", &out)
 }
 
+fn stateless_apply_terminal(result: &crate::ssh::SshOutcome) -> (&'static str, &'static str) {
+    let typed = serde_json::from_slice::<serde_json::Value>(result.stdout.as_bytes())
+        .ok()
+        .filter(|value| {
+            value.is_object() && value.get("tool").is_some() && value.get("status").is_some()
+        });
+    if result.status == 0 && typed.as_ref().is_some_and(|value| {
+        value.get("status").and_then(serde_json::Value::as_str) == Some("ok")
+    }) {
+        return ("apply_succeeded", "verified_success");
+    }
+    let detail = typed.as_ref()
+        .and_then(|value| value.pointer("/error/detail"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    if detail.contains("live-state rollback completed") {
+        return ("apply_rolled_back", "mutation_rolled_back_and_verified");
+    }
+    if typed.is_some() {
+        return ("apply_failed", "typed_target_failure");
+    }
+    ("apply_ambiguous", "untyped_or_transport_outcome")
+}
+
 fn dispatch_stateless_apply(
     host: &str,
     op: &str,
@@ -3970,6 +3996,7 @@ fn dispatch_stateless_apply(
     let fleet_sensitive = registered.touched.iter().any(|resource| {
         matches!(*resource, "container:restart" | "container:recreate")
     });
+    let mut audit_fencing_token = None;
     if fleet_sensitive {
         let raw = flag(args, "--fleet-permit")?;
         let permit: crate::fleet::StepPermit = serde_json::from_str(raw)
@@ -3999,6 +4026,7 @@ fn dispatch_stateless_apply(
             crate::s0019_confirmation::current_epoch()?,
         )?;
         permit.require_live_relay_quorum()?;
+        audit_fencing_token = Some(permit.fencing_token);
         // Only the exact permit authenticated above enters the internal target argv. The target
         // cannot accept an independently supplied public selector for this field.
         context.target_args.push("--verified-fleet-permit".into());
@@ -4008,6 +4036,7 @@ fn dispatch_stateless_apply(
             "this non-disruptive operation does not accept a fleet permit".into(),
         ));
     }
+    let argv = build_argv(&context.target_args)?;
 
     // The local lock serializes verification + durable single-use consumption + the SSH apply.
     // Target state remains only Docker/filesystem truth; no remote Ouro lock/journal is created.
@@ -4018,9 +4047,19 @@ fn dispatch_stateless_apply(
         &paths.home.join("stateless-control/confirm-used").join(format!("{node}.log")),
         &confirmation,
     )?;
+    let audit_fields = |outcome: &str| {
+        let mut fields = serde_json::Map::new();
+        fields.insert("operation_id".into(), json!(op));
+        fields.insert("intent_hash".into(), json!(candidate));
+        fields.insert("outcome".into(), json!(outcome));
+        if let Some(fencing_token) = audit_fencing_token {
+            fields.insert("fencing_token".into(), json!(fencing_token));
+        }
+        serde_json::Value::Object(fields)
+    };
+    audit_emit(paths, "apply_attempt", node, audit_fields("dispatch_pending"))?;
 
-    let argv = build_argv(&context.target_args)?;
-    let out = if let Some((file, _, _)) = payload {
+    let dispatched = if let Some((file, _, _)) = payload {
         crate::ssh::bounded_ssh_with_payload(
             &argv, &runner.bytes, file, std::time::Duration::from_secs(15 * 60),
             256 * 1024, "ephemeral stateless artifact apply SSH dispatch",
@@ -4030,7 +4069,34 @@ fn dispatch_stateless_apply(
             &argv, &runner.bytes, std::time::Duration::from_secs(15 * 60),
             256 * 1024, "ephemeral stateless apply SSH dispatch",
         )
-    }.map_err(|error| OuroError::Validation(format!("ssh dispatch failed: {error}")))?;
+    };
+    let out = match dispatched {
+        Ok(out) => out,
+        Err(error) => {
+            audit_emit(paths, "apply_ambiguous", node, audit_fields("transport_error_after_dispatch"))
+                .map_err(|audit_error| OuroError::Audited {
+                    message: format!(
+                        "stateless apply transport and terminal audit both failed; live reconciliation required: transport={error}; audit={audit_error}"
+                    ),
+                    exit_code: 20,
+                })?;
+            return Err(OuroError::Audited {
+                message: format!(
+                    "stateless apply transport failed after approval consumption; outcome is ambiguous and must be reconciled from live state: {error}"
+                ),
+                exit_code: 20,
+            });
+        }
+    };
+    let (event, outcome) = stateless_apply_terminal(&out);
+    audit_emit(paths, event, node, audit_fields(outcome)).map_err(|audit_error| {
+        OuroError::Audited {
+            message: format!(
+                "stateless apply returned a terminal target result but control audit failed; live reconciliation required: {audit_error}"
+            ),
+            exit_code: 20,
+        }
+    })?;
     finish_ssh_dispatch("ouro.op.apply.dispatch", &out)
 }
 
@@ -4551,8 +4617,8 @@ fn optional<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_embedded_probe, parse_cardano_cli_json, rotate_attestation_for_upgrade, ObsLive,
-        Observation,
+        extract_embedded_probe, parse_cardano_cli_json, rotate_attestation_for_upgrade,
+        stateless_apply_terminal, ObsLive, Observation,
     };
     use crate::attestation::{AdoptionAttestation, ImmutableIdentity, ManagedState, Role, TypedMount};
     use crate::config::ConfigPaths;
@@ -4569,6 +4635,34 @@ mod tests {
 
         let ambiguous = b"diagnostic\n{\"a\":1}\n{\"a\":2}";
         assert!(parse_cardano_cli_json(ambiguous, "test KES").is_err());
+    }
+
+    #[test]
+    fn stateless_apply_audit_distinguishes_rollback_from_transport_ambiguity() {
+        let rolled_back = crate::ssh::SshOutcome {
+            status: 30,
+            stdout: serde_json::json!({
+                "tool": "ouro",
+                "status": "error",
+                "error": {
+                    "detail": "upgrade failed after mutation; live-state rollback completed"
+                }
+            }).to_string(),
+            stderr: String::new(),
+        };
+        assert_eq!(
+            stateless_apply_terminal(&rolled_back),
+            ("apply_rolled_back", "mutation_rolled_back_and_verified")
+        );
+        let ambiguous = crate::ssh::SshOutcome {
+            status: 255,
+            stdout: String::new(),
+            stderr: "connection reset".into(),
+        };
+        assert_eq!(
+            stateless_apply_terminal(&ambiguous),
+            ("apply_ambiguous", "untyped_or_transport_outcome")
+        );
     }
 
     #[test]

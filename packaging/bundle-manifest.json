@@ -33,7 +33,7 @@
     "runtime/scripts/restart.sh": "3757f89a98385fd797d7d323b82296a6eb67d16785a5776fc385ecc45f80b8dc",
     "runtime/scripts/topology-apply.sh": "95cea9a21eb93eca7de8db72849d9c3a0f9054ac02e9a3b29825be633980aa64",
     "runtime/scripts/verify.sh": "4f8995b6073b7c02f3b3f362d4f3bd24ae32765a3f79092c1052d1dd26a7e768",
-    "schemas/audit-event.schema.json": "c58a6688eb705155b99bbe0b8eb0d57d9563d1c577dcc6097d94e95faae8d06a",
+    "schemas/audit-event.schema.json": "83a33179d476b053a76fc9143cd11202be4881bbf9d5d3e0374c8cc48e5bafa6",
     "schemas/pool-spec.schema.json": "d93e4a8ea66ffd7deaaf0ae8fb4b9543d5e01b0204408ce995c1378d5044a6b5",
     "schemas/tool-output.schema.json": "558eb8bac6ac2568860034f7fa9523566a69043cc33298aab44127e4e8b7a07e",
     "troubleshooting/SKILL.md": "783a05f026613ff60905df6089a7baa952672c8e3571da1fa2c44d8a2862dad5",
@@ -47,10 +47,10 @@
     "upgrade/scripts/verify.sh": "5c77cb2e4b82e1b67c8681d5fb5f197b4b5c4a306eb90b7e668e771d40eb9ff4"
   },
   "decision_hash": "4ef0608946d61e3bdef1a5831ab606600078657a711c2252546bc5470a11835f",
-  "embedded_digest": "0b285ca9e648fa120be835be2cb08944e094968b1c99c45c3e97b61c3b691534",
+  "embedded_digest": "62cc113cd7792f00c2650b534fde98f8c623e46d64dc0dede79199a099475c6a",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
-  "schema_hash": "5edbe4fc40336c0f968ee10e43ee0c04a362fd3b8c1010e53db0a45988c44e55",
+  "schema_hash": "a53f81aaed1aeb294ba09d59c3cfac8e13454a5746622f6494a5d9b8710ec694",
   "skills_hash": "e25350ebcdbd47301250b980eed033f38638cb6ad64fb3d36f86c64547889e64"
 }
