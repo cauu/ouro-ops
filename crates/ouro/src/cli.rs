@@ -1762,10 +1762,11 @@ fn command_usage(command: &str) -> Option<&'static str> {
                     target/network/host/quorum/BP-last facts and upgrade.min_online_relays directly \
                     from the spec, then expires after 30 seconds.",
         "tool" => "ouro-ops tool run <skill>/<script> [--dispatch <machine>] --spec <pool-spec> \
-                   [--machine <id>] [--confirm-token <tok>]\n  The sole audited write path. Read the steps from `ouro-ops skill show <skill>`.",
+                   [--machine <id>] [--confirm-token <tok>]\n  LEGACY S0017 script path; ordinary S0020 operations use `ouro-ops op run`.",
         "confirm" => "ouro-ops confirm create --op <id> --node <id> --intent-hash <hash> | \
                       confirm adopt create --node <id> --candidate-hash <hash> --host-key <sha256>\n  \
-                      Mints a one-time S0019 approval bound to the exact intent or adoption candidate.",
+                      Mints a one-time approval bound to the exact S0020 candidate/intent; the adopt \
+                      form is legacy migration only.",
         "kes" => "ouro-ops kes cold-sign-script --kes-vkey <pub> --kes-period <n> | counter status --state <json> \
                   | generate | push\n  Public opcert install runs via `op run kes-rotation/install-opcert`; see the Skill.",
         "deploy" => "ouro-ops deploy cold-sign-script --tx-body <path> --cold-key <role> [--cold-key <role>...] \
@@ -1775,7 +1776,7 @@ fn command_usage(command: &str) -> Option<&'static str> {
                    adds no sudo but does not enforce read-only access. Host-key pinned, audited, \
                    deadline/output bounded. See `ouro-ops skill show troubleshooting`.",
         "pool" => "ouro-ops pool overview --spec <pool-spec> [--snapshot <json>] | register-tx --spec <pool-spec>",
-        "skill" => "ouro-ops skill list | show <skill>   (skills: deploy, detect, kes-rotation, observability, runtime, troubleshooting, upgrade, onboard)",
+        "skill" => "ouro-ops skill list | show <skill>   (current: observability, runtime, kes-rotation, upgrade, troubleshooting, detect, config; legacy: deploy, onboard, adopt)",
         "spec" => "ouro-ops spec validate --spec <pool-spec>",
         "status" => "ouro-ops status --snapshot <json> [--diff-spec --spec <pool-spec>]",
         "manifest" => "ouro-ops manifest show | verify --against <bundle-manifest.json>",

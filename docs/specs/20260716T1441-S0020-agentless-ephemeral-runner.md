@@ -192,6 +192,19 @@ no target state is destroyed merely to test the new path.
   onboard/adopt are visibly migration-only. Current README/operations/release docs and bundle
   manifest agree. The live probe now uses Cardano's semantic genesis hash, avoiding JSON-byte-layout
   false drift against website specs.
+- 2026-07-16T17:00+0800 [~] p3-2 started. Build the final static Linux/x86_64 runner from this
+  source, embed it into the macOS control artifact, then replay website-equivalent prompts through a
+  fresh agent against the real BP/relay. Execute only live reads, local previews, target plans,
+  diagnostic-only commands and expected safe refusals; do not mint capabilities or perform restart,
+  KES, image-load, upgrade or deploy mutations.
+- 2026-07-16T17:10+0800 [x] p3-2 completed. Built the final static Linux/x86_64 runner and embedded
+  it in the matching arm64 macOS control; the installed control copy is byte-identical. A context-free
+  agent given only the website-equivalent observability prompt independently read the installed
+  Skill and returned real BP/relay tips without requesting a binary, onboarding or adoption. A
+  second fresh agent independently exercised runtime, KES and preload plans, upgrade transition
+  safe refusal, diagnostics, and config/detect stop semantics without minting any capability or
+  applying a write. Final target cleanup checks found no `ouro-run.*` directory; original BP/relay
+  container ids remained unchanged.
 
 ## 6. Validation Evidence (append-only)
 - ERTC-1 | stack: rust | command: `cargo test -p ouro ephemeral_runner -- --nocapture` | result:
@@ -300,6 +313,30 @@ no target state is destroyed merely to test the new path.
   ci/l2-integration.sh`; `cargo clippy -p ouro --lib --tests -- -D warnings`; manifest verify; `git
   diff --check` | result: pass | note: 183 Rust tests, all Python tests including S0020 product
   seams, L2 integration, zero-warning Clippy, embedded bundle parity and whitespace gates pass.
+- ERTC-5 | stack: release | command: `cargo zigbuild --release --target
+  x86_64-unknown-linux-musl -p ouro`; embedded arm64 macOS release build; digest comparison | result:
+  pass | note: final 5,723,672-byte static runner digest is `674de3e0…8b50`; final control and installed
+  `~/.local/bin/ouro-ops` are byte-identical at `8bba9411…70af`. Transport preview selects that runner
+  internally and discloses no public runner path parameter.
+- ERTC-2 | stack: fresh-agent bed | command: website-equivalent observability prompt to a context-free
+  subagent | result: pass | note: the agent read the installed Skill and returned BP block 13685018 /
+  slot 192626433 and relay block 13685022 / slot 192626493, Conway, sync 100.00, socket answering and
+  signed Blink Labs runtime support. It made only the supported tip claims and never requested
+  install/onboard/adopt/version-sync or a Linux binary.
+- ERTC-3/4/6 | stack: fresh-agent bed | command: context-free non-deploy Skill acceptance prompt |
+  result: pass | note: real relay restart plan, local no-stage opcert preview, real BP KES plan and
+  relay preload plan returned changed=false live candidates; upgrade step refused with exit 10
+  because exact signed N→N+1 transition metadata is absent. BP `uname -s` and relay `id -un` returned
+  Linux/cardano through honest operator-SSH diagnostics. Config stopped unsupported; detect routed to
+  live read/plan. No confirmation, permit, artifact transfer, apply or target installation occurred.
+- ERTC-1/4 | stack: bed | command: final BP/relay observability + diagnostic `find /tmp -maxdepth 1
+  -type d -name 'ouro-run.*' -print` | result: pass | note: final embedded runner returned live tips
+  on both targets; cleanup output was empty on both. Container ids remained BP `d50c302c…f97d` and
+  relay `cfabdd36…9bfc`, proving no accepted flow restarted or recreated either node.
+- ERTC-7 | stack: final regression | command: Rust 183 tests; all Python tests; L2 integration;
+  Clippy `-D warnings`; manifest verify; `git diff --check` | result: pass | note: all final source,
+  embedded Skills, release manifest and product-contract gates are green; operator-owned untracked
+  `pool-spec.yaml` remains untouched.
 
 ## 7. Change Requests (append-only)
 - 2026-07-16T14:41+0800 operator replaced S0019's persistent target CLI/attestation model with the
