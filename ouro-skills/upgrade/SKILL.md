@@ -32,11 +32,13 @@ next, and the block producer last.
   `ouro-ops op run --op upgrade/preload-image --spec <pool-spec> --dispatch <host> --ssh-key
   creds://<name> --node <id> --param machine=<id> --param artifact=<artifact-ref> --param
   image=sha256:<64hex> --plan`.
-- Show the archive↔config↔signed-policy evidence and final candidate. WAIT for exact approval, mint
-  `ouro-ops confirm create --op upgrade/preload-image --node <id> --intent-hash <final-hash>`, then
-  immediately rerun the command without `--plan`, adding `--candidate-hash <final-hash>
-  --artifact-file <operator-named-docker-save.tar> --confirm-token <token>`. Preload needs no fleet
-  permit and does not restart/recreate the running node.
+- Show the previewed archive reference, operator-declared config digest, signed-policy result and
+  final candidate separately. State that archive↔config binding is still pending: apply preflight
+  validates the supplied bytes against that config digest before any image-store mutation. WAIT for
+  exact approval, mint `ouro-ops confirm create --op upgrade/preload-image --node <id> --intent-hash
+  <final-hash>`, then immediately rerun the command without `--plan`, adding `--candidate-hash
+  <final-hash> --artifact-file <operator-named-docker-save.tar> --confirm-token <token>`. Preload
+  needs no fleet permit and does not restart/recreate the running node.
 - Plan the actual step with no capability:
   `ouro-ops op run --op upgrade/step --spec <pool-spec> --dispatch <host> --ssh-key creds://<name>
   --node <id> --param machine=<id> --param image=sha256:<64hex> --plan`. Show the full redacted

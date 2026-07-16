@@ -101,6 +101,9 @@ def main():
     assert "ouro-ops inbox preview" in " ".join(upgrade.split())
     assert "--artifact-file <operator-named-docker-save.tar>" in " ".join(upgrade.split())
     assert "upgrade/preload-image" in upgrade
+    assert "archive↔config↔signed-policy evidence" not in upgrade
+    assert "archive↔config binding is still pending" in " ".join(upgrade.split())
+    assert "before any image-store mutation" in " ".join(upgrade.split())
     for name in ("runtime", "upgrade", "kes-rotation"):
         stateful = (ROOT / f"ouro-skills/{name}/SKILL.md").read_text()
         for phrase in [

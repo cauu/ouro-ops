@@ -449,3 +449,21 @@ no target state is destroyed merely to test the new path.
   -D warnings`; `git diff --check` | result: pass | note: 186 Rust tests pass, including rollback
   versus ambiguity classification; the updated audit schema matches the embedded bundle manifest
   and the repair compiles without warnings or whitespace errors.
+
+## 13. p4-5 Execution and Final Repair Evidence (append-only)
+- 2026-07-16T22:04+0800 [~] p4-5 started. Remove the legacy deploy selector and generator branch
+  from the ordinary website while retaining its explicitly out-of-scope Skill/CLI compatibility
+  surface, and align upgrade guidance with the phase that actually binds archive bytes to config.
+- 2026-07-16T22:04+0800 [x] p4-5 completed. The website has no deploy card, operation state,
+  prompt branch or translation entry and defaults to a supported operation. Upgrade guidance shows
+  archive reference, declared digest and policy result separately, explicitly says their binding is
+  pending, and assigns the binding to apply preflight before image-store mutation.
+- ERTC-11 | stack: web/skill | command: `python3 tests/test_web_generator.py`; `python3
+  tests/test_skill_docs.py`; inline JavaScript parse check | result: pass | note: the ordinary page
+  contains no selectable/generatable deploy surface; the updated Skill cannot claim the removed
+  premature evidence phrase and retains the exact preload/apply flow.
+- ERTC-12 | stack: final regression | command: `cargo test -p ouro`; `make python-test`; `bash
+  ci/l2-integration.sh`; `cargo clippy -p ouro --lib --tests -- -D warnings`; `ouro-ops manifest
+  verify --against packaging/bundle-manifest.json`; `git diff --check` | result: pass | note: 186
+  Rust tests, the full Python suite, L2 integration, zero-warning Clippy, embedded bundle parity and
+  whitespace gates pass. Operator-owned untracked `pool-spec.yaml` remains untouched.

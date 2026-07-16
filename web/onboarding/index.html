@@ -446,10 +446,6 @@
       </div>
 
     <div class="ops reveal" id="ops">
-    <button type="button" class="op-card" data-op="deploy">
-      <span class="tile t-sea" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="M6.5 9.5 12 4l5.5 5.5"/><path d="M4 20h16"/></svg></span>
-      <span><b>deploy</b><small data-i18n="op.deploy.small">Submit a signed registration tx</small></span>
-      <span class="go" aria-hidden="true">→</span></button>
     <button type="button" class="op-card" data-op="upgrade">
       <span class="tile t-sky" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11a9 9 0 1 0-1.2 5.6"/><path d="M21 5v6h-6"/></svg></span>
       <span><b>upgrade</b><small data-i18n="op.upgrade.small">Allowlisted N→N+1 upgrade</small></span>
@@ -497,7 +493,7 @@
   <div class="om">
     <div class="om-head">
       <span class="tile" id="om-tile" aria-hidden="true"></span>
-      <div><h3 id="om-title">deploy</h3><p id="op-hint"></p></div>
+      <div><h3 id="om-title">upgrade</h3><p id="op-hint"></p></div>
       <button type="button" class="x" id="om-close" aria-label="close">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l10 10M13 3 3 13"/></svg></button>
     </div>
@@ -566,7 +562,7 @@
         <div class="note note-warn" role="note" data-i18n="warnNote">⚠ This prompt contains your full pool config (hostnames/IPs). Copying it sends that to whatever agent you paste it into (e.g. a cloud service) and its logs. It never leaves this page on its own.</div>
         <div class="term">
           <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
-            <span class="term-title" id="term-title">prompt · deploy</span></div>
+            <span class="term-title" id="term-title">prompt · upgrade</span></div>
           <pre id="prompt-out" aria-live="polite"></pre>
         </div>
       </div>
@@ -607,7 +603,6 @@ const NET = {
 
 // Field × operation matrix: which extra fields each operation needs (R2 UX / p1-7).
 const OP = {
-  deploy:          { need:[], registration:false, hint:"Submit an already cold-signed pool registration transaction. Ouro does not stand up nodes." },
   upgrade:         { need:["nodever"], registration:false, hint:"Upgrade one signed convention step by allowlisted image config digest: relays first, BP last." },
   "kes-rotation":  { need:[], registration:false, hint:"Install and activate a PUBLIC cold-signed opcert; never handle the KES signing key." },
   runtime:         { need:[], registration:false, hint:"Restart one declared node through a live-state-bound typed operation." },
@@ -615,7 +610,7 @@ const OP = {
   troubleshooting: { need:[], registration:false, hint:"Investigate through the existing operator SSH account; propose typed repairs only." },
 };
 
-let currentOp = "deploy";
+let currentOp = "upgrade";
 const radioVal = (name) => document.querySelector(`input[name="${name}"]:checked`).value;
 
 let relayN = 2;
@@ -645,8 +640,8 @@ function applyOperation() {
   $("op-hint").textContent = tr("op." + op + ".hint");
   for (const f of ["nodever","sync"]) $("f-"+f).hidden = !cfg.need.includes(f);
   $("f-registration").hidden = !cfg.registration;
-  // S0019 deploy submits an already-signed tx. It does not build registration data or stand up a
-  // pool, so the legacy ticker/economics form is intentionally not part of any operation prompt.
+  // Ordinary S0020 operations do not build registration data, so the legacy ticker/economics form
+  // is intentionally not part of any generated prompt.
   $("f-ticker").hidden = true;
   // Hide the whole "for this operation" block when the op needs nothing beyond the fleet.
   $("op-fields").hidden = cfg.need.length === 0 && !cfg.registration;
@@ -657,7 +652,7 @@ function applyOperation() {
 
 function collect() {
   const errs = [], op = currentOp, cfg = OP[op];
-  // Retained as an internal neutral value for backwards-compatible form persistence only. S0019
+  // Retained as an internal neutral value for backwards-compatible form persistence only. S0020
   // operation prompts never claim to consume registration economics or a ticker.
   const ticker = "POOL";
   const network = radioVal("network");
@@ -705,8 +700,8 @@ function yaml(d) {
     "# It is data, not a list of actions: writing this file changes nothing.",
     "spec_version: 1","pool:",`  network: ${d.network}`,`  network_magic: ${d.magic}`,
     "  genesis_hashes:",`    shelley: "${d.genesis}"`];
-  // p9-6 operation-scoped spec: registration economics and sync are omitted because the S0019
-  // deploy surface submits an already-signed artifact and does not build or provision anything.
+  // Operation-scoped specs omit registration economics and sync because no ordinary S0020
+  // operation consumes them.
   L.push("topology_mode: p2p");
   const isUpgrade = d.op === "upgrade";
   if (isUpgrade) L.push(`node_version: "${d.nodever}"`);
@@ -723,19 +718,12 @@ function prompt(d) {
   // ONE self-contained, atomic prompt per operation: the full pool-spec is inlined, so the user
   // copies a single thing and hands it to the agent — no separate file, no extra context.
   const bp = d.bp ? d.bp.id : "bp1";
-  const bpHost = d.bp ? d.bp.host : "bp1";
   const relays = d.relays.map(r => r.id).join(", ");
   const healthCommands = d.machines.map(m =>
     `ouro-ops op run --op observability/health --spec pool-spec.yaml --dispatch ${m.host} --ssh-key creds://${m.id} --node ${m.id} --param machine=${m.id}`
   ).join("\n   ");
   const opLabel = d.op === "upgrade" ? `upgrade to cardano-node ${d.nodever}` : d.op;
   const cmd = {
-    deploy: [
-      `Ask me for the existing PUBLIC cold-signed transaction file; do not build, sign, or inspect a cold key.`,
-      `Stage it with: ouro-ops inbox stage --type tx --file <operator-supplied-file> --dispatch ${bpHost} --ssh-key creds://${bp}`,
-      `Then submit the returned artifact ref with: ouro-ops op run --op deploy/register-submit --dispatch ${bpHost} --ssh-key creds://${bp} --node ${bp} --param machine=${bp} --param tx=<signed-tx-artifact-ref> --param network=${d.network}`,
-      `This is irreversible and needs my exact intent-bound confirm-token. Success means submission accepted, not on-chain inclusion.`,
-    ].join("\n   "),
     upgrade: [
       `Ask me for an existing operator-named Docker-save archive and its signed-allowlisted N+1 IMAGE CONFIG DIGEST (sha256:<64hex>); never fetch, pull, tag, or raw-load an image.`,
       `For each target, follow the Upgrade Skill's exact one-shot ingress: preview the local file with inbox preview (no staging), target-plan and separately approve upgrade/preload-image, then pass the same local file only to the approved apply. Preload changes only the image store and needs no fleet permit.`,
@@ -815,10 +803,9 @@ const I18N = {
     "trust3.t":"Gated writes","trust3.b":"Every change is a validated intent through <code>ouro-ops op run</code>, with human confirmation for dangerous ops.",
     "s1.title":"Set up once","s1.sub":"Install the signature-verified CLI on your control machine.",
     "s2.title":"Pick an operation","s2.sub":"The form asks only for what that operation needs, generates everything locally, and gives you one prompt to paste into your agent.",
-    "op.deploy.small":"Submit a signed registration tx","op.upgrade.small":"Allowlisted N→N+1 upgrade",
+    "op.upgrade.small":"Allowlisted N→N+1 upgrade",
     "op.kes-rotation.small":"Install a public opcert on the BP","op.runtime.small":"Restart a declared node",
     "op.observability.small":"Read live node tips","op.troubleshooting.small":"Operator-SSH diagnosis",
-    "op.deploy.hint":"Submit an already cold-signed pool registration transaction. Ouro does not stand up nodes.",
     "op.upgrade.hint":"Upgrade one signed convention step by allowlisted image config digest: relays first, BP last.",
     "op.kes-rotation.hint":"Install and activate a PUBLIC cold-signed opcert; never handle the KES signing key.",
     "op.runtime.hint":"Restart one declared node through a live-state-bound typed operation.",
@@ -858,10 +845,9 @@ const I18N = {
     "trust3.t":"写操作有闸门","trust3.b":"所有变更都要走 <code>ouro-ops op run</code>:白名单、留审计,关键步骤必须人工确认。",
     "s1.title":"一次性安装","s1.sub":"在你的控制机上装好带签名校验的 CLI,以后它会自己保持最新。",
     "s2.title":"选择操作","s2.sub":"表单只问这个操作用得到的字段,全部本地生成,最后给你一段直接粘给 agent 的 prompt。",
-    "op.deploy.small":"提交已签名注册交易","op.upgrade.small":"按白名单摘要 N→N+1 升级",
+    "op.upgrade.small":"按白名单摘要 N→N+1 升级",
     "op.kes-rotation.small":"在 BP 安装公开 opcert","op.runtime.small":"重启声明的节点",
     "op.observability.small":"读取实时节点 tip","op.troubleshooting.small":"运维 SSH 排障",
-    "op.deploy.hint":"提交已经离线冷签名的池注册交易;Ouro 不负责部署节点。",
     "op.upgrade.hint":"按签名转换元数据和白名单镜像配置摘要执行 N→N+1:先 relay,最后 BP。",
     "op.kes-rotation.hint":"只安装并激活冷签名后的公开 opcert;绝不处理 KES 签名私钥。",
     "op.runtime.hint":"通过绑定实时状态的类型化操作重启一个声明的节点。",
@@ -901,10 +887,9 @@ const I18N = {
     "trust3.t":"寫入有閘門","trust3.b":"所有變更都得走 <code>ouro-ops op run</code>:白名單、留稽核,關鍵步驟一定要人工確認。",
     "s1.title":"一次性安裝","s1.sub":"在你的控制機上裝好帶簽章驗證的 CLI,之後它會自己保持最新。",
     "s2.title":"選擇操作","s2.sub":"表單只問這個操作用得到的欄位,全部本地產生,最後給你一段直接貼給 agent 的 prompt。",
-    "op.deploy.small":"提交已簽署註冊交易","op.upgrade.small":"依白名單摘要 N→N+1 升級",
+    "op.upgrade.small":"依白名單摘要 N→N+1 升級",
     "op.kes-rotation.small":"在 BP 安裝公開 opcert","op.runtime.small":"重新啟動已宣告節點",
     "op.observability.small":"讀取即時節點 tip","op.troubleshooting.small":"運維 SSH 排障",
-    "op.deploy.hint":"提交已在離線環境冷簽署的池註冊交易;Ouro 不負責部署節點。",
     "op.upgrade.hint":"依簽署轉換資料與白名單映像設定摘要執行 N→N+1:先 relay,最後 BP。",
     "op.kes-rotation.hint":"只安裝並啟用冷簽署後的公開 opcert;絕不處理 KES 簽署私鑰。",
     "op.runtime.hint":"透過綁定即時狀態的型別化操作重新啟動一個已宣告節點。",
@@ -944,10 +929,9 @@ const I18N = {
     "trust3.t":"書き込みにはゲート","trust3.b":"変更はすべて <code>ouro-ops op run</code> 経由。許可リストと監査ログ付きで、危険な操作には人間の確認が必須です。",
     "s1.title":"最初に一度だけ","s1.sub":"コントロールマシンに署名検証付きの CLI をインストール。以降は自動で最新に保たれます。",
     "s2.title":"操作を選ぶ","s2.sub":"フォームで聞くのはその操作に必要な項目だけ。すべてローカルで生成し、エージェントに貼る prompt をひとつ出力します。",
-    "op.deploy.small":"署名済み登録 tx を送信","op.upgrade.small":"許可済み N→N+1 アップグレード",
+    "op.upgrade.small":"許可済み N→N+1 アップグレード",
     "op.kes-rotation.small":"BP に公開 opcert を導入","op.runtime.small":"宣言済みノードを再起動",
     "op.observability.small":"ライブ node tip を取得","op.troubleshooting.small":"運用 SSH 診断",
-    "op.deploy.hint":"オフラインでコールド署名済みのプール登録トランザクションを送信します。Ouro はノードを構築しません。",
     "op.upgrade.hint":"署名済み遷移情報と許可済みイメージ設定ダイジェストで N→N+1 を実行します。relay が先、BP が最後です。",
     "op.kes-rotation.hint":"コールド署名済みの公開 opcert だけを導入して有効化し、KES 署名秘密鍵は扱いません。",
     "op.runtime.hint":"ライブ状態に束縛された型付き操作で宣言済みノードを一台再起動します。",
