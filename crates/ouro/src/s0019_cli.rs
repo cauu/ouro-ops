@@ -1171,22 +1171,13 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                 .get("opcert")
                 .and_then(serde_json::Value::as_str)
                 .ok_or_else(|| OuroError::Validation("KES plan lost opcert reference".into()))?;
-            vec![
-                vec![
-                    "docker".into(),
-                    "cp".into(),
-                    format!("<ephemeral-inbox:{reference}>"),
-                    format!(
-                        "{}:/opt/cardano/config/keys/node.cert",
-                        observation.live.container_id
-                    ),
-                ],
-                vec![
-                    "docker".into(),
-                    "restart".into(),
-                    observation.live.container_id.clone(),
-                ],
-            ]
+            let recovery = crate::executor::stateless_kes_recovery_plan(
+                &observation.live.container_id,
+                &format!("<ephemeral-inbox:{reference}>"),
+            );
+            let mut plan = recovery.commit;
+            plan.extend(recovery.finalize);
+            plan
         }
         "upgrade/preload-image" => {
             let reference = intent
@@ -1212,7 +1203,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                     "upgrade plan unavailable: live container run-spec is not fully modeled".into(),
                 )
             })?;
-            crate::executor::recreate_approval_argv(
+            crate::executor::stateless_recreate_approval_argv(
                 recreate,
                 &observation.live.container_id,
                 target,
@@ -1470,27 +1461,18 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
             let (_, payload) = held_payload.as_ref().ok_or_else(|| {
                 OuroError::Validation("validated KES payload was not retained".into())
             })?;
-            let backup = payload.with_file_name("node.cert.pre");
-            crate::executor::run_argv(&[
-                "docker".into(), "cp".into(),
-                format!("{current_container}:/opt/cardano/config/keys/node.cert"),
-                backup.display().to_string(),
-            ])?;
-            let commit = vec![
-                vec![
-                    "docker".into(), "cp".into(), payload.display().to_string(),
-                    format!("{current_container}:/opt/cardano/config/keys/node.cert"),
-                ],
-                vec!["docker".into(), "restart".into(), current_container.clone()],
-            ];
+            let recovery = crate::executor::stateless_kes_recovery_plan(
+                &current_container,
+                &payload.display().to_string(),
+            );
+            crate::executor::run_argv(&recovery.commit[0])?;
+            crate::executor::run_argv(&recovery.commit[1]).map_err(|error| {
+                OuroError::Validation(format!(
+                    "KES recovery material could not be prepared; live certificate was not changed: {error}"
+                ))
+            })?;
             let rollback = || {
-                crate::executor::run_plan(&[
-                    vec![
-                        "docker".into(), "cp".into(), backup.display().to_string(),
-                        format!("{current_container}:/opt/cardano/config/keys/node.cert"),
-                    ],
-                    vec!["docker".into(), "restart".into(), current_container.clone()],
-                ])?;
+                crate::executor::run_plan(&recovery.rollback)?;
                 let restored = read_observation(&[])?;
                 require_stateless_post_contract(&final_plan, &restored, &current_image)?;
                 stateless_readiness(&final_plan, &restored, false)?;
@@ -1501,9 +1483,10 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                         "KES rollback did not restore the prior opcert digest".into(),
                     ));
                 }
+                crate::executor::run_plan(&recovery.finalize)?;
                 Ok(())
             };
-            if let Err(error) = crate::executor::run_plan(&commit) {
+            if let Err(error) = crate::executor::run_plan(&recovery.commit[2..]) {
                 return Err(rollback_failure(&final_plan.op, error, rollback()));
             }
             let verify = (|| {
@@ -1523,6 +1506,11 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
             if let Err(error) = verify {
                 return Err(rollback_failure(&final_plan.op, error, rollback()));
             }
+            crate::executor::run_plan(&recovery.finalize).map_err(|error| {
+                OuroError::Validation(format!(
+                    "KES apply verified but previous-certificate cleanup failed; recovery residue retained: {error}"
+                ))
+            })?;
         }
         "upgrade/preload-image" => {
             let (_, payload) = held_payload.as_ref().ok_or_else(|| {
@@ -1553,16 +1541,19 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
             let recreate = final_plan.observation.recreate.as_ref().ok_or_else(|| {
                 OuroError::Validation("upgrade lost its live recreate specification".into())
             })?;
-            let commit = crate::executor::recreate_argv(recreate, &current_container, target)?;
-            let rollback_plan =
-                crate::executor::recreate_argv(recreate, &recreate.name, &current_image)?;
+            let recovery = crate::executor::stateless_recreate_recovery_plan(
+                recreate,
+                &current_container,
+                target,
+            )?;
             let rollback = || {
-                crate::executor::run_rollback_plan("upgrade/step", &rollback_plan)?;
+                crate::executor::run_rollback_plan("upgrade/step", &recovery.rollback)?;
                 let restored = read_observation(&[])?;
                 require_stateless_post_contract(&final_plan, &restored, &current_image)?;
                 stateless_readiness(&final_plan, &restored, true)
             };
-            if let Err(error) = crate::executor::run_plan(&commit) {
+            crate::executor::run_argv(&recovery.commit[0])?;
+            if let Err(error) = crate::executor::run_plan(&recovery.commit[1..]) {
                 return Err(rollback_failure(
                     &final_plan.op, error, rollback(),
                 ));
@@ -1582,6 +1573,11 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                     &final_plan.op, error, rollback(),
                 ));
             }
+            crate::executor::run_plan(&recovery.finalize).map_err(|error| {
+                OuroError::Validation(format!(
+                    "upgrade verified but previous-container cleanup failed; recovery residue retained: {error}"
+                ))
+            })?;
         }
         other => return Err(OuroError::Validation(format!(
             "operation {other} has no stateless apply executor"

@@ -64,12 +64,22 @@ pub struct Port {
 /// The converged container layout (§2.2): fixed destinations the sealed executor writes to.
 const KEYS_DIR: &str = "/opt/cardano/config/keys";
 const OPCERT_DEST: &str = "/opt/cardano/config/keys/node.cert";
+const OPCERT_PREVIOUS: &str = "/opt/cardano/config/keys/node.cert.ouro-prev";
 const SOCKET: &str = "/ipc/node.socket";
 /// Where a signed tx artifact is staged INSIDE the container before submit (ephemeral, public tx).
 const TX_STAGE: &str = "/tmp/ouro-tx.signed";
 
 pub type ExecutionPlan = Vec<Vec<String>>;
 pub type RecoverablePlans = (ExecutionPlan, Option<ExecutionPlan>);
+
+/// Operation-scoped recovery state lives only in Cardano/Docker application objects. Commit keeps
+/// the previous object, rollback restores it, and finalize removes it after live verification.
+#[derive(Debug, Clone)]
+pub struct StatelessRecoveryPlan {
+    pub commit: ExecutionPlan,
+    pub rollback: ExecutionPlan,
+    pub finalize: ExecutionPlan,
+}
 
 fn s(x: &str) -> String {
     x.to_string()
@@ -248,13 +258,7 @@ pub fn recoverable_plans(
     }
 }
 
-/// Build the recreate SEQUENCE for an upgrade (§2.10): remove the attested container, then
-/// `docker run` a new one onto `image_digest`, faithfully reproducing the observed run-spec (name,
-/// restart policy, network, published ports, env, bind mounts, entrypoint + args). FAIL-CLOSED: any
-/// missing/ambiguous fact is refused — we never recreate a node with a partial spec. `image_digest`
-/// is `sha256:<…>` (a target-present, allowlist-verified digest); nothing here is an agent string
-/// except the digest, which was validated as a closed selector + allowlist membership.
-pub fn recreate_argv(spec: &RecreateSpec, cid: &str, image_digest: &str) -> Result<Vec<Vec<String>>> {
+fn recreate_run_argv(spec: &RecreateSpec, image_digest: &str) -> Result<Vec<String>> {
     if spec.name.is_empty() {
         return Err(OuroError::Validation(
             "upgrade: observed container has no name — refused (fail-closed)".into(),
@@ -280,13 +284,11 @@ pub fn recreate_argv(spec: &RecreateSpec, cid: &str, image_digest: &str) -> Resu
         s("--name"), spec.name.clone(),
         s("--restart"), if spec.restart_policy.is_empty() { s("unless-stopped") } else { spec.restart_policy.clone() },
     ];
-    // Preserve a non-default network exactly (host / a named network); the docker default is elided.
     if !matches!(spec.network_mode.as_str(), "" | "default" | "bridge") {
         run.push(s("--network"));
         run.push(spec.network_mode.clone());
     }
     for p in &spec.ports {
-        // hostip:hostport:container | hostport:container — reproduce the published mapping.
         let mapping = if p.host_ip.is_empty() {
             format!("{}:{}", p.host_port, p.container)
         } else {
@@ -311,20 +313,68 @@ pub fn recreate_argv(spec: &RecreateSpec, cid: &str, image_digest: &str) -> Resu
     run.push(spec.entrypoint.clone());
     run.push(image_digest.to_string());
     run.extend(spec.args.iter().cloned());
+    Ok(run)
+}
+
+/// Build the legacy remove-first recreate sequence. Stateless S0020 apply uses the recovery plan
+/// below so the previous live container survives an interrupted runner.
+/// `docker run` faithfully reproduces the observed run-spec (name,
+/// restart policy, network, published ports, env, bind mounts, entrypoint + args). FAIL-CLOSED: any
+/// missing/ambiguous fact is refused — we never recreate a node with a partial spec. `image_digest`
+/// is `sha256:<…>` (a target-present, allowlist-verified digest); nothing here is an agent string
+/// except the digest, which was validated as a closed selector + allowlist membership.
+pub fn recreate_argv(spec: &RecreateSpec, cid: &str, image_digest: &str) -> Result<Vec<Vec<String>>> {
+    let run = recreate_run_argv(spec, image_digest)?;
     Ok(vec![vec![s("docker"), s("rm"), s("-f"), cid.to_string()], run])
 }
 
-/// Human-reviewable upgrade projection. Docker environment VALUES are deliberately absent from
-/// ToolOutput: the target retains them in the root-only sealed commit plan, while approval sees the
-/// variable names and an explicit redaction marker. The opaque HMAC run-spec binding in the intent
-/// detects any value change before commit without publishing a password-verification oracle.
-pub fn recreate_approval_argv(
+/// Keep the previous public opcert beside the live file, outside ephemeral transport cleanup.
+pub fn stateless_kes_recovery_plan(cid: &str, payload: &str) -> StatelessRecoveryPlan {
+    StatelessRecoveryPlan {
+        commit: vec![
+            vec![s("docker"), s("exec"), cid.to_string(), s("test"), s("!"), s("-e"), s(OPCERT_PREVIOUS)],
+            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(OPCERT_DEST), s(OPCERT_PREVIOUS)],
+            vec![s("docker"), s("cp"), payload.to_string(), format!("{cid}:{OPCERT_DEST}")],
+            vec![s("docker"), s("restart"), cid.to_string()],
+        ],
+        rollback: vec![
+            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(OPCERT_PREVIOUS), s(OPCERT_DEST)],
+            vec![s("docker"), s("restart"), cid.to_string()],
+        ],
+        finalize: vec![vec![s("docker"), s("exec"), cid.to_string(), s("rm"), s("-f"), s(OPCERT_PREVIOUS)]],
+    }
+}
+
+/// Preserve the prior container as `<name>.ouro-prev` until the replacement is live-verified.
+pub fn stateless_recreate_recovery_plan(
     spec: &RecreateSpec,
     cid: &str,
     image_digest: &str,
-) -> Result<Vec<Vec<String>>> {
-    let mut plan = recreate_argv(spec, cid, image_digest)?;
-    for argv in &mut plan {
+) -> Result<StatelessRecoveryPlan> {
+    let run = recreate_run_argv(spec, image_digest)?;
+    let previous = format!("{}.ouro-prev", spec.name);
+    if previous.len() > 128 {
+        return Err(OuroError::Validation(
+            "upgrade: recovery container name exceeds Docker's supported length".into(),
+        ));
+    }
+    Ok(StatelessRecoveryPlan {
+        commit: vec![
+            vec![s("docker"), s("rename"), cid.to_string(), previous.clone()],
+            vec![s("docker"), s("stop"), previous.clone()],
+            run,
+        ],
+        rollback: vec![
+            vec![s("docker"), s("rm"), s("-f"), spec.name.clone()],
+            vec![s("docker"), s("rename"), previous.clone(), spec.name.clone()],
+            vec![s("docker"), s("start"), spec.name.clone()],
+        ],
+        finalize: vec![vec![s("docker"), s("rm"), s("-f"), previous]],
+    })
+}
+
+fn redact_environment_values(plan: &mut ExecutionPlan) {
+    for argv in plan {
         let mut index = 0;
         while index + 1 < argv.len() {
             if argv[index] == "-e" {
@@ -337,6 +387,31 @@ pub fn recreate_approval_argv(
             }
         }
     }
+}
+
+/// Human-reviewable upgrade projection. Docker environment VALUES are deliberately absent from
+/// ToolOutput: the target retains them in the root-only sealed commit plan, while approval sees the
+/// variable names and an explicit redaction marker. The opaque HMAC run-spec binding in the intent
+/// detects any value change before commit without publishing a password-verification oracle.
+pub fn recreate_approval_argv(
+    spec: &RecreateSpec,
+    cid: &str,
+    image_digest: &str,
+) -> Result<Vec<Vec<String>>> {
+    let mut plan = recreate_argv(spec, cid, image_digest)?;
+    redact_environment_values(&mut plan);
+    Ok(plan)
+}
+
+pub fn stateless_recreate_approval_argv(
+    spec: &RecreateSpec,
+    cid: &str,
+    image_digest: &str,
+) -> Result<Vec<Vec<String>>> {
+    let recovery = stateless_recreate_recovery_plan(spec, cid, image_digest)?;
+    let mut plan = recovery.commit;
+    plan.extend(recovery.finalize);
+    redact_environment_values(&mut plan);
     Ok(plan)
 }
 
@@ -791,6 +866,44 @@ mod tests {
         assert!(output.contains("COLD_KEY_SECRET=<redacted-target-value>"));
         let sealed = recreate_argv(&spec, "cid", &new).unwrap();
         assert!(serde_json::to_string(&sealed).unwrap().contains("hunter2"));
+        let stateless = stateless_recreate_approval_argv(&spec, "cid", &new).unwrap();
+        let stateless_output = serde_json::to_string(&stateless).unwrap();
+        assert!(!stateless_output.contains("hunter2"));
+        assert!(stateless_output.contains("COLD_KEY_SECRET=<redacted-target-value>"));
+    }
+
+    #[test]
+    fn stateless_kes_keeps_previous_cert_outside_ephemeral_payload_dir() {
+        let plan = stateless_kes_recovery_plan("cid", "/tmp/ouro-run.123/public-payload");
+        assert_eq!(plan.commit[0], vec![
+            "docker", "exec", "cid", "test", "!", "-e", OPCERT_PREVIOUS,
+        ]);
+        assert!(plan.commit[1].iter().any(|arg| arg == OPCERT_PREVIOUS));
+        assert!(plan.rollback[0].iter().any(|arg| arg == OPCERT_PREVIOUS));
+        assert!(plan.finalize[0].iter().any(|arg| arg == OPCERT_PREVIOUS));
+        assert!(plan.commit.iter().skip(2).flatten()
+            .any(|arg| arg == "/tmp/ouro-run.123/public-payload"));
+        assert!(plan.commit.iter().chain(&plan.rollback).chain(&plan.finalize).flatten()
+            .filter(|arg| arg.contains("ouro-run.123"))
+            .all(|arg| arg.ends_with("public-payload")));
+    }
+
+    #[test]
+    fn stateless_upgrade_preserves_previous_container_until_finalize() {
+        let new = format!("sha256:{}", "d".repeat(64));
+        let plan = stateless_recreate_recovery_plan(&recreate_spec(), "cid-old", &new).unwrap();
+        assert_eq!(plan.commit[0], vec!["docker", "rename", "cid-old", "bp1-node.ouro-prev"]);
+        assert_eq!(plan.commit[1], vec!["docker", "stop", "bp1-node.ouro-prev"]);
+        assert_eq!(plan.commit[2][0..3], ["docker", "run", "-d"]);
+        assert!(!plan.commit.iter().flatten().any(|arg| arg == "rm"));
+        assert_eq!(plan.rollback, vec![
+            vec!["docker", "rm", "-f", "bp1-node"],
+            vec!["docker", "rename", "bp1-node.ouro-prev", "bp1-node"],
+            vec!["docker", "start", "bp1-node"],
+        ]);
+        assert_eq!(plan.finalize, vec![
+            vec!["docker", "rm", "-f", "bp1-node.ouro-prev"],
+        ]);
     }
 
     #[test]

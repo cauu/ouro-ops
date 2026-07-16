@@ -341,3 +341,59 @@ no target state is destroyed merely to test the new path.
 ## 7. Change Requests (append-only)
 - 2026-07-16T14:41+0800 operator replaced S0019's persistent target CLI/attestation model with the
   agentless ephemeral runner model and explicitly deferred hostile-terminal credential hardening.
+- 2026-07-16T20:12+0800 operator accepted the post-iteration review repairs under the existing
+  S0020 boundary. The repair must preserve the agentless model: crash recovery may retain only
+  operation-scoped Cardano/Docker application state, never a resident Ouro gate, CLI, daemon or
+  transaction database. Fleet collection parallelism remains deferred until measured latency proves
+  the current fail-closed retry behavior unusable.
+
+## 8. Review Repair Plan (append-only)
+- [ ] p4-1 make KES and upgrade writes recoverable after runner/process interruption by retaining
+  minimal application-state rollback material until live postconditions pass.
+- [ ] p4-2 carry verified fleet-permit freshness evidence into the closed target action and re-check
+  expiry plus relay quorum immediately before the first disruptive mutation.
+- [ ] p4-3 bind stateless observability machine identity to pool-spec host, port, cardano principal and
+  named credential instead of accepting independently composable selectors.
+- [ ] p4-4 make stateless apply and diagnostic audit lifecycles terminally truthful, and reject
+  unknown/duplicate diagnostic control flags before SSH.
+- [ ] p4-5 remove legacy deploy from the ordinary S0020 website flow and describe upgrade artifact
+  evidence at the phase where the mechanism actually validates it.
+
+### Repair Acceptance Criteria
+- ERTC-8 crash recovery: KES never stores its only previous opcert beneath the ephemeral cleanup
+  directory; upgrade never deletes the prior container before the replacement is live-verified;
+  fixed rollback/finalize argv and interruption-residue behavior have regression coverage.
+- ERTC-9 commit-time fleet safety: an expired permit or insufficient immediate relay quorum refuses
+  inside the target after final live revalidation and before any Docker restart/recreate argv.
+- ERTC-10 identity and diagnostics: observability derives its complete SSH target from pool spec;
+  diagnostic unknown/duplicate flags refuse before SSH; every begun diagnostic/apply audit reaches an
+  accurate success, failure, rollback or ambiguous terminal record.
+- ERTC-11 product truth: the ordinary website cannot generate a legacy deploy prompt and the upgrade
+  Skill does not claim archive/config validation before apply preflight performs it.
+- ERTC-12 repair quality: targeted Rust/Python regressions, the full Rust/Python suites, Clippy,
+  manifest verification and `git diff --check` pass without reading or committing `pool-spec.yaml`.
+
+## 9. Repair Execution Log (append-only)
+- 2026-07-16T20:12+0800 [~] p4-1 started. Replace ephemeral-only KES backup and destructive
+  remove-first upgrade recreate with fixed application-state recovery plans that retain the prior
+  public certificate/container until the new state is live-verified.
+- 2026-07-16T21:38+0800 [x] p4-1 completed. KES now refuses an existing recovery residue, copies
+  the prior public opcert to `node.cert.ouro-prev` beside the live Cardano file, restores it on an
+  in-invocation failure and removes it only after verified success/rollback. Stateless upgrade now
+  renames the running container to `<name>.ouro-prev`, stops it, creates the replacement under the
+  original name, and deletes the prior container only after image/layout/readiness verification;
+  rollback removes any partial replacement and renames/starts the preserved container. Neither path
+  stores its only rollback material beneath `/tmp/ouro-run.*` or adds Ouro target state.
+
+## 10. Repair Validation Evidence (append-only)
+- ERTC-8 | stack: rust | command: `cargo test -p ouro executor::tests -- --nocapture` | result: pass |
+  note: 23 executor cases prove KES recovery storage is application-resident, upgrade commit contains
+  no remove, rollback restores the preserved name, finalize alone removes it, and approval remains
+  environment-redacted.
+- ERTC-8 | stack: python | command: `python3 tests/test_s0020_stateless_plan.py`; `python3
+  tests/test_s0020_stateless_apply.py` | result: pass | note: target plans expose the fixed KES
+  guard/backup/install/restart/finalize sequence without an ephemeral rollback path; stateless apply
+  drift, artifact and control approval seams remain green.
+- ERTC-12 | stack: rust | command: `cargo clippy -p ouro --lib --tests -- -D warnings`; `git diff
+  --check` | result: pass | note: p4-1 compiles without warnings or whitespace errors; the accidental
+  repository-wide formatting diff was removed before delivery and `pool-spec.yaml` stayed untouched.

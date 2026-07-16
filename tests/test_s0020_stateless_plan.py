@@ -184,8 +184,9 @@ def main():
     assert second.returncode == 0
     assert second_value["data"]["candidate_hash"] == data["candidate_hash"]
 
-    # KES planning accepts only the public content reference and shows a fixed install/restart;
-    # no key or arbitrary target path enters the candidate.
+    # KES planning accepts only the public content reference and shows the fixed durable previous-
+    # certificate guard/backup, install/restart and post-verify cleanup. No signing key, ephemeral
+    # rollback path or arbitrary target path enters the candidate.
     opcert = "opcert@sha256:" + "c" * 64
     kes, kes_value = invoke(
         home,
@@ -200,8 +201,27 @@ def main():
     )
     assert kes.returncode == 0, kes
     kes_plan = kes_value["data"]["executor_plan"]
-    assert kes_plan[0][0:2] == ["docker", "cp"] and opcert in kes_plan[0][2]
-    assert kes_plan[1] == ["docker", "restart", "cid-plan"]
+    assert kes_plan[0] == [
+        "docker",
+        "exec",
+        "cid-plan",
+        "test",
+        "!",
+        "-e",
+        "/opt/cardano/config/keys/node.cert.ouro-prev",
+    ]
+    assert kes_plan[1][0:6] == ["docker", "exec", "cid-plan", "cp", "-p", "/opt/cardano/config/keys/node.cert"]
+    assert kes_plan[2][0:2] == ["docker", "cp"] and opcert in kes_plan[2][2]
+    assert kes_plan[3] == ["docker", "restart", "cid-plan"]
+    assert kes_plan[4] == [
+        "docker",
+        "exec",
+        "cid-plan",
+        "rm",
+        "-f",
+        "/opt/cardano/config/keys/node.cert.ouro-prev",
+    ]
+    assert all("ouro-run." not in arg for argv in kes_plan for arg in argv)
 
     # Candidate drift is explicit: a recreated container changes both live-state and final hashes.
     write_probe(probe, observation(container="cid-new"))
