@@ -1366,12 +1366,93 @@ fn rollback_failure(operation: &str, primary: OuroError, rollback: Result<()>) -
     }
 }
 
+/// The control already authenticated this exact permit before constructing the closed target argv.
+/// The target re-checks its bound fields, deadline and immediate public relay quorum after the final
+/// live plan, so transport/artifact latency cannot turn an expired snapshot into a mutation.
+fn require_stateless_target_fleet_gate(
+    plan: &StatelessTargetPlan,
+    args: &[String],
+) -> Result<()> {
+    let registered = crate::intent::lookup(&plan.op).ok_or_else(|| {
+        OuroError::Validation(format!("operation {:?} is not registered", plan.op))
+    })?;
+    let fleet_sensitive = registered.touched.iter().any(|resource| {
+        matches!(*resource, "container:restart" | "container:recreate")
+    });
+    let raw = optional(args, "--verified-fleet-permit");
+    if !fleet_sensitive {
+        if raw.is_some() {
+            return Err(OuroError::Validation(
+                "non-disruptive target apply does not accept fleet evidence".into(),
+            ));
+        }
+        return Ok(());
+    }
+    let raw = raw.ok_or_else(|| {
+        OuroError::Validation(
+            "disruptive target apply is missing control-verified fleet evidence".into(),
+        )
+    })?;
+    let permit: crate::fleet::StepPermit = serde_json::from_str(raw)
+        .map_err(|error| OuroError::Validation(format!(
+            "malformed control-verified target fleet evidence: {error}"
+        )))?;
+    let role = match plan.role { Role::Bp => "bp", Role::Relay => "relay" };
+    let target_image = if plan.op == "upgrade/step" {
+        plan.intent.payload.get("image").and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+    } else {
+        None
+    };
+    if permit.pool_id != flag(args, "--pool-id")?
+        || permit.pool_spec_digest != flag(args, "--pool-spec-digest")?
+        || permit.node_id != plan.node
+        || permit.operation_id != plan.op
+        || permit.intent_hash != plan.candidate_hash
+        || permit.role != role
+        || permit.target_image != target_image
+        || permit.min_online_relays != flag(args, "--min-online-relays")?
+            .parse::<u32>().map_err(|_| OuroError::Validation(
+                "target min-online-relays is not an unsigned integer".into()
+            ))?
+        || permit.network != plan.network
+        || permit.genesis_hash != plan.genesis
+    {
+        return Err(OuroError::Validation(
+            "control-verified fleet evidence does not bind this target/candidate/pool policy".into(),
+        ));
+    }
+    let check_time = |now: u64| {
+        if permit.expiry_epoch <= now
+            || permit.facts_epoch > now.saturating_add(5)
+            || now.saturating_sub(permit.facts_epoch) > 30
+        {
+            Err(OuroError::Validation(
+                "fleet permit expired before target mutation — collect fresh facts and approve again"
+                    .into(),
+            ))
+        } else {
+            Ok(())
+        }
+    };
+    check_time(crate::s0019_confirmation::current_epoch()?)?;
+    crate::fleet::require_quorum(
+        permit.online_relays,
+        permit.min_online_relays,
+        permit.role == "relay",
+    )?;
+    crate::fleet::require_bp_last(permit.role == "bp", permit.relays_remaining)?;
+    permit.require_live_relay_quorum()?;
+    check_time(crate::s0019_confirmation::current_epoch()?)
+}
+
 fn run_stateless_target_apply(args: &[String]) -> Result<()> {
     validate_closed_args(
         args,
         &[
             "--op", "--node", "--role", "--network", "--genesis", "--pool-id",
             "--pool-spec-digest", "--min-online-relays", "--param", "--approved-candidate",
+            "--verified-fleet-permit",
         ],
         &[],
         &["--param"],
@@ -1387,6 +1468,7 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
         ));
     }
     let plan_args = without_value_flag(args, "--approved-candidate")?;
+    let plan_args = without_value_flag(&plan_args, "--verified-fleet-permit")?;
     let initial = build_stateless_target_plan(&plan_args)?;
     if initial.candidate_hash != approved {
         return Err(OuroError::Validation(format!(
@@ -1447,6 +1529,7 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
     }
     let current_container = final_plan.observation.live.container_id.clone();
     let current_image = final_plan.observation.live.image_config_digest.clone();
+    require_stateless_target_fleet_gate(&final_plan, args)?;
 
     match final_plan.op.as_str() {
         "runtime/restart" => {
@@ -3798,28 +3881,31 @@ fn dispatch_stateless_apply(
     };
 
     let runner = crate::runner::linux_x86_64()?;
-    let argv = if let Some((_, preview, digest)) = &payload {
-        crate::dispatch::ephemeral_runner_payload_dispatch_argv(
-            host,
-            context.machine.ssh.port,
-            "cardano",
-            &context.key,
-            &paths.known_hosts,
-            crate::dispatch::EphemeralPayloadInput {
-                runner_sha256: &runner.sha256,
-                runner_size: runner.bytes.len(),
-                payload_sha256: digest,
-                payload_size: preview.size_bytes,
-            },
-            &context.target_args,
-        )?
-    } else {
-        crate::dispatch::ephemeral_runner_dispatch_argv(
-            host, context.machine.ssh.port, "cardano", &context.key,
-            &paths.known_hosts, &runner.sha256, &context.target_args,
-        )?
+    let build_argv = |target_args: &[String]| -> Result<Vec<String>> {
+        if let Some((_, preview, digest)) = &payload {
+            crate::dispatch::ephemeral_runner_payload_dispatch_argv(
+                host,
+                context.machine.ssh.port,
+                "cardano",
+                &context.key,
+                &paths.known_hosts,
+                crate::dispatch::EphemeralPayloadInput {
+                    runner_sha256: &runner.sha256,
+                    runner_size: runner.bytes.len(),
+                    payload_sha256: digest,
+                    payload_size: preview.size_bytes,
+                },
+                target_args,
+            )
+        } else {
+            crate::dispatch::ephemeral_runner_dispatch_argv(
+                host, context.machine.ssh.port, "cardano", &context.key,
+                &paths.known_hosts, &runner.sha256, target_args,
+            )
+        }
     };
     if transport_plan {
+        let argv = build_argv(&context.target_args)?;
         output::print_json(
             &ToolOutput::ok("ouro.op.apply.dispatch.transport_plan", false).with_data(json!({
                 "op": op,
@@ -3888,6 +3974,10 @@ fn dispatch_stateless_apply(
             crate::s0019_confirmation::current_epoch()?,
         )?;
         permit.require_live_relay_quorum()?;
+        // Only the exact permit authenticated above enters the internal target argv. The target
+        // cannot accept an independently supplied public selector for this field.
+        context.target_args.push("--verified-fleet-permit".into());
+        context.target_args.push(raw.to_string());
     } else if optional(args, "--fleet-permit").is_some() {
         return Err(OuroError::Validation(
             "this non-disruptive operation does not accept a fleet permit".into(),
@@ -3904,6 +3994,7 @@ fn dispatch_stateless_apply(
         &confirmation,
     )?;
 
+    let argv = build_argv(&context.target_args)?;
     let out = if let Some((file, _, _)) = payload {
         crate::ssh::bounded_ssh_with_payload(
             &argv, &runner.bytes, file, std::time::Duration::from_secs(15 * 60),

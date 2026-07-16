@@ -5,9 +5,12 @@ import hashlib
 import io
 import json
 import os
+import socket
 import subprocess
 import tarfile
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 from test_s0020_stateless_plan import (
@@ -26,6 +29,36 @@ def apply_args(operation, candidate, *params):
     args[1] = "apply"
     args.extend(("--approved-candidate", candidate))
     return args
+
+
+def target_fleet_permit(candidate, port, expiry):
+    now = int(time.time())
+    return json.dumps(
+        {
+            "pool_id": "pool-0123456789abcdef01234567",
+            "pool_spec_digest": "sha256:" + "b" * 64,
+            "network": "mainnet",
+            "genesis_hash": GENESIS,
+            "target_host_key_sha256": "SHA256:" + "a" * 43,
+            "node_id": "bp1",
+            "operation_id": "runtime/restart",
+            "intent_hash": candidate,
+            "role": "bp",
+            "target_image": None,
+            "fencing_token": 1,
+            "expiry_epoch": expiry,
+            "facts_epoch": now,
+            "online_relays": 1,
+            "min_online_relays": 1,
+            "relays_remaining": 0,
+            "relay_health_endpoints": [
+                {"node_id": "relay1", "host": "127.0.0.1", "port": port}
+            ],
+            "permit_id": "target-test-permit",
+            "signature": "0" * 64,
+        },
+        separators=(",", ":"),
+    )
 
 
 def docker_save(path):
@@ -162,10 +195,49 @@ def main():
     assert drift.returncode != 0 and "live state changed" in json.dumps(drift_value), drift_value
     assert not docker_log.exists()
 
-    # The happy target-side path is exercised only against the fake Docker binary. It re-probes,
-    # executes exactly one fixed restart argv, and verifies the live postcondition.
+    # Expired control-verified fleet evidence refuses at the target after final revalidation and
+    # before Docker. A fresh permit then probes an immediate public relay endpoint and executes.
     write_probe(probe, observation())
     counter.unlink(missing_ok=True)
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    relay_port = listener.getsockname()[1]
+    no_permit, no_permit_value = invoke(
+        home,
+        *apply_args(
+            "runtime/restart",
+            restart_candidate,
+            "--param",
+            "machine=bp1",
+        ),
+        env_extra=env,
+        path=fakebin,
+    )
+    assert no_permit.returncode != 0 and "missing control-verified" in json.dumps(no_permit_value)
+    assert not docker_log.exists(), "missing target permit must refuse before Docker"
+    expired_args = apply_args(
+        "runtime/restart",
+        restart_candidate,
+        "--param",
+        "machine=bp1",
+    ) + [
+        "--verified-fleet-permit",
+        target_fleet_permit(restart_candidate, relay_port, int(time.time()) - 1),
+    ]
+    expired, expired_value = invoke(home, *expired_args, env_extra=env, path=fakebin)
+    assert expired.returncode != 0 and "expired before target mutation" in json.dumps(expired_value)
+    assert not docker_log.exists(), "expired target permit must refuse before Docker"
+
+    def accept_relay_probe():
+        connection, _ = listener.accept()
+        connection.close()
+        listener.close()
+
+    threading.Thread(target=accept_relay_probe, daemon=True).start()
+    fresh_permit = target_fleet_permit(
+        restart_candidate, relay_port, int(time.time()) + 30
+    )
     applied, applied_value = invoke(
         home,
         *apply_args(
@@ -174,6 +246,8 @@ def main():
             "--param",
             "machine=bp1",
         ),
+        "--verified-fleet-permit",
+        fresh_permit,
         env_extra=env,
         path=fakebin,
     )

@@ -397,3 +397,18 @@ no target state is destroyed merely to test the new path.
 - ERTC-12 | stack: rust | command: `cargo clippy -p ouro --lib --tests -- -D warnings`; `git diff
   --check` | result: pass | note: p4-1 compiles without warnings or whitespace errors; the accidental
   repository-wide formatting diff was removed before delivery and `pool-spec.yaml` stayed untouched.
+- 2026-07-16T21:44+0800 [~] p4-2 started. Carry only the exact control-authenticated fleet permit
+  into an internal closed target flag, strip it from candidate planning, and re-check all bound
+  target/pool/candidate fields, the 30-second facts window, permit expiry and immediate public relay
+  endpoint quorum after final target revalidation and before any disruptive executor argv.
+- 2026-07-16T21:44+0800 [x] p4-2 completed. Control execution now rebuilds the sealed SSH argv only
+  after permit verification and adds the authenticated permit as target-internal evidence. Target
+  apply refuses missing, mismatched, stale or expired evidence, re-probes the permit's spec-derived
+  relay endpoints and re-checks expiry after that probe. Non-disruptive applies reject the internal
+  evidence and unchanged plan candidates never include it.
+- ERTC-9 | stack: python | command: `python3 tests/test_s0020_stateless_apply.py` | result: pass |
+  note: disruptive target apply refuses missing and expired fleet evidence before fake Docker; a
+  fresh candidate-bound permit reaches a live test relay endpoint and executes exactly one restart.
+- ERTC-9/12 | stack: rust | command: `cargo test -p ouro`; `cargo clippy -p ouro --lib --tests -- -D
+  warnings`; `git diff --check` | result: pass | note: 185 Rust tests pass; target permit parsing,
+  binding and commit-time quorum checks compile without warnings or whitespace errors.
