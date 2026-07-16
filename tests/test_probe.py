@@ -35,7 +35,7 @@ def main():
         '  "inspect --format")\n'
         '     case "$3" in\n'
         '       "{{.Image}}") echo "sha256:cfg";;\n'
-        '       "{{.Created}}") echo "2026-07-15T10:00:00Z";;\n'
+        '       "{{.Created}}") echo "2026-07-15T10:00:00.123456789Z";;\n'
         '       "{{json .Config.Entrypoint}}") echo "[\\"/usr/local/bin/entrypoint\\"]";;\n'
         '       "{{json .Args}}") echo "[\\"run\\"]";;\n'
         '       "{{range .Config.Env}}{{println .}}{{end}}") echo "CARDANO_NETWORK=mainnet";;\n'

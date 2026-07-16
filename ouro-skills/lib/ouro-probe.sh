@@ -117,7 +117,10 @@ def env(k): return os.environ.get(k, "") or ""
 def epoch(created):
     # docker Created is RFC3339; fall back to 0 if unparsable (no ambient clock use).
     try:
-        import datetime
+        import datetime, re
+        # Docker commonly emits nanoseconds while Python datetime accepts microseconds. Preserve
+        # the timestamp semantics and truncate only excess fractional precision.
+        created = re.sub(r"(\.\d{6})\d+", r"\1", created)
         return int(datetime.datetime.fromisoformat(created.replace("Z","+00:00")).timestamp())
     except Exception:
         return 0

@@ -154,6 +154,17 @@ no target state is destroyed merely to test the new path.
   `management_state: not_required`, and treats signed runtime policy as informational for reads
   while retaining it as a write gate. Missing attestation, allowlist floor and installed target CLI
   are absent from the path. Unsupported image policy is reported without suppressing safe facts.
+- 2026-07-16T15:07+0800 [~] p2-1 started. Move non-deploy `--plan` construction into the ephemeral
+  runner: derive target identity and fleet policy from the operator pool spec on control, then bind
+  the final typed candidate to signed image policy and a fresh target-side live observation without
+  target ownership metadata or installed CLI parity.
+- 2026-07-16T15:24+0800 [x] p2-1 completed. Dispatched non-deploy `--plan` now requires the
+  operator pool spec, derives and verifies its host/user/credential/node/role/network/genesis/fleet
+  bindings on control, and sends only those closed values to `target plan`. The target validates the
+  signed running-image convention, supervisor/layout/role, typed operation schema and stable live
+  state hash before returning the final candidate and fixed/redacted executor argv. Restart, KES,
+  image preload and upgrade-step plan paths write no target ownership or transaction state; public
+  artifacts are candidate-bound by digest and explicitly deferred to apply-time domain validation.
 
 ## 6. Validation Evidence (append-only)
 - ERTC-1 | stack: rust | command: `cargo test -p ouro ephemeral_runner -- --nocapture` | result:
@@ -196,6 +207,32 @@ no target state is destroyed merely to test the new path.
 - ERTC-7 | stack: rust | command: `cargo clippy -p ouro --lib --tests -- -D warnings`; targeted
   rustfmt check; `git diff --check` | result: pass | note: zero warnings or changed-file formatting /
   whitespace errors; operator-owned `pool-spec.yaml` remains untracked.
+- ERTC-3 | stack: integration | command: `python3 tests/test_s0020_stateless_plan.py` | result: pass |
+  note: runtime and KES candidates are stable for identical live state, change after container
+  drift, redact container env values, reject role/network/host/credential/unknown-arg mismatches,
+  and public dispatch carries only the embedded runner plus pool-spec-derived target argv.
+- ERTC-3 | stack: bed | command: release ephemeral `runtime/restart --plan --spec
+  /tmp/ouro-s0020-live-spec.yaml` on BP and relay | result: pass | note: BP candidate
+  `6340c54f…abd94` repeated identically; relay candidate `1a559fbe…90611`; both bind allowlist v2,
+  Blink Labs 10.5.4-1 OCI identity, role/mainnet/genesis/spec/fleet policy and unchanged live
+  container IDs without restart or target Ouro state.
+- ERTC-3 | stack: bed | command: release ephemeral KES install and upgrade preload plans | result:
+  pass | note: BP public-opcert candidate `c17dd523…d6889` contains only a digest placeholder and
+  fixed docker cp/restart argv; relay image-preload candidate `eb6ae1c7…0888` binds a public archive
+  digest + allowlisted config digest and contains only fixed docker load argv. Neither was applied.
+- ERTC-4 | stack: bed | command: release ephemeral `upgrade/step --plan` from running 10.5.4-1 to
+  the older allowlisted config | result: pass | note: refused because signed N→N+1 transition
+  metadata is absent; mere allowlist membership never authorizes an upgrade and no mutation ran.
+- ERTC-3 | stack: other | command: `ouro-ops fleet spec identity --spec pool-spec.yaml` | result:
+  expected refusal | note: the operator-owned untracked spec has truncated noncanonical genesis
+  hashes. It was not edited; bed plan validation used a temporary, valid spec bound to the live
+  mainnet genesis file SHA-256 `59cd3932…36961`.
+- ERTC-1 | stack: bed | command: pinned read-only tmp-directory inspection after parallel BP/relay
+  restart, KES and preload plans | result: pass | note: neither target retained an `ouro-run.*`
+  directory and the plan outputs retained their original running container IDs.
+- ERTC-7 | stack: regression | command: `cargo test -p ouro`; Clippy `-D warnings`; probe, S0020
+  stateless-plan and S0019 dispatch Python suites; `git diff --check` | result: pass | note: 180 Rust
+  tests plus all selected integration regressions pass with no warnings or whitespace errors.
 
 ## 7. Change Requests (append-only)
 - 2026-07-16T14:41+0800 operator replaced S0019's persistent target CLI/attestation model with the

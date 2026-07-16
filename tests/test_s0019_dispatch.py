@@ -468,8 +468,8 @@ def main():
     assert failed_fleet.returncode != 0, failed_fleet
     assert not list((Path(home) / "fleet-authority").glob("*.lease.json")) \
         if (Path(home) / "fleet-authority").exists() else True
-    # Ordinary --plan is not an argv preview: it opens the target transport and forwards --plan so
-    # the target performs registry/adoption/allowlist/parity/live validation.
+    # S0020 derives every target-plan pool binding from the operator spec. A missing spec stops on
+    # control before SSH rather than falling back to the target-installed S0019 CLI.
     target_plan = subprocess.run(
         [
             str(BIN), "op", "run", "--op", "runtime/restart", "--node", "bp1",
@@ -480,8 +480,8 @@ def main():
         text=True,
         capture_output=True,
     )
-    assert target_plan.returncode == 255, target_plan
-    assert "'--plan'" in transport_log.read_text(), transport_log.read_text()
+    assert target_plan.returncode == 10, target_plan
+    assert "missing --spec" in target_plan.stdout, target_plan.stdout
     transport = subprocess.run(
         [
             str(BIN), "op", "run", "--op", "observability/health", "--node", "bp1",
