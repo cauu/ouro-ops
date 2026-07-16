@@ -1542,3 +1542,45 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   artifacts carry the rotated verifier, the live allowlist path succeeds on both nodes, and the BP
   continues to fail closed at its independent owner-only permission gate. Operator-owned untracked
   `pool-spec.yaml` remains untouched and excluded from delivery.
+
+## 38. Fresh-Agent Observability Prompt Replay (append-only)
+- 2026-07-16T13:04+0800 operator acceptance request: hand the website-equivalent observability
+  prompt directly to a fresh subagent, without supplying internal commands or expected results, and
+  observe the complete agent-facing chain from embedded Skill discovery through real target reads
+  and evidence-bounded reporting. This authorizes reads only: no adoption, onboarding, diagnosis,
+  configuration change, restart, attestation write or other mutation.
+- [~] p10-6 run the public observability prompt against `bp1` and `relay1` through a fresh subagent;
+  record its independent interpretation, commands, target results, stop behavior and conclusion
+  quality. If the product chain is defective, repair it under a new append-only fix item and repeat
+  with another fresh agent.
+- OATC-1 agent autonomy: the fresh agent verifies the installed CLI, discovers the embedded
+  observability Skill itself, summarizes its write boundary and executes only after the prompt's
+  read-only go-ahead.
+- OATC-2 target coverage: it executes the real dispatched `observability/health` operation for both
+  BP and relay using the supplied named credential references; a plan or control-local result does
+  not count.
+- OATC-3 conclusion quality: it reports exact returned tip evidence per machine, labels forging,
+  KES lifetime, peer health and disk pressure as not measured, and does not claim full-node health
+  or tip advancement from a single sample.
+- OATC-4 safety: no write/confirm/adopt/onboard/diag path is executed; no secret material,
+  attestation, node/container mutation or restart is created.
+- 2026-07-16T13:09+0800 p10-6 first fresh-agent replay: the agent verified the installed CLI,
+  independently read and accurately summarized the embedded observability Skill, identified the
+  local descriptive-file write and two remote reads, and waited for approval. After read-only
+  approval it executed both exact dispatch commands and reported `not_ouro_managed` for each node,
+  `changed:false`, with no unsupported health claims or remediation. It correctly labelled all tip,
+  forging, KES, peer, disk and full-health dimensions unmeasured.
+- 2026-07-16T13:09+0800 [~] p10-6-fix1 started: the replay exposed that the website prompt's PATH
+  binary `/Users/caiyufu/.local/bin/ouro-ops` still had p10-4 SHA-256
+  `84c29c2519b84b7f071daa24972d79619d1e88c50c7312ec8fbc47e3bc3b5aa1` and security identity
+  `992aab9b7b15ca8a13ee418110e67f1525b6a846550a6253da478d6bf061787f`, although the reviewed p10-5
+  control artifact has SHA-256
+  `a451456c4cb63b9f57043d33cafbf7746d61942021fe42aff8577fe0dfb59a12` and identity
+  `983e4342e9fadbf3c35479e175ee329060f40ad6b5870cfa186bff2aa52d3a9c`. Install the final artifact
+  at the actual prompt entry point, verify exact identity, and repeat the full prompt with another
+  context-free agent. The first replay is valid safe-stop evidence but not final-artifact evidence.
+- 2026-07-16T13:13+0800 [x] p10-6-fix1 completed. The reviewed final macOS artifact was installed
+  at `/Users/caiyufu/.local/bin/ouro-ops`; it is byte-identical to `target/release/ouro-ops` with
+  SHA-256 `a451456c4cb63b9f57043d33cafbf7746d61942021fe42aff8577fe0dfb59a12`, reports security identity
+  `983e4342e9fadbf3c35479e175ee329060f40ad6b5870cfa186bff2aa52d3a9c`, and verifies embedded
+  manifest digest `b4b89f01f97168900bc2a9bd559d53f163326168da5755b6ad2247b8151866c2`.
