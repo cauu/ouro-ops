@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -11,16 +11,36 @@ const DIAG_STREAM_CAP: usize = 256 * 1024;
 fn bounded_command(
     program: &str,
     args: &[String],
+    stdin_bytes: Option<&[u8]>,
     deadline: std::time::Duration,
     stream_cap: usize,
     context: &'static str,
 ) -> Result<SshOutcome> {
     let mut child = Command::new(program)
         .args(args)
-        .stdin(Stdio::null())
+        .stdin(if stdin_bytes.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
+    let stdin_rx = if let Some(bytes) = stdin_bytes {
+        let mut stdin = child.stdin.take().ok_or_else(|| {
+            OuroError::Validation("bounded subprocess has no stdin pipe".into())
+        })?;
+        let bytes = bytes.to_vec();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = stdin.write_all(&bytes).and_then(|_| stdin.flush());
+            drop(stdin);
+            let _ = sender.send(result);
+        });
+        Some(receiver)
+    } else {
+        None
+    };
     let stdout = child.stdout.take().ok_or_else(|| {
         OuroError::Validation("bounded subprocess has no stdout pipe".into())
     })?;
@@ -102,6 +122,13 @@ fn bounded_command(
     };
     let stdout = receive(stdout, stdout_rx)?;
     let stderr = receive(stderr, stderr_rx)?;
+    if let Some(receiver) = stdin_rx {
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .map_err(|_| {
+                OuroError::Validation(format!("{context} stdin writer did not terminate"))
+            })??;
+    }
     Ok(SshOutcome {
         status: status.code().unwrap_or(255),
         stdout: String::from_utf8_lossy(&stdout).to_string(),
@@ -118,7 +145,21 @@ pub fn bounded_ssh(
     stream_cap: usize,
     context: &'static str,
 ) -> Result<SshOutcome> {
-    bounded_command("ssh", args, deadline, stream_cap, context)
+    bounded_command("ssh", args, None, deadline, stream_cap, context)
+}
+
+/// Execute one host-key-pinned SSH command while streaming an opaque, control-selected payload to
+/// its stdin. The writer runs concurrently with the bounded stdout/stderr drains so a multi-megabyte
+/// static runner cannot deadlock on pipe capacity. EOF is delivered before the remote command
+/// continues from receipt to digest verification and execution.
+pub fn bounded_ssh_with_input(
+    args: &[String],
+    input: &[u8],
+    deadline: std::time::Duration,
+    stream_cap: usize,
+    context: &'static str,
+) -> Result<SshOutcome> {
+    bounded_command("ssh", args, Some(input), deadline, stream_cap, context)
 }
 
 /// Single-quote a value for safe inclusion in a remote shell command. `ssh` joins the
@@ -309,6 +350,7 @@ impl SshRunner {
         bounded_command(
             "ssh",
             &args,
+            None,
             std::time::Duration::from_secs(u64::from(timeout_s) + 15),
             DIAG_STREAM_CAP,
             "diagnostic transport",
@@ -340,6 +382,28 @@ impl SshRunner {
             stdout: String::from_utf8_lossy(&output.stdout).to_string(),
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod bounded_tests {
+    use super::*;
+
+    #[test]
+    fn bounded_input_stream_reaches_child_and_closes() {
+        let payload = vec![b'x'; 512 * 1024];
+        let outcome = bounded_command(
+            "sh",
+            &["-c".into(), "wc -c".into()],
+            Some(&payload),
+            std::time::Duration::from_secs(5),
+            1024,
+            "stdin fixture",
+        )
+        .unwrap();
+        assert_eq!(outcome.status, 0);
+        assert_eq!(outcome.stdout.trim(), payload.len().to_string());
+        assert!(outcome.stderr.is_empty());
     }
 }
 

@@ -58,6 +58,67 @@ fn base_ssh(port: u16, key: &Path, known_hosts: &Path, user: &str, host: &str) -
     ]
 }
 
+fn valid_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// Build the only SSH transport used by S0020 operations. The target receives runner bytes on
+/// stdin, stores them beneath a run-unique 0700 directory, checks the exact control-known SHA-256,
+/// executes the closed target argv with a clean root environment, and removes the directory on
+/// every shell exit. Neither the agent nor target selects a binary/path/digest, and no shared PATH
+/// entry or target Ouro installation is involved.
+pub fn ephemeral_runner_dispatch_argv(
+    host: &str,
+    port: u16,
+    user: &str,
+    key: &Path,
+    known_hosts: &Path,
+    runner_sha256: &str,
+    target_args: &[String],
+) -> crate::Result<Vec<String>> {
+    crate::onboard::validate_bootstrap_user(user)?;
+    if !valid_sha256(runner_sha256) {
+        return Err(crate::OuroError::Validation(
+            "ephemeral runner SHA-256 must be 64 lowercase hex characters".into(),
+        ));
+    }
+    if target_args.is_empty() {
+        return Err(crate::OuroError::InvalidArgs(
+            "ephemeral runner requires one closed target command".into(),
+        ));
+    }
+    let target = target_args
+        .iter()
+        .map(|arg| shell_quote(arg))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let expected = shell_quote(runner_sha256);
+    let remote = format!(
+        "set -eu\n\
+         umask 077\n\
+         run_dir=$(mktemp -d /tmp/ouro-run.XXXXXXXXXX)\n\
+         cleanup() {{ rm -rf -- \"$run_dir\"; }}\n\
+         trap cleanup EXIT\n\
+         trap 'exit 143' HUP INT TERM\n\
+         runner=\"$run_dir/ouro-runner\"\n\
+         dd of=\"$runner\" bs=65536 status=none\n\
+         actual=$(sha256sum \"$runner\" | awk '{{print $1}}')\n\
+         if test \"$actual\" != {expected}; then\n\
+           echo 'ephemeral runner digest mismatch' >&2\n\
+           exit 74\n\
+         fi\n\
+         chmod 0500 \"$runner\"\n\
+         sudo -n env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+           \"$runner\" {target}"
+    );
+    let mut argv = base_ssh(port, key, known_hosts, user, host);
+    argv.push(remote);
+    Ok(argv)
+}
+
 /// SSH argv to run an `ouro-ops op` command on the target as the confined `ouro-op` principal,
 /// through the fixed wrapper. `remote_args` are the op arguments (e.g. `["run","--op",...,"--local"]`).
 pub fn op_dispatch_argv(
@@ -162,6 +223,59 @@ mod tests {
         assert!(j.contains("--expect-embedded 'sha256:abc'"), "parity carried");
         assert_eq!(j.matches("--expect-embedded").count(), 1, "parity flag exactly once");
         assert!(!j.contains("accept-new"));
+    }
+
+    #[test]
+    fn ephemeral_runner_is_private_digest_bound_and_self_cleaning() {
+        let argv = ephemeral_runner_dispatch_argv(
+            "10.0.0.9",
+            22,
+            "cardano",
+            Path::new("/creds/bp1"),
+            Path::new("/kh"),
+            &"a".repeat(64),
+            &["target".into(), "observe".into(), "--node".into(), "bp1".into()],
+        )
+        .unwrap();
+        let joined = argv.join(" ");
+        assert!(joined.contains("cardano@10.0.0.9"));
+        assert!(joined.contains("StrictHostKeyChecking=yes"));
+        assert!(joined.contains("mktemp -d /tmp/ouro-run.XXXXXXXXXX"));
+        assert!(joined.contains("umask 077"));
+        assert!(joined.contains("sha256sum \"$runner\""));
+        assert!(joined.contains("chmod 0500 \"$runner\""));
+        assert!(joined.contains("trap cleanup EXIT"));
+        assert!(joined.contains("rm -rf -- \"$run_dir\""));
+        assert!(joined.contains("sudo -n env -i HOME=/root"));
+        assert!(joined.contains("\"$runner\" 'target' 'observe' '--node' 'bp1'"));
+        assert!(!joined.contains("/usr/local/bin/ouro-ops"));
+        assert!(!joined.contains(OP_WRAPPER));
+    }
+
+    #[test]
+    fn ephemeral_runner_rejects_digest_user_and_empty_command() {
+        assert!(ephemeral_runner_dispatch_argv(
+            "h", 22, "cardano", Path::new("/k"), Path::new("/kh"), "ABC", &["x".into()]
+        ).is_err());
+        assert!(ephemeral_runner_dispatch_argv(
+            "h", 22, "-oProxyCommand=id", Path::new("/k"), Path::new("/kh"),
+            &"a".repeat(64), &["x".into()]
+        ).is_err());
+        assert!(ephemeral_runner_dispatch_argv(
+            "h", 22, "cardano", Path::new("/k"), Path::new("/kh"),
+            &"a".repeat(64), &[]
+        ).is_err());
+    }
+
+    #[test]
+    fn ephemeral_runner_quotes_every_target_argument() {
+        let argv = ephemeral_runner_dispatch_argv(
+            "h", 22, "cardano", Path::new("/k"), Path::new("/kh"),
+            &"a".repeat(64),
+            &["target".into(), "x'; touch /tmp/pwned #".into()],
+        ).unwrap();
+        let remote = argv.last().unwrap();
+        assert!(remote.contains("'x'\\''; touch /tmp/pwned #'"));
     }
 
     #[test]

@@ -1,12 +1,12 @@
 # Converged Ouro-Managed Runtime & Intent-Based Operations
 
 Spec-ID: S0019
-Status: active
+Status: completed
 Created Time: 2026-07-14T17:30:00+08:00
 Start Time: 2026-07-15T10:00:00+08:00
-Completion Time:
+Completion Time: 2026-07-16T14:41:55+08:00
 Previous Spec-ID: S0017
-Closure Reason:
+Closure Reason: replaced
 
 ## 1. Requirement Details
 
@@ -1610,3 +1610,7 @@ re-attestation gate (§2.4). No S0017 discovery/adapter/mode-dispatch fallback i
   reporting. The agent-facing chain behaves correctly. Current production observability cannot
   return tip data because neither node has an adoption attestation; it fails closed and recommends
   the separately approved adoption workflow rather than bypassing or silently repairing state.
+- 2026-07-16T14:41+0800 operator replaced S0019 with S0020. The accepted product direction removes
+  the target-resident full Ouro CLI, global `ouro_managed`/attestation prerequisite and exact
+  control↔target binary coupling. S0019 remains the immutable record of the converged-runtime
+  experiment and its safety findings; new implementation proceeds only under S0020.
