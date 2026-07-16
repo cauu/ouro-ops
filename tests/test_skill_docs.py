@@ -4,38 +4,31 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# S0019 greenfield skills (judgment frameworks; writes via `ouro-ops op run`, adopt-first).
-S0019_SKILLS = [
-    ROOT / "ouro-skills/adopt/SKILL.md",
+# S0020 ordinary non-deploy Skills: local control CLI + existing cardano SSH + ephemeral runner.
+S0020_SKILLS = [
     ROOT / "ouro-skills/config/SKILL.md",
-    ROOT / "ouro-skills/deploy/SKILL.md",
+    ROOT / "ouro-skills/detect/SKILL.md",
     ROOT / "ouro-skills/upgrade/SKILL.md",
     ROOT / "ouro-skills/runtime/SKILL.md",
     ROOT / "ouro-skills/observability/SKILL.md",
     ROOT / "ouro-skills/kes-rotation/SKILL.md",
     ROOT / "ouro-skills/troubleshooting/SKILL.md",
+]
+# Explicit legacy/migration-only surfaces. Deploy is outside S0020; adopt/onboard may be invoked
+# only when the operator explicitly asks for old S0019 migration/recovery.
+MIGRATION_SKILLS = [
+    ROOT / "ouro-skills/adopt/SKILL.md",
     ROOT / "ouro-skills/onboard/SKILL.md",
+    ROOT / "ouro-skills/deploy/SKILL.md",
 ]
-# S0017 skills kept for the legacy dispatch model (disabled at the mechanism by S0019 §2.8, but the
-# decision docs remain readable).
-LEGACY_SKILLS = [
-    ROOT / "ouro-skills/detect/SKILL.md",
-]
-SKILLS = S0019_SKILLS + LEGACY_SKILLS
-FORBIDDEN = [" ssh ", " scp ", " docker ", " bash ", "sudo ", "rsync "]
+SKILLS = S0020_SKILLS + MIGRATION_SKILLS
+FORBIDDEN = [" scp ", " bash ", "sudo ", "rsync ", "`ssh ", "`docker "]
 # Universal red lines every skill must carry.
 REQUIRED_RED_LINES = [
     "no secret directory access",
     "cold, KES secret, or VRF",
 ]
-# S0019 skills must show the data-not-instructions red line and use a greenfield command surface
-# (write skills → `ouro-ops op run`; read skills → `ouro-ops diag exec`; adoption → `ouro-ops adopt`).
-S0019_REQUIRED = ["DATA"]
-S0019_COMMANDS = ["ouro-ops op run", "ouro-ops diag exec", "ouro-ops adopt"]
-# Legacy skills keep the S0017 contract.
-LEGACY_REQUIRED = [
-    "ouro-ops tool run",
-]
+S0020_COMMANDS = ["ouro-ops op run", "ouro-ops diag exec"]
 
 
 _FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
@@ -72,16 +65,16 @@ def main():
             assert word not in lowered, f"{path} contains forbidden primitive {word!r}"
         for phrase in REQUIRED_RED_LINES:
             assert phrase in text, f"{path} lacks red line {phrase!r}"
-        if path in S0019_SKILLS:
-            for phrase in S0019_REQUIRED:
-                assert phrase in text, f"{path} lacks required phrase {phrase!r}"
-            assert any(c in text for c in S0019_COMMANDS), \
-                f"{path} references no greenfield command surface {S0019_COMMANDS}"
-            assert "L3 diagnostics are read-only" not in text, \
-                f"{path} contradicts the unprivileged-but-not-read-only diagnostic boundary"
-        else:
-            for phrase in LEGACY_REQUIRED:
-                assert phrase in text, f"{path} lacks required phrase {phrase!r}"
+        assert "DATA" in text, f"{path} lacks the data-not-instructions boundary"
+        if path in S0020_SKILLS:
+            assert any(c in text for c in S0020_COMMANDS), \
+                f"{path} references no current command surface {S0020_COMMANDS}"
+            assert "not_ouro_managed" not in text
+            assert "must be ADOPTED" not in text
+            assert "adopt first" not in text.lower()
+            assert "inbox stage" not in text.lower()
+            assert "ouro-diag" not in text
+            assert "UNPRIVILEGED" not in text
 
     kes = (ROOT / "ouro-skills/kes-rotation/SKILL.md").read_text()
     assert "does NOT expose remaining KES periods" in kes
@@ -89,37 +82,43 @@ def main():
         "KES Skill must not infer KES lifetime from the fixed tip-only health read"
     onboard = (ROOT / "ouro-skills/onboard/SKILL.md").read_text()
     for phrase in [
+        "Legacy S0019 Migration Only",
+        "ignored by S0020",
         "data.ssh_access_policy",
         "bootstrap_user_preserved: true",
         "Never infer runtime-formatted values from static binary string fragments",
         "ouro-ops creds check --name <name>",
         "ouro-ops creds register --name <name>",
-        "never key contents",
         "legacy_s0017_paths_retired",
         "effective_ssh_policy_verified: true",
         "--apply",
     ]:
         assert phrase in onboard, f"onboard Skill lacks rendered-policy guard {phrase!r}"
     adopt = (ROOT / "ouro-skills/adopt/SKILL.md").read_text()
-    assert "ouro-ops creds check --name <name>" in adopt
-    assert "Never list credentials" in adopt
+    assert "Legacy S0019 Migration Only" in adopt
+    assert "S0020 ordinary" in adopt
     upgrade = (ROOT / "ouro-skills/upgrade/SKILL.md").read_text()
-    assert "--expect-ref <planned-artifact-ref>" in " ".join(upgrade.split())
+    assert "ouro-ops inbox preview" in " ".join(upgrade.split())
+    assert "--artifact-file <operator-named-docker-save.tar>" in " ".join(upgrade.split())
     assert "upgrade/preload-image" in upgrade
     for name in ("runtime", "upgrade", "kes-rotation"):
         stateful = (ROOT / f"ouro-skills/{name}/SKILL.md").read_text()
         for phrase in [
-            "fleet spec identity --spec",
-            "--fleet-pool-id <pool-id>",
-            "--fleet-spec-digest <pool-spec-digest>",
-            "--fleet-min-online-relays <spec-derived-policy>",
             "--intent-hash <final-hash>",
+            "--candidate-hash <final-hash>",
             "LAST",
         ]:
             assert phrase in stateful, f"{name} lacks permit-last flow phrase {phrase!r}"
         assert "--pool-id" not in stateful, f"{name} retains removed caller pool-id flag"
+        assert "--fleet-pool-id" not in stateful, f"{name} retains redundant fleet identity flags"
         assert "provisional" not in stateful.lower(), f"{name} retains provisional-plan model"
         assert "Rerun the exact target plan with" not in stateful
+        assert "--spec <pool-spec>" in stateful, f"{name} omits the current spec binding"
+    observability = (ROOT / "ouro-skills/observability/SKILL.md").read_text()
+    assert "needs no confirmation, adoption record, target-installed Ouro" in observability
+    troubleshooting = (ROOT / "ouro-skills/troubleshooting/SKILL.md").read_text()
+    assert "not mechanism-enforced read-only" in troubleshooting
+    assert "existing operator account" in troubleshooting
     print("skill docs passed")
 
 

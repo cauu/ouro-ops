@@ -1,94 +1,81 @@
 # Ouro Ops
 
-Cardano Stake Pool 运维工具面。产品形态为 **一个确定性 CLI（`ouro`）+ 一组 skills（`ouro-skills/`）**：
-agent loop 与交互 UI 复用现成 agent harness（Claude Code / Cowork），不再自研桌面 app。
+面向 Cardano Stake Pool 的确定性运维 CLI。用户把网站生成的 operation prompt 交给 AI agent；
+agent 从已验证的 `ouro-ops` 二进制读取对应 Skill，只向类型化操作传参数，危险写入仍由运维方对
+最终 live plan 显式确认。
 
-> 架构自 S0014 起从「Tauri + React + Python sidecar + Ansible」四语言桌面栈转为 CLI + skills。
-> 规格与执行标准见 [`docs/specs/20260708T0000-S0014-agent-tooling.md`](docs/specs/20260708T0000-S0014-agent-tooling.md)。
-> 旧桌面 / sidecar / Ansible 栈已退役（见该 spec §2.7 退役清单）。
+当前 active 规格是
+[`S0020 Agentless Ephemeral Runner`](docs/specs/20260716T1441-S0020-agentless-ephemeral-runner.md)。
+S0019 的目标机常驻 CLI、adoption attestation 和 control↔target 版本耦合已退出普通操作路径。
 
-## 四层架构
+## 当前架构
 
-| 层 | 角色 | 说明 |
+| 层 | 角色 | 当前职责 |
 | --- | --- | --- |
-| Agent Harness | Claude Code / Cowork | agent loop、确认交互、流式日志、会话记录，全部复用 |
-| Skills（runbook 层） | `ouro-skills/` | `SKILL.md` 只写决策树与红线；`scripts/` 承载已知操作逻辑（Bash，幂等 + JSON 契约）|
-| `ouro` CLI（确定性内核） | `crates/ouro`（Rust 单二进制）| 密钥、签名、配置渲染、审计、审计化脚本执行入口、确定性编排 |
-| 目标机器 | BP / Relay | 节点跑容器；两类 SSH principal：受限诊断身份（L3）、经 sudoers allowlist 的执行身份（L1/L2）|
+| Agent harness | Codex / Claude Code 等 | 对话、展示 plan、等待运维方批准 |
+| Embedded Skills | `ouro-skills/` | 决策框架、停止条件、红线和准确命令 |
+| Control CLI | `crates/ouro` 的 `ouro-ops` | pool-spec/凭据/host key、签名策略、plan/confirm/permit、审计 |
+| Ephemeral runner | control release 内嵌 Linux/x86_64 静态 runner | 每次操作临时传到目标、校验、执行闭合命令、返回结构化结果并清理 |
+| BP / Relay | 现有 `cardano` SSH 账号 + Cardano 容器 | 不需要常驻 Ouro CLI、daemon、gate、attestation 或 Ouro 版本状态 |
 
-## 安全模型（机制级，非 prompt 约定）
+一次普通远端操作会创建 run-unique 0700 临时目录，校验 control 选定 runner 的 SHA-256，
+通过 `sudo env -i` 执行闭合的 `target` 子命令，限制时间/输出并清理。agent 不能选择 runner、远端
+路径、hash 或 sudo argv。
 
-- **写操作唯一入口**：一切写操作只能经 `ouro-ops tool run <skill>/<script>`；该命令建审计上下文、注入 **HMAC 签名的 invocation token**，脚本经 `ouro-ops tool verify-context` 校验后才放行——仅设置 `OURO_AUDIT_ID` 环境变量无法绕过。
-- **强制审计**：每次调用记录 append-only 的 `start` / `finish` / `crash` 事件（SQLite）。
-- **带外确认令牌**：破坏性动作（`kes push`、`rollback`）需人显式经 `ouro-ops confirm create` 签发的一次性 `tok_` 令牌；agent 无签发权限，不存在可猜测的静态令牌。
-- **密钥隔离**：冷钥 / KES skey / VRF 永不进模型上下文；JSON / 审计 / 日志只记录 hash、路径、counter、metadata。
-- **确定性编排**：跨机顺序由 `upgrade/scripts/run.sh` 执行（原子 machine lock、relay quorum、BP-last、verify-before-next、失败即停批次）；「BP + 至少一个 relay 在线」不变式由 `spec.upgrade.min_online_relays`（默认 1）机制强制，不可经环境放宽。
+## 运维流程
 
-## 环境要求
+- 只读 observability 直接从当前节点 tip 返回证据，无 adoption/confirmation 前置条件。
+- runtime、KES、upgrade 的 `--plan` 绑定 pool spec、host key、role/network/genesis、签名 OCI
+  策略与当前容器状态。
+- apply 必须携带 operator 批准的 `candidate_hash` 和一次性 confirm token，并在写前重新生成同一
+  candidate；运行时漂移会在 mutation 前拒绝。
+- restart/KES/upgrade step 还需要最后生成、30 秒有效的 fleet permit，机制校验 relay quorum 与
+  BP-last。
+- KES opcert 与 upgrade image archive 先在 control 本地 `inbox preview`，实际 apply 才和 runner
+  一次性传输；目标没有持久 inbox。
+- troubleshooting 复用 pool spec 中现有 `cardano` 账号。host-key、超时、输出和审计仍受控，但
+  诊断不是 OS 机制强制的只读通道；这是 S0020 明确选择的 honest-agent 边界。
 
-- Rust 1.80+（`cargo` 构建）
-- Python 3.11+（L2 脚本与测试用；需 `pyyaml`、`jsonschema`）
-- Bash、SSH、目标机侧容器运行时
-- macOS / Linux
+完整命令与能力顺序见 [`docs/S0020-operations.md`](docs/S0020-operations.md) 和对应
+`ouro-ops skill show <operation>`。
 
 ## 快速开始
 
 ```bash
-# 构建 CLI
-cargo build            # 或 make check
+cargo build -p ouro
 
-# 校验 pool-spec（只读，输出单行 JSON）
-cargo run -- spec validate --spec examples/pool-spec.minimal.yaml
+# 校验声明式 pool spec
+target/debug/ouro-ops spec validate --spec examples/pool-spec.minimal.yaml
 
-# 渲染某台机器的节点配置 / 拓扑
-cargo run -- config render --spec examples/pool-spec.minimal.yaml --machine bp1 --out /tmp/render
+# 固定只读 tip（host/key 从 operator-owned spec 映射）
+target/debug/ouro-ops op run --op observability/health \
+  --dispatch <host> --ssh-key creds://<name> --node <id> --param machine=<id>
 
-# 只读状态与漂移
-cargo run -- status --snapshot tests/fixtures/status/healthy-preprod.json \
-  --spec examples/pool-spec.minimal.yaml --diff-spec
+# live-state-bound restart plan（不会重启）
+target/debug/ouro-ops op run --op runtime/restart --spec <pool-spec> \
+  --dispatch <host> --ssh-key creds://<name> --node <id> \
+  --param machine=<id> --plan
 
-# 只读池概览（承接原 Delegators 点态数据）
-cargo run -- pool overview --spec examples/pool-spec.minimal.yaml
-
-# 经审计入口执行一个 L2 skill 脚本
-cargo run -- tool run deploy/preflight --spec examples/pool-spec.minimal.yaml --machine bp1
+# 本地 public artifact 预览（不会复制/暂存）
+target/debug/ouro-ops inbox preview --type <opcert|image> --file <path>
 ```
 
-`ouro` 主要子命令：`spec validate`、`config render|apply`、`status`、`pool overview|register-tx`、
-`kes generate|counter status|push`、`rollback`、`confirm create`、`tool run|verify-context`、`audit init|log`、
-`legacy inspect`。所有 L1/L2 stdout 遵循 [`schemas/tool-output.schema.json`](schemas/tool-output.schema.json) 单行 JSON 契约。
+`pool-spec.yaml` 是运维方持有的声明式路由/身份/策略数据，schema 为
+[`schemas/pool-spec.schema.json`](schemas/pool-spec.schema.json)。敏感值只允许 `creds://` 引用；
+私钥内容不进入 spec、JSON 或模型上下文。
 
-## pool-spec.yaml
-
-用户唯一需提供的声明式目标状态，schema 为 [`schemas/pool-spec.schema.json`](schemas/pool-spec.schema.json)（版本化，
-`spec_version: 1`）。样例见 [`examples/pool-spec.minimal.yaml`](examples/pool-spec.minimal.yaml) 与
-[`examples/pool-spec.complete.yaml`](examples/pool-spec.complete.yaml)。敏感值只允许 `creds://` 引用（明文不进 spec / 模型 / JSON）。
-
-## 常用命令（Makefile）
+## 质量门
 
 ```bash
-make test    # cargo test
-make check   # cargo check
-make ci      # bash ci/l2-integration.sh（schema / 脚本 / 安全负向 / parity + cargo test）
-make e2e     # bash ci/harness-e2e.sh（harness 式端到端：deploy / upgrade / kes / takeover）
-make help    # 列出全部命令
+make test
+make python-test
+bash ci/l2-integration.sh
+cargo clippy -p ouro --lib --tests -- -D warnings
+target/debug/ouro-ops manifest verify --against packaging/bundle-manifest.json
 ```
 
-## 项目结构
+`deploy` 仍属于 S0019 legacy/out-of-scope surface，不在 S0020 agentless E2E 验收范围。`onboard`
+和 `adopt` 仅保留给运维方明确要求的 S0019 migration/recovery，不是当前操作的恢复建议或前置步骤。
 
-```
-ouro-ops/
-├── crates/ouro/          # ouro CLI（Rust 单二进制：domain/config/render/status/kes/pool/audit/confirm/ssh/...）
-├── ouro-skills/          # L2 skills：SKILL.md 决策层 + scripts/（deploy/upgrade/runtime/observability/...）
-│   └── lib/ouro-lib.sh   # 幂等 check-then-act、审计门、JSON 契约、脱敏
-├── schemas/              # pool-spec.schema.json、tool-output.schema.json
-├── examples/             # pool-spec 样例
-├── ci/                   # l2-integration.sh、harness-e2e.sh
-├── tests/                # Rust / Python 契约与安全负向测试、fixtures
-└── docs/specs/           # immutable-spec 交付文档（当前 active：S0014）
-```
-
-## 交付流程
-
-采用 immutable-spec 工作流：每个需求一份 append-only spec，item 级提交引用 spec 文件名。索引见
-[`docs/README.md`](docs/README.md)。
+项目采用 immutable-spec 交付：每个需求由一份 append-only spec 记录需求、设计、item 计划和验收
+证据，item 级提交引用 spec 文件名。索引见 [`docs/README.md`](docs/README.md)。

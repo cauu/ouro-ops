@@ -46,6 +46,7 @@ def main():
         '  "image inspect") echo \'[{"Os":"linux","Architecture":"amd64","Config":{"Env":[],"Entrypoint":["/usr/local/bin/entrypoint"],"Cmd":[],"Labels":{"org.opencontainers.image.title":"cardano-node"}}}]\';;\n'
         '  "exec cid-xyz") shift 2; # sh -c ...\n'
         '     if echo "$*" | grep -q "cardano-cli query tip"; then echo "{\\"block\\":9,\\"slot\\":10,\\"era\\":\\"Conway\\",\\"syncProgress\\":\\"100.00\\"}";\n'
+        '     elif echo "$*" | grep -q "hash genesis-file"; then echo "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81";\n'
         '     elif echo "$*" | grep -q "kes-period-info"; then printf "✓ period is valid\\n✓ counter agrees\\n{\\"qKesCurrentKesPeriod\\":10,\\"qKesStartKesInterval\\":9,\\"qKesEndKesInterval\\":20,\\"qKesOnDiskOperationalCertificateNumber\\":5,\\"qKesNodeStateOperationalCertificateNumber\\":5}\\n";\n'
         '     elif echo "$*" | grep -q "ss -Htn state established"; then echo 2;\n'
         '     elif echo "$*" | grep -q netstat; then echo 0;\n'
@@ -80,6 +81,7 @@ def main():
     assert {m["destination"] for m in live["mounts"]} == {"/data/db", "/opt/cardano/config", "/ipc"}
     assert live["mounts"][1]["read_only"] is True
     assert live["has_forging_keys"] is True
+    assert live["genesis_hash"] == "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81"
     assert live["container_creation_epoch"] > 0
     # every key the Rust ObsLive/SupervisorObservation expects is present
     for k in ["image_config_digest", "platform", "container_id", "container_creation_epoch",

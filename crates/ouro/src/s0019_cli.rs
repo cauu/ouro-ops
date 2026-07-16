@@ -86,17 +86,45 @@ fn finish_ssh_dispatch(tool: &str, result: &crate::ssh::SshOutcome) -> Result<()
 /// Where the attestation lives. On the TARGET (`--local`, p5-4) it is the single root-owned file
 /// `/var/lib/ouro/node-attestation.json` (overridable via OURO_ATTESTATION, matching
 /// `ouro-attested.sh`); on the control host it is per-node under OURO_HOME (pre-dispatch modelling).
-/// `ouro-ops inbox stage`: bounded local or SSH-streamed target ingress. A dispatched artifact is
-/// sent over stdin to the fixed target wrapper, never referenced by a control-local path.
+/// `ouro-ops inbox preview`: hash and type-check a public control-local artifact without staging
+/// bytes anywhere. S0020 apply reopens the same operator-named file, verifies this reference, and
+/// streams it immediately after the ephemeral runner in one private invocation.
+///
+/// `ouro-ops inbox stage` remains the S0019 migration/target-wrapper surface. It is not required by
+/// the S0020 ordinary flow.
 pub fn run_inbox(args: &[String]) -> Result<()> {
-    if args.first().map(String::as_str) != Some("stage") {
+    let action = args.first().map(String::as_str);
+    if !matches!(action, Some("preview" | "stage")) {
         return Err(OuroError::InvalidArgs(
-            "expected: ouro-ops inbox stage --type <opcert|tx|image> \
+            "expected: ouro-ops inbox preview --type <opcert|tx|image> --file <path> | \
+             ouro-ops inbox stage --type <opcert|tx|image> \
              (--file <path> [--dispatch <host>] | --stdin --local)"
                 .into(),
         ));
     }
     let args = &args[1..];
+    if action == Some("preview") {
+        validate_closed_args(args, &["--type", "--file"], &[], &[])?;
+        let kind = match flag(args, "--type")? {
+            "opcert" => crate::inbox::ArtifactType::Opcert,
+            "tx" => crate::inbox::ArtifactType::Tx,
+            "image" => crate::inbox::ArtifactType::Image,
+            other => return Err(OuroError::Validation(format!(
+                "--type must be opcert|tx|image, got {other}"
+            ))),
+        };
+        let file = flag(args, "--file")?;
+        let (_, preview) = crate::inbox::preview_source(kind, Path::new(file))?;
+        output::print_json(&ToolOutput::ok("ouro.inbox.preview", false).with_data(json!({
+            "artifact_type": kind,
+            "artifact_ref": preview.artifact_ref,
+            "size_bytes": preview.size_bytes,
+            "source": "operator_named_control_file",
+            "staged": false,
+            "note": "no bytes were copied; pass this reference to --plan and the same file to apply --artifact-file",
+        })))?;
+        return Ok(());
+    }
     validate_closed_args(
         args,
         &["--type", "--file", "--dispatch", "--ssh-key", "--expect-ref"],

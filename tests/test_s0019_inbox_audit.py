@@ -50,8 +50,14 @@ def main():
     # --- inbox stage: an opcert artifact → content-addressed reference ---
     cert = Path(home) / "opcert.json"
     cert.write_text('{"type":"NodeOperationalCertificate","cborHex":"aa"}')
+    # S0020 ordinary flow hashes/type-checks locally without creating an inbox or copying bytes.
+    _, preview = run(home, "inbox", "preview", "--type", "opcert", "--file", str(cert))
+    assert preview["status"] == "ok" and preview["changed"] is False, preview
+    assert preview["data"]["staged"] is False and "@sha256:" in preview["data"]["artifact_ref"]
+    assert not (Path(home) / "inbox").exists(), "preview must not create durable ingress state"
     _, d = run(home, "inbox", "stage", "--type", "opcert", "--file", str(cert))
     assert d["status"] == "ok" and "@sha256:" in d["data"]["artifact_ref"], d
+    assert d["data"]["artifact_ref"] == preview["data"]["artifact_ref"]
     # The fixed target wrapper uses bounded stdin, not a control-local target path.
     _, streamed = run(home, "inbox", "stage", "--local", "--type", "opcert", "--stdin",
                       "--expect-ref", d["data"]["artifact_ref"],

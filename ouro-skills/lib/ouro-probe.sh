@@ -66,7 +66,11 @@ ouro_observe() {
     done
     if "$ok"; then echo true; else echo false; fi
   ' ouro-key-permission-check "$diag_uid" 2>/dev/null)"
-  genesis_hash="$(docker exec "$cid" sh -c 'sha256sum /opt/cardano/config/mainnet/shelley-genesis.json 2>/dev/null' 2>/dev/null | awk '{print $1}')"
+  # Use Cardano's semantic genesis hash, not the byte-level sha256sum of one JSON serialization.
+  # The pool spec and website carry this canonical network identity; whitespace/key-order changes
+  # to an equivalent genesis file must not invalidate every operation plan.
+  genesis_hash="$(docker exec "$cid" cardano-cli hash genesis-file \
+    --genesis /opt/cardano/config/mainnet/shelley-genesis.json 2>/dev/null | tr -d '\r\n')"
   network="$(ouro_probe_inspect "$cid" '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1 == "CARDANO_NETWORK" {print $2; exit}')"
   # Bounded readiness evidence. Two socket queries are sampled on the target; slot is preferred over
   # block because a low-stake BP need not forge, while the network tip should still advance.

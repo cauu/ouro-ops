@@ -13,25 +13,30 @@ should not be, runnable from the repo.
 official site shows the same values for an independent cross-check (≥2 channels). This is what
 defeats first-install typosquat / fake-package / bootstrap-key substitution (R2 N4).
 
-## Security boundary — bootstrap credential (S0017 P0-1, convenience mode)
+## Current target boundary (S0020)
 
-`ouro-ops init` provisions a target using a privileged bootstrap credential (an SSH key + sudo).
-That credential is **NOT mechanism-isolated from the agent**: `ouro-ops init` is an ordinary
-privileged command with no TTY / out-of-band-authorization gate, and the credential may sit in the
-same control-machine credential store as per-operation credentials. A poisoned prompt could
-therefore invoke `init` via the agent and use that credential to perform privileged provisioning on
-any reachable host. This residual risk is **known and accepted** (P0-1): the tool relies on upstream
-control-machine / agent-runtime security for it, not on an in-tool boundary.
+Ordinary non-deploy operations do not provision or update target-resident Ouro software. The
+macOS/control release carries its matching static Linux/x86_64 runner; each invocation sends it to a
+run-unique private directory through the operator's existing `cardano` SSH credential, verifies the
+control-known digest, executes a closed `target` action with a clean environment, bounds output and
+deadline, and removes it. Public artifacts are optionally appended to that same one-shot stream.
 
-Do NOT claim in any documentation that the bootstrap credential is isolated from the agent — that
-would be a false statement. What the tool DOES guarantee is narrower and unrelated to isolation:
-the bootstrap key path/content never enters `ouro-ops` JSON / audit / `confirm preview` / the
-secret-fingerprint corpus (no accidental leakage to output/logs), and per-operation dispatch still
-runs only through the confined `ouro-exec` wrapper.
+This design deliberately targets an honest-but-fallible or misled agent using the Ouro command
+surface. The existing operator credential is **NOT mechanism-isolated from the agent** when it has
+the control terminal; preventing deliberate raw SSH bypass is deferred. Do not claim otherwise.
+Mechanically enforced properties are narrower: the agent cannot select runner bytes/path/hash or
+sudo argv through public operation flags; host keys are pinned; target commands have a closed
+grammar; confirmation/permit checks remain local and exact-intent-bound; key contents do not enter
+Ouro JSON/audit output.
+
+Legacy `init`/`onboard`/`adopt` remain for explicit S0017/S0019 migration or recovery only. They are
+not ordinary-operation prerequisites and must never be suggested merely because a target lacks an
+Ouro binary, adoption metadata, or a matching remote version.
 
 ## Release process (per version)
 
-1. **Reproducible build** of the single static `ouro` binary (skills embedded, p2-1).
+1. **Reproducible paired build** of the control `ouro-ops` binary (Skills embedded) and its matching
+   static Linux/x86_64 runner. The control artifact embeds or release-binds that exact runner.
    `ouro-ops manifest show` is captured and committed as `packaging/bundle-manifest.json`; a CI
    test (`skills::committed_manifest_matches_embedded`) fails the build on any drift.
 2. **Sign** the binary + the bundle manifest with the hardware-held key (cosign keyless +

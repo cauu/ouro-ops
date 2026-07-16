@@ -1253,7 +1253,7 @@ fn run_tool_dispatch(args: &[String]) -> Result<()> {
     std::process::exit(outcome.status);
 }
 
-/// S0017 p5-18 — `ouro-ops diag ...`: free-form UNPRIVILEGED diagnostics channel.
+/// S0020 — `ouro-ops diag ...`: bounded free-form diagnostics through existing operator SSH.
 fn run_diag(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {
         Some("exec") => run_diag_exec(&args[1..]),
@@ -1264,13 +1264,12 @@ fn run_diag(args: &[String]) -> Result<()> {
     }
 }
 
-/// `diag exec` — run ONE agent-authored command on the target as the unprivileged
-/// `ouro-diag` principal. The fence is the Unix permission model, not a command list:
-/// ouro-diag has no sudoers entry, cannot write node content, and cannot read 0700 secret
-/// dirs. Every invocation is audited on the control side; output is truncated to a bounded
-/// size so a noisy command cannot flood the agent context. The command's own exit code is
-/// DATA in the payload — a failing probe is still a delivered diagnosis (this tool only
-/// errors on transport failure).
+/// `diag exec` — run ONE agent-authored command using the target's operator account from the pool
+/// spec. This deliberately matches S0020's honest-agent threat model: Ouro does not claim an
+/// OS-enforced read-only boundary or provision a resident diagnostic principal. Every invocation
+/// is audited on control; transport is host-key pinned and output/deadline bounded. The command's
+/// own exit code is DATA in the payload — a failing probe is still a delivered diagnosis (this
+/// tool only errors on transport failure).
 fn run_diag_exec(args: &[String]) -> Result<()> {
     let machine_id = flag_value(args, "--dispatch")?;
     let spec_path = flag_value(args, "--spec")?;
@@ -1297,11 +1296,17 @@ fn run_diag_exec(args: &[String]) -> Result<()> {
         .iter()
         .find(|candidate| candidate.id == machine_id)
         .ok_or_else(|| OuroError::Validation(format!("unknown machine {machine_id}")))?;
+    if machine.ssh.user != "cardano" {
+        return Err(OuroError::Validation(format!(
+            "S0020 diagnostics use the existing cardano account; pool spec declares {:?} for {machine_id}",
+            machine.ssh.user
+        )));
+    }
     let paths = ConfigPaths::discover();
     let key_path = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
     if !key_path.is_file() {
         return Err(OuroError::Validation(format!(
-            "credential key not found for {machine_id}: {} (run onboarding)",
+            "credential key not found for {machine_id}: {} (register the operator-named creds:// reference on this control machine)",
             key_path.display()
         )));
     }
@@ -1317,13 +1322,12 @@ fn run_diag_exec(args: &[String]) -> Result<()> {
     )?;
     store.finish_invocation(&audit_id, "diag/exec")?;
 
-    // ssh exit 255 = transport-level failure (unreachable, key not authorized for ouro-diag,
-    // host-key mismatch) — that IS this tool's failure, with the onboarding recovery path.
+    // ssh exit 255 = transport-level failure (unreachable, key not authorized, host-key mismatch).
     if outcome.status == 255 {
         return Err(OuroError::Validation(format!(
-            "diag transport to {machine_id} failed as ouro-diag: {} — is the target onboarded \
-             with a binary that authorizes ouro-diag (re-run `ouro-ops init` if it predates \
-             the diag channel)?",
+            "diag transport to {machine_id} failed as {}: {} — verify the existing SSH account, \
+             named credential and pinned host key",
+            machine.ssh.user,
             outcome.stderr.lines().last().unwrap_or("(no stderr)")
         )));
     }
@@ -1344,7 +1348,9 @@ fn run_diag_exec(args: &[String]) -> Result<()> {
     let (stderr, stderr_truncated) = cap(&outcome.stderr);
     output::print_json(&ToolOutput::ok("ouro.diag.exec", false).with_data(json!({
         "machine": machine_id,
-        "principal": "ouro-diag",
+        "principal": machine.ssh.user,
+        "assurance": "operator_ssh_diagnostic",
+        "read_only_enforced": false,
         "command": command,
         "timeout_s": timeout_s,
         "exit_code": outcome.status,
@@ -1689,17 +1695,15 @@ fn print_help() {
     println!("ouro-ops: deterministic Cardano stake pool operations CLI");
     println!("  Agent contract: read the procedure for any operation with `ouro-ops skill show <skill>`;");
     println!("  run `<command> --help` for a command's usage.\n");
-    println!("Onboarding (once per target):");
+    println!("Control setup:");
     println!("  creds     check/register one operator-named existing SSH key (no list, no copy)");
-    println!("  onboard   prepare a host for S0019 adopt/op dispatch (ouro-op + ouro-diag)");
-    println!("  adopt     approve one conforming running node as managed (non-disruptive)");
-    println!("  init/deinit  legacy S0017 setup/removal; not an inverse for S0019 onboard");
-    println!("Operate (via the agent):");
+    println!("  Ordinary targets use the existing cardano account; no target Ouro install/adoption.");
+    println!("Operate (via the agent, S0020):");
     println!("  skill     show|list — the authoritative decision trees + red lines");
-    println!("  op        run --op <operation> --node <id> — S0019 managed read/write intent path");
-    println!("  inbox     stage a typed, content-addressed public artifact");
+    println!("  op        run --op <operation> --node <id> — live stateless read/plan/apply path");
+    println!("  inbox     preview a typed public artifact locally (legacy stage also available)");
     println!("  fleet     permit create — authorize one disruptive fleet step");
-    println!("  diag      exec --dispatch <machine> --spec <pool-spec> -- <cmd> — unprivileged diagnosis");
+    println!("  diag      exec --dispatch <machine> --spec <pool-spec> -- <cmd> — bounded operator-SSH diagnosis");
     println!("  confirm   create — mint an exact intent-bound one-time approval");
     println!("  tool      run <skill>/<script> — legacy S0017 path; standalone detect is retired");
     println!("  kes       cold-sign-script | counter status | generate | push");
@@ -1707,8 +1711,11 @@ fn print_help() {
     println!("  pool      overview | register-tx");
     println!("  rollback  roll back a prior change");
     println!("  self-update  --check");
+    println!("Legacy migration/recovery only:");
+    println!("  onboard/adopt  S0019 resident-target model (not an ordinary-flow prerequisite)");
+    println!("  init/deinit    S0017 setup/removal");
     println!("Read-only / meta:");
-    println!("  status    node status from a snapshot | spec validate | detection via adopt --preview");
+    println!("  status    node status from a snapshot | spec validate | detection occurs in live reads/plans");
     println!("  version | paths | contract | manifest show|verify | audit init|log");
     println!("\nOutput is single-line JSON when captured (agents/pipes/dispatch); human-readable on a TTY (force JSON: --json).");
 }
@@ -1720,7 +1727,7 @@ fn command_usage(command: &str) -> Option<&'static str> {
                       --bootstrap-key creds://<name> --control-pubkey <operator-pub> \
                       --ouro-binary <target-arch ouro-ops> [--expected-host-key <SHA256:base64>] \
                       (--dry-run | --apply)\n  \
-                      Installs the S0019 ouro-op/ouro-diag confinement; then adopt the node.",
+                      LEGACY S0019 migration/recovery only; ordinary S0020 operations do not use it.",
         "creds" => "ouro-ops creds check --name <name> | ouro-ops creds register --name <name> \
                     --path <absolute-operator-named-private-key> [--dry-run]\n  \
                     Checks/registers exactly one name as a symlink; never lists, reads, copies, \
@@ -1728,26 +1735,25 @@ fn command_usage(command: &str) -> Option<&'static str> {
         "init" => "ouro-ops init --host <target> [--port 22] --bootstrap-user <account> \
                    --bootstrap-key creds://<name> --control-pubkey <operator-pub> \
                    --ouro-binary <target-arch ouro-ops> --spec <pool-spec> --machine <id> [--expected-host-key <sha256>]\n  \
-                   Onboards a target using the operator's OWN SSH access (never generates a key). \
-                   See `ouro-ops skill show onboard`.",
+                   LEGACY S0017 migration/recovery only; ordinary S0020 operations do not use it.",
         "deinit" => "ouro-ops deinit --host <target> [--port 22] --bootstrap-user <account> \
                      --bootstrap-key creds://<name> [--force] [--remove-node]\n  Reverses onboarding (refuses while a node runs).",
         "adopt" => "ouro-ops adopt --dispatch <host> --bootstrap-user <account> \
                     --ssh-key creds://<name> --spec <pool-spec> --node <id> \
                     --role <bp|relay> --preview\n  \
-                    After exact operator approval, add --approve-token <token> without --preview.",
-        "op" => "ouro-ops op run --op <operation> --dispatch <host> --ssh-key creds://<name> \
-                 --node <id> --param machine=<id> [--param k=v] \
-                 [--fleet-pool-id <id> --fleet-spec-digest sha256:<digest> \
-                  --fleet-min-online-relays <n> --fleet-permit <json>] \
-                 [--confirm-token <token>] [--plan|--transport-plan]\n  \
+                    LEGACY S0019 migration/recovery only. After exact operator approval, add \
+                    --approve-token <token> without --preview.",
+        "op" => "ouro-ops op run --op <operation> --spec <pool-spec> --dispatch <host> \
+                 [--ssh-key creds://<name>] --node <id> --param machine=<id> [--param k=v] \
+                 [--candidate-hash <approved-hash> --artifact-file <path>] \
+                 [--fleet-permit <json>] [--confirm-token <token>] [--plan|--transport-plan]\n  \
                  --plan returns a final target-validated intent and rejects permit/confirm \
-                 capabilities; --transport-plan only displays SSH argv. Dangerous disruptive ops \
-                 use approval, then a 30-second fleet permit minted last.",
-        "inbox" => "ouro-ops inbox stage --type <opcert|tx|image> --file <path> \
-                    --dispatch <host> --ssh-key creds://<name> --plan\n  \
-                    Preview returns planned_artifact_ref; after approval rerun without --plan \
-                    and add --expect-ref <planned_artifact_ref>.",
+                 capabilities. Apply repeats the same command without --plan, adds the approved \
+                 candidate hash and token, and automatically transports the ephemeral runner. \
+                 Dangerous disruptive ops mint a 30-second fleet permit last.",
+        "inbox" => "ouro-ops inbox preview --type <opcert|tx|image> --file <path>\n  \
+                    Hashes and validates the operator-named public file without copying it. Pass \
+                    data.artifact_ref to --plan; apply sends the same file once with --artifact-file.",
         "fleet" => "ouro-ops fleet spec identity --spec <pool-spec> | \
                     fleet permit create --spec <pool-spec> --node <id> --op <id> \
                     --intent-hash <final-plan-hash> --holder <id> \
@@ -1765,9 +1771,9 @@ fn command_usage(command: &str) -> Option<&'static str> {
         "deploy" => "ouro-ops deploy cold-sign-script --tx-body <path> --cold-key <role> [--cold-key <role>...] \
                      [--era conway] [--testnet-magic <n>|--mainnet]",
         "diag" => "ouro-ops diag exec --dispatch <machine> --spec <pool-spec> [--timeout <s>] -- <command>\n  \
-                   Free-form UNPRIVILEGED diagnosis as ouro-diag (no sudo; cannot write node \
-                   content or read secret dirs, but can use its own resources/egress). Audited; output bounded. \
-                   See `ouro-ops skill show troubleshooting`.",
+                   Free-form diagnosis through the spec's existing operator SSH account. Ouro \
+                   adds no sudo but does not enforce read-only access. Host-key pinned, audited, \
+                   deadline/output bounded. See `ouro-ops skill show troubleshooting`.",
         "pool" => "ouro-ops pool overview --spec <pool-spec> [--snapshot <json>] | register-tx --spec <pool-spec>",
         "skill" => "ouro-ops skill list | show <skill>   (skills: deploy, detect, kes-rotation, observability, runtime, troubleshooting, upgrade, onboard)",
         "spec" => "ouro-ops spec validate --spec <pool-spec>",

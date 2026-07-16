@@ -327,10 +327,10 @@ impl SshRunner {
         ]
     }
 
-    /// S0017 p5-18: free-form diagnostics argv — ssh as the unprivileged
-    /// `ouro-diag` principal. There is NO sudo anywhere on this argv and ouro-diag has no
-    /// sudoers entry: confinement is the Unix permission model (cannot write node content,
-    /// cannot read 0700 secret dirs), not a command list. The agent-authored command is
+    /// S0020: free-form diagnostics argv — SSH as the operator account already declared in the
+    /// pool spec. There is no Ouro-added sudo or resident diagnostic principal. This is a
+    /// diagnostic-intent interface for the honest-agent threat model, not an OS-enforced read-only
+    /// boundary. The agent-authored command is
     /// argv is reconstructed with every post-`--` argument separately quoted, then carried as ONE
     /// argument to `sh -c` and bounded by a remote timeout.
     pub fn diag_exec_argv(
@@ -361,9 +361,7 @@ impl SshRunner {
             "GlobalKnownHostsFile=/dev/null".to_string(),
             "-o".to_string(),
             "StrictHostKeyChecking=yes".to_string(),
-            // Always ouro-diag — never the spec's ssh.user (that is ouro-op, the write
-            // channel). The two principals stay distinguishable in the target's auth log.
-            format!("ouro-diag@{}", target.host),
+            format!("{}@{}", target.user, target.host),
             format!(
                 "timeout {}s sh -c {}",
                 timeout_s,
@@ -372,7 +370,7 @@ impl SshRunner {
         ]
     }
 
-    /// Execute a free-form read-only diagnostic command as `ouro-diag` (see `diag_exec_argv`).
+    /// Execute a bounded free-form diagnostic through the existing operator SSH account.
     pub fn diag_exec(
         &self,
         target: &SshTarget,
@@ -529,10 +527,9 @@ mod tests {
     }
 
     #[test]
-    fn diag_exec_argv_is_unprivileged_pinned_and_bounded() {
-        // p5-18: the diag channel must carry NO privilege escalation — its confinement is
-        // the OS permission model of the ouro-diag principal, so any `sudo` here would be a
-        // security regression. Host-key pinning and quoting match the tool-run channel.
+    fn diag_exec_argv_uses_existing_operator_account_and_is_pinned_and_bounded() {
+        // S0020 adds no privilege escalation to the supplied diagnostic command. Host-key pinning,
+        // exact argv grouping and output/deadline bounds remain mechanical guarantees.
         let args = SshRunner::diag_exec_argv(
             &target(),
             Path::new("/home/op/.ouro/credentials/relay1"),
@@ -541,9 +538,9 @@ mod tests {
             30,
         );
         let joined = args.join(" ");
-        assert!(!joined.contains("sudo"), "diag channel must never escalate");
+        assert!(!joined.contains("sudo"), "ouro must not add escalation to diagnostics");
         assert!(!joined.contains("ouro-tool-run"), "diag is not the write wrapper");
-        assert!(joined.contains("ouro-diag@relay1.example.com"), "always the diag principal");
+        assert!(joined.contains("ouro-exec@relay1.example.com"), "uses the spec account");
         assert!(joined.contains("StrictHostKeyChecking=yes"));
         assert!(joined.contains("UserKnownHostsFile=/home/op/.ouro/known_hosts"));
         assert!(joined.contains("GlobalKnownHostsFile=/dev/null"));
