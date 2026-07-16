@@ -8,17 +8,22 @@ use crate::{OuroError, Result};
 
 const DIAG_STREAM_CAP: usize = 256 * 1024;
 
+enum StdinSource {
+    Bytes(Vec<u8>),
+    BytesThenFile(Vec<u8>, std::fs::File),
+}
+
 fn bounded_command(
     program: &str,
     args: &[String],
-    stdin_bytes: Option<&[u8]>,
+    stdin_source: Option<StdinSource>,
     deadline: std::time::Duration,
     stream_cap: usize,
     context: &'static str,
 ) -> Result<SshOutcome> {
     let mut child = Command::new(program)
         .args(args)
-        .stdin(if stdin_bytes.is_some() {
+        .stdin(if stdin_source.is_some() {
             Stdio::piped()
         } else {
             Stdio::null()
@@ -26,14 +31,19 @@ fn bounded_command(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
-    let stdin_rx = if let Some(bytes) = stdin_bytes {
+    let stdin_rx = if let Some(source) = stdin_source {
         let mut stdin = child.stdin.take().ok_or_else(|| {
             OuroError::Validation("bounded subprocess has no stdin pipe".into())
         })?;
-        let bytes = bytes.to_vec();
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let result = stdin.write_all(&bytes).and_then(|_| stdin.flush());
+            let result = match source {
+                StdinSource::Bytes(bytes) => stdin.write_all(&bytes),
+                StdinSource::BytesThenFile(bytes, mut file) => stdin
+                    .write_all(&bytes)
+                    .and_then(|_| std::io::copy(&mut file, &mut stdin).map(|_| ())),
+            }
+            .and_then(|_| stdin.flush());
             drop(stdin);
             let _ = sender.send(result);
         });
@@ -159,7 +169,35 @@ pub fn bounded_ssh_with_input(
     stream_cap: usize,
     context: &'static str,
 ) -> Result<SshOutcome> {
-    bounded_command("ssh", args, Some(input), deadline, stream_cap, context)
+    bounded_command(
+        "ssh",
+        args,
+        Some(StdinSource::Bytes(input.to_vec())),
+        deadline,
+        stream_cap,
+        context,
+    )
+}
+
+/// Stream a control-selected runner followed immediately by one already-opened, bounded public
+/// artifact. The target transport knows both exact lengths and splits the binary stream inside its
+/// private run directory; no shared inbox or target path is part of the public command.
+pub fn bounded_ssh_with_payload(
+    args: &[String],
+    runner: &[u8],
+    payload: std::fs::File,
+    deadline: std::time::Duration,
+    stream_cap: usize,
+    context: &'static str,
+) -> Result<SshOutcome> {
+    bounded_command(
+        "ssh",
+        args,
+        Some(StdinSource::BytesThenFile(runner.to_vec(), payload)),
+        deadline,
+        stream_cap,
+        context,
+    )
 }
 
 /// Single-quote a value for safe inclusion in a remote shell command. `ssh` joins the
@@ -395,7 +433,7 @@ mod bounded_tests {
         let outcome = bounded_command(
             "sh",
             &["-c".into(), "wc -c".into()],
-            Some(&payload),
+            Some(StdinSource::Bytes(payload.clone())),
             std::time::Duration::from_secs(5),
             1024,
             "stdin fixture",
@@ -404,6 +442,28 @@ mod bounded_tests {
         assert_eq!(outcome.status, 0);
         assert_eq!(outcome.stdout.trim(), payload.len().to_string());
         assert!(outcome.stderr.is_empty());
+    }
+
+    #[test]
+    fn bounded_runner_then_file_stream_is_exact() {
+        let path = std::env::temp_dir().join(format!(
+            "ouro-payload-stream-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::write(&path, b"PUBLIC-PAYLOAD").unwrap();
+        let file = std::fs::File::open(&path).unwrap();
+        let outcome = bounded_command(
+            "sh",
+            &["-c".into(), "sha256sum | awk '{print $1}'".into()],
+            Some(StdinSource::BytesThenFile(b"RUNNER".to_vec(), file)),
+            std::time::Duration::from_secs(5),
+            1024,
+            "runner payload fixture",
+        )
+        .unwrap();
+        let expected = crate::skills::sha256_hex(b"RUNNERPUBLIC-PAYLOAD");
+        assert_eq!(outcome.stdout.trim(), expected);
+        std::fs::remove_file(path).unwrap();
     }
 }
 

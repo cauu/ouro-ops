@@ -119,6 +119,84 @@ pub fn ephemeral_runner_dispatch_argv(
     Ok(argv)
 }
 
+/// Artifact-bearing variant of the ephemeral transport. Stdin is exactly `runner || payload`; one
+/// fixed Python splitter reads both declared lengths in the same process (so buffered reads cannot
+/// lose boundary bytes), rejects truncation/trailing bytes, and writes both beneath the private
+/// run directory. The payload path is provided only through the clean internal environment.
+pub struct EphemeralPayloadInput<'a> {
+    pub runner_sha256: &'a str,
+    pub runner_size: usize,
+    pub payload_sha256: &'a str,
+    pub payload_size: u64,
+}
+
+pub fn ephemeral_runner_payload_dispatch_argv(
+    host: &str,
+    port: u16,
+    user: &str,
+    key: &Path,
+    known_hosts: &Path,
+    input: EphemeralPayloadInput<'_>,
+    target_args: &[String],
+) -> crate::Result<Vec<String>> {
+    crate::onboard::validate_bootstrap_user(user)?;
+    if !valid_sha256(input.runner_sha256) || !valid_sha256(input.payload_sha256) {
+        return Err(crate::OuroError::Validation(
+            "ephemeral runner and payload SHA-256 values must be lowercase hex".into(),
+        ));
+    }
+    if input.runner_size == 0 || input.payload_size == 0 || target_args.is_empty() {
+        return Err(crate::OuroError::InvalidArgs(
+            "ephemeral payload dispatch requires non-empty runner, payload and target command"
+                .into(),
+        ));
+    }
+    let target = target_args
+        .iter()
+        .map(|arg| shell_quote(arg))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let runner_expected = shell_quote(input.runner_sha256);
+    let payload_expected = shell_quote(input.payload_sha256);
+    let runner_size = input.runner_size;
+    let payload_size = input.payload_size;
+    let splitter = shell_quote(concat!(
+        "import sys\n",
+        "src=sys.stdin.buffer\n",
+        "def take(path,n):\n",
+        " out=open(path,'wb'); left=n\n",
+        " while left:\n",
+        "  chunk=src.read(min(left,1048576))\n",
+        "  if not chunk: raise SystemExit('truncated ephemeral input')\n",
+        "  out.write(chunk); left-=len(chunk)\n",
+        " out.flush(); out.close()\n",
+        "take(sys.argv[1],int(sys.argv[2])); take(sys.argv[3],int(sys.argv[4]))\n",
+        "if src.read(1): raise SystemExit('trailing ephemeral input')\n",
+    ));
+    let remote = format!(
+        "set -eu\n\
+         umask 077\n\
+         run_dir=$(mktemp -d /tmp/ouro-run.XXXXXXXXXX)\n\
+         cleanup() {{ rm -rf -- \"$run_dir\"; }}\n\
+         trap cleanup EXIT\n\
+         trap 'exit 143' HUP INT TERM\n\
+         runner=\"$run_dir/ouro-runner\"\n\
+         payload=\"$run_dir/public-payload\"\n\
+         python3 -c {splitter} \"$runner\" '{runner_size}' \"$payload\" '{payload_size}'\n\
+         runner_actual=$(sha256sum \"$runner\" | awk '{{print $1}}')\n\
+         payload_actual=$(sha256sum \"$payload\" | awk '{{print $1}}')\n\
+         test \"$runner_actual\" = {runner_expected} || {{ echo 'ephemeral runner digest mismatch' >&2; exit 74; }}\n\
+         test \"$payload_actual\" = {payload_expected} || {{ echo 'ephemeral payload digest mismatch' >&2; exit 74; }}\n\
+         chmod 0500 \"$runner\"\n\
+         chmod 0400 \"$payload\"\n\
+         sudo -n env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+           OURO_EPHEMERAL_PAYLOAD=\"$payload\" \"$runner\" {target}"
+    );
+    let mut argv = base_ssh(port, key, known_hosts, user, host);
+    argv.push(remote);
+    Ok(argv)
+}
+
 /// SSH argv to run an `ouro-ops op` command on the target as the confined `ouro-op` principal,
 /// through the fixed wrapper. `remote_args` are the op arguments (e.g. `["run","--op",...,"--local"]`).
 pub fn op_dispatch_argv(
@@ -276,6 +354,70 @@ mod tests {
         ).unwrap();
         let remote = argv.last().unwrap();
         assert!(remote.contains("'x'\\''; touch /tmp/pwned #'"));
+    }
+
+    #[test]
+    fn ephemeral_payload_is_split_verified_private_and_cleaned() {
+        let argv = ephemeral_runner_payload_dispatch_argv(
+            "10.0.0.9",
+            22,
+            "cardano",
+            Path::new("/creds/bp1"),
+            Path::new("/kh"),
+            EphemeralPayloadInput {
+                runner_sha256: &"a".repeat(64),
+                runner_size: 1234,
+                payload_sha256: &"b".repeat(64),
+                payload_size: 5678,
+            },
+            &[
+                "target".into(),
+                "apply".into(),
+                "--approved-candidate".into(),
+                "c".repeat(64),
+            ],
+        )
+        .unwrap();
+        let joined = argv.join(" ");
+        assert!(joined.contains("python3 -c"));
+        assert!(joined.contains("truncated ephemeral input"));
+        assert!(joined.contains("trailing ephemeral input"));
+        assert!(joined.contains("'1234'"));
+        assert!(joined.contains("'5678'"));
+        assert!(joined.contains("sha256sum \"$runner\""));
+        assert!(joined.contains("sha256sum \"$payload\""));
+        assert!(joined.contains("chmod 0500 \"$runner\""));
+        assert!(joined.contains("chmod 0400 \"$payload\""));
+        assert!(joined.contains("OURO_EPHEMERAL_PAYLOAD=\"$payload\""));
+        assert!(joined.contains("trap cleanup EXIT"));
+        assert!(joined.contains("rm -rf -- \"$run_dir\""));
+        assert!(!joined.contains("/usr/local/bin/ouro-ops"));
+        assert!(!joined.contains(OP_WRAPPER));
+    }
+
+    #[test]
+    fn ephemeral_payload_rejects_empty_or_malformed_input() {
+        let target = ["target".into(), "apply".into()];
+        let build = |runner_digest: &str, runner_size, payload_digest: &str, payload_size| {
+            ephemeral_runner_payload_dispatch_argv(
+                "h",
+                22,
+                "cardano",
+                Path::new("/k"),
+                Path::new("/kh"),
+                EphemeralPayloadInput {
+                    runner_sha256: runner_digest,
+                    runner_size,
+                    payload_sha256: payload_digest,
+                    payload_size,
+                },
+                &target,
+            )
+        };
+        assert!(build("bad", 1, &"b".repeat(64), 1).is_err());
+        assert!(build(&"a".repeat(64), 1, "BAD", 1).is_err());
+        assert!(build(&"a".repeat(64), 0, &"b".repeat(64), 1).is_err());
+        assert!(build(&"a".repeat(64), 1, &"b".repeat(64), 0).is_err());
     }
 
     #[test]

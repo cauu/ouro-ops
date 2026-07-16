@@ -165,6 +165,18 @@ no target state is destroyed merely to test the new path.
   state hash before returning the final candidate and fixed/redacted executor argv. Restart, KES,
   image preload and upgrade-step plan paths write no target ownership or transaction state; public
   artifacts are candidate-bound by digest and explicitly deferred to apply-time domain validation.
+- 2026-07-16T15:29+0800 [~] p2-2 started. Route non-deploy apply through the same ephemeral runner,
+  verify and consume control-local operator approval against the exact candidate, stream any public
+  artifact in the same private invocation, re-derive the candidate from fresh live state, and
+  refuse every approval/drift/artifact/fleet mismatch before a sealed executor mutation.
+- 2026-07-16T16:04+0800 [x] p2-2 completed. All dispatched non-deploy writes now require the
+  pool-spec-derived S0020 path, a lowercase approved candidate and a locally verified single-use
+  confirmation. Disruptive writes additionally verify the short-lived signed fleet permit against
+  live ephemeral `target status` facts; fleet snapshot collection no longer uses the installed op
+  wrapper or adoption metadata. The target re-plans twice around artifact/domain validation before
+  any fixed Docker argv, verifies live postconditions, and performs in-invocation, live-verified
+  rollback for KES/preload/upgrade where an inverse exists. Public artifacts travel immediately
+  after runner bytes into the same private run directory and are never staged durably.
 
 ## 6. Validation Evidence (append-only)
 - ERTC-1 | stack: rust | command: `cargo test -p ouro ephemeral_runner -- --nocapture` | result:
@@ -233,6 +245,30 @@ no target state is destroyed merely to test the new path.
 - ERTC-7 | stack: regression | command: `cargo test -p ouro`; Clippy `-D warnings`; probe, S0020
   stateless-plan and S0019 dispatch Python suites; `git diff --check` | result: pass | note: 180 Rust
   tests plus all selected integration regressions pass with no warnings or whitespace errors.
+- ERTC-1 | stack: rust | command: `cargo test -p ouro` payload transport unit cases | result: pass |
+  note: exact runner-then-file stdin streaming, fixed-length Python splitting, dual SHA-256 checks,
+  0500/0400 modes, clean internal payload environment and exit-trap cleanup pass; malformed/empty
+  digests and sizes refuse. No installed CLI/wrapper path appears in the argv.
+- ERTC-4 | stack: integration | command: `python3 tests/test_s0020_stateless_apply.py` | result:
+  pass | note: wrong candidate, unknown flag, wrong role, approval-to-apply drift, artifact digest /
+  Docker-config mismatch, missing confirmation and token replay all refuse before the fake mutation
+  or SSH boundary. The successful target seam executes exactly one fake `docker restart cid-plan`;
+  the successful control seam streams byte-exact `runner || artifact` once and consumes approval.
+- ERTC-3 | stack: integration | command: S0020 target-status and fake two-node fleet-permit cases
+  in `tests/test_s0020_stateless_apply.py` | result: pass | note: BP/relay fleet facts are gathered
+  through release-selected ephemeral `target status`, bind role/network/genesis/image/host key/live
+  epoch, report `management_state: not_required`, and mint only a control-local lease/permit with no
+  target ownership state or old `ouro-op` channel.
+- ERTC-4 | stack: other | command: code-path inspection + fake executor apply/rollback tests |
+  result: pass | note: runtime, KES, preload and upgrade use fixed argv arrays; target planning is
+  repeated after expensive public-artifact validation; post image/role/network/genesis/readiness and
+  operation-specific facts are checked; KES/preload/upgrade rollback is verified from live state.
+  No real restart, KES install, image load or upgrade ran during acceptance.
+- ERTC-7 | stack: regression | command: `cargo test -p ouro`; `make python-test`; `bash
+  ci/l2-integration.sh`; bundle manifest verify; Clippy `-D warnings`; `git diff --check` | result:
+  pass | note: 183 Rust tests, every Python test, L2 integration, manifest parity, lint and whitespace
+  gates pass. S0019 debug-only fixture regressions were retained while release ordinary-flow writes
+  cannot fall back without dispatch; operator-owned `pool-spec.yaml` remains untracked and untouched.
 
 ## 7. Change Requests (append-only)
 - 2026-07-16T14:41+0800 operator replaced S0019's persistent target CLI/attestation model with the

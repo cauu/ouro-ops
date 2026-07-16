@@ -54,8 +54,10 @@ def obs_doc(home, sup=None, **live_over):
     return str(p)
 
 
-def run(home, *args):
+def run(home, *args, env_extra=None):
     env = dict(os.environ, OURO_HOME=home)
+    if env_extra:
+        env.update(env_extra)
     r = subprocess.run([str(BIN), *args], env=env, text=True, capture_output=True)
     try:
         return r.returncode, json.loads(r.stdout or r.stderr)
@@ -350,18 +352,52 @@ def main():
     # Test-only cleanup; production requires the explicit operator recovery path.
     (txn / "bp1.txn.json").unlink()
 
-    # --- Explicit transport-only inspection shows confined SSH argv without claiming target validation. ---
+    # --- Explicit transport-only inspection shows the S0020 ephemeral argv without claiming target validation. ---
     creds = Path(home) / "credentials"
     creds.mkdir(exist_ok=True)
-    # p7-1: the op channel logs in as ouro-op (the write principal onboard installs), not ouro-exec.
-    (creds / "ouro-op").write_text("key")
+    (creds / "bp1").write_text("key")
+    transport_spec = Path(home) / "s0020-transport-spec.yaml"
+    transport_spec.write_text(f"""spec_version: 1
+pool:
+  network: mainnet
+  network_magic: 764824073
+  genesis_hashes:
+    shelley: {GENESIS}
+topology_mode: p2p
+machines:
+  - id: bp1
+    role: bp
+    ssh:
+      host: 10.0.0.9
+      port: 22
+      user: cardano
+      key_ref: creds://bp1
+  - id: relay1
+    role: relay
+    public_endpoint:
+      host: relay.example.com
+      port: 3001
+    ssh:
+      host: 10.0.0.10
+      port: 22
+      user: cardano
+      key_ref: creds://relay1
+upgrade:
+  min_online_relays: 0
+""")
+    runner = Path(home) / "s0020-runner"
+    runner.write_bytes(b"s0020-runner")
     _, d = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",
-               "--param", "machine=bp1", "--dispatch", "10.0.0.9", "--transport-plan")
-    assert d["status"] == "ok" and d["data"]["principal"] == "ouro-op", d
-    assert d["tool"] == "ouro.op.dispatch.transport_plan" and d["data"]["target_validated"] is False
+               "--param", "machine=bp1", "--dispatch", "10.0.0.9",
+               "--ssh-key", "creds://bp1", "--spec", str(transport_spec),
+               "--candidate-hash", "a" * 64, "--transport-plan",
+               env_extra={"OURO_EPHEMERAL_RUNNER": str(runner)})
+    assert d["status"] == "ok" and d["data"]["principal"] == "cardano", d
+    assert d["tool"] == "ouro.op.apply.dispatch.transport_plan" and d["data"]["target_validated"] is False
     j = " ".join(d["data"]["ssh_argv"])
-    assert "ouro-op@10.0.0.9" in j and "ouro-exec@" not in j and "StrictHostKeyChecking=yes" in j, j
-    assert "/usr/local/sbin/ouro-op-run" in j and "'--local'" in j, j
+    assert "cardano@10.0.0.9" in j and "ouro-op@" not in j and "StrictHostKeyChecking=yes" in j, j
+    assert "mktemp -d /tmp/ouro-run.XXXXXXXXXX" in j and "'target' 'apply'" in j, j
+    assert "/usr/local/sbin/ouro-op-run" not in j and "/usr/local/bin/ouro-ops" not in j, j
     assert "-F /dev/null" in j and "IdentityAgent=none" in j and "IdentitiesOnly=yes" in j, j
     assert "'--plan'" not in j, "transport plan itself is not forwarded"
 

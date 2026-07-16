@@ -288,41 +288,47 @@ struct FleetLiveStatus {
     state_generation: u64,
 }
 
-/// Read one target's closed fleet facts through the same confined, pinned, parity-checked op
-/// channel used for managed operations. Any transport/protocol/adoption/drift failure refuses the
-/// entire fleet snapshot; an unavailable node is never silently converted into an agent-supplied
-/// count.
+/// Read one target's closed fleet facts through the same release-embedded ephemeral runner used by
+/// plans and applies. No target-installed CLI, adoption metadata or remote Ouro version participates.
 fn fetch_fleet_status(
     machine: &Machine,
     paths: &ConfigPaths,
     allowlist_digest: &str,
+    network: &str,
+    genesis: &str,
 ) -> Result<FleetLiveStatus> {
     let key = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
+    let role = match machine.role { MachineRole::Bp => "bp", MachineRole::Relay => "relay" };
     let remote = vec![
-        "run".into(),
-        "--op".into(),
-        "fleet/status".into(),
+        "target".into(),
+        "status".into(),
         "--node".into(),
         machine.id.clone(),
-        "--param".into(),
-        format!("machine={}", machine.id),
-        "--local".into(),
+        "--role".into(),
+        role.into(),
+        "--network".into(),
+        network.into(),
+        "--genesis".into(),
+        genesis.into(),
         "--expect-allowlist".into(),
         allowlist_digest.into(),
     ];
-    let argv = crate::dispatch::op_dispatch_argv(
+    let runner = crate::runner::linux_x86_64()?;
+    let argv = crate::dispatch::ephemeral_runner_dispatch_argv(
         &machine.ssh.host,
         machine.ssh.port,
+        "cardano",
         &key,
         &paths.known_hosts,
+        &runner.sha256,
         &remote,
-        &parity::SecurityIdentity::local().wire_digest(),
-    );
-    let result = crate::ssh::bounded_ssh(
+    )?;
+    let result = crate::ssh::bounded_ssh_with_input(
         &argv,
+        &runner.bytes,
         std::time::Duration::from_secs(45),
         256 * 1024,
-        "fleet live-facts SSH",
+        "ephemeral fleet live-facts SSH",
     ).map_err(|e| OuroError::Validation(format!(
         "fleet live-facts SSH failed for {}: {e}", machine.id
     )))?;
@@ -353,10 +359,9 @@ fn fetch_fleet_status(
             bounded(result.stdout.as_bytes())
         ))
     })?;
-    if value.get("tool").and_then(serde_json::Value::as_str) != Some("ouro.op.read")
+    if value.get("tool").and_then(serde_json::Value::as_str) != Some("ouro.fleet.status")
         || value.get("status").and_then(serde_json::Value::as_str) != Some("ok")
         || value.get("changed").and_then(serde_json::Value::as_bool) != Some(false)
-        || value.pointer("/data/op").and_then(serde_json::Value::as_str) != Some("fleet/status")
         || value.pointer("/data/node").and_then(serde_json::Value::as_str)
             != Some(machine.id.as_str())
     {
@@ -366,15 +371,14 @@ fn fetch_fleet_status(
             bounded(result.stdout.as_bytes())
         )));
     }
-    let result = value.pointer("/data/result").ok_or_else(|| {
-        OuroError::Validation(format!("fleet live-facts target {} omitted result", machine.id))
+    let result = value.pointer("/data").ok_or_else(|| {
+        OuroError::Validation(format!("fleet live-facts target {} omitted data", machine.id))
     })?;
     let role = result.get("role").and_then(serde_json::Value::as_str).ok_or_else(|| {
         OuroError::Validation(format!("fleet live-facts target {} omitted role", machine.id))
     })?;
-    let expected_role = match machine.role { MachineRole::Bp => "bp", MachineRole::Relay => "relay" };
     let node = result.get("node").and_then(serde_json::Value::as_str).unwrap_or("");
-    if node != machine.id || role != expected_role {
+    if node != machine.id || role != match machine.role { MachineRole::Bp => "bp", MachineRole::Relay => "relay" } {
         return Err(OuroError::Validation(format!(
             "fleet live-facts identity mismatch for {}: target reported node={node:?} role={role:?}",
             machine.id
@@ -603,7 +607,13 @@ pub fn run_fleet(args: &[String]) -> Result<()> {
     let facts_epoch = crate::s0019_confirmation::current_epoch()?;
     let mut statuses = Vec::with_capacity(spec.machines.len());
     for machine in &spec.machines {
-        statuses.push(fetch_fleet_status(machine, &paths, &allowlist_digest)?);
+        statuses.push(fetch_fleet_status(
+            machine,
+            &paths,
+            &allowlist_digest,
+            spec.pool.network.as_str(),
+            &spec.pool.genesis_hashes.shelley,
+        )?);
     }
     let expected_network = spec.pool.network.as_str();
     let expected_genesis = spec.pool.genesis_hashes.shelley.as_str();
@@ -931,13 +941,32 @@ pub fn run_target(args: &[String]) -> Result<()> {
             output::print_json(&stateless_observation_output(node, &observation))
         }
         Some("plan") => run_stateless_target_plan(&args[1..]),
+        Some("apply") => run_stateless_target_apply(&args[1..]),
+        Some("status") => run_stateless_target_status(&args[1..]),
         _ => Err(OuroError::InvalidArgs(
-            "expected internal target observe|plan with closed arguments".into(),
+            "expected internal target observe|plan|apply|status with closed arguments".into(),
         )),
     }
 }
 
+struct StatelessTargetPlan {
+    output: ToolOutput,
+    op: String,
+    node: String,
+    role: Role,
+    network: String,
+    genesis: String,
+    candidate_hash: String,
+    intent: Intent,
+    observation: Observation,
+}
+
 fn run_stateless_target_plan(args: &[String]) -> Result<()> {
+    let plan = build_stateless_target_plan(args)?;
+    output::print_json(&plan.output)
+}
+
+fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
     validate_closed_args(
         args,
         &[
@@ -1210,7 +1239,416 @@ fn run_stateless_target_plan(args: &[String]) -> Result<()> {
         "note": "final stateless candidate from current signed policy + live target facts; no mutation or durable Ouro ownership state",
     }));
     result.machine = Some(node.to_string());
+    Ok(StatelessTargetPlan {
+        output: result,
+        op: op.to_string(),
+        node: node.to_string(),
+        role,
+        network: network.to_string(),
+        genesis: genesis.to_string(),
+        candidate_hash,
+        intent,
+        observation,
+    })
+}
+
+fn without_value_flag(args: &[String], name: &str) -> Result<Vec<String>> {
+    let mut stripped = Vec::with_capacity(args.len());
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == name {
+            if args.get(index + 1).is_none() {
+                return Err(OuroError::InvalidArgs(format!("missing value for {name}")));
+            }
+            index += 2;
+        } else {
+            stripped.push(args[index].clone());
+            index += 1;
+        }
+    }
+    Ok(stripped)
+}
+
+fn stateless_readiness(
+    plan: &StatelessTargetPlan,
+    observation: &Observation,
+    allow_rotated_container: bool,
+) -> Result<()> {
+    let evidence = observation.readiness.as_ref().ok_or_else(|| {
+        OuroError::Validation(
+            "target probe did not provide readiness evidence after stateless apply".into(),
+        )
+    })?;
+    crate::readiness::Readiness {
+        role: plan.role,
+        node_running: evidence.node_running,
+        container_id_matches: if allow_rotated_container {
+            !observation.live.container_id.is_empty()
+                && observation.live.container_id != plan.observation.live.container_id
+        } else {
+            observation.live.container_id == plan.observation.live.container_id
+        },
+        socket_answers: evidence.socket_answers,
+        network_ok: observation.live.network == plan.network,
+        genesis_ok: observation.live.genesis_hash == plan.genesis,
+        tip_block: evidence.tip_block,
+        tip_block_next: evidence.tip_block_next,
+        tip_synced: evidence.tip_synced,
+        kes_opcert_valid: evidence.kes_opcert_valid,
+        forging_credentials_ready: evidence.forging_credentials_ready,
+        established_peers: evidence.established_peers,
+    }
+    .evaluate()
+}
+
+fn require_stateless_post_contract(
+    plan: &StatelessTargetPlan,
+    observation: &Observation,
+    expected_image: &str,
+) -> Result<()> {
+    if observation.live.image_config_digest != expected_image {
+        return Err(OuroError::Validation(format!(
+            "post-apply image drifted: expected {expected_image}, observed {}",
+            observation.live.image_config_digest
+        )));
+    }
+    observation.supervisor.require_conformant()?;
+    require_typed_mounts(&observation.live.mounts)?;
+    let allowlist = convention::Allowlist::active_verified()?;
+    let (contract, _) =
+        allowlist.contract_and_image_for(expected_image, &observation.live.platform)?;
+    require_adoption_contract(
+        contract,
+        observation,
+        &plan.network,
+        &plan.genesis,
+        None,
+        None,
+    )?;
+    match plan.role {
+        Role::Relay if observation.live.has_forging_keys => Err(OuroError::Validation(
+            "relay gained forging keys during stateless apply".into(),
+        )),
+        Role::Bp if observation.live.kes_opcert_id.is_empty() => Err(OuroError::Validation(
+            "BP lost its operational certificate during stateless apply".into(),
+        )),
+        _ => Ok(()),
+    }
+}
+
+fn rollback_failure(operation: &str, primary: OuroError, rollback: Result<()>) -> OuroError {
+    match rollback {
+        Ok(()) => OuroError::Validation(format!(
+            "{operation} failed after mutation ({primary}); live-state rollback completed"
+        )),
+        Err(rollback_error) => OuroError::Validation(format!(
+            "{operation} failed after mutation ({primary}); rollback also failed ({rollback_error}) — operator reconciliation required"
+        )),
+    }
+}
+
+fn run_stateless_target_apply(args: &[String]) -> Result<()> {
+    validate_closed_args(
+        args,
+        &[
+            "--op", "--node", "--role", "--network", "--genesis", "--pool-id",
+            "--pool-spec-digest", "--min-online-relays", "--param", "--approved-candidate",
+        ],
+        &[],
+        &["--param"],
+    )?;
+    let approved = flag(args, "--approved-candidate")?;
+    if approved.len() != 64
+        || !approved.bytes().all(|byte| {
+            byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+        })
+    {
+        return Err(OuroError::Validation(
+            "--approved-candidate must be 64 lowercase hex characters".into(),
+        ));
+    }
+    let plan_args = without_value_flag(args, "--approved-candidate")?;
+    let initial = build_stateless_target_plan(&plan_args)?;
+    if initial.candidate_hash != approved {
+        return Err(OuroError::Validation(format!(
+            "approved candidate does not match current live state: approved={approved}, current={}",
+            initial.candidate_hash
+        )));
+    }
+
+    let payload_path = std::env::var_os("OURO_EPHEMERAL_PAYLOAD").map(PathBuf::from);
+    let expected_artifact = match initial.op.as_str() {
+        "kes-rotation/install-opcert" => Some((
+            crate::inbox::ArtifactType::Opcert,
+            initial.intent.payload.get("opcert").and_then(serde_json::Value::as_str)
+                .ok_or_else(|| OuroError::Validation("KES intent lost opcert reference".into()))?,
+        )),
+        "upgrade/preload-image" => Some((
+            crate::inbox::ArtifactType::Image,
+            initial.intent.payload.get("artifact").and_then(serde_json::Value::as_str)
+                .ok_or_else(|| OuroError::Validation("preload intent lost artifact reference".into()))?,
+        )),
+        _ => None,
+    };
+    let mut held_payload = None;
+    if let Some((kind, expected_ref)) = expected_artifact {
+        let path = payload_path.as_deref().ok_or_else(|| {
+            OuroError::Validation(format!(
+                "{} requires its reviewed public artifact in the sealed ephemeral payload",
+                initial.op
+            ))
+        })?;
+        let (file, preview) = crate::inbox::preview_source(kind, path)?;
+        if preview.artifact_ref != expected_ref {
+            return Err(OuroError::Validation(
+                "ephemeral artifact bytes do not match the candidate-bound reference".into(),
+            ));
+        }
+        if initial.op == "kes-rotation/install-opcert" {
+            validate_ephemeral_kes_candidate(&initial, path, expected_ref)?;
+        } else {
+            let target = initial.intent.payload.get("image").and_then(serde_json::Value::as_str)
+                .ok_or_else(|| OuroError::Validation("preload intent lost image digest".into()))?;
+            crate::inbox::require_single_docker_config(path, target)?;
+        }
+        held_payload = Some((file, path.to_path_buf()));
+    } else if payload_path.is_some() {
+        return Err(OuroError::Validation(
+            "this operation does not accept an ephemeral artifact".into(),
+        ));
+    }
+
+    // Artifact/domain checks can be expensive. Re-probe immediately afterwards and require the
+    // exact approved candidate again so all drift is detected before the first executor mutation.
+    let final_plan = build_stateless_target_plan(&plan_args)?;
+    if final_plan.candidate_hash != approved {
+        return Err(OuroError::Validation(
+            "live state changed after approval/artifact validation; no mutation executed".into(),
+        ));
+    }
+    let current_container = final_plan.observation.live.container_id.clone();
+    let current_image = final_plan.observation.live.image_config_digest.clone();
+
+    match final_plan.op.as_str() {
+        "runtime/restart" => {
+            crate::executor::run_argv(&[
+                "docker".into(), "restart".into(), current_container,
+            ])?;
+            let post = read_observation(&[])?;
+            require_stateless_post_contract(&final_plan, &post, &current_image)?;
+            stateless_readiness(&final_plan, &post, false)?;
+        }
+        "kes-rotation/install-opcert" => {
+            let (_, payload) = held_payload.as_ref().ok_or_else(|| {
+                OuroError::Validation("validated KES payload was not retained".into())
+            })?;
+            let backup = payload.with_file_name("node.cert.pre");
+            crate::executor::run_argv(&[
+                "docker".into(), "cp".into(),
+                format!("{current_container}:/opt/cardano/config/keys/node.cert"),
+                backup.display().to_string(),
+            ])?;
+            let commit = vec![
+                vec![
+                    "docker".into(), "cp".into(), payload.display().to_string(),
+                    format!("{current_container}:/opt/cardano/config/keys/node.cert"),
+                ],
+                vec!["docker".into(), "restart".into(), current_container.clone()],
+            ];
+            let rollback = || {
+                crate::executor::run_plan(&[
+                    vec![
+                        "docker".into(), "cp".into(), backup.display().to_string(),
+                        format!("{current_container}:/opt/cardano/config/keys/node.cert"),
+                    ],
+                    vec!["docker".into(), "restart".into(), current_container.clone()],
+                ])?;
+                let restored = read_observation(&[])?;
+                require_stateless_post_contract(&final_plan, &restored, &current_image)?;
+                stateless_readiness(&final_plan, &restored, false)?;
+                if restored.live.kes_opcert_id
+                    != final_plan.observation.live.kes_opcert_id
+                {
+                    return Err(OuroError::Validation(
+                        "KES rollback did not restore the prior opcert digest".into(),
+                    ));
+                }
+                Ok(())
+            };
+            if let Err(error) = crate::executor::run_plan(&commit) {
+                return Err(rollback_failure(&final_plan.op, error, rollback()));
+            }
+            let verify = (|| {
+                let post = read_observation(&[])?;
+                require_stateless_post_contract(&final_plan, &post, &current_image)?;
+                stateless_readiness(&final_plan, &post, false)?;
+                let expected = final_plan.intent.payload.get("opcert")
+                    .and_then(serde_json::Value::as_str).and_then(artifact_ref_digest)
+                    .ok_or_else(|| OuroError::Validation("KES artifact digest was lost".into()))?;
+                if post.live.kes_opcert_id != expected {
+                    return Err(OuroError::Validation(
+                        "installed opcert digest differs from the approved artifact".into(),
+                    ));
+                }
+                Ok(())
+            })();
+            if let Err(error) = verify {
+                return Err(rollback_failure(&final_plan.op, error, rollback()));
+            }
+        }
+        "upgrade/preload-image" => {
+            let (_, payload) = held_payload.as_ref().ok_or_else(|| {
+                OuroError::Validation("validated preload payload was not retained".into())
+            })?;
+            let target = final_plan.intent.payload.get("image").and_then(serde_json::Value::as_str)
+                .ok_or_else(|| OuroError::Validation("preload image digest was lost".into()))?;
+            let rollback = || {
+                crate::executor::run_rollback_plan(
+                    "upgrade/preload-image",
+                    &[vec!["docker".into(), "image".into(), "rm".into(), target.to_string()]],
+                )?;
+                crate::executor::require_image_absent(target)
+            };
+            let commit = crate::executor::run_argv(&[
+                "docker".into(), "load".into(), "--input".into(), payload.display().to_string(),
+            ]);
+            if let Err(error) = commit {
+                return Err(rollback_failure(&final_plan.op, error, rollback()));
+            }
+            if let Err(error) = crate::executor::require_image_present(target) {
+                return Err(rollback_failure(&final_plan.op, error, rollback()));
+            }
+        }
+        "upgrade/step" => {
+            let target = final_plan.intent.payload.get("image").and_then(serde_json::Value::as_str)
+                .ok_or_else(|| OuroError::Validation("upgrade image digest was lost".into()))?;
+            let recreate = final_plan.observation.recreate.as_ref().ok_or_else(|| {
+                OuroError::Validation("upgrade lost its live recreate specification".into())
+            })?;
+            let commit = crate::executor::recreate_argv(recreate, &current_container, target)?;
+            let rollback_plan =
+                crate::executor::recreate_argv(recreate, &recreate.name, &current_image)?;
+            let rollback = || {
+                crate::executor::run_rollback_plan("upgrade/step", &rollback_plan)?;
+                let restored = read_observation(&[])?;
+                require_stateless_post_contract(&final_plan, &restored, &current_image)?;
+                stateless_readiness(&final_plan, &restored, true)
+            };
+            if let Err(error) = crate::executor::run_plan(&commit) {
+                return Err(rollback_failure(
+                    &final_plan.op, error, rollback(),
+                ));
+            }
+            let verify = (|| {
+                let post = read_observation(&[])?;
+                if post.live.image_config_digest != target {
+                    return Err(OuroError::Validation(
+                        "upgrade did not land on the approved image digest".into(),
+                    ));
+                }
+                require_stateless_post_contract(&final_plan, &post, target)?;
+                stateless_readiness(&final_plan, &post, true)
+            })();
+            if let Err(error) = verify {
+                return Err(rollback_failure(
+                    &final_plan.op, error, rollback(),
+                ));
+            }
+        }
+        other => return Err(OuroError::Validation(format!(
+            "operation {other} has no stateless apply executor"
+        ))),
+    }
+
+    let mut result = ToolOutput::ok("ouro.op.apply", true).with_data(json!({
+        "op": final_plan.op,
+        "node": final_plan.node,
+        "candidate_hash": final_plan.candidate_hash,
+        "assurance": "approved_candidate_revalidated",
+        "recovery_model": "live postcondition verification with in-invocation rollback where an inverse exists",
+        "persistent_target_state_written": false,
+        "ephemeral_artifact_removed_by_transport": held_payload.is_some(),
+    }));
+    result.machine = Some(final_plan.node);
     output::print_json(&result)
+}
+
+fn run_stateless_target_status(args: &[String]) -> Result<()> {
+    validate_closed_args(
+        args,
+        &["--node", "--role", "--network", "--genesis", "--expect-allowlist"],
+        &[],
+        &[],
+    )?;
+    let node = flag(args, "--node")?;
+    crate::intent::validate_machine_id(node)?;
+    let role = match flag(args, "--role")? {
+        "bp" => Role::Bp,
+        "relay" => Role::Relay,
+        other => return Err(OuroError::Validation(format!(
+            "target status role must be bp|relay, got {other:?}"
+        ))),
+    };
+    let network = flag(args, "--network")?;
+    let genesis = flag(args, "--genesis")?;
+    validate_digest_selector("--genesis", &format!("sha256:{genesis}"))?;
+    let observation = read_observation(&[])?;
+    observation.supervisor.require_conformant()?;
+    require_typed_mounts(&observation.live.mounts)?;
+    let allowlist = convention::Allowlist::active_verified()?;
+    if allowlist.signed_digest()? != flag(args, "--expect-allowlist")? {
+        return Err(OuroError::Validation(
+            "fleet status runner policy differs from the control release".into(),
+        ));
+    }
+    let (contract, _) = allowlist.contract_and_image_for(
+        &observation.live.image_config_digest, &observation.live.platform,
+    )?;
+    require_adoption_contract(contract, &observation, network, genesis, None, None)?;
+    match role {
+        Role::Relay if contract.role_rules.relay.forbids_forging_keys
+            && observation.live.has_forging_keys => return Err(OuroError::Validation(
+                "pool spec declares relay but live node bears forging keys".into(),
+            )),
+        Role::Bp if contract.role_rules.bp.requires_opcert
+            && (observation.live.kes_opcert_id.is_empty()
+                || !observation.live.forging_key_permissions_safe) =>
+        {
+            return Err(OuroError::Validation(
+                "pool spec declares BP but live forging credentials are absent/unsafe".into(),
+            ));
+        }
+        _ => {}
+    }
+    let online = observation.readiness.as_ref().is_some_and(|evidence| {
+        crate::readiness::Readiness {
+            role,
+            node_running: evidence.node_running,
+            container_id_matches: !observation.live.container_id.is_empty(),
+            socket_answers: evidence.socket_answers,
+            network_ok: observation.live.network == network,
+            genesis_ok: observation.live.genesis_hash == genesis,
+            tip_block: evidence.tip_block,
+            tip_block_next: evidence.tip_block_next,
+            tip_synced: evidence.tip_synced,
+            kes_opcert_valid: evidence.kes_opcert_valid,
+            forging_credentials_ready: evidence.forging_credentials_ready,
+            established_peers: evidence.established_peers,
+        }.evaluate().is_ok()
+    });
+    let role_name = match role { Role::Bp => "bp", Role::Relay => "relay" };
+    output::print_json(&ToolOutput::ok("ouro.fleet.status", false).with_data(json!({
+        "node": node,
+        "role": role_name,
+        "network": observation.live.network,
+        "genesis_hash": observation.live.genesis_hash,
+        "host_key_sha256": observation.live.host_key_sha256,
+        "online": online,
+        "image_config_digest": observation.live.image_config_digest,
+        "state_generation": observation.live.container_creation_epoch,
+        "assurance": "live_observation",
+        "management_state": "not_required",
+    })))
 }
 
 fn stateless_observation_output(node: &str, observation: &Observation) -> ToolOutput {
@@ -2008,7 +2446,8 @@ fn run_op_inner(args: &[String]) -> Result<()> {
         args,
         &[
             "--op", "--node", "--param", "--confirm-token", "--dispatch", "--ssh-key",
-            "--spec", "--observation", "--expect-embedded", "--expect-allowlist", "--fleet-pool-id",
+            "--spec", "--candidate-hash", "--artifact-file", "--observation",
+            "--expect-embedded", "--expect-allowlist", "--fleet-pool-id",
             "--fleet-spec-digest", "--fleet-min-online-relays", "--fleet-permit",
         ],
         &["--plan", "--transport-plan", "--local"],
@@ -2036,6 +2475,15 @@ fn run_op_inner(args: &[String]) -> Result<()> {
         return Err(OuroError::Validation(
             "do not pass a fleet permit to --plan/--transport-plan; the final intent is planned \
              and approved first, then a 30-second live permit is minted last for immediate execution"
+                .into(),
+        ));
+    }
+    if plan
+        && (optional(args, "--candidate-hash").is_some()
+            || optional(args, "--artifact-file").is_some())
+    {
+        return Err(OuroError::Validation(
+            "--plan derives a fresh candidate and never accepts apply-only candidate/artifact flags"
                 .into(),
         ));
     }
@@ -2086,6 +2534,31 @@ fn run_op_inner(args: &[String]) -> Result<()> {
                 }
             }
             return dispatch_stateless_plan(host, &op, &node, args, &paths);
+        }
+    }
+
+    // S0020 p2-2: every dispatched non-deploy write is now control-authorized and executed by the
+    // ephemeral runner. It never falls through to the installed-CLI/attestation transaction path.
+    if op != "deploy/register-submit" {
+        if let Some(host) = optional(args, "--dispatch") {
+            for internal in [
+                "--local", "--observation", "--expect-embedded", "--expect-allowlist",
+            ] {
+                if args.iter().any(|arg| arg == internal) {
+                    return Err(OuroError::Validation(format!(
+                        "{internal} is target-internal and cannot be supplied to control dispatch"
+                    )));
+                }
+            }
+            return dispatch_stateless_apply(
+                host, &op, &node, args, &paths, transport_plan,
+            );
+        }
+        if !(cfg!(debug_assertions) && optional(args, "--observation").is_some()) {
+            return Err(OuroError::Validation(
+                "S0020 non-deploy operations require --dispatch and the ephemeral target runner; use the internal `target` command only in target-side tests"
+                    .into(),
+            ));
         }
     }
 
@@ -3086,18 +3559,23 @@ fn dispatch_stateless_observe(
     finish_ssh_dispatch("ouro.observe.dispatch", &out)
 }
 
-fn dispatch_stateless_plan(
+struct StatelessDispatchContext {
+    spec: PoolSpec,
+    machine: Machine,
+    pool_spec_digest: String,
+    pool_id: String,
+    target_args: Vec<String>,
+    key: PathBuf,
+}
+
+fn stateless_dispatch_context(
     host: &str,
     op: &str,
     node: &str,
     args: &[String],
     paths: &ConfigPaths,
-) -> Result<()> {
-    if optional(args, "--confirm-token").is_some() || optional(args, "--fleet-permit").is_some() {
-        return Err(OuroError::Validation(
-            "stateless --plan never accepts confirmation or fleet capabilities".into(),
-        ));
-    }
+    target_action: &str,
+) -> Result<StatelessDispatchContext> {
     let spec_path = flag(args, "--spec")?;
     let spec = PoolSpec::from_file(Path::new(spec_path))?;
     let machine = spec
@@ -3108,7 +3586,8 @@ fn dispatch_stateless_plan(
             OuroError::Validation(format!(
                 "target node {node:?} is not declared in pool spec {spec_path}"
             ))
-        })?;
+        })?
+        .clone();
     if machine.ssh.host != host {
         return Err(OuroError::Validation(format!(
             "dispatch host {host:?} does not match pool-spec host {:?} for {node}",
@@ -3157,7 +3636,7 @@ fn dispatch_stateless_plan(
     };
     let mut target_args = vec![
         "target".into(),
-        "plan".into(),
+        target_action.into(),
         "--op".into(),
         op.to_string(),
         "--node".into(),
@@ -3169,9 +3648,9 @@ fn dispatch_stateless_plan(
         "--genesis".into(),
         spec.pool.genesis_hashes.shelley.clone(),
         "--pool-id".into(),
-        pool_id,
+        pool_id.clone(),
         "--pool-spec-digest".into(),
-        pool_spec_digest,
+        pool_spec_digest.clone(),
         "--min-online-relays".into(),
         spec.upgrade.min_online_relays.to_string(),
     ];
@@ -3189,15 +3668,33 @@ fn dispatch_stateless_plan(
             index += 1;
         }
     }
+    Ok(StatelessDispatchContext {
+        spec, machine, pool_spec_digest, pool_id, target_args, key,
+    })
+}
+
+fn dispatch_stateless_plan(
+    host: &str,
+    op: &str,
+    node: &str,
+    args: &[String],
+    paths: &ConfigPaths,
+) -> Result<()> {
+    if optional(args, "--confirm-token").is_some() || optional(args, "--fleet-permit").is_some() {
+        return Err(OuroError::Validation(
+            "stateless --plan never accepts confirmation or fleet capabilities".into(),
+        ));
+    }
+    let context = stateless_dispatch_context(host, op, node, args, paths, "plan")?;
     let runner = crate::runner::linux_x86_64()?;
     let argv = crate::dispatch::ephemeral_runner_dispatch_argv(
         host,
-        machine.ssh.port,
+        context.machine.ssh.port,
         "cardano",
-        &key,
+        &context.key,
         &paths.known_hosts,
         &runner.sha256,
-        &target_args,
+        &context.target_args,
     )?;
     let out = crate::ssh::bounded_ssh_with_input(
         &argv,
@@ -3208,6 +3705,193 @@ fn dispatch_stateless_plan(
     )
     .map_err(|error| OuroError::Validation(format!("ssh dispatch failed: {error}")))?;
     finish_ssh_dispatch("ouro.op.plan.dispatch", &out)
+}
+
+fn dispatch_stateless_apply(
+    host: &str,
+    op: &str,
+    node: &str,
+    args: &[String],
+    paths: &ConfigPaths,
+    transport_plan: bool,
+) -> Result<()> {
+    let registered = crate::intent::lookup(op).ok_or_else(|| {
+        OuroError::Validation(format!("operation {op:?} is not in the typed registry"))
+    })?;
+    if registered.mutability == Mutability::Read || op == "deploy/register-submit" {
+        return Err(OuroError::Validation(format!(
+            "operation {op:?} is not a S0020 stateless apply"
+        )));
+    }
+    let candidate = flag(args, "--candidate-hash")?;
+    if candidate.len() != 64
+        || !candidate.bytes().all(|byte| {
+            byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+        })
+    {
+        return Err(OuroError::Validation(
+            "--candidate-hash must be the 64 lowercase hex value from the target plan".into(),
+        ));
+    }
+    let mut context = stateless_dispatch_context(host, op, node, args, paths, "apply")?;
+    context.target_args.push("--approved-candidate".into());
+    context.target_args.push(candidate.to_string());
+
+    let expected_artifact = match op {
+        "kes-rotation/install-opcert" => Some((
+            crate::inbox::ArtifactType::Opcert,
+            collect_params(args)?.get("opcert").and_then(serde_json::Value::as_str)
+                .ok_or_else(|| OuroError::Validation("KES intent lost opcert reference".into()))?
+                .to_string(),
+        )),
+        "upgrade/preload-image" => Some((
+            crate::inbox::ArtifactType::Image,
+            collect_params(args)?.get("artifact").and_then(serde_json::Value::as_str)
+                .ok_or_else(|| OuroError::Validation("preload intent lost artifact reference".into()))?
+                .to_string(),
+        )),
+        _ => None,
+    };
+    let payload = if let Some((kind, expected_ref)) = expected_artifact {
+        let artifact_path = flag(args, "--artifact-file")?;
+        let (file, preview) = crate::inbox::preview_source(kind, Path::new(artifact_path))?;
+        if preview.artifact_ref != expected_ref {
+            return Err(OuroError::Validation(
+                "--artifact-file bytes do not match the candidate-bound artifact reference".into(),
+            ));
+        }
+        let digest = artifact_ref_digest(&expected_ref)
+            .ok_or_else(|| OuroError::Validation("artifact reference lost its digest".into()))?
+            .to_string();
+        Some((file, preview, digest))
+    } else {
+        if optional(args, "--artifact-file").is_some() {
+            return Err(OuroError::Validation(
+                "--artifact-file is accepted only for KES install or image preload".into(),
+            ));
+        }
+        None
+    };
+
+    let runner = crate::runner::linux_x86_64()?;
+    let argv = if let Some((_, preview, digest)) = &payload {
+        crate::dispatch::ephemeral_runner_payload_dispatch_argv(
+            host,
+            context.machine.ssh.port,
+            "cardano",
+            &context.key,
+            &paths.known_hosts,
+            crate::dispatch::EphemeralPayloadInput {
+                runner_sha256: &runner.sha256,
+                runner_size: runner.bytes.len(),
+                payload_sha256: digest,
+                payload_size: preview.size_bytes,
+            },
+            &context.target_args,
+        )?
+    } else {
+        crate::dispatch::ephemeral_runner_dispatch_argv(
+            host, context.machine.ssh.port, "cardano", &context.key,
+            &paths.known_hosts, &runner.sha256, &context.target_args,
+        )?
+    };
+    if transport_plan {
+        output::print_json(
+            &ToolOutput::ok("ouro.op.apply.dispatch.transport_plan", false).with_data(json!({
+                "op": op,
+                "node": node,
+                "target": host,
+                "principal": "cardano",
+                "candidate_hash": candidate,
+                "runner": {
+                    "platform": runner.platform,
+                    "sha256": runner.sha256,
+                    "size_bytes": runner.bytes.len(),
+                    "source": "control_build",
+                },
+                "artifact": payload.as_ref().map(|(_, preview, _)| json!({
+                    "artifact_ref": preview.artifact_ref,
+                    "size_bytes": preview.size_bytes,
+                    "transport": "same one-shot private stream after runner bytes",
+                })),
+                "ssh_argv": argv,
+                "target_validated": false,
+                "approval_consumed": false,
+                "persistent_target_install": false,
+                "note": "transport-only inspection; no SSH session or mutation ran",
+            })),
+        )?;
+        return Ok(());
+    }
+
+    let secret = crate::confirm::load_or_create_secret(&paths.tool_run_secret)?;
+    let token = flag(args, "--confirm-token")?;
+    let diff = format!("{op} on {node}");
+    let confirmation = crate::s0019_confirmation::verify(
+        token, candidate, &diff, secret.trim().as_bytes(),
+        crate::s0019_confirmation::current_epoch()?,
+    )?;
+
+    let fleet_sensitive = registered.touched.iter().any(|resource| {
+        matches!(*resource, "container:restart" | "container:recreate")
+    });
+    if fleet_sensitive {
+        let raw = flag(args, "--fleet-permit")?;
+        let permit: crate::fleet::StepPermit = serde_json::from_str(raw)
+            .map_err(|error| OuroError::Validation(format!("malformed fleet permit: {error}")))?;
+        let role = match context.machine.role { MachineRole::Bp => "bp", MachineRole::Relay => "relay" };
+        let target_image = if op == "upgrade/step" {
+            collect_params(args)?.get("image").and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        } else { None };
+        let expected = crate::fleet::PermitExpectation {
+            pool_id: context.pool_id.clone(),
+            pool_spec_digest: context.pool_spec_digest.clone(),
+            node_id: node.to_string(),
+            operation_id: op.to_string(),
+            role: role.into(),
+            target_image,
+            min_online_relays: context.spec.upgrade.min_online_relays,
+            network: context.spec.pool.network.as_str().into(),
+            genesis_hash: context.spec.pool.genesis_hashes.shelley.clone(),
+            target_host_key_sha256: pinned_ed25519_host_key(
+                host, context.machine.ssh.port, &paths.known_hosts,
+            )?,
+            intent_hash: candidate.to_string(),
+        };
+        permit.verify(
+            &expected, secret.trim().as_bytes(),
+            crate::s0019_confirmation::current_epoch()?,
+        )?;
+        permit.require_live_relay_quorum()?;
+    } else if optional(args, "--fleet-permit").is_some() {
+        return Err(OuroError::Validation(
+            "this non-disruptive operation does not accept a fleet permit".into(),
+        ));
+    }
+
+    // The local lock serializes verification + durable single-use consumption + the SSH apply.
+    // Target state remains only Docker/filesystem truth; no remote Ouro lock/journal is created.
+    let _control_lock = crate::gate::NodeLock::acquire(
+        &paths.home.join("stateless-control/locks"), node, &format!("apply-{candidate}"),
+    )?;
+    crate::s0019_confirmation::consume(
+        &paths.home.join("stateless-control/confirm-used").join(format!("{node}.log")),
+        &confirmation,
+    )?;
+
+    let out = if let Some((file, _, _)) = payload {
+        crate::ssh::bounded_ssh_with_payload(
+            &argv, &runner.bytes, file, std::time::Duration::from_secs(15 * 60),
+            256 * 1024, "ephemeral stateless artifact apply SSH dispatch",
+        )
+    } else {
+        crate::ssh::bounded_ssh_with_input(
+            &argv, &runner.bytes, std::time::Duration::from_secs(15 * 60),
+            256 * 1024, "ephemeral stateless apply SSH dispatch",
+        )
+    }.map_err(|error| OuroError::Validation(format!("ssh dispatch failed: {error}")))?;
+    finish_ssh_dispatch("ouro.op.apply.dispatch", &out)
 }
 
 /// p6-3 — SSH-dispatch `adopt` to the target (as the bootstrap account), running `adopt --local`
@@ -3378,6 +4062,92 @@ fn parse_cardano_cli_json(raw: &[u8], context: &str) -> Result<serde_json::Value
     serde_json::from_str(&text[start..]).map_err(|error| {
         OuroError::Validation(format!("{context} has malformed or trailing JSON: {error}"))
     })
+}
+
+/// Deep validation for the public opcert carried only by the current ephemeral invocation. It
+/// binds the candidate bytes to the live BP's public KES verification key and protocol window;
+/// neither the KES signing key nor cold key is opened or transported.
+fn validate_ephemeral_kes_candidate(
+    plan: &StatelessTargetPlan,
+    path: &Path,
+    reference: &str,
+) -> Result<crate::kes::ParsedOperationalCertificate> {
+    let digest = artifact_ref_digest(reference).ok_or_else(|| {
+        OuroError::Validation("KES intent has a malformed artifact reference".into())
+    })?;
+    if digest == plan.observation.live.kes_opcert_id {
+        return Err(OuroError::Validation(
+            "KES artifact is identical to the currently running opcert — replay refused".into(),
+        ));
+    }
+    let bytes = std::fs::read(path)?;
+    let parsed = crate::kes::parse_operational_certificate(&bytes)?;
+    let container = plan.observation.live.container_id.as_str();
+    let vkey_output = std::process::Command::new("docker")
+        .args([
+            "exec", container, "sh", "-c",
+            "test -f /opt/cardano/config/keys/kes.vkey && head -c 65537 /opt/cardano/config/keys/kes.vkey",
+        ])
+        .output()
+        .map_err(|error| OuroError::Validation(format!("cannot read public KES vkey: {error}")))?;
+    if !vkey_output.status.success() || vkey_output.stdout.len() > 65_536 {
+        return Err(OuroError::Validation(
+            "matching public /opt/cardano/config/keys/kes.vkey is required before KES apply".into(),
+        ));
+    }
+    let public_vkey = crate::kes::parse_kes_verification_key(&vkey_output.stdout)?;
+    if public_vkey != parsed.hot_kes_verification_key {
+        return Err(OuroError::Validation(
+            "opcert hot KES key does not match the target's public kes.vkey — refused".into(),
+        ));
+    }
+    let mut command = std::process::Command::new("docker");
+    command.args([
+        "exec", "-i", container, "cardano-cli", "query", "kes-period-info",
+        "--socket-path", "/ipc/node.socket", "--op-cert-file", "/dev/stdin", "--output-json",
+    ]);
+    match plan.network.as_str() {
+        "mainnet" => { command.arg("--mainnet"); }
+        "preprod" => { command.args(["--testnet-magic", "1"]); }
+        "preview" => { command.args(["--testnet-magic", "2"]); }
+        network => return Err(OuroError::Validation(format!("unsupported KES network {network}"))),
+    }
+    let mut child = command
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|error| OuroError::Validation(format!(
+            "cannot run cardano-cli KES validation: {error}"
+        )))?;
+    child.stdin.take().ok_or_else(|| {
+        OuroError::Validation("KES validator has no stdin".into())
+    })?.write_all(&bytes)?;
+    let output = child.wait_with_output()?;
+    if output.stdout.len() > 65_536 || output.stderr.len() > 65_536 || !output.status.success() {
+        return Err(OuroError::Validation(format!(
+            "cardano-cli rejected the prospective opcert: {}",
+            String::from_utf8_lossy(&output.stderr).chars().take(2048).collect::<String>()
+        )));
+    }
+    let facts = parse_cardano_cli_json(&output.stdout, "cardano-cli KES result")?;
+    let current = json_u64(&facts, "qKesCurrentKesPeriod")?;
+    let start = json_u64(&facts, "qKesStartKesInterval")?;
+    let end = json_u64(&facts, "qKesEndKesInterval")?;
+    let on_disk = json_u64(&facts, "qKesOnDiskOperationalCertificateNumber")?;
+    let node_state = json_u64(&facts, "qKesNodeStateOperationalCertificateNumber")?;
+    if parsed.counter != on_disk
+        || parsed.kes_period != start
+        || current < start
+        || current >= end
+        || on_disk < node_state
+        || on_disk > node_state.saturating_add(1)
+    {
+        return Err(OuroError::Validation(format!(
+            "prospective opcert is stale/out-of-period/inconsistent: counter={on_disk}, node_state={node_state}, period={start}..{end}, current={current}"
+        )));
+    }
+    Ok(parsed)
 }
 
 /// Validate a staged PUBLIC opcert against the target's PUBLIC KES vkey and live protocol state.

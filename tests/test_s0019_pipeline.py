@@ -55,8 +55,10 @@ def obs(home, **over):
     return str(p)
 
 
-def run(home, *args, path=None):
+def run(home, *args, path=None, env_extra=None):
     env = dict(os.environ, OURO_HOME=home)
+    if env_extra:
+        env.update(env_extra)
     if path:
         env["PATH"] = f"{path}:{env['PATH']}"
     r = subprocess.run([str(BIN), *args], env=env, text=True, capture_output=True)
@@ -95,29 +97,31 @@ def fleet_permit(home, operation, intent_hash):
     fakebin = Path(home) / "fleet-fakebin"
     fakebin.mkdir(exist_ok=True)
     status = {
-        "tool": "ouro.op.read", "machine": None, "status": "ok", "changed": False,
+        "tool": "ouro.fleet.status", "machine": None, "status": "ok", "changed": False,
         "checks": [], "duration_s": 0.0, "audit_id": None,
-        "data": {"op": "fleet/status", "node": "NODE", "intent_hash": "a" * 64,
-                 "result": {"node": "NODE", "role": "ROLE", "online": True,
-                            "network": "preprod",
-                            "genesis_hash": GENESIS,
-                            "host_key_sha256": HOST_KEY,
-                            "image_config_digest": cfg_digest(), "state_generation": 0}},
+        "data": {"node": "NODE", "role": "ROLE", "online": True,
+                 "network": "preprod", "genesis_hash": GENESIS,
+                 "host_key_sha256": HOST_KEY,
+                 "image_config_digest": cfg_digest(), "state_generation": 0},
     }
     bp = json.dumps(status).replace('"NODE"', '"bp1"').replace('"ROLE"', '"bp"')
     relay = json.dumps(status).replace('"NODE"', '"relay1"').replace('"ROLE"', '"relay"')
     fake_ssh = fakebin / "ssh"
     fake_ssh.write_text(
         "#!/bin/sh\n"
-        f"case \"$*\" in *ouro-op@10.0.0.10*) printf '%s\\n' '{bp}';; "
+        "dd of=/dev/null bs=65536 2>/dev/null\n"
+        f"case \"$*\" in *cardano@10.0.0.10*) printf '%s\\n' '{bp}';; "
         f"*) printf '%s\\n' '{relay}';; esac\n"
     )
     fake_ssh.chmod(0o700)
+    runner = Path(home) / "fleet-runner"
+    runner.write_bytes(b"fleet-runner")
     _, out = run(home, "fleet", "permit", "create", "--spec",
                  str(ROOT / "examples/pool-spec.minimal.yaml"),
                  "--node", "bp1", "--op", operation,
                  "--intent-hash", intent_hash, "--min-online-relays", "1",
-                 "--holder", "testctl", path=fakebin)
+                 "--holder", "testctl", path=fakebin,
+                 env_extra={"OURO_EPHEMERAL_RUNNER": str(runner)})
     assert out["status"] == "ok", out
     assert out["data"]["facts"]["source"] == "target-validated-live-snapshot", out
     return out["data"]["fleet_permit"]
