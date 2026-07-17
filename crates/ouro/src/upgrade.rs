@@ -12,13 +12,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{OuroError, Result};
 
-/// Signed transition metadata for one N→N+1 hop (verified against the release key like the
-/// allowlist; embedded-trusted until the S0018 feed exists).
-#[derive(Debug, Clone, Deserialize, Serialize)]
+/// Signed transition metadata for one adjacent runtime hop (verified against the release key like
+/// the allowlist). Adjacency is the presence of this exact directed digest edge in signed policy;
+/// layout convention versions remain independent because multiple node releases can share one
+/// stable container contract.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct TransitionMeta {
-    pub from_convention_version: u32,
-    pub to_convention_version: u32,
     pub from_image_config_digest: String,
     pub to_image_config_digest: String,
     /// The new node can read the old chain DB unchanged (N data → N+1 runtime).
@@ -72,28 +72,29 @@ pub fn failure_outcome(meta: &TransitionMeta) -> FailureOutcome {
     }
 }
 
-/// Validate a transition before starting: it must be exactly N→N+1, and the target image must be
-/// on the allowlist (§2.1). Returns an error a rollout must not proceed past.
+/// Validate a selected transition before starting. The exact directed edge is the signed N→N+1
+/// authority; both endpoints must be allowlisted even when they share one layout convention.
 pub fn validate_transition(
     meta: &TransitionMeta,
     allowlist: &crate::convention::Allowlist,
     platform: &str,
 ) -> Result<()> {
-    if meta.to_convention_version != meta.from_convention_version + 1 {
-        return Err(OuroError::Validation(format!(
-            "only N→N+1 transitions are supported (got {}→{}) (§2.10)",
-            meta.from_convention_version, meta.to_convention_version
-        )));
-    }
-    let from = allowlist.contract_for(&meta.from_image_config_digest, platform)?;
-    let to = allowlist.contract_for(&meta.to_image_config_digest, platform)?;
-    if from.convention_version != meta.from_convention_version
-        || to.convention_version != meta.to_convention_version
-    {
+    if meta.from_image_config_digest == meta.to_image_config_digest {
         return Err(OuroError::Validation(
-            "upgrade transition versions do not match the signed layout contracts".into(),
+            "runtime transition must change the exact image config digest (§2.10)".into(),
         ));
     }
+    let signed = allowlist.transition_for(
+        &meta.from_image_config_digest,
+        &meta.to_image_config_digest,
+    )?;
+    if signed != meta {
+        return Err(OuroError::Validation(
+            "runtime transition metadata does not match the signed directed edge (§2.10)".into(),
+        ));
+    }
+    allowlist.contract_for(&meta.from_image_config_digest, platform)?;
+    allowlist.contract_for(&meta.to_image_config_digest, platform)?;
     if !meta.db_forward_compatible {
         return Err(OuroError::Validation(
             "N+1 cannot read the existing chain DB; an in-place step is unsupported".into(),
@@ -108,8 +109,6 @@ mod tests {
 
     fn meta() -> TransitionMeta {
         TransitionMeta {
-            from_convention_version: 1,
-            to_convention_version: 2,
             from_image_config_digest: "sha256:old".into(),
             to_image_config_digest: "sha256:new".into(),
             db_forward_compatible: true,
@@ -141,13 +140,26 @@ mod tests {
     }
 
     #[test]
-    fn only_n_to_n_plus_1_and_allowlisted_target() {
+    fn exact_edge_must_change_digest_and_use_allowlisted_endpoints() {
         let mut m = meta();
-        m.to_convention_version = 3; // skips a version
+        m.to_image_config_digest = m.from_image_config_digest.clone();
         let allow = crate::convention::Allowlist::embedded().unwrap();
-        assert!(validate_transition(&m, &allow, "linux/amd64").is_err(), "N→N+2 refused");
-        // N→N+1 but a non-allowlisted target image → refused.
+        assert!(
+            validate_transition(&m, &allow, "linux/amd64").is_err(),
+            "self transition refused"
+        );
+        // An exact edge with a non-allowlisted target image is refused.
         let m2 = meta();
-        assert!(validate_transition(&m2, &allow, "linux/amd64").is_err(), "unknown target image refused");
+        assert!(
+            validate_transition(&m2, &allow, "linux/amd64").is_err(),
+            "unknown target image refused"
+        );
+
+        let mut signed = allow.transitions[0].clone();
+        signed.db_backward_compatible = !signed.db_backward_compatible;
+        assert!(
+            validate_transition(&signed, &allow, "linux/amd64").is_err(),
+            "metadata differing from the signed edge refused"
+        );
     }
 }

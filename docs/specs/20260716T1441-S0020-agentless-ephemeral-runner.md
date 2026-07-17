@@ -935,3 +935,56 @@ no target state is destroyed merely to test the new path.
   --workspace --all-targets -- -D warnings`, current static Linux runner build, embedded manifest
   verification and `git diff --check` pass. Production Ed25519 policy still has no N→N+1 transition,
   so real activation correctly remains unavailable until a separately reviewed policy release.
+
+## 22. Signed Runtime Upgrade Policy Release (append-only)
+- 2026-07-17T18:13+0800 change request: update the production allowlist after reviewing current
+  Blink Labs releases. Retain live `10.5.4-1` and target `11.0.1-1`; add only final linux/amd64
+  `10.6.4-1` and `10.7.1-3` OCI identities. Exclude superseded `10.6.3-1`, `10.7.1-1/-2`, mutable
+  tags and prereleases. Authorize only reviewed adjacent edges, never allowlist membership alone.
+- [x] p4-14 decouple immutable image-to-image runtime transitions from the stable Docker layout
+  convention, publish signed allowlist v3 with the four-version support window and adjacent upgrade
+  graph, and prove signature, policy selection, refusal and sealed Upgrade behavior without touching
+  production hosts.
+- ERTC-38 data model: a transition is an exact directed pair of allowlisted image config digests;
+  it no longer fabricates a layout convention bump when entrypoint, paths and role rules remain the
+  same. Self-loops, duplicate edges, unknown images and a non-forward-compatible selected edge fail
+  closed.
+- ERTC-39 release policy: allowlist v3 retains exact `10.5.4-1` and `11.0.1-1` OCI tuples, adds exact
+  linux/amd64 `10.6.4-1` and `10.7.1-3` tuples, and contains only the directed chain
+  `10.5.4-1 → 10.6.4-1 → 10.7.1-3 → 11.0.1-1`. Direct skips and reverse edges refuse.
+- ERTC-40 custody and integrity: the strict release candidate is signed atomically by the existing
+  macOS Keychain authority whose public key matches the pinned verifier. No private material is
+  accepted through argv/stdin, printed, written to the repository or read from 1Password; tamper,
+  wrong-key and anti-rollback tests pass.
+- ERTC-41 Upgrade behavior: sealed plans accept each exact adjacent edge under the unchanged Blink
+  layout contract; target digest and full signed transition remain candidate-bound. Unknown,
+  skipped, reverse or byte-swapped policy/archive inputs refuse before mutation, while existing
+  preload/activation/rollback/forward-recovery acceptance remains green.
+- ERTC-42 quality: policy/source tests, sealed Upgrade test, full Rust/Python/web regression,
+  warning-free Clippy, current static Linux runner/control rebuild, manifest verification and
+  `git diff --check` pass. No production image is loaded and no production container is restarted or
+  recreated; the operator-owned root `pool-spec.yaml` remains unread and untouched.
+- 2026-07-17T23:17+0800 p4-14 completed. `data/allowlist.json` v3 was atomically signed by the
+  existing Keychain Ed25519 authority; signer inspection validated canonical SHA-256
+  `3c8976983a442a3a5c8b7c0da9fe3bc74fb8c845f9289ac26de1b249e9ede4a9` against the pinned release
+  verifier without accessing 1Password or exposing private material.
+- ERTC-38/39 | stack: Rust policy + signed release | result: pass | note: all four linux/amd64 image
+  config digests resolve to the same convention v1 contract; the signed graph contains exactly
+  `10.5.4-1 → 10.6.4-1 → 10.7.1-3 → 11.0.1-1`. Duplicate/self/unknown edges fail validation, while
+  direct `10.5.4-1 → 11.0.1-1` and reverse selection refuse. The first edge is honestly marked
+  forward-only because exact-version rollback evidence is absent; the two later edges authorize
+  rollback.
+- ERTC-40/41 | stack: release signer + sealed Upgrade executor | commands:
+  `ouro-allowlist-signer inspect --input data/allowlist.json`; `python3
+  tests/test_s0020_upgrade_workflow.py`; `python3 tests/test_s0020_stateless_plan.py`; `python3
+  tests/test_s0020_stateless_apply.py` | result: pass | note: each adjacent production edge produced
+  a candidate-bound plan under the stable layout contract, while skipped and reverse edges refused
+  before an executor ran. Existing preload, activation, rollback and forward-recovery cases remain
+  green.
+- ERTC-42 | stack: full regression/build | commands: `cargo test --workspace`; `make python-test`;
+  `cargo clippy --workspace --all-targets -- -D warnings`; `cargo zigbuild --release --target
+  x86_64-unknown-linux-musl -p ouro`; `cargo build -p ouro`; `ouro-ops manifest verify --against
+  packaging/bundle-manifest.json`; `git diff --check` | result: pass | note: 187 Rust tests, all
+  Python/Skill/website gates, warning-free lint, a statically linked x86-64 runner, current embedded
+  control policy and manifest integrity passed. No production host was contacted or mutated, and
+  root `pool-spec.yaml` remained unread and untouched.

@@ -1,6 +1,6 @@
 {
-  "allowlist_version": 2,
-  "signature": "ed25519:77fbad082cf45f2b2e15cd793a03583c9ba02f024f4f6c2711fd4547a3d7f3f7c3ce662522f569113d13ad82f9b9b29193224a5b21d1588d6f26c9c482488701",
+  "allowlist_version": 3,
+  "signature": "ed25519:afcc9d7716e28026718446f2d35798e97f2c667120835fbf24c7deb3ae56de1819065f862c206d3395a7f0641a3190a21c38548afea828e560aecfb05d57f200",
   "contracts": [
     {
       "convention_version": 1,
@@ -41,10 +41,44 @@
           "oci_index_digest": "sha256:6de965784be4134deccb94ca8d92c11dfb3e140a9d0616210f29a1836fdb13d7",
           "platform_manifest_digest": "sha256:e4f7b5e761b0c739ebb4bd40359415817bfd782fcd4f427de0e1fa3109295983",
           "image_config_digest": "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a"
+        },
+        {
+          "platform": "linux/amd64",
+          "oci_index_digest": "sha256:29154a16decd311c92f60219dca1a6b212e874b0e665b250f0e8d4ce945e7de8",
+          "platform_manifest_digest": "sha256:8efeca0ecc75c2b574436fd8c7e4f5c3411261b2330082d2f43d863ce8472c65",
+          "image_config_digest": "sha256:0fb74b5921860a6547ce5b6c669d59b71169d1c48b014f2fafcec2e4d382f1b3"
+        },
+        {
+          "platform": "linux/amd64",
+          "oci_index_digest": "sha256:ca12bcb51dece451eeb418c625fc0c5fd7b10c4d7bb46a1ecaf6fa80f4798aab",
+          "platform_manifest_digest": "sha256:f4f5b2dfadb89c4c64c2c120918fdf50edcf2b7555089c166e0a09473655cd9b",
+          "image_config_digest": "sha256:5fe0bf791a0af8884386479555996bf4ad7621493889625a2886039bf8734e51"
         }
       ]
     }
   ],
   "denylist": [],
-  "transitions": []
+  "transitions": [
+    {
+      "from_image_config_digest": "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a",
+      "to_image_config_digest": "sha256:0fb74b5921860a6547ce5b6c669d59b71169d1c48b014f2fafcec2e4d382f1b3",
+      "db_forward_compatible": true,
+      "db_backward_compatible": false,
+      "snapshot_taken": false
+    },
+    {
+      "from_image_config_digest": "sha256:0fb74b5921860a6547ce5b6c669d59b71169d1c48b014f2fafcec2e4d382f1b3",
+      "to_image_config_digest": "sha256:5fe0bf791a0af8884386479555996bf4ad7621493889625a2886039bf8734e51",
+      "db_forward_compatible": true,
+      "db_backward_compatible": true,
+      "snapshot_taken": false
+    },
+    {
+      "from_image_config_digest": "sha256:5fe0bf791a0af8884386479555996bf4ad7621493889625a2886039bf8734e51",
+      "to_image_config_digest": "sha256:0bb21e45159327c4e6109704df256c3c297c725a4b2cdf6d0e1899e3a9df468f",
+      "db_forward_compatible": true,
+      "db_backward_compatible": true,
+      "snapshot_taken": false
+    }
+  ]
 }

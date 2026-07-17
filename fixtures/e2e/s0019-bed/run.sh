@@ -158,16 +158,10 @@ a["allowlist_version"] = 2
 c1 = a["contracts"][0]
 base = c1["allowed"][0]
 base["image_config_digest"] = v1; base["oci_index_digest"] = v1; base["platform_manifest_digest"] = v1
-c1["allowed"] = [base]
-c2 = json.loads(json.dumps(c1))
-c2["convention_version"] = c1["convention_version"] + 1
-c2["contract_id"] = c1["contract_id"] + "-v2"
 nxt = json.loads(json.dumps(base)); nxt["image_config_digest"] = v2; nxt["oci_index_digest"] = v2; nxt["platform_manifest_digest"] = v2
-c2["allowed"] = [nxt]
-a["contracts"] = [c1, c2]
+c1["allowed"] = [base, nxt]
+a["contracts"] = [c1]
 a["transitions"] = [{
-  "from_convention_version": c1["convention_version"],
-  "to_convention_version": c2["convention_version"],
   "from_image_config_digest": v1, "to_image_config_digest": v2,
   "db_forward_compatible": True, "db_backward_compatible": True,
   "snapshot_taken": False,

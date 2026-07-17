@@ -82,21 +82,12 @@ def write_allowlist(path, old_image, target_image, backward_compatible):
                 "contract_id": "blinklabs-cardano-node-v1",
                 "in_container_paths": paths,
                 "role_rules": role_rules,
-                "allowed": [allowed_old],
-            },
-            {
-                "convention_version": 2,
-                "contract_id": "blinklabs-cardano-node-v2",
-                "in_container_paths": paths,
-                "role_rules": role_rules,
-                "allowed": [allowed_target],
+                "allowed": [allowed_old, allowed_target],
             },
         ],
         "denylist": [],
         "transitions": [
             {
-                "from_convention_version": 1,
-                "to_convention_version": 2,
                 "from_image_config_digest": old_image,
                 "to_image_config_digest": target_image,
                 "db_forward_compatible": True,
@@ -274,6 +265,31 @@ def step_apply(home, env, fakebin, candidate, target_image, port, *, relays_rema
 
 def mutation_commands(log):
     return [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
+
+
+def production_step_plan(home, old_image, target_image):
+    home.mkdir()
+    state, probe, fakebin = write_sealed_runtime(home, old_image, target_image)
+    reset_state(state, old_image, target_image, target_present=True)
+    env = {
+        "OURO_PROBE_LIB": str(probe),
+        "OURO_TEST_BASE_OBSERVATION": str(home / "base-observation.json"),
+        "OURO_TEST_RUNTIME_STATE": str(state),
+        "OURO_TEST_DOCKER_LOG": str(home / "docker.log"),
+        "OURO_READINESS_SAMPLE_DELAY": "0",
+    }
+    return invoke(
+        home,
+        *target_args(
+            "upgrade/step",
+            "--param",
+            "machine=bp1",
+            "--param",
+            f"image={target_image}",
+        ),
+        env_extra=env,
+        path=fakebin,
+    )
 
 
 def main():
@@ -501,6 +517,41 @@ def main():
         assert forward_state["previous"]["image"] == old_image
         commands = mutation_commands(docker_log)
         assert ["start", "cardano-node"] not in commands
+
+        # The production Ed25519 policy authorizes each reviewed adjacent runtime edge while all
+        # releases retain the same Blink layout contract. Direct skips and reverse edges fail at
+        # the target plan boundary before any executor can run.
+        production = json.loads((ROOT / "data/allowlist.json").read_text())
+        assert production["allowlist_version"] == 3
+        assert len(production["contracts"]) == 1
+        assert production["contracts"][0]["convention_version"] == 1
+        transitions = production["transitions"]
+        assert len(transitions) == 3
+        for index, transition in enumerate(transitions):
+            completed, value = production_step_plan(
+                home / f"production-edge-{index}",
+                transition["from_image_config_digest"],
+                transition["to_image_config_digest"],
+            )
+            assert completed.returncode == 0, (completed, value)
+            assert value["data"]["upgrade_transition"] == transition
+            assert value["data"]["runtime_policy"]["contract_id"] == "blinklabs-cardano-node-v1"
+
+        first = transitions[0]["from_image_config_digest"]
+        final = transitions[-1]["to_image_config_digest"]
+        skipped, skipped_value = production_step_plan(
+            home / "production-skip", first, final
+        )
+        assert skipped.returncode != 0
+        assert "allowlisting images alone is insufficient" in json.dumps(skipped_value)
+
+        reverse_from = transitions[-1]["to_image_config_digest"]
+        reverse_to = transitions[-1]["from_image_config_digest"]
+        reversed_result, reversed_value = production_step_plan(
+            home / "production-reverse", reverse_from, reverse_to
+        )
+        assert reversed_result.returncode != 0
+        assert "allowlisting images alone is insufficient" in json.dumps(reversed_value)
 
     print("S0020 single-prompt Upgrade sealed workflow passed")
 

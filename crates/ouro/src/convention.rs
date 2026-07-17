@@ -323,14 +323,19 @@ impl Allowlist {
         if self.denylist.iter().any(|digest| !valid_digest(digest)) {
             return Err(OuroError::Validation("allowlist denylist has a malformed digest".into()));
         }
+        let mut edges = HashSet::new();
         for transition in &self.transitions {
-            if images.get(transition.from_image_config_digest.as_str())
-                != Some(&transition.from_convention_version)
-                || images.get(transition.to_image_config_digest.as_str())
-                    != Some(&transition.to_convention_version)
+            if transition.from_image_config_digest == transition.to_image_config_digest
+                || !images.contains_key(transition.from_image_config_digest.as_str())
+                || !images.contains_key(transition.to_image_config_digest.as_str())
+                || !edges.insert((
+                    transition.from_image_config_digest.as_str(),
+                    transition.to_image_config_digest.as_str(),
+                ))
             {
                 return Err(OuroError::Validation(
-                    "allowlist transition does not reference the declared contract versions".into(),
+                    "allowlist transitions must be unique directed edges between distinct declared image config digests"
+                        .into(),
                 ));
             }
         }
@@ -484,11 +489,8 @@ mod tests {
         let a = Allowlist::embedded().expect("embedded allowlist parses");
         assert!(a.signature.starts_with("ed25519:"));
         assert!(!a.contracts.is_empty());
-        assert_eq!(a.allowlist_version, 2);
-        assert!(
-            a.transitions.is_empty(),
-            "baseline admission is not an upgrade transition"
-        );
+        assert_eq!(a.allowlist_version, 3);
+        assert_eq!(a.transitions.len(), 3, "only the reviewed adjacent graph");
         // The blinklabs baseline contract is present with the standard layout.
         let c = &a.contracts[0];
         assert_eq!(c.in_container_paths.socket, "/ipc/node.socket");
@@ -510,6 +512,51 @@ mod tests {
         assert_eq!(
             live.platform_manifest_digest,
             "sha256:e4f7b5e761b0c739ebb4bd40359415817bfd782fcd4f427de0e1fa3109295983"
+        );
+
+        let v105 = "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a";
+        let v106 = "sha256:0fb74b5921860a6547ce5b6c669d59b71169d1c48b014f2fafcec2e4d382f1b3";
+        let v107 = "sha256:5fe0bf791a0af8884386479555996bf4ad7621493889625a2886039bf8734e51";
+        let v110 = "sha256:0bb21e45159327c4e6109704df256c3c297c725a4b2cdf6d0e1899e3a9df468f";
+        for (config, index, manifest) in [
+            (
+                v106,
+                "sha256:29154a16decd311c92f60219dca1a6b212e874b0e665b250f0e8d4ce945e7de8",
+                "sha256:8efeca0ecc75c2b574436fd8c7e4f5c3411261b2330082d2f43d863ce8472c65",
+            ),
+            (
+                v107,
+                "sha256:ca12bcb51dece451eeb418c625fc0c5fd7b10c4d7bb46a1ecaf6fa80f4798aab",
+                "sha256:f4f5b2dfadb89c4c64c2c120918fdf50edcf2b7555089c166e0a09473655cd9b",
+            ),
+            (
+                v110,
+                "sha256:d5ede07a890e9b6a0a5182cdba9dbaf73756336762235e0934a11690beedae02",
+                "sha256:337e621185510eb7ca9ecbd33e2083d538b85d11373a19bec6a64f6b4325cee7",
+            ),
+        ] {
+            let (_, image) = a
+                .contract_and_image_for(config, "linux/amd64")
+                .expect("reviewed OCI tuple is admitted");
+            assert_eq!(image.oci_index_digest, index);
+            assert_eq!(image.platform_manifest_digest, manifest);
+        }
+        for digest in [v105, v106, v107, v110] {
+            let contract = a
+                .contract_for(digest, "linux/amd64")
+                .expect("reviewed release is allowlisted");
+            assert_eq!(
+                contract.convention_version, 1,
+                "node releases share one stable Docker layout contract"
+            );
+        }
+        assert!(!a.transition_for(v105, v106).unwrap().db_backward_compatible);
+        assert!(a.transition_for(v106, v107).unwrap().db_backward_compatible);
+        assert!(a.transition_for(v107, v110).unwrap().db_backward_compatible);
+        assert!(a.transition_for(v105, v110).is_err(), "direct skip refused");
+        assert!(
+            a.transition_for(v110, v107).is_err(),
+            "reverse edge refused"
         );
     }
 
@@ -542,8 +589,8 @@ mod tests {
     #[test]
     fn release_candidate_rejects_ambiguous_or_unknown_fields() {
         let duplicate = EMBEDDED_ALLOWLIST.replacen(
-            "\"allowlist_version\": 2,",
-            "\"allowlist_version\": 2,\n  \"allowlist_version\": 2,",
+            "\"allowlist_version\": 3,",
+            "\"allowlist_version\": 3,\n  \"allowlist_version\": 3,",
             1,
         );
         assert!(
@@ -556,6 +603,26 @@ mod tests {
         assert!(
             release_candidate(&serde_json::to_string(&unknown).unwrap()).is_err(),
             "unknown field refused"
+        );
+
+        let mut duplicate_edge: serde_json::Value =
+            serde_json::from_str(EMBEDDED_ALLOWLIST).unwrap();
+        let first = duplicate_edge["transitions"][0].clone();
+        duplicate_edge["transitions"]
+            .as_array_mut()
+            .unwrap()
+            .push(first);
+        assert!(
+            release_candidate(&serde_json::to_string(&duplicate_edge).unwrap()).is_err(),
+            "duplicate directed edge refused"
+        );
+
+        let mut self_edge: serde_json::Value = serde_json::from_str(EMBEDDED_ALLOWLIST).unwrap();
+        let from = self_edge["transitions"][0]["from_image_config_digest"].clone();
+        self_edge["transitions"][0]["to_image_config_digest"] = from;
+        assert!(
+            release_candidate(&serde_json::to_string(&self_edge).unwrap()).is_err(),
+            "self transition refused"
         );
     }
 
