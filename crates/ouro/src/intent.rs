@@ -129,6 +129,15 @@ pub fn registry() -> &'static [OperationSpec] {
             may_expose_secret: false,
         },
         OperationSpec {
+            // Role-aware diagnostic baseline. Unlike the narrow health read, this includes the
+            // evidence required to assess a BP's current forging readiness.
+            operation_id: "troubleshooting/snapshot",
+            mutability: Mutability::Read,
+            params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
+            touched: &["read:troubleshooting-snapshot"],
+            may_expose_secret: false,
+        },
+        OperationSpec {
             // Internal closed read used by the fleet authority. It returns only liveness, role,
             // current image digest and generation after the normal adoption/live-drift gate.
             operation_id: "fleet/status",

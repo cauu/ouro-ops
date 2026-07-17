@@ -12,6 +12,7 @@ manual commands.
 | kes-rotation/install-opcert | dangerous | yes | installs only the public opcert via inbox (§2.7); no KES private-key work |
 | deploy/register-submit | dangerous | yes | irreversible on-chain; tx via inbox |
 | observability/health | read | no | managed read; no mutation, no confirm |
+| troubleshooting/snapshot | read | no | stateless role-readiness baseline; BP output requires KES/opcert evidence before reporting block-production readiness |
 | fleet/status | read | no | internal closed role/network/genesis/host-key/readiness/image/generation projection; no agent-supplied counts |
 | upgrade/preload-image | dangerous | yes | loads one staged Docker-save archive only after exact archive→config-digest→signed-allowlist binding; running node untouched |
 | upgrade/step | dangerous | yes | one N→N+1 step to an exact preloaded image config digest |

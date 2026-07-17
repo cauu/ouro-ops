@@ -122,6 +122,9 @@ def main():
     troubleshooting = (ROOT / "ouro-skills/troubleshooting/SKILL.md").read_text()
     assert "not mechanism-enforced read-only" in troubleshooting
     assert "existing operator account" in troubleshooting
+    assert "--op troubleshooting/snapshot" in troubleshooting
+    assert "NEVER conclude `BP healthy`" in troubleshooting
+    assert "block_production_ready: true" in troubleshooting
     print("skill docs passed")
 
 

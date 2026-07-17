@@ -952,8 +952,29 @@ struct ObsReadiness {
     sync_progress: Option<String>,
     tip_synced: bool,
     kes_opcert_valid: bool,
+    #[serde(default)]
+    kes: Option<ObsKes>,
+    #[serde(default)]
+    block_producer_configured: bool,
     forging_credentials_ready: bool,
     established_peers: u32,
+}
+
+#[derive(serde::Deserialize, Clone)]
+struct ObsKes {
+    #[serde(default)]
+    source: Option<String>,
+    current_period: i64,
+    start_period: i64,
+    end_period: i64,
+    remaining_periods: i64,
+    #[serde(default)]
+    opcert_counter_on_disk: Option<i64>,
+    #[serde(default)]
+    opcert_counter_node_state: Option<i64>,
+    #[serde(default)]
+    counter_consistent: Option<bool>,
+    valid: bool,
 }
 
 /// The only S0020 target-side read entry point. It is deliberately closed and stateless: the
@@ -963,11 +984,27 @@ pub fn run_target(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {
         Some("observe") => {
             let args = &args[1..];
-            validate_closed_args(args, &["--node"], &[], &[])?;
+            validate_closed_args(args, &["--node", "--op", "--role"], &[], &[])?;
             let node = flag(args, "--node")?;
             crate::intent::validate_machine_id(node)?;
             let observation = read_observation(&[])?;
-            output::print_json(&stateless_observation_output(node, &observation))
+            match optional(args, "--op").unwrap_or("observability/health") {
+                "observability/health" => {
+                    if optional(args, "--role").is_some() {
+                        return Err(OuroError::Validation(
+                            "observability target read does not accept a role".into(),
+                        ));
+                    }
+                    output::print_json(&stateless_observation_output(node, &observation))
+                }
+                "troubleshooting/snapshot" => {
+                    let role = parse_target_role(flag(args, "--role")?)?;
+                    output::print_json(&stateless_troubleshooting_output(node, role, &observation))
+                }
+                op => Err(OuroError::Validation(format!(
+                    "target observe does not support operation {op:?}"
+                ))),
+            }
         }
         Some("plan") => run_stateless_target_plan(&args[1..]),
         Some("apply") => run_stateless_target_apply(&args[1..]),
@@ -975,6 +1012,16 @@ pub fn run_target(args: &[String]) -> Result<()> {
         _ => Err(OuroError::InvalidArgs(
             "expected internal target observe|plan|apply|status with closed arguments".into(),
         )),
+    }
+}
+
+fn parse_target_role(value: &str) -> Result<Role> {
+    match value {
+        "bp" => Ok(Role::Bp),
+        "relay" => Ok(Role::Relay),
+        _ => Err(OuroError::Validation(format!(
+            "target observe role must be bp|relay, got {value:?}"
+        ))),
     }
 }
 
@@ -1822,6 +1869,156 @@ fn stateless_observation_output(node: &str, observation: &Observation) -> ToolOu
     result.machine = Some(node.to_string());
     result
 }
+
+fn stateless_troubleshooting_output(
+    node: &str,
+    role: Role,
+    observation: &Observation,
+) -> ToolOutput {
+    let readiness = observation.readiness.as_ref();
+    let liveness_ready = readiness.is_some_and(|value| {
+        value.node_running && value.socket_answers && value.tip_synced
+    });
+    let role_name = match role {
+        Role::Bp => "bp",
+        Role::Relay => "relay",
+    };
+
+    let forging = match role {
+        Role::Relay => json!({
+            "applicable": false,
+            "status": "not_applicable",
+            "block_production_ready": null,
+            "reason": "relay role does not forge blocks",
+        }),
+        Role::Bp => match readiness {
+            None => json!({
+                "applicable": true,
+                "status": "evidence_unavailable",
+                "block_production_ready": false,
+                "reason": "target probe returned no readiness evidence",
+                "opcert_present": !observation.live.kes_opcert_id.is_empty(),
+                "keys_present": observation.live.has_forging_keys,
+                "key_permissions_safe": observation.live.forging_key_permissions_safe,
+            }),
+            Some(value) => {
+                let status = match value.kes.as_ref() {
+                    None => "kes_evidence_unavailable",
+                    Some(kes) if kes.current_period < kes.start_period => "opcert_not_yet_valid",
+                    Some(kes) if kes.current_period >= kes.end_period => "opcert_expired",
+                    Some(kes) if kes.counter_consistent == Some(false) => {
+                        "opcert_counter_inconsistent"
+                    }
+                    Some(kes) if kes.counter_consistent.is_none() => {
+                        "opcert_counter_evidence_unavailable"
+                    }
+                    Some(kes) if !kes.valid => "opcert_invalid",
+                    Some(_) if !value.block_producer_configured => "forging_not_configured",
+                    Some(_) if observation.live.kes_opcert_id.is_empty()
+                        || !observation.live.has_forging_keys => "credentials_missing",
+                    Some(_) if !observation.live.forging_key_permissions_safe => {
+                        "key_permissions_unsafe"
+                    }
+                    Some(_) if !value.forging_credentials_ready => "credentials_not_ready",
+                    Some(_) => "ready",
+                };
+                json!({
+                    "applicable": true,
+                    "status": status,
+                    "block_production_ready": status == "ready",
+                    "configured": value.block_producer_configured,
+                    "opcert_present": !observation.live.kes_opcert_id.is_empty(),
+                    "keys_present": observation.live.has_forging_keys,
+                    "key_permissions_safe": observation.live.forging_key_permissions_safe,
+                    "credentials_ready": value.forging_credentials_ready,
+                    "kes_opcert_valid": value.kes_opcert_valid,
+                    "kes": value.kes.as_ref().map(|kes| json!({
+                        "source": kes.source,
+                        "current_period": kes.current_period,
+                        "start_period": kes.start_period,
+                        "end_period": kes.end_period,
+                        "remaining_periods": kes.remaining_periods,
+                        "opcert_counter_on_disk": kes.opcert_counter_on_disk,
+                        "opcert_counter_node_state": kes.opcert_counter_node_state,
+                        "counter_consistent": kes.counter_consistent,
+                        "valid": kes.valid,
+                    })),
+                })
+            }
+        },
+    };
+    let role_ready = match role {
+        Role::Bp => forging
+            .get("block_production_ready")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        Role::Relay => readiness.is_some_and(|value| value.established_peers > 0),
+    };
+    let evidence_complete = readiness.is_some() && match role {
+        Role::Bp => readiness
+            .and_then(|value| value.kes.as_ref())
+            .is_some_and(|kes| {
+                kes.current_period < kes.start_period
+                    || kes.current_period >= kes.end_period
+                    || kes.counter_consistent.is_some()
+            }),
+        Role::Relay => true,
+    };
+    let role_readiness = if !evidence_complete {
+        "insufficient_evidence"
+    } else if liveness_ready && role_ready {
+        "ready"
+    } else {
+        "not_ready"
+    };
+
+    let mut result = ToolOutput::ok("ouro.troubleshooting.snapshot", false).with_data(json!({
+        "op": "troubleshooting/snapshot",
+        "node": node,
+        "role": role_name,
+        "assurance": "live_observation",
+        "management_state": "not_required",
+        "role_readiness": {
+            "status": role_readiness,
+            "scope": "current liveness, sync and role-specific evidence",
+            "overall_health_claimed": false,
+        },
+        "result": {
+            "liveness": {
+                "node_running": readiness.map(|value| value.node_running).unwrap_or(false),
+                "socket_answers": readiness.map(|value| value.socket_answers).unwrap_or(false),
+                "tip_synced": readiness.map(|value| value.tip_synced).unwrap_or(false),
+                "tip": {
+                    "block": readiness.and_then(|value| value.tip_block_height),
+                    "slot": readiness.and_then(|value| value.tip_slot),
+                    "era": readiness.and_then(|value| value.tip_era.as_deref()),
+                    "sync_progress": readiness.and_then(|value| value.sync_progress.as_deref()),
+                },
+            },
+            "network": {
+                "established_peers": readiness.map(|value| value.established_peers),
+            },
+            "forging": forging,
+            "container": {
+                "running_count": observation.supervisor.node_container_count,
+                "runtime": observation.supervisor.runtime,
+                "id": observation.live.container_id,
+                "name": observation.live.container_name,
+                "image_reference": observation.live.image_reference,
+                "image_config_digest": observation.live.image_config_digest,
+                "platform": observation.live.platform,
+            },
+        },
+        "evidence_gaps": [
+            "host resource saturation and storage growth",
+            "recent log failures",
+            "block-fetch latency and mempool pressure",
+            "future availability",
+        ],
+    }));
+    result.machine = Some(node.to_string());
+    result
+}
 #[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, Eq)]
 struct ObsLive {
     image_config_digest: String,
@@ -2600,7 +2797,7 @@ fn run_op_inner(args: &[String]) -> Result<()> {
 
     // S0020 p1-2: reads do not depend on prior ownership metadata. A dispatched read streams the
     // control-selected runner; a local/debug read directly runs the same sealed live probe.
-    if op == "observability/health" {
+    if matches!(op.as_str(), "observability/health" | "troubleshooting/snapshot") {
         if let Some(host) = optional(args, "--dispatch") {
             for internal in [
                 "--local",
@@ -2622,7 +2819,22 @@ fn run_op_inner(args: &[String]) -> Result<()> {
             ));
         }
         let observation = read_observation(args)?;
-        return output::print_json(&stateless_observation_output(&node, &observation));
+        return if op == "observability/health" {
+            output::print_json(&stateless_observation_output(&node, &observation))
+        } else {
+            let spec_path = flag(args, "--spec")?;
+            let spec = PoolSpec::from_file(Path::new(spec_path))?;
+            let machine = spec.machines.iter().find(|machine| machine.id == node).ok_or_else(|| {
+                OuroError::Validation(format!(
+                    "troubleshooting node {node:?} is not declared in pool spec {spec_path}"
+                ))
+            })?;
+            let role = match machine.role {
+                MachineRole::Bp => Role::Bp,
+                MachineRole::Relay => Role::Relay,
+            };
+            output::print_json(&stateless_troubleshooting_output(&node, role, &observation))
+        };
     }
 
     // S0020 p2-1: a target-validated write preview is built by the ephemeral runner from a fresh
@@ -3535,8 +3747,8 @@ fn dispatch_op(
     paths: &ConfigPaths,
     transport_plan: bool,
 ) -> Result<()> {
-    if op == "observability/health" {
-        return dispatch_stateless_observe(host, node, args, paths, transport_plan);
+    if matches!(op, "observability/health" | "troubleshooting/snapshot") {
+        return dispatch_stateless_observe(host, op, node, args, paths, transport_plan);
     }
     // The SSH client key is the operator's credential (creds://<name>), resolved to a local path.
     let key_ref = optional(args, "--ssh-key").unwrap_or("creds://ouro-op");
@@ -3585,6 +3797,7 @@ fn dispatch_op(
 
 fn dispatch_stateless_observe(
     host: &str,
+    op: &str,
     node: &str,
     args: &[String],
     paths: &ConfigPaths,
@@ -3599,7 +3812,7 @@ fn dispatch_stateless_observe(
     ] {
         if args.iter().any(|arg| arg == forbidden) {
             return Err(OuroError::Validation(format!(
-                "{forbidden} is not valid for stateless observability"
+                "{forbidden} is not valid for a stateless read"
             )));
         }
     }
@@ -3612,7 +3825,7 @@ fn dispatch_stateless_observe(
                 .is_some_and(|machine| machine != node)
         {
             return Err(OuroError::Validation(
-                "observability accepts only an optional machine=<node> parameter".into(),
+                "stateless reads accept only an optional machine=<node> parameter".into(),
             ));
         }
     }
@@ -3621,18 +3834,18 @@ fn dispatch_stateless_observe(
     let spec = PoolSpec::from_file(Path::new(spec_path))?;
     let machine = spec.machines.iter().find(|machine| machine.id == node).ok_or_else(|| {
         OuroError::Validation(format!(
-            "observability node {node:?} is not declared in pool spec {spec_path}"
+            "stateless read node {node:?} is not declared in pool spec {spec_path}"
         ))
     })?;
     if machine.ssh.host != host {
         return Err(OuroError::Validation(format!(
-            "observability dispatch host {host:?} does not match pool-spec host {:?} for {node}",
+            "stateless read dispatch host {host:?} does not match pool-spec host {:?} for {node}",
             machine.ssh.host
         )));
     }
     if machine.ssh.user != "cardano" {
         return Err(OuroError::Validation(format!(
-            "S0020 observability uses cardano; pool spec declares {:?} for {node}",
+            "S0020 stateless reads use cardano; pool spec declares {:?} for {node}",
             machine.ssh.user
         )));
     }
@@ -3641,17 +3854,28 @@ fn dispatch_stateless_observe(
         .transpose()?;
     if supplied_key.as_ref().is_some_and(|key| key != &machine.ssh.key_ref) {
         return Err(OuroError::Validation(format!(
-            "observability --ssh-key does not match the pool-spec credential for {node}"
+            "stateless read --ssh-key does not match the pool-spec credential for {node}"
         )));
     }
     let key = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
     let runner = crate::runner::linux_x86_64()?;
-    let target_args = vec![
+    let mut target_args = vec![
         "target".to_string(),
         "observe".to_string(),
         "--node".to_string(),
         node.to_string(),
     ];
+    if op == "troubleshooting/snapshot" {
+        target_args.extend([
+            "--op".to_string(),
+            op.to_string(),
+            "--role".to_string(),
+            match machine.role {
+                MachineRole::Bp => "bp".to_string(),
+                MachineRole::Relay => "relay".to_string(),
+            },
+        ]);
+    }
     let argv = crate::dispatch::ephemeral_runner_dispatch_argv(
         host,
         machine.ssh.port,
@@ -3662,9 +3886,14 @@ fn dispatch_stateless_observe(
         &target_args,
     )?;
     if transport_plan {
+        let tool = if op == "troubleshooting/snapshot" {
+            "ouro.troubleshooting.snapshot.dispatch.transport_plan"
+        } else {
+            "ouro.observe.dispatch.transport_plan"
+        };
         output::print_json(
-            &ToolOutput::ok("ouro.observe.dispatch.transport_plan", false).with_data(json!({
-                "op": "observability/health",
+            &ToolOutput::ok(tool, false).with_data(json!({
+                "op": op,
                 "node": node,
                 "target": host,
                 "principal": "cardano",
@@ -3687,10 +3916,17 @@ fn dispatch_stateless_observe(
         &runner.bytes,
         std::time::Duration::from_secs(5 * 60),
         256 * 1024,
-        "ephemeral observability SSH dispatch",
+        "ephemeral stateless read SSH dispatch",
     )
     .map_err(|error| OuroError::Validation(format!("ssh dispatch failed: {error}")))?;
-    finish_ssh_dispatch("ouro.observe.dispatch", &out)
+    finish_ssh_dispatch(
+        if op == "troubleshooting/snapshot" {
+            "ouro.troubleshooting.snapshot.dispatch"
+        } else {
+            "ouro.observe.dispatch"
+        },
+        &out,
+    )
 }
 
 struct StatelessDispatchContext {

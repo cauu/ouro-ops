@@ -47,7 +47,8 @@ def main():
         '  "exec cid-xyz") shift 2; # sh -c ...\n'
         '     if echo "$*" | grep -q "cardano-cli query tip"; then echo "{\\"block\\":9,\\"slot\\":10,\\"era\\":\\"Conway\\",\\"syncProgress\\":\\"100.00\\"}";\n'
         '     elif echo "$*" | grep -q "hash genesis-file"; then echo "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81";\n'
-        '     elif echo "$*" | grep -q "kes-period-info"; then printf "✓ period is valid\\n✓ counter agrees\\n{\\"qKesCurrentKesPeriod\\":10,\\"qKesStartKesInterval\\":9,\\"qKesEndKesInterval\\":20,\\"qKesOnDiskOperationalCertificateNumber\\":5,\\"qKesNodeStateOperationalCertificateNumber\\":5}\\n";\n'
+        '     elif echo "$*" | grep -q "kes-period-info"; then if test -z "$OURO_TEST_KES_EMPTY"; then printf "✓ period is valid\\n✓ counter agrees\\n{\\"qKesCurrentKesPeriod\\":10,\\"qKesStartKesInterval\\":9,\\"qKesEndKesInterval\\":20,\\"qKesOnDiskOperationalCertificateNumber\\":5,\\"qKesNodeStateOperationalCertificateNumber\\":5}\\n"; fi;\n'
+        '     elif echo "$*" | grep -q "cat /opt/cardano/config/mainnet/shelley-genesis.json"; then echo \'{"slotsPerKESPeriod":2}\';\n'
         '     elif echo "$*" | grep -q "ss -Htn state established"; then echo 2;\n'
         '     elif echo "$*" | grep -q netstat; then echo 0;\n'
         '     elif echo "$*" | grep -q kes.skey; then echo true;\n'
@@ -56,6 +57,14 @@ def main():
         'esac\n'
     )
     (binp / "docker").chmod(0o755)
+    (binp / "curl").write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' "
+        "'cardano_node_metrics_operationalCertificateStartKESPeriod_int 3' "
+        "'cardano_node_metrics_operationalCertificateExpiryKESPeriod_int 4' "
+        "'cardano_node_metrics_currentKESPeriod_int 0'\n"
+    )
+    (binp / "curl").chmod(0o755)
 
     env = dict(os.environ, PATH=f"{binp}:{os.environ['PATH']}", OURO_READINESS_SAMPLE_DELAY="0",
                OURO_HOST_KEY_SHA256="SHA256:" + "a" * 43)
@@ -92,15 +101,35 @@ def main():
     readiness = obs["readiness"]
     for k in ["node_running", "socket_answers", "tip_block", "tip_block_next",
               "tip_block_height", "tip_slot", "tip_era", "sync_progress", "tip_synced",
-              "kes_opcert_valid", "forging_credentials_ready", "established_peers"]:
+              "kes_opcert_valid", "kes", "block_producer_configured",
+              "forging_credentials_ready", "established_peers"]:
         assert k in readiness, f"readiness missing {k}"
     assert readiness["tip_block"] == readiness["tip_block_next"] == 10
     assert readiness["tip_block_height"] == 9 and readiness["tip_slot"] == 10
     assert readiness["tip_era"] == "Conway" and readiness["sync_progress"] == "100.00"
     assert readiness["tip_synced"] is True, "healthy no-new-block sample must remain ready"
     assert readiness["kes_opcert_valid"] is True and readiness["forging_credentials_ready"] is True
+    assert readiness["block_producer_configured"] is True
+    assert readiness["kes"] == {
+        "source": "cardano_cli", "current_period": 10, "start_period": 9, "end_period": 20,
+        "remaining_periods": 10, "opcert_counter_on_disk": 5,
+        "opcert_counter_node_state": 5, "counter_consistent": True, "valid": True,
+    }
     assert readiness["established_peers"] == 2, "ss-only Blink Labs image peers must be detected"
     assert obs["recreate"] is not None, "inherited nonempty OCI labels remain a valid baseline"
+
+    # Expired cardano-cli queries can return no JSON. The fallback derives current KES from tip slot
+    # and the public genesis value, never from the known-unreliable currentKESPeriod metric.
+    fallback = subprocess.run(
+        ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
+        env=dict(env, OURO_TEST_KES_EMPTY="1"), text=True, capture_output=True,
+    )
+    assert fallback.returncode == 0, fallback.stderr
+    fallback_kes = json.loads(fallback.stdout)["readiness"]["kes"]
+    assert fallback_kes["source"] == "prometheus_tip_and_genesis", fallback_kes
+    assert fallback_kes["current_period"] == 5 and fallback_kes["end_period"] == 4, fallback_kes
+    assert fallback_kes["remaining_periods"] == -1 and fallback_kes["valid"] is False, fallback_kes
+    assert fallback_kes["counter_consistent"] is None, fallback_kes
 
     # An explicit container user is not modeled by the sealed recreate argv. The probe must return
     # recreate:null instead of silently upgrading it as root.

@@ -28,8 +28,9 @@ does not by itself prove forging, KES lifetime, peer health, disk capacity, or f
   path or try to install/synchronize one.
 - Interpret only returned fields. A single successful sample means the query path responds; compare
   separate samples before claiming that the tip advances. Report exact block/slot/era/sync values.
-- Label KES lifetime, forging, peers, and disk “not measured” unless troubleshooting provides
-  separate evidence. Say “tip query healthy,” not “node fully healthy.”
+- Label KES lifetime, forging, peers, and disk “not measured” by this narrow read. Say “tip query
+  healthy,” not “node fully healthy.” Use the Troubleshooting Skill's typed snapshot when a
+  role-aware node-health conclusion is required.
 - If the read is insufficient, use `ouro-ops diag exec --dispatch <id> --spec <pool-spec> --
   <diagnostic-command>` under the Troubleshooting Skill.
 

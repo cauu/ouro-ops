@@ -41,7 +41,7 @@ ouro_observe() {
   restart="$(ouro_probe_inspect "$cid" '{{.HostConfig.RestartPolicy.Name}}')"
 
   # Node facts read INSIDE the container (paths from the layout contract); hashes only, no secrets.
-  local topo_hash cfg_hash opcert_id has_keys key_perms genesis_hash network tip1 tip2 creds_ok kes_info peers
+  local topo_hash cfg_hash opcert_id has_keys key_perms genesis_hash network tip1 tip2 creds_ok kes_info kes_genesis metrics peers
   topo_hash="$(docker exec "$cid" sh -c 'sha256sum /opt/cardano/config/mainnet/topology.json 2>/dev/null' 2>/dev/null | awk '{print $1}')"
   cfg_hash="$(docker exec "$cid" sh -c 'sha256sum /opt/cardano/config/mainnet/config.json 2>/dev/null' 2>/dev/null | awk '{print $1}')"
   opcert_id="$(docker exec "$cid" sh -c 'test -f /opt/cardano/config/keys/node.cert && sha256sum /opt/cardano/config/keys/node.cert' 2>/dev/null | awk '{print $1}')"
@@ -90,6 +90,14 @@ ouro_observe() {
     preview) kes_info="$(docker exec "$cid" cardano-cli query kes-period-info --socket-path /ipc/node.socket --op-cert-file /opt/cardano/config/keys/node.cert --testnet-magic 2 --output-json 2>/dev/null || true)" ;;
     *) kes_info="" ;;
   esac
+  # An expired opcert may make `cardano-cli query kes-period-info` exit without its JSON record.
+  # Preserve a read-only, version-tolerant fallback from the node's local metrics plus the public
+  # genesis parameter. The tip slot, not `currentKESPeriod` (observed as zero on some releases), is
+  # the source for the current period. Counter evidence remains unavailable in this fallback, so a
+  # period-valid BP still cannot be declared ready solely from metrics.
+  kes_genesis="$(docker exec "$cid" cat /opt/cardano/config/mainnet/shelley-genesis.json 2>/dev/null || true)"
+  metrics="$(curl -fsS --max-time 3 http://127.0.0.1:12798/metrics 2>/dev/null |
+    awk '$1 ~ /operationalCertificate(Start|Expiry)KESPeriod_int$/ {print}' || true)"
   # Blink Labs images currently ship `ss` but not `netstat`. Prefer iproute2's `ss`, retain a
   # net-tools fallback for older images, and fail closed to zero when neither command exists.
   peers="$(docker exec "$cid" sh -c "if command -v ss >/dev/null 2>&1; then ss -Htn state established 2>/dev/null | awk 'NF {n++} END {print n+0}'; elif command -v netstat >/dev/null 2>&1; then netstat -tn 2>/dev/null | awk '\$6 == \"ESTABLISHED\" {n++} END {print n+0}'; else echo 0; fi" 2>/dev/null || echo 0)"
@@ -114,7 +122,8 @@ ouro_observe() {
   OURO_OBS_GENESIS="$genesis_hash" OURO_OBS_NET="$network" \
   OURO_OBS_HOSTKEY="$hostkey" OURO_OBS_FULL="$full_json" OURO_OBS_IMAGE_FULL="$image_json" \
   OURO_OBS_TIP1="$tip1" OURO_OBS_TIP2="$tip2" OURO_OBS_CREDS="$creds_ok" \
-  OURO_OBS_KES_INFO="$kes_info" OURO_OBS_PEERS="$peers" \
+  OURO_OBS_KES_INFO="$kes_info" OURO_OBS_KES_GENESIS="$kes_genesis" \
+  OURO_OBS_METRICS="$metrics" OURO_OBS_PEERS="$peers" \
   python3 - <<'PY'
 import json, os, stat
 def env(k): return os.environ.get(k, "") or ""
@@ -161,23 +170,72 @@ def tip_synced(s):
         return float(progress) >= 99.0
     except Exception:
         return False
-def kes_state(s):
+def kes_facts(s):
     try:
         # cardano-cli prints two human diagnostics before the --output-json object. Parse the
         # unique terminal object and reject trailing/ambiguous structured output.
         start = s.find("{")
         if start < 0:
-            return False
+            return None
         value = json.loads(s[start:])
         current = int(value["qKesCurrentKesPeriod"])
         start = int(value["qKesStartKesInterval"])
         end = int(value["qKesEndKesInterval"])
         on_disk = int(value["qKesOnDiskOperationalCertificateNumber"])
         node_state = int(value["qKesNodeStateOperationalCertificateNumber"])
-        valid = start <= current < end and node_state <= on_disk <= node_state + 1
-        return valid
+        counter_consistent = node_state <= on_disk <= node_state + 1
+        valid = start <= current < end and counter_consistent
+        return {
+            "source": "cardano_cli",
+            "current_period": current,
+            "start_period": start,
+            "end_period": end,
+            "remaining_periods": end - current,
+            "opcert_counter_on_disk": on_disk,
+            "opcert_counter_node_state": node_state,
+            "counter_consistent": counter_consistent,
+            "valid": valid,
+        }
     except Exception:
-        return False
+        return None
+def prometheus_value(s, semantic_suffix):
+    try:
+        for line in s.splitlines():
+            if not line or line.startswith("#"):
+                continue
+            name, raw = line.rsplit(None, 1)
+            name = name.split("{", 1)[0]
+            if name == semantic_suffix or name.endswith("_" + semantic_suffix):
+                return int(float(raw))
+    except Exception:
+        pass
+    return None
+def kes_metric_facts(metrics, tip, genesis):
+    try:
+        genesis_value = json.loads(genesis)
+        slots_per_period = int(genesis_value["slotsPerKESPeriod"])
+        slot = tip_int(tip, "slot")
+        start = prometheus_value(metrics, "operationalCertificateStartKESPeriod_int")
+        end = prometheus_value(metrics, "operationalCertificateExpiryKESPeriod_int")
+        if slot is None or slots_per_period <= 0 or start is None or end is None:
+            return None
+        current = slot // slots_per_period
+        return {
+            "source": "prometheus_tip_and_genesis",
+            "current_period": current,
+            "start_period": start,
+            "end_period": end,
+            "remaining_periods": end - current,
+            "opcert_counter_on_disk": None,
+            "opcert_counter_node_state": None,
+            "counter_consistent": None,
+            "valid": start <= current < end,
+        }
+    except Exception:
+        return None
+def kes_state(s):
+    facts = kes_facts(s)
+    return bool(facts and facts["valid"])
 def bp_configured():
     config = ((inspect_record() or {}).get("Config", {}) or {})
     return "CARDANO_BLOCK_PRODUCER=true" in list(config.get("Env", []) or [])
@@ -389,6 +447,12 @@ obs = {
     "sync_progress": tip_text(env("OURO_OBS_TIP2"), "syncProgress"),
     "tip_synced": tip_synced(env("OURO_OBS_TIP2")),
     "kes_opcert_valid": kes_state(env("OURO_OBS_KES_INFO")),
+    "kes": (
+        kes_facts(env("OURO_OBS_KES_INFO"))
+        or kes_metric_facts(env("OURO_OBS_METRICS"), env("OURO_OBS_TIP2"),
+                            env("OURO_OBS_KES_GENESIS"))
+    ),
+    "block_producer_configured": bp_configured(),
     "forging_credentials_ready": (
         env("OURO_OBS_CREDS") == "true" and bp_configured()
         and kes_state(env("OURO_OBS_KES_INFO")) and tip_value(env("OURO_OBS_TIP1")) >= 0

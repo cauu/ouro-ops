@@ -22,8 +22,8 @@
     "kes-rotation/scripts/rotate.sh": "1f44485145908a112e894df4ab75077d9e6a5a7c7f814fbc1cdde99353a89ffc",
     "lib/ouro-attested.sh": "dee534a05268894341c26d6607425a856e38cd78ba8152bca8ea8cc67bf111f0",
     "lib/ouro-lib.sh": "43d8d8dff3f767603c5d534e5849dff5778535478d0dd110fbd76e52830fc774",
-    "lib/ouro-probe.sh": "137a57931765eb40649dfd2bfdec1e44c55238181a81f902061f7fb6925fc6c5",
-    "observability/SKILL.md": "20d7ef38b16a27ad622d899a20aeec60441fd47658449962aca4f4fe1ef22581",
+    "lib/ouro-probe.sh": "d0b1571faa6d95271494089a60823014efa5e1b340de1a68b889d1841b645595",
+    "observability/SKILL.md": "e9fc8004924e3f458ed46cff701f9e12a236a4449be97e61a9ab4733c7bc041e",
     "observability/scripts/health.sh": "c8a7862ef9572aaa065589c76652cd5a03189987ea1aef16c9518367c0b91f61",
     "observability/scripts/install-gateway.sh": "8be5e1f07516aa6a08bc44699b37e2f7a927aa456223a329dd25b4db9ef82c15",
     "observability/scripts/rollback.sh": "74a7182079d42080e105a5c14a22a5cd7054337ca09e20c31e0e15c59b6ad468",
@@ -36,7 +36,7 @@
     "schemas/audit-event.schema.json": "83a33179d476b053a76fc9143cd11202be4881bbf9d5d3e0374c8cc48e5bafa6",
     "schemas/pool-spec.schema.json": "d93e4a8ea66ffd7deaaf0ae8fb4b9543d5e01b0204408ce995c1378d5044a6b5",
     "schemas/tool-output.schema.json": "558eb8bac6ac2568860034f7fa9523566a69043cc33298aab44127e4e8b7a07e",
-    "troubleshooting/SKILL.md": "783a05f026613ff60905df6089a7baa952672c8e3571da1fa2c44d8a2862dad5",
+    "troubleshooting/SKILL.md": "27a5235904a43f9eb2d0a33e7a44ef592db8947421e9bf751f876a62bc986209",
     "troubleshooting/scripts/logs.sh": "a08b463994aec58d209306853890b48023cff6a5de5419491e2711b4811cb44a",
     "troubleshooting/scripts/service.sh": "f7c6cf694e474cfa39233c882dbcbe38805f3c3bbb7ad690dcf2cc2d95fafae7",
     "upgrade/SKILL.md": "8b46a71fe822554b82fc47405174e865035a6e24cbef4f6228b12df0eaf48348",
@@ -46,11 +46,11 @@
     "upgrade/scripts/upgrade-one.sh": "bdb9aeb009fea89027ede2f6b05a0b3ef0fd5e672c6c80f77df22b6662d8187c",
     "upgrade/scripts/verify.sh": "5c77cb2e4b82e1b67c8681d5fb5f197b4b5c4a306eb90b7e668e771d40eb9ff4"
   },
-  "decision_hash": "8e888d6f010ca7cb19b83c00f82c87fca3b7a782d55a62a4791f8daff9dcbde7",
-  "embedded_digest": "5d18d2c8aea1ab2fc3cfc6bbccd7501598935ea89f396d4aa97f235c181a16f9",
+  "decision_hash": "dc832ec0d171bc1232b31bc59287971d534fba19cb7798c072c55b2af738304a",
+  "embedded_digest": "72d3de1438c13f91e671b36676185aeaffed6f3f92556f2d2fbed2f268eb0c97",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",
   "schema_hash": "a53f81aaed1aeb294ba09d59c3cfac8e13454a5746622f6494a5d9b8710ec694",
-  "skills_hash": "e25350ebcdbd47301250b980eed033f38638cb6ad64fb3d36f86c64547889e64"
+  "skills_hash": "fb8f24cb17223da48ac1507cd9669be20486e8fc16aacd84e2d7b84d9717a33d"
 }

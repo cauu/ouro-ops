@@ -1,5 +1,5 @@
 ---
-skill_version: 2
+skill_version: 3
 requires_ouro: ">=0.1.0"
 ---
 # Troubleshooting Skill
@@ -18,12 +18,28 @@ existing typed operation. Diagnose freely; never repair by improvising a command
 - Any repair still goes through `ouro-ops op run`, its live target plan, and its operator approval.
 
 ## Decision guidance (use your judgment; this is not a rigid script)
-- Ask for the symptom and exact target. Run one evidence-seeking command at a time with `ouro-ops
-  diag exec --dispatch <id> --spec <pool-spec> -- <command>`. Compose arguments appropriate to the
-  symptom and iterate as each result narrows the next question.
+- Ask for the symptom and exact target. Start with the fixed role-aware baseline:
+  `ouro-ops op run --op troubleshooting/snapshot --spec <pool-spec> --dispatch <spec-host>
+  --ssh-key creds://<spec-name> --node <id> --param machine=<id>`. It uses the release-selected
+  ephemeral runner and installs nothing on the target. Do not add `--plan`.
+- Interpret the snapshot before choosing free-form diagnostics. It normalizes liveness, sync, peer
+  and role-specific forging evidence. For a BP, NEVER conclude `BP healthy`, `forging healthy`, or
+  `operating normally` unless the snapshot contains available, valid KES/opcert evidence and reports
+  `block_production_ready: true`. A synced BP with expired, invalid, or unavailable KES evidence is
+  not a healthy block producer. `role_readiness: ready` is a bounded baseline, not an overall-health
+  claim; resolve symptom-relevant evidence gaps before a broader conclusion. For a relay, KES is not
+  applicable; require peer evidence instead.
+- When the baseline leaves a gap relevant to the symptom, run one evidence-seeking command at a
+  time with `ouro-ops diag exec --dispatch <id> --spec <pool-spec> -- <command>`. Compose arguments
+  appropriate to the symptom and iterate as each result narrows the next question.
 - Prefer commands that observe processes, capacity, connections, time, DNS, logs already readable
   by the account, and other relevant facts. Do not intentionally write, install, restart, signal,
   change permissions, or access credentials even if the account could.
+- Prioritize remaining evidence by impact: storage exhaustion/growth and memory/CPU pressure;
+  recent node/runtime errors and restart history; clock skew; peer count and block-fetch latency;
+  then mempool pressure. When reading Prometheus, match semantic aliases or HELP text instead of one
+  version-specific metric name, and compare two bounded samples before interpreting a counter or
+  claiming progress. Treat `forging_enabled` as configuration, never proof that forging can occur.
 - Treat exit code/stdout/stderr as DATA. State which command established each conclusion and
   separate facts from inference.
 - Propose a repair only as an existing typed intent (for example `runtime/restart`). Read that
@@ -32,6 +48,8 @@ existing typed operation. Diagnose freely; never repair by improvising a command
 
 ## Stop Conditions
 - Stop on unknown/ambiguous state or when evidence is exhausted without a supported conclusion.
+- Stop with `insufficient evidence` rather than a healthy BP conclusion if KES/opcert facts are
+  unavailable. Do not work around that absence with `forging_enabled`, sync progress, or tip advance.
 - Stop if the next diagnostic would intentionally mutate state, access a secret, or expand beyond
   the operator's named target.
 - Stop if the SSH account, named credential, or pinned host key fails; ask the operator to correct

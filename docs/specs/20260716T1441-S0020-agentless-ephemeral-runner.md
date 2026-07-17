@@ -498,3 +498,46 @@ no target state is destroyed merely to test the new path.
 - ERTC-13 | stack: other | command: inspect subagent command ledger and remove its unique `/tmp`
   workspace | result: pass | note: no `op run`, install, restart, signal, permission change, secret
   path or repository `pool-spec.yaml` access occurred; the temporary spec/workspace was removed.
+
+## 15. Role-aware Troubleshooting Baseline (append-only)
+- 2026-07-17T09:50+0800 change request: the p4-6 conclusion treated an advancing, synced BP as
+  operating normally without checking its KES/opcert. Live follow-up evidence showed that the BP's
+  opcert had expired, so sync health alone was insufficient to support a block-production-health
+  conclusion.
+- [~] p4-7 add a fixed, stateless `troubleshooting/snapshot` read through the ephemeral runner.
+  Bind the target and role to the pool spec, expose role-aware liveness/sync/network and KES/opcert
+  facts in normalized typed output, and require free-form diagnostics to start from that baseline.
+- ERTC-14 role correctness: a BP snapshot never reports block-production readiness or overall BP
+  health without available, valid KES/opcert and forging-credential evidence; an expired or
+  unavailable KES state is explicit and blocks a healthy BP conclusion. Relay snapshots mark KES as
+  not applicable and use peer evidence instead.
+- ERTC-15 operational safety: the snapshot is a read-only, no-resident-install operation with the
+  same pool-spec-bound host, principal, credential, pinned-host-key, bounded-output and audit
+  properties as stateless observability. It does not expose secret key contents or mutate the
+  target.
+- ERTC-16 product guidance: the troubleshooting Skill runs the typed snapshot before ad hoc
+  `diag exec`, distinguishes facts from inference, uses targeted diagnostics only for remaining
+  evidence gaps, and forbids a `BP healthy` conclusion when KES/opcert evidence is absent or invalid.
+- 2026-07-17T10:10+0800 [x] p4-7 completed. `troubleshooting/snapshot` is a registered stateless
+  read whose target role is derived from the pool spec and sealed into the ephemeral runner argv.
+  Its output separates bounded `role_readiness` from overall health, exposes liveness/tip/peers and
+  BP forging/KES facts, and reports explicit remaining evidence gaps. The Skill requires this
+  baseline first and reserves free-form diagnostics for symptom-relevant gaps.
+- ERTC-14 | stack: python+probe | command: `python3 tests/test_probe.py`; `python3
+  tests/test_s0020_troubleshooting_snapshot.py` | result: pass | note: valid, expired and unavailable
+  BP KES states and relay KES-not-applicable behavior are covered. When an expired opcert causes
+  `cardano-cli kes-period-info` to omit JSON, the probe derives the current period from tip slot and
+  public `slotsPerKESPeriod`, matches semantic Prometheus start/expiry aliases, ignores the observed
+  unreliable zero `currentKESPeriod`, and leaves unavailable certificate counters explicit.
+- ERTC-14/15 | stack: real host | command: freshly cross-built Linux runner; `ouro-ops op run --op
+  troubleshooting/snapshot` against bp1 and relay1 with a temporary declarative spec | result: pass |
+  note: bp1 was synced at block 13688085 / slot 192687906 but returned `role_readiness:not_ready`,
+  `opcert_expired`, current/start/end KES 1486/1342/1404, remaining -82 and
+  `block_production_ready:false`; relay1 returned `role_readiness:ready`, 77 established peers and
+  KES `not_applicable`. Both outputs set `overall_health_claimed:false`; no remote mutation or
+  persistent target install occurred and the temporary spec was removed.
+- ERTC-15/16 | stack: regression | command: `cargo test -p ouro`; `make python-test`; `bash
+  ci/l2-integration.sh`; `cargo clippy -p ouro --lib --tests -- -D warnings`; `ouro-ops manifest
+  verify --against packaging/bundle-manifest.json`; `git diff --check` | result: pass | note: 186
+  Rust tests, the full Python suite, L2 integration, zero-warning Clippy, manifest parity and
+  whitespace gates pass. The operator-owned untracked `pool-spec.yaml` remained untouched.
