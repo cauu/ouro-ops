@@ -1264,6 +1264,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             "intent payload machine {payload_machine:?} does not match target node {node:?}"
         )));
     }
+    let mut upgrade_transition = None;
     if let Some(target) = payload.get("image").and_then(serde_json::Value::as_str) {
         allowlist.contract_and_image_for(target, &observation.live.platform)?;
         match op {
@@ -1276,6 +1277,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                     &allowlist,
                     &observation.live.platform,
                 )?;
+                upgrade_transition = Some(transition.clone());
                 crate::executor::require_image_present(target)?;
             }
             _ => {}
@@ -1302,6 +1304,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             .map(|bytes| crate::intent::sha256_hex(&bytes))
             .unwrap_or_default()
     });
+    let signed_allowlist_digest = allowlist.signed_digest()?;
     let expected_post_state = serde_json::to_string(&json!({
         "pool": {
             "pool_id": pool_id,
@@ -1313,6 +1316,10 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         },
         "operation": op,
         "recreate_binding": if op == "upgrade/step" { recreate_binding.as_deref() } else { None },
+        "runtime_policy": {
+            "signed_allowlist_digest": signed_allowlist_digest,
+            "upgrade_transition": upgrade_transition,
+        },
     }))
     .map_err(|error| OuroError::Validation(format!("cannot bind expected state: {error}")))?;
     let intent = Intent {
@@ -1384,6 +1391,38 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             )))
         }
     };
+    let upgrade_failure_outcome = upgrade_transition.as_ref().map(|transition| {
+        match crate::upgrade::failure_outcome(transition) {
+            crate::upgrade::FailureOutcome::RollbackToN => "verified_rollback_to_N",
+            crate::upgrade::FailureOutcome::ReSyncRequired => {
+                "forward_recovery_or_resync_required"
+            }
+        }
+    });
+    let rollback_executor_plan = if op == "upgrade/step"
+        && upgrade_transition
+            .as_ref()
+            .is_some_and(crate::upgrade::rollback_possible)
+    {
+        let target = intent
+            .payload
+            .get("image")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| OuroError::Validation("upgrade plan lost image".into()))?;
+        let recreate = observation.recreate.as_ref().ok_or_else(|| {
+            OuroError::Validation("upgrade plan lost recreate recovery specification".into())
+        })?;
+        Some(
+            crate::executor::stateless_recreate_recovery_plan(
+                recreate,
+                &observation.live.container_id,
+                target,
+            )?
+            .rollback,
+        )
+    } else {
+        None
+    };
 
     let mut result = ToolOutput::ok("ouro.op.plan", false).with_data(json!({
         "op": op,
@@ -1399,8 +1438,12 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         "touched": validated.touched,
         "executor_plan": executor_plan,
         "executor_plan_secret_values_redacted": op == "upgrade/step",
+        "upgrade_transition": upgrade_transition,
+        "upgrade_failure_outcome": upgrade_failure_outcome,
+        "rollback_executor_plan": rollback_executor_plan,
         "runtime_policy": {
             "allowlist_version": allowlist.allowlist_version,
+            "signed_allowlist_digest": signed_allowlist_digest,
             "contract_id": contract.contract_id,
             "convention_version": contract.convention_version,
             "running_image_config_digest": observation.live.image_config_digest,
@@ -1907,6 +1950,31 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
             if let Err(error) = crate::executor::require_image_present(target) {
                 return Err(rollback_failure(&final_plan.op, error, rollback()));
             }
+            let post = read_observation(&[])?;
+            if let Err(error) = (|| {
+                require_stateless_post_contract(&final_plan, &post, &current_image)?;
+                stateless_readiness(&final_plan, &post, false)?;
+                if post.live.container_id != current_container
+                    || post.live.container_creation_epoch
+                        != final_plan.observation.live.container_creation_epoch
+                {
+                    return Err(OuroError::Validation(
+                        "preload changed the running container identity unexpectedly".into(),
+                    ));
+                }
+                Ok(())
+            })() {
+                return Err(rollback_failure(&final_plan.op, error, rollback()));
+            }
+            live_postcondition = Some(json!({
+                "verification": "exact_image_config_present",
+                "image_config_digest": target,
+                "running_container_unchanged": {
+                    "id": post.live.container_id,
+                    "creation_epoch": post.live.container_creation_epoch,
+                    "image_config_digest": post.live.image_config_digest,
+                },
+            }));
         }
         "upgrade/step" => {
             let target = final_plan.intent.payload.get("image").and_then(serde_json::Value::as_str)
@@ -1919,19 +1987,30 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 &current_container,
                 target,
             )?;
+            let allowlist = convention::Allowlist::active_verified()?;
+            let transition = allowlist.transition_for(&current_image, target)?;
+            let automatic_rollback_allowed = crate::upgrade::rollback_possible(transition);
             let rollback = || {
                 crate::executor::run_rollback_plan("upgrade/step", &recovery.rollback)?;
                 let restored = read_observation(&[])?;
                 require_stateless_post_contract(&final_plan, &restored, &current_image)?;
-                stateless_readiness(&final_plan, &restored, true)
+                stateless_readiness(&final_plan, &restored, false)
             };
             crate::executor::run_argv(&recovery.commit[0])?;
-            if let Err(error) = crate::executor::run_plan(&recovery.commit[1..]) {
+            if let Err(error) = crate::executor::run_argv(&recovery.commit[1]) {
                 return Err(rollback_failure(
                     &final_plan.op, error, rollback(),
                 ));
             }
-            let verify = (|| {
+            if let Err(error) = crate::executor::run_argv(&recovery.commit[2]) {
+                if automatic_rollback_allowed {
+                    return Err(rollback_failure(&final_plan.op, error, rollback()));
+                }
+                return Err(OuroError::Validation(format!(
+                    "upgrade/step activation may have begun and the signed transition is not backward-compatible ({error}); automatic rollback refused — forward recovery or re-sync required; prior container retained"
+                )));
+            }
+            let verify = (|| -> Result<Observation> {
                 let post = read_observation(&[])?;
                 if post.live.image_config_digest != target {
                     return Err(OuroError::Validation(
@@ -1939,18 +2018,50 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                     ));
                 }
                 require_stateless_post_contract(&final_plan, &post, target)?;
-                stateless_readiness(&final_plan, &post, true)
+                stateless_readiness(&final_plan, &post, true)?;
+                Ok(post)
             })();
-            if let Err(error) = verify {
-                return Err(rollback_failure(
-                    &final_plan.op, error, rollback(),
-                ));
-            }
+            let post = match verify {
+                Ok(post) => post,
+                Err(error) if automatic_rollback_allowed => {
+                    return Err(rollback_failure(&final_plan.op, error, rollback()));
+                }
+                Err(error) => {
+                    return Err(OuroError::Validation(format!(
+                        "upgrade/step reached N+1 but postcondition failed and the signed transition is not backward-compatible ({error}); automatic rollback refused — forward recovery or re-sync required; prior container retained"
+                    )));
+                }
+            };
             crate::executor::run_plan(&recovery.finalize).map_err(|error| {
                 OuroError::Validation(format!(
                     "upgrade verified but previous-container cleanup failed; recovery residue retained: {error}"
                 ))
             })?;
+            let readiness = post.readiness.as_ref().ok_or_else(|| {
+                OuroError::Validation("verified upgrade postcondition lost readiness evidence".into())
+            })?;
+            live_postcondition = Some(json!({
+                "verification": "typed_role_readiness_passed",
+                "container": {
+                    "id": post.live.container_id,
+                    "creation_epoch": post.live.container_creation_epoch,
+                    "image_config_digest": post.live.image_config_digest,
+                },
+                "network": post.live.network,
+                "genesis_hash": post.live.genesis_hash,
+                "node_running": readiness.node_running,
+                "socket_answers": readiness.socket_answers,
+                "tip_block": readiness.tip_block_height,
+                "tip_slot": readiness.tip_slot,
+                "tip_era": readiness.tip_era,
+                "sync_progress": readiness.sync_progress,
+                "tip_synced": readiness.tip_synced,
+                "upgrade_failure_outcome": if automatic_rollback_allowed {
+                    "verified_rollback_to_N"
+                } else {
+                    "forward_recovery_or_resync_required"
+                },
+            }));
         }
         other => return Err(OuroError::Validation(format!(
             "operation {other} has no stateless apply executor"
@@ -2377,7 +2488,7 @@ fn require_adoption_contract(
         // The signed/versioned Blink Labs layout uses the image entrypoint plus the explicit
         // `run` command. The production image intentionally has no Config.Cmd, so comparing live
         // Args to Config.Cmd would reject the standard deployment.
-        "blinklabs-cardano-node-v1" => {
+        "blinklabs-cardano-node-v1" | "blinklabs-cardano-node-v2" => {
             observation.live.image_entrypoint == ["/usr/local/bin/entrypoint"]
                 && observation.live.image_cmd.is_empty()
                 && observation.live.entrypoint == observation.live.image_entrypoint

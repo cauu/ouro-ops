@@ -869,3 +869,69 @@ no target state is destroyed merely to test the new path.
   checks pass. Repository-wide `cargo fmt --all -- --check` remains red on pre-existing formatting
   outside this item, so no unrelated mechanical rewrite was made. The operator-owned untracked
   `pool-spec.yaml` remained untouched and is excluded from p4-12.
+
+## 21. Single-prompt Upgrade Workflow Acceptance (append-only)
+- 2026-07-17 change request: accept Upgrade to the same website-prompt → fresh-agent standard while
+  keeping it one user-visible workflow. Internally `upgrade/preload-image` prepares an exact image
+  without disrupting the node and `upgrade/step` activates it with fleet ordering/readiness; they
+  retain distinct candidates and approvals. Production hosts must not receive archive bytes, load
+  an image, recreate/restart a container or mint capabilities during this acceptance.
+- [x] p4-13 align the Upgrade Skill/website with one workflow + two internal transaction boundaries;
+  prove production-safe preview/plan/refusal/reconciliation, and prove positive/refusal/rollback
+  behavior in a signed-policy sealed bed before a context-free subagent gives a final verdict.
+- ERTC-33 product truth: one website prompt and one Upgrade Skill explain prepare → activate → verify
+  → next target, while exposing two separate candidate/approval gates. Canary relay runs first,
+  remaining relays next and BP last; no target automatically advances after a refused/failed phase.
+- ERTC-34 production-safe evidence: local archive preview is no-stage; repeated preload plans are
+  stable and send no bytes; step accepts only an exact signed N→N+1 transition and safely refuses
+  the current absent transition. Before/after container id, image config, readiness/tip and runner
+  residue reconcile on relay/BP without confirm, permit, image load, recreate or restart.
+- ERTC-35 sealed preload: a signed test policy plus Docker-save fixture prove exactly one declared
+  config digest before mutation, exactly one fixed `docker load --input` on success, and exact target
+  image removal after injected post-load failure. Malformed/multi-image/wrong-config/archive byte
+  swap and live candidate drift refuse before image-store mutation.
+- ERTC-36 sealed activation: a signed N→N+1 fixture proves deterministic redacted recreate binding,
+  target-image presence, canary/quorum/BP-last gates, preservation of the prior container until new
+  readiness, finalize only after verification, and verified restoration of N after injected failure
+  when backward-compatible. A forward-only transition reports re-sync/forward-recovery rather than
+  claiming rollback.
+- ERTC-37 quality: exact website-style prompt to a fresh context-free subagent, complete command
+  ledger, sealed positive/refusal/recovery evidence, Rust/Python/web tests, Clippy, manifest verify
+  and `git diff --check` pass; all temporary fixtures are removed and the operator-owned root
+  `pool-spec.yaml` remains unread and untouched.
+- 2026-07-17T17:39+0800 p4-13 completed. Upgrade Skill v4 and the website now expose one workflow
+  with two independently approved internal boundaries per target: non-disruptive image preparation,
+  then signed transition activation. Preparation cannot authorize activation or the next target;
+  canary relay, remaining relays and BP-last ordering remain explicit.
+- ERTC-33/34 | stack: website-style prompt + context-free agent + production-safe reads | result:
+  pass | note: the fresh agent independently loaded the embedded Upgrade Skill, previewed a local
+  disposable archive without staging, then obtained the same relay1 preload candidate twice:
+  `a243b85e…a78dc`, live hash `b3076873…279c7`, `changed:false`. No archive path or bytes were sent.
+  The step plan then exited 10 with `changed:false` because production policy has no exact signed
+  transition from `sha256:a3223d93…c0c7a` to `sha256:0bb21e45…f468f`; it explicitly refused to
+  treat image allowlisting alone as authorization and emitted no activation candidate.
+- ERTC-34 | stack: production reconciliation | result: pass | note: relay1 preserved container
+  `cfabdd36…9bfc`, BP preserved `d50c302c…f97d`, both retained the running config
+  `sha256:a3223d93…c0c7a`, socket answers and sync 100%. Relay advanced from block 13689379 / slot
+  192714345 to block 13689390 / slot 192714549; BP advanced from block 13689377 / slot 192714284 to
+  block 13689395 / slot 192714635. A bounded target read found no `/tmp/ouro-run.*` residue. No
+  confirmation, permit, apply, archive transport, image load, pull/tag, recreate or restart ran.
+- ERTC-35/36 | stack: signed-policy sealed executor | command: `python3
+  tests/test_s0020_upgrade_workflow.py` | result: pass | note: a valid single-image archive caused
+  exactly one fixed `docker load --input`; injected post-load failure removed only the exact newly
+  loaded target. Wrong config, multiple images and byte/path swap refused before load. Signed
+  transition and rollback metadata changed the candidate; recreate secrets remained redacted; N was
+  retained until N+1 readiness. Backward-compatible failure restored and verified N, while a
+  forward-only failure retained recovery evidence and reported forward recovery/re-sync without
+  falsely claiming rollback.
+- ERTC-33/35/36 | stack: defects corrected before acceptance | result: pass | note: the signed
+  allowlist digest and full transition are now candidate-bound; v2 contract observations are
+  reachable; preload re-probes and proves the running container unchanged; successful activation
+  returns a typed live postcondition; rollback verification accepts the restored original container;
+  forward-only transitions never auto-rollback after activation begins.
+- ERTC-37 | stack: fresh-agent cleanup + final regression | result: pass | note: the disposable
+  `/tmp/ouro-upgrade-accept.*` spec/archive was removed and the root operator-owned `pool-spec.yaml`
+  was never opened or modified. `cargo test --workspace`, `make python-test`, `cargo clippy
+  --workspace --all-targets -- -D warnings`, current static Linux runner build, embedded manifest
+  verification and `git diff --check` pass. Production Ed25519 policy still has no N→N+1 transition,
+  so real activation correctly remains unavailable until a separately reviewed policy release.

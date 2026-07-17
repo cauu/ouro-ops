@@ -115,6 +115,15 @@ def main():
     assert "archive↔config↔signed-policy evidence" not in upgrade
     assert "archive↔config binding is still pending" in " ".join(upgrade.split())
     assert "before any image-store mutation" in " ".join(upgrade.split())
+    normalized_upgrade = " ".join(upgrade.split())
+    for phrase in [
+        "ONE Upgrade workflow",
+        "internal operation boundaries",
+        "separate candidates and operator approvals",
+        "never authorizes activation or the next target",
+    ]:
+        assert phrase in normalized_upgrade, \
+            f"Upgrade Skill lacks single-workflow contract {phrase!r}"
     for name in ("runtime", "upgrade", "kes-rotation"):
         stateful = (ROOT / f"ouro-skills/{name}/SKILL.md").read_text()
         for phrase in [

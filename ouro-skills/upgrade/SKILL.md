@@ -1,12 +1,14 @@
 ---
-skill_version: 3
+skill_version: 4
 requires_ouro: ">=0.1.0"
 ---
 # Upgrade Skill
 
 ## Purpose
-Upgrade one signed convention step (N→N+1) across the fleet, canary relay first, remaining relays
-next, and the block producer last.
+Run one user-visible Upgrade workflow across the fleet: prepare the exact signed image, then
+activate one signed convention step (N→N+1), canary relay first, remaining relays next, and the
+block producer last. Preparation and activation are internal operation boundaries with separate
+candidates and operator approvals; the operator does not start two unrelated workflows.
 
 ## Invariants (the mechanism enforces these; you respect them)
 - Both the running and target IMAGE CONFIG DIGESTS must be in signed immutable policy, and the exact
@@ -18,13 +20,17 @@ next, and the block producer last.
 - Preload proves the archive contains exactly one image matching the approved config digest and
   changes only the image store. Upgrade re-derives the full live recreate spec and refuses shapes it
   cannot reproduce.
+- `upgrade/preload-image` is the non-disruptive preparation boundary. `upgrade/step` is the
+  disruptive activation boundary. A successful preparation never authorizes activation or the next
+  target; each phase gets its own final candidate and exact approval.
 - Every disruptive step is exact-candidate confirmed and fleet-permitted. Relay quorum and BP-last
   are derived from current target facts and the spec.
 - Rollback is claimed only when transition metadata and live state support a verified inverse;
   otherwise the honest failure outcome is a re-sync.
 
 ## Decision guidance (use your judgment; this is not a rigid script)
-- Ask for the existing operator-named Docker-save archive and signed-allowlisted target config
+- Treat this as ONE Upgrade workflow with two explicit gates. Ask for the existing operator-named
+  Docker-save archive and signed-allowlisted target config
   digest (`sha256:<64hex>`). Confirm transition DB compatibility and recovery expectations first.
 - Preview the archive locally once: `ouro-ops inbox preview --type image --file
   <operator-named-docker-save.tar>`. Show its `artifact_ref` and size; no bytes were copied.
@@ -49,7 +55,8 @@ next, and the block producer last.
   <controller-id>`.
 - Immediately rerun the step command without `--plan`, adding `--candidate-hash <final-hash>
   --confirm-token <token> --fleet-permit '<fleet_permit-json>'`. Verify readiness before proceeding
-  to the next relay, and the BP last. Repeat preload/step approval separately for each target.
+  to the next relay, and the BP last. Continue the same workflow, but repeat the two internal
+  candidate/approval gates separately for each target.
 
 ## Stop Conditions
 - Stop if the signed N→N+1 transition is absent, target digest/archive binding fails, the live

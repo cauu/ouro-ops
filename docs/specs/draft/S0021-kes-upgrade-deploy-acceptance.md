@@ -97,7 +97,7 @@ Closure Reason:
 ## 3. Execution Plan
 - [x] p1-1 KES Phase A/B no-write acceptance completed under S0020 p4-12; do not repeat or broaden
   it without a new operator request.
-- [ ] p2-1 accept Upgrade preload/step safe-stops on real hosts and positive rollout/rollback behavior
+- [x] p2-1 accept Upgrade preload/step safe-stops on real hosts and positive rollout/rollback behavior
   in the signed-policy bed.
 - [ ] p3-1 migrate Deploy to stateless plan/apply, update Skill/website, and accept the irreversible
   no-submit flow-readiness tier.
@@ -149,9 +149,16 @@ Closure Reason:
 
 ## 5. Execution Log (append-only)
 - Draft only; execution has not started.
+- 2026-07-17T17:39+0800 p2-1 was completed under active spec S0020 p4-13. The website-style fresh
+  agent reached stable relay preload plans and the signed-transition safe stop without production
+  mutation; sealed signed-policy fixtures proved preload, activation, rollback and forward-only
+  recovery behavior. Deploy remains pending and is not broadened by this completion.
 
 ## 6. Validation Evidence (append-only)
 - None; criteria proposed for operator review.
+- Upgrade evidence is recorded in S0020 ERTC-33 through ERTC-37. Production containers/images were
+  unchanged, no archive bytes or capabilities were sent, and temporary runner/spec/archive residue
+  was removed.
 
 ## 7. Change Requests (append-only)
 - 2026-07-17 operator requested Runtime-equivalent acceptance standards for KES rotate, Upgrade and

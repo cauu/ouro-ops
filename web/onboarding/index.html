@@ -732,11 +732,12 @@ function prompt(d) {
   const opLabel = d.op === "upgrade" ? `upgrade intent (descriptive node release ${d.nodever})` : d.op;
   const cmd = {
     upgrade: [
+      `Treat this as ONE user-visible Upgrade workflow. Internally it has two independently approved transaction boundaries per target: prepare the image with upgrade/preload-image, then activate it with upgrade/step. Success in preparation never authorizes activation or the next target.`,
       `Ask me for an existing operator-named Docker-save archive and its signed-allowlisted N+1 IMAGE CONFIG DIGEST (sha256:<64hex>); never fetch, pull, tag, or raw-load an image.`,
       `The node_version in the spec is only my descriptive release intent. Never derive or authorize an image from that label, a tag, or a latest-release result; the exact config digest plus signed policy and signed N→N+1 transition are authoritative.`,
       `For each target, preview the local file with inbox preview (no staging) once. Show only its artifact_ref and size and state that no bytes were copied.`,
       `For the canary relay first, obtain the FINAL target-validated upgrade/preload-image plan with no capabilities using --plan. Show the previewed archive reference, my declared config digest, signed-policy result and candidate separately. State that archive↔config binding is still pending: only an approved apply preflight validates the supplied bytes before any image-store mutation. Show the plan and WAIT.`,
-      `Only after an approved preload succeeds, follow the Skill rollout (canary relay, remaining relays, BP last): obtain the FINAL target-validated upgrade/step plan with no capabilities using --plan. Show the exact signed transition, recreate/rollback truth and candidate, then WAIT. A missing exact transition is a required typed stop; allowlist membership alone is not authorization.`,
+      `Only after an approved preload succeeds, continue the SAME workflow following the Skill rollout (canary relay, remaining relays, BP last): obtain the FINAL target-validated upgrade/step plan with no capabilities using --plan. Show the exact signed transition, recreate/rollback-or-forward-recovery truth and candidate, then WAIT. A missing exact transition is a required typed stop; allowlist membership alone is not authorization.`,
       `Only after my separate exact approval may you mint that plan's confirm-token, mint the live fleet permit LAST for upgrade/step, and immediately execute the unchanged intent. Never mint a capability from preview output, a refused plan, or an earlier target.`,
     ].join("\n   "),
     "kes-rotation": [

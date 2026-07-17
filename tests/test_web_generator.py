@@ -214,6 +214,9 @@ def main() -> int:
     else:
         branch = upgrade_branch.group(1)
         for expected in [
+            "ONE user-visible Upgrade workflow",
+            "two independently approved transaction boundaries",
+            "continue the SAME workflow",
             "node_version in the spec is only my descriptive release intent",
             "exact config digest plus signed policy and signed N→N+1 transition are authoritative",
             "preview the local file with inbox preview (no staging)",
