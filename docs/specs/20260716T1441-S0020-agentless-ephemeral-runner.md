@@ -626,3 +626,56 @@ no target state is destroyed merely to test the new path.
   `git diff --check` | result: pass | note: full Python/static website gates, JavaScript syntax,
   unchanged embedded manifest and whitespace checks pass. The operator-owned untracked repository
   `pool-spec.yaml` remained untouched.
+
+## 18. Current Website Upgrade Safe-Stop Acceptance (append-only)
+- 2026-07-17T11:37+0800 change request: apply the website-generated fresh-agent acceptance standard
+  to Upgrade without loading an image, rebuilding a container or performing an upgrade. The current
+  signed allowlist has no N→N+1 transition, so a real `upgrade/step --plan` must safely refuse before
+  any recreate. The installed control binary also predates p4-5's honest archive-binding wording;
+  acceptance must use a current repository-built control + embedded runner without installing it.
+- [~] p4-10 align the website upgrade prompt with the current digest/transition and deferred
+  archive-binding contract, generate the real BP+relay prompt in a browser, and give it to a fresh
+  context-free subagent. Permit only local archive preview, target `--plan` and typed refusal; forbid
+  confirmation, fleet permit, artifact transfer, image load, restart, recreate and apply.
+- ERTC-23 prompt truth: the selected node-version label is explicitly descriptive and cannot select
+  or authorize an image. The exact target image config digest, signed policy and signed N→N+1
+  transition are authoritative; tags, latest release and allowlist membership alone are insufficient.
+- ERTC-24 plan truth and safety: archive preview reports only local artifact identity/size. A preload
+  plan shows archive reference, operator-declared config digest, policy result and candidate
+  separately and states that archive↔config binding remains pending until approved apply preflight.
+  Plan/refusal carries no capability and performs no artifact transfer, image load or container
+  restart/recreate.
+- ERTC-25 fresh-agent real-host acceptance: a no-context subagent receives the exact browser prompt,
+  reads the current repository-built embedded Skill, previews an operator-provided local acceptance
+  archive, obtains a real relay preload plan if policy/live state permit, and receives a typed
+  no-transition refusal for `upgrade/step --plan`. It stops without confirmation, permit or apply,
+  accesses no credential contents/repository pool spec, and leaves both target containers unchanged.
+- 2026-07-17T11:48+0800 [x] p4-10 completed. The website now labels its upstream node release as
+  descriptive only, identifies config digest + signed policy + exact signed transition as upgrade
+  authority, makes both preload and step explicitly capability-free `--plan` phases, and states
+  that archive↔config binding is pending until an approved apply preflight. No apply was authorized.
+- ERTC-23/24 | stack: browser | command: serve the website locally; select upgrade; generate the
+  latest prompt with BP `84.247.139.72`, relay `31.220.95.72` and upstream label 11.0.1; inspect
+  `#prompt-out` and browser error logs | result: pass | note: descriptive-label, digest/transition
+  authority, preload/step plan-only, deferred binding, typed-stop and no-write boundaries were all
+  present; browser errors were empty.
+- ERTC-24/25 | stack: release+fresh-agent real host | command: embed the current static Linux runner
+  into a current release control; give the exact browser prompt to a no-context subagent in isolated
+  `/tmp`; preview a Docker-save archive exported from an already-local test image; run relay1
+  `upgrade/preload-image --plan` twice | result: pass | note: preview returned staged=false and
+  artifact `image-a0115d10@sha256:a0115d10…27e2d` (170246144 bytes). Both live target plans exited 0
+  with candidate `b29a8ddb…e178`, live hash `7328c303…9504` and container epoch 1773457345 unchanged;
+  changed=false, persistent_target_state_written=false and apply_revalidation_required=true. The
+  docker-load argv remained unexecuted plan DATA, archive↔config binding remained pending and no
+  archive bytes crossed SSH.
+- ERTC-23/25 | stack: fresh-agent real-host refusal | command: acceptance-only relay1
+  `upgrade/step --plan` from running config `sha256:a3223d93…c0c7a` to allowed config
+  `sha256:0bb21e45…f468f` | result: expected refusal | note: exit 10 stated that no signed N→N+1
+  transition exists and allowlisting images alone is insufficient. Refusal occurred before executor,
+  confirmation, permit or mutation. No image load, restart/recreate, apply, BP contact, diagnostic,
+  repository file or credential-content access occurred; temporary archive/spec/workspace were
+  removed.
+- ERTC-23/24 | stack: regression | command: `make python-test`; inline website `node --check -`;
+  current release `manifest verify --against packaging/bundle-manifest.json`; `git diff --check` |
+  result: pass | note: full Python/website gates, JavaScript syntax, embedded manifest and whitespace
+  checks pass. The operator-owned untracked repository `pool-spec.yaml` remained untouched.

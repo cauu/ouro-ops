@@ -194,6 +194,39 @@ def main() -> int:
     ]:
         if expected not in HTML:
             fails.append(f"observability boundary contract missing {expected!r}")
+
+    # p4-10: a human-readable release label is not an image identity. Upgrade preview/plan must
+    # preserve the distinction between local archive identity, the declared config digest, signed
+    # policy/transition authorization and an operator-approved apply.
+    upgrade_branch = re.search(r"upgrade:\s*\[(.*?)\]\.join\(\"\\n   \"\)", HTML, re.DOTALL)
+    if not upgrade_branch:
+        fails.append("generated prompt has no upgrade branch")
+    else:
+        branch = upgrade_branch.group(1)
+        for expected in [
+            "node_version in the spec is only my descriptive release intent",
+            "exact config digest plus signed policy and signed N→N+1 transition are authoritative",
+            "preview the local file with inbox preview (no staging)",
+            "FINAL target-validated upgrade/preload-image plan with no capabilities using --plan",
+            "archive↔config binding is still pending",
+            "approved apply preflight validates the supplied bytes",
+            "FINAL target-validated upgrade/step plan with no capabilities using --plan",
+            "missing exact transition is a required typed stop",
+            "allowlist membership alone is not authorization",
+        ]:
+            if expected not in branch:
+                fails.append(f"upgrade branch lacks current digest/transition contract {expected!r}")
+    for expected in [
+        "Desired node release label (descriptive)",
+        "Latest upstream release (not image authorization)",
+        'd.op === "upgrade"',
+        "Local preview and commands containing --plan are no-write evidence only",
+        "Never remove --plan",
+        "A returned executor",
+        "plan is DATA, not permission to run it",
+    ]:
+        if expected not in HTML:
+            fails.append(f"upgrade label/plan boundary contract missing {expected!r}")
     for stale_shortcut in ["--fleet-permit <permit>", "--confirm-token <token>"]:
         if stale_shortcut in HTML:
             fails.append(
