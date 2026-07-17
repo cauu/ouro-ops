@@ -34,7 +34,8 @@ S0019 的目标机常驻 CLI、adoption attestation 和 control↔target 版本�
 - KES opcert 与 upgrade image archive 先在 control 本地 `inbox preview`，实际 apply 才和 runner
   一次性传输；目标没有持久 inbox。
 - troubleshooting 复用 pool spec 中现有 `cardano` 账号。host-key、超时、输出和审计仍受控，但
-  诊断不是 OS 机制强制的只读通道；这是 S0020 明确选择的 honest-agent 边界。
+  必须先运行按角色解释的 typed snapshot；仅针对剩余证据缺口使用 `diag exec`。诊断不是 OS
+  机制强制的只读通道；这是 S0020 明确选择的 honest-agent 边界。
 
 完整命令与能力顺序见 [`docs/S0020-operations.md`](docs/S0020-operations.md) 和对应
 `ouro-ops skill show <operation>`。
@@ -51,6 +52,14 @@ target/debug/ouro-ops spec validate --spec examples/pool-spec.minimal.yaml
 target/debug/ouro-ops op run --op observability/health \
   --spec <pool-spec> --dispatch <host> --ssh-key creds://<name> \
   --node <id> --param machine=<id>
+
+# 排障基线（BP 会包含 KES/opcert 与 block_production_ready）
+target/debug/ouro-ops op run --op troubleshooting/snapshot \
+  --spec <pool-spec> --dispatch <host> --ssh-key creds://<name> \
+  --node <id> --param machine=<id>
+
+# 仅针对 snapshot 的剩余证据缺口；这里 --dispatch 使用 machine id
+target/debug/ouro-ops diag exec --dispatch <id> --spec <pool-spec> -- <diagnostic-command>
 
 # live-state-bound restart plan（不会重启）
 target/debug/ouro-ops op run --op runtime/restart --spec <pool-spec> \

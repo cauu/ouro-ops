@@ -95,6 +95,7 @@ def main() -> int:
         "kes-rotation/install-opcert",
         "runtime/restart",
         "observability/health",
+        "troubleshooting/snapshot",
         "ouro-ops diag exec --dispatch <machine-id> --spec pool-spec.yaml -- <diagnostic-command>",
     ]
     for expected in current_prompt_contract:
@@ -133,6 +134,36 @@ def main() -> int:
     for expected in routing_contract:
         if expected not in HTML:
             fails.append(f"generated prompts lack executable dispatch/intent routing {expected!r}")
+
+    # p4-8: troubleshooting is snapshot-first. The website provides concrete spec-host-bound
+    # commands, then uses machine ids only for bounded diagnostic follow-up. Its operation-specific
+    # postamble must acknowledge that diag exec intentionally accepts a command after `--`.
+    troubleshooting_branch = re.search(
+        r"troubleshooting:\s*\[(.*?)\]\.join\(\"\\n   \"\)", HTML, re.DOTALL
+    )
+    if not troubleshooting_branch:
+        fails.append("generated prompt has no troubleshooting branch")
+    else:
+        branch = troubleshooting_branch.group(1)
+        for expected in [
+            "troubleshootingSnapshots",
+            "role_readiness: ready is a bounded baseline, not an overall-health claim",
+            "KES/opcert evidence is available and valid",
+            "block_production_ready is true",
+            "diag exec --dispatch <machine-id>",
+        ]:
+            if expected not in branch:
+                fails.append(f"troubleshooting branch lacks current snapshot contract {expected!r}")
+    for expected in [
+        "--op troubleshooting/snapshot --spec pool-spec.yaml --dispatch ${m.host}",
+        "Snapshot --dispatch uses the spec SSH host shown above",
+        "diag exec --dispatch uses the machine id",
+        'd.op === "troubleshooting"',
+        "For diag exec, the tokens after",
+        "are intentionally the diagnostic command",
+    ]:
+        if expected not in HTML:
+            fails.append(f"troubleshooting selector/postamble contract missing {expected!r}")
     for stale_shortcut in ["--fleet-permit <permit>", "--confirm-token <token>"]:
         if stale_shortcut in HTML:
             fails.append(

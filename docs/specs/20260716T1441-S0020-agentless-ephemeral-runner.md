@@ -541,3 +541,41 @@ no target state is destroyed merely to test the new path.
   verify --against packaging/bundle-manifest.json`; `git diff --check` | result: pass | note: 186
   Rust tests, the full Python suite, L2 integration, zero-warning Clippy, manifest parity and
   whitespace gates pass. The operator-owned untracked `pool-spec.yaml` remained untouched.
+
+## 16. Website Troubleshooting Prompt Parity (append-only)
+- 2026-07-17T10:55+0800 change request: the website still generated the pre-p4-7 diagnostic-only
+  troubleshooting prompt. It delegated directly to `diag exec`, omitted the typed role-aware
+  snapshot and BP KES/opcert conclusion gate, and then contradicted diagnostics with a shared
+  `op run`-only/no-raw-command instruction.
+- [~] p4-8 align the generated troubleshooting prompt, product documentation and static contract
+  tests with the implemented snapshot-first workflow. Generate one spec-host-bound snapshot command
+  per declared machine, preserve machine-id-bound `diag exec` only for remaining evidence gaps, and
+  make the postamble accurately distinguish the typed baseline from diagnostic command arguments.
+- ERTC-17 prompt parity: a copied troubleshooting prompt requires every-machine
+  `troubleshooting/snapshot` before any ad hoc diagnostic, states that `role_readiness: ready` is not
+  an overall-health claim, and forbids a BP-health conclusion unless KES/opcert evidence is available,
+  valid and `block_production_ready` is true.
+- ERTC-18 selector and command truth: generated snapshot commands use each spec SSH host for
+  `--dispatch` while diagnostic commands use the machine id; the troubleshooting branch does not
+  claim that all inputs go through `op run` or that diagnostic commands are forbidden.
+- ERTC-19 product gate: website static tests fail if snapshot-first guidance, BP conclusion safety,
+  selector semantics or the troubleshooting-specific postamble regress. Current operations docs and
+  README list the typed snapshot before `diag exec`.
+- ERTC-17 clarification: the prompt includes a concrete snapshot command for every declared machine
+  so no selector must be invented, but executes only the operator's exact symptom target unless the
+  operator explicitly asks for a fleet-wide investigation.
+- 2026-07-17T11:03+0800 [x] p4-8 completed. The website troubleshooting path now generates the
+  target's typed role-aware snapshot before bounded `diag exec`, explains the different snapshot
+  host and diagnostic machine-id selectors, carries the KES/opcert BP conclusion gate, and uses an
+  operation-specific execution boundary instead of the contradictory shared `op run`-only text.
+- ERTC-17/18 | stack: browser | command: serve `web/onboarding/index.html` locally; select
+  troubleshooting; generate the default BP + two-relay prompt in the in-app browser; inspect
+  `#prompt-out` and browser error logs | result: pass | note: all three concrete snapshot choices,
+  selector semantics, bounded readiness, KES/opcert + `block_production_ready` gate and diagnostic
+  command boundary were present; the obsolete parameters-only statement was absent and the browser
+  emitted no errors.
+- ERTC-19 | stack: regression | command: `make python-test`; extract the inline website script and
+  run `node --check -`; `ouro-ops manifest verify --against packaging/bundle-manifest.json`; `git
+  diff --check` | result: pass | note: the full Python suite, onboarding contract gates, JavaScript
+  syntax, unchanged embedded bundle manifest and whitespace gate pass. The operator-owned untracked
+  `pool-spec.yaml` remained untouched.

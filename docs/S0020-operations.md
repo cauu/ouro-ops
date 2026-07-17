@@ -20,6 +20,7 @@ This is the current non-deploy operator contract. The embedded Skill shown by
 | Operation | Read / write | Authorization | Acceptance-safe endpoint |
 | --- | --- | --- | --- |
 | `observability/health` | read | none | real BP + relay live read |
+| `troubleshooting/snapshot` | read | none | real role-aware baseline; no overall-health claim |
 | `runtime/restart` | disruptive write | exact confirmation + fleet permit | stop after `--plan` |
 | `kes-rotation/install-opcert` | disruptive public-artifact write | exact confirmation + fleet permit | local preview + target `--plan` only |
 | `upgrade/preload-image` | non-disruptive image-store write | exact confirmation | local preview + target `--plan` only |
@@ -52,6 +53,19 @@ and streams `runner || artifact` in one private invocation. No separate remote-s
 
 ## Troubleshooting assurance
 
+Start with the exact target's typed baseline:
+
+```text
+ouro-ops op run --op troubleshooting/snapshot --spec <pool-spec> --dispatch <spec-ssh-host> \
+  --ssh-key creds://<spec-name> --node <machine-id> --param machine=<machine-id>
+```
+
+The snapshot reports current liveness, sync, peers and role-specific forging/KES evidence. A
+`role_readiness: ready` result is bounded to those facts and explicitly does not claim overall
+health. A BP is not forging-ready unless KES/opcert evidence is available and valid and
+`block_production_ready` is true.
+
+For symptom-relevant gaps only,
 `ouro-ops diag exec --dispatch <machine-id> --spec <pool-spec> -- <command>` uses the spec's existing
 operator account. Ouro adds no privilege escalation and enforces pinned transport, bounded
 deadline/output and control audit. It does **not** enforce read-only OS permissions; the Skill
