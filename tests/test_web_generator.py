@@ -164,6 +164,36 @@ def main() -> int:
     ]:
         if expected not in HTML:
             fails.append(f"troubleshooting selector/postamble contract missing {expected!r}")
+
+    # p4-9: observability is a bounded fleet-wide read. Unsupported image policy is evidence for
+    # the read rather than a fatal management-state prerequisite, and insufficient evidence must
+    # hand off to a separate troubleshooting operation instead of silently broadening commands.
+    observability_branch = re.search(
+        r"observability:\s*\[(.*?)\]\.join\(\"\\n   \"\)", HTML, re.DOTALL
+    )
+    if not observability_branch:
+        fails.append("generated prompt has no observability branch")
+    else:
+        branch = observability_branch.group(1)
+        for expected in [
+            "healthCommands",
+            "node_running, socket_answers, block, slot, era, sync_progress and runtime_policy",
+            "single sample proves only that the query path answered",
+            "KES lifetime, forging, peer health, disk capacity and overall node health as not measured",
+            "runtime_policy.supported is false",
+            "informational for this read",
+        ]:
+            if expected not in branch:
+                fails.append(f"observability branch lacks current bounded-read contract {expected!r}")
+    for expected in [
+        'd.op === "observability"',
+        "Do not add --plan, invent raw commands, or broaden this",
+        "separate Troubleshooting operation",
+        "An unsupported runtime image policy alone is",
+        "informational for this read: report it and preserve the live evidence",
+    ]:
+        if expected not in HTML:
+            fails.append(f"observability boundary contract missing {expected!r}")
     for stale_shortcut in ["--fleet-permit <permit>", "--confirm-token <token>"]:
         if stale_shortcut in HTML:
             fails.append(
