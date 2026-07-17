@@ -14,10 +14,11 @@
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path};
+use std::process::Command;
 
 use crate::{OuroError, Result};
 
@@ -25,10 +26,16 @@ use crate::{OuroError, Result};
 const EMBEDDED_ALLOWLIST: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/allowlist.json"));
 
-/// Raw 32-byte Ed25519 public key used to sign `data/allowlist.json`. The private release key is
-/// intentionally not present in the repository or binary.
+/// Raw 32-byte Ed25519 public key used to sign release-policy documents. The private release key
+/// is intentionally not present in the repository or binary.
 const RELEASE_VERIFY_KEY_HEX: &str =
     "3ceb1920f30d3768a7b979c563b4e1738dc7708e8ed6e91d6e32bd7a0df165dd";
+
+/// One no-cache release source. HTTPS authenticates transport; the pinned Ed25519 key authenticates
+/// the document. The branch URL becomes live when a reviewed release catalog lands on `main`.
+pub const RELEASES_URL: &str =
+    "https://raw.githubusercontent.com/cauu/ouro-ops/refs/heads/main/data/releases.json";
+const MAX_RELEASE_DOCUMENT_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -37,6 +44,10 @@ pub struct Allowlist {
     /// Signature over the payload; verified against the pinned release key by S0018 infra. The
     /// literal `EMBEDDED-TRUSTED` marks the pre-infra state (embedded == trusted, never weaker).
     pub signature: String,
+    /// One current deployment recommendation per platform. Absent only in the frozen embedded
+    /// layout fixture; a fetched release catalog must contain at least one entry.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub recommended: BTreeMap<String, String>,
     pub contracts: Vec<LayoutContract>,
     /// Emergency revocation: image_config digests refused even if a stale `allowed` still lists
     /// them. A denylist entry ALWAYS wins over an allow.
@@ -86,16 +97,76 @@ pub struct RoleRule {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AllowedImage {
+    /// Human release label for operator display. Image authority remains the immutable OCI tuple.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub release: String,
     pub platform: String,
     pub oci_index_digest: String,
     pub platform_manifest_digest: String,
     pub image_config_digest: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct VerifiedReleaseCatalog {
+    pub policy: Allowlist,
+    /// Compact public signed document transported to the ephemeral Upgrade runner.
+    pub document: String,
+    pub source: String,
+}
+
 impl Allowlist {
     /// Parse and cryptographically verify the binary's embedded allowlist.
     pub fn embedded() -> Result<Self> {
         parse_verified(EMBEDDED_ALLOWLIST)
+    }
+
+    /// Stable execution convention for ordinary non-Upgrade operations. Image release admission is
+    /// deliberately not part of this lookup: supervisor, paths and role rules are the contract.
+    pub fn stable_contract() -> Result<LayoutContract> {
+        Self::embedded()?
+            .contracts
+            .into_iter()
+            .find(|contract| contract.contract_id == "blinklabs-cardano-node-v1")
+            .ok_or_else(|| OuroError::Validation("embedded stable layout contract is missing".into()))
+    }
+
+    /// Verify one externally supplied release document. Used by the target after the control has
+    /// transported the same public bytes; neither side trusts transport alone.
+    pub fn release_document(text: &str) -> Result<Self> {
+        if text.len() > MAX_RELEASE_DOCUMENT_BYTES {
+            return Err(OuroError::Validation("release document exceeds the 64 KiB bound".into()));
+        }
+        let policy = parse_verified(text)?;
+        policy.validate_release_catalog()?;
+        Ok(policy)
+    }
+
+    pub fn recommended_for(&self, platform: &str) -> Result<&AllowedImage> {
+        let digest = self.recommended.get(platform).ok_or_else(|| {
+            OuroError::Validation(format!(
+                "signed release catalog has no deployment recommendation for {platform}"
+            ))
+        })?;
+        self.contract_and_image_for(digest, platform).map(|(_, image)| image)
+    }
+
+    pub fn next_for(&self, current: &str, platform: &str) -> Result<(&AllowedImage, &crate::upgrade::TransitionMeta)> {
+        let mut candidates = self.transitions.iter().filter(|transition| {
+            transition.from_image_config_digest == current
+                && self.contract_and_image_for(&transition.to_image_config_digest, platform).is_ok()
+        });
+        let transition = candidates.next().ok_or_else(|| {
+            OuroError::Validation(format!(
+                "signed release catalog has no next Upgrade hop from {current} on {platform}"
+            ))
+        })?;
+        if candidates.next().is_some() {
+            return Err(OuroError::Validation(format!(
+                "signed release catalog has ambiguous next Upgrade hops from {current} on {platform}"
+            )));
+        }
+        let (_, image) = self.contract_and_image_for(&transition.to_image_config_digest, platform)?;
+        Ok((image, transition))
     }
 
     /// Load the selected payload (embedded by default, or an externally delivered signed feed).
@@ -341,6 +412,83 @@ impl Allowlist {
         }
         Ok(())
     }
+
+    fn validate_release_catalog(&self) -> Result<()> {
+        if self.recommended.is_empty() {
+            return Err(OuroError::Validation(
+                "signed release catalog has no deployment recommendation".into(),
+            ));
+        }
+        for (platform, digest) in &self.recommended {
+            if self.contract_and_image_for(digest, platform)?.1.release.is_empty() {
+                return Err(OuroError::Validation(format!(
+                    "recommended release {digest} ({platform}) has no release label"
+                )));
+            }
+        }
+        if self.contracts.iter().flat_map(|contract| &contract.allowed)
+            .any(|image| image.release.is_empty())
+        {
+            return Err(OuroError::Validation(
+                "signed release catalog image is missing its release label".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Fetch and verify the current release catalog without caching it. `OURO_RELEASES_FILE` is a
+/// deterministic signed-file seam for tests; it does not bypass schema or signature verification.
+pub fn fetch_release_catalog() -> Result<VerifiedReleaseCatalog> {
+    let test_file = if cfg!(debug_assertions) {
+        std::env::var_os("OURO_RELEASES_FILE")
+    } else {
+        None
+    };
+    let (text, source) = if let Some(path) = test_file {
+        let text = std::fs::read_to_string(&path).map_err(|error| {
+            OuroError::Validation(format!("cannot read OURO_RELEASES_FILE {path:?}: {error}"))
+        })?;
+        (text, format!("file:{}", Path::new(&path).display()))
+    } else {
+        let output = Command::new("curl")
+            .args([
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--location",
+                "--max-time",
+                "15",
+                "--max-filesize",
+                "65536",
+                "--proto",
+                "=https",
+                "--proto-redir",
+                "=https",
+                RELEASES_URL,
+            ])
+            .output()
+            .map_err(|error| {
+                OuroError::Validation(format!(
+                    "cannot execute curl for signed release catalog: {error}"
+                ))
+            })?;
+        if !output.status.success() {
+            let detail = String::from_utf8_lossy(&output.stderr);
+            return Err(OuroError::Validation(format!(
+                "cannot fetch current signed release catalog from {RELEASES_URL}: {}",
+                detail.trim()
+            )));
+        }
+        let text = String::from_utf8(output.stdout).map_err(|_| {
+            OuroError::Validation("signed release catalog is not UTF-8 JSON".into())
+        })?;
+        (text, RELEASES_URL.to_string())
+    };
+    let policy = Allowlist::release_document(&text)?;
+    let document = serde_json::to_string(&policy)
+        .map_err(|error| OuroError::Validation(format!("cannot compact release catalog: {error}")))?;
+    Ok(VerifiedReleaseCatalog { policy, document, source })
 }
 
 fn safe_absolute(value: &str) -> bool {
@@ -483,6 +631,26 @@ fn decode_hex(value: &str) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const RELEASES: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/releases.json"));
+
+    #[test]
+    fn signed_release_catalog_selects_deploy_and_next_upgrade() {
+        let catalog = Allowlist::release_document(RELEASES).expect("signed catalog verifies");
+        let deploy = catalog.recommended_for("linux/amd64").unwrap();
+        assert_eq!(deploy.release, "11.0.1-1");
+        let (next, transition) = catalog.next_for(
+            "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a",
+            "linux/amd64",
+        ).unwrap();
+        assert_eq!(next.release, "10.6.4-1");
+        assert_eq!(transition.to_image_config_digest, next.image_config_digest);
+        assert!(catalog.next_for(&deploy.image_config_digest, "linux/amd64").is_err());
+
+        let tampered = RELEASES.replace("10.6.4-1", "10.6.4-evil");
+        assert!(Allowlist::release_document(&tampered).is_err());
+    }
 
     #[test]
     fn embedded_allowlist_parses_and_is_signed() {

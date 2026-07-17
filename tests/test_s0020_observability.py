@@ -36,7 +36,11 @@ def observation():
             "args": ["run"],
             "image_entrypoint": ["/usr/local/bin/entrypoint"],
             "image_cmd": [],
-            "mounts": [],
+            "mounts": [
+                {"kind": "bind", "source_id": "8:1", "destination": "/data/db", "read_only": False, "owner": "1000:1000", "mode": "0700", "no_symlink": True},
+                {"kind": "bind", "source_id": "8:2", "destination": "/opt/cardano/config", "read_only": True, "owner": "1000:1000", "mode": "0700", "no_symlink": True},
+                {"kind": "bind", "source_id": "8:3", "destination": "/ipc", "read_only": False, "owner": "1000:1000", "mode": "0700", "no_symlink": True},
+            ],
             "topology_hash": "",
             "config_hash": "",
             "kes_opcert_id": "",
@@ -89,8 +93,8 @@ def assert_live_result(value):
         "era": "Conway",
         "sync_progress": "100.00",
     }, data
-    assert data["result"]["runtime_policy"]["supported"] is False, data
-    assert data["result"]["runtime_policy"]["effect"].startswith("informational"), data
+    assert data["result"]["runtime_policy"]["supported"] is True, data
+    assert data["result"]["runtime_policy"]["image_release_admission"] == "not_required_for_read", data
 
 
 def main():
@@ -99,8 +103,8 @@ def main():
     fixture = home / "observation.json"
     fixture.write_text(json.dumps(observation()))
 
-    # A local/debug read has no adoption metadata and an unsupported image, but still returns the
-    # live evidence. Image policy is informational for reads and remains a write gate.
+    # A local/debug read has no adoption metadata and its future image is absent from the frozen
+    # embedded catalog. The conforming stable layout remains readable without release admission.
     local, local_value = invoke(
         home,
         "op",

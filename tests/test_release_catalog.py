@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""S0020 p4-15 — signed no-cache release selection and failure boundaries."""
+
+import hashlib
+import hmac
+import json
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+BIN = ROOT / "target/debug/ouro-ops"
+RELEASES = ROOT / "data/releases.json"
+
+
+def run(home, source, *extra, test_key=None):
+    env = dict(
+        os.environ,
+        OURO_HOME=str(home),
+        OURO_RELEASES_FILE=str(source),
+    )
+    if test_key:
+        env["OURO_ALLOWLIST_TEST_KEY"] = test_key
+    return subprocess.run(
+        [str(BIN), "release", "select", "--platform", "linux/amd64", *extra],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+
+def main():
+    subprocess.run(["cargo", "build", "-p", "ouro"], cwd=ROOT, check=True)
+    with tempfile.TemporaryDirectory(prefix="ouro-release-catalog-") as temporary:
+        home = Path(temporary)
+
+        deploy = run(home, RELEASES)
+        assert deploy.returncode == 0, deploy.stderr
+        deploy_value = json.loads(deploy.stdout)
+        assert deploy_value["data"]["selection"] == "deploy_recommended"
+        assert deploy_value["data"]["image"]["release"] == "11.0.1-1"
+        assert deploy_value["data"]["cache_written"] is False
+        assert list(home.iterdir()) == [], "release selection must not create local state"
+
+        current = "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a"
+        upgrade = run(home, RELEASES, "--from", current)
+        assert upgrade.returncode == 0, upgrade.stderr
+        upgrade_value = json.loads(upgrade.stdout)
+        assert upgrade_value["data"]["selection"] == "upgrade_next"
+        assert upgrade_value["data"]["image"]["release"] == "10.6.4-1"
+        assert upgrade_value["data"]["transition"]["from_image_config_digest"] == current
+        assert list(home.iterdir()) == []
+
+        # A newly signed catalog changes selection without rebuilding this binary.
+        dynamic = json.loads(RELEASES.read_text())
+        future = "sha256:" + "9" * 64
+        dynamic["allowlist_version"] = 99
+        template = dict(dynamic["contracts"][0]["allowed"][0])
+        template.update(
+            release="future-1",
+            oci_index_digest="sha256:" + "7" * 64,
+            platform_manifest_digest="sha256:" + "8" * 64,
+            image_config_digest=future,
+        )
+        dynamic["contracts"][0]["allowed"].append(template)
+        dynamic["recommended"]["linux/amd64"] = future
+        dynamic["signature"] = "pending"
+        unsigned = dict(dynamic)
+        unsigned.pop("signature")
+        canonical = json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+        test_key = "release-catalog-fixture-key"
+        dynamic["signature"] = "test-hmac-sha256:" + hmac.new(
+            test_key.encode(), canonical, hashlib.sha256
+        ).hexdigest()
+        future_file = home / "future.json"
+        future_file.write_text(json.dumps(dynamic, separators=(",", ":")))
+        selected_future = run(home, future_file, test_key=test_key)
+        assert selected_future.returncode == 0, selected_future.stderr
+        assert json.loads(selected_future.stdout)["data"]["image"]["release"] == "future-1"
+
+        tampered = home / "tampered.json"
+        tampered.write_text(RELEASES.read_text().replace("10.6.4-1", "10.6.4-evil"))
+        refused = run(home, tampered)
+        assert refused.returncode != 0
+        assert "signature is invalid" in (refused.stdout + refused.stderr)
+
+        unavailable = run(home, home / "missing.json")
+        assert unavailable.returncode != 0
+        assert "cannot read OURO_RELEASES_FILE" in (unavailable.stdout + unavailable.stderr)
+
+    print("signed no-cache release selection passed")
+
+
+if __name__ == "__main__":
+    main()

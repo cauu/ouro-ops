@@ -69,6 +69,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "legacy" => run_legacy(&args[2..])?,
         "manifest" => run_manifest(&args[2..])?,
         "pool" => run_pool(&args[2..])?,
+        "release" => run_release(&args[2..])?,
         "rollback" => run_rollback(&args[2..])?,
         "self-update" => run_self_update(&args[2..])?,
         "skill" => run_skill(&args[2..])?,
@@ -1644,6 +1645,40 @@ fn run_deploy(args: &[String]) -> Result<()> {
     }
 }
 
+fn run_release(args: &[String]) -> Result<()> {
+    if args.first().map(String::as_str) != Some("select") {
+        return Err(OuroError::InvalidArgs(
+            "expected release select --platform <linux/amd64|linux/arm64> [--from sha256:<digest>]"
+                .into(),
+        ));
+    }
+    let platform = flag_value(args, "--platform")?;
+    if !matches!(platform, "linux/amd64" | "linux/arm64") {
+        return Err(OuroError::Validation(
+            "--platform must be linux/amd64 or linux/arm64".into(),
+        ));
+    }
+    let catalog = crate::convention::fetch_release_catalog()?;
+    let digest = catalog.policy.signed_digest()?;
+    let from = optional_flag_value(args, "--from");
+    let (selection, image, transition) = if let Some(current) = from {
+        let (image, transition) = catalog.policy.next_for(current, platform)?;
+        ("upgrade_next", image, Some(transition))
+    } else {
+        ("deploy_recommended", catalog.policy.recommended_for(platform)?, None)
+    };
+    output::print_json(&ToolOutput::ok("ouro.release.select", false).with_data(json!({
+        "selection": selection,
+        "platform": platform,
+        "source": catalog.source,
+        "policy_version": catalog.policy.allowlist_version,
+        "policy_digest": digest,
+        "image": image,
+        "transition": transition,
+        "cache_written": false,
+    })))
+}
+
 fn run_pool(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {
         Some("register-tx") => {
@@ -1772,6 +1807,7 @@ fn print_help() {
     println!("  tool      run <skill>/<script> — legacy S0017 path; standalone detect is retired");
     println!("  kes       cold-sign-script | counter status | generate | push");
     println!("  deploy    cold-sign-script — offline tx witnessing");
+    println!("  release   select — current signed deploy recommendation or next Upgrade hop");
     println!("  pool      overview | register-tx");
     println!("  rollback  roll back a prior change");
     println!("  self-update  --check");
@@ -1838,6 +1874,11 @@ fn command_usage(command: &str) -> Option<&'static str> {
                   | generate | push\n  Public opcert install runs via `op run kes-rotation/install-opcert`; see the Skill.",
         "deploy" => "ouro-ops deploy cold-sign-script --tx-body <path> --cold-key <role> [--cold-key <role>...] \
                      [--era conway] [--testnet-magic <n>|--mainnet]",
+        "release" => "ouro-ops release select --platform <linux/amd64|linux/arm64> \
+                       [--from sha256:<current-image-config-digest>]\n  \
+                       Fetches and verifies the current signed release catalog without caching. \
+                       Without --from returns the deploy recommendation; with --from returns the \
+                       unique next signed Upgrade hop.",
         "diag" => "ouro-ops diag exec --dispatch <machine> --spec <pool-spec> [--timeout <s>] -- <command>\n  \
                    Free-form diagnosis through the spec's existing operator SSH account. Ouro \
                    adds no sudo but does not enforce read-only access. Host-key pinned, audited, \

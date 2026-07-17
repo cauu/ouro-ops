@@ -117,7 +117,11 @@ def write_probe(path, value):
 
 
 def invoke(home, *args, env_extra=None, path=None):
-    env = dict(os.environ, OURO_HOME=str(home))
+    env = dict(
+        os.environ,
+        OURO_HOME=str(home),
+        OURO_RELEASES_FILE=str(ROOT / "data/releases.json"),
+    )
     if env_extra:
         env.update(env_extra)
     if path:
@@ -250,6 +254,25 @@ def main():
         "/opt/cardano/config/keys/node.cert.ouro-prev",
     ]
     assert all("ouro-run." not in arg for argv in kes_plan for arg in argv)
+
+    # Runtime and KES use the stable inspected layout, not membership in a changing release feed.
+    # A future config digest therefore needs no CLI rebuild when the live layout still conforms.
+    future = observation()
+    future["live"]["image_config_digest"] = "sha256:" + "e" * 64
+    write_probe(probe, future)
+    for operation, params in (
+        ("runtime/restart", ("--param", "machine=bp1")),
+        (
+            "kes-rotation/install-opcert",
+            ("--param", "machine=bp1", "--param", f"opcert={opcert}"),
+        ),
+    ):
+        future_plan, future_value = invoke(
+            home, *target_args(operation, *params), env_extra=probe_env
+        )
+        assert future_plan.returncode == 0, (future_plan, future_value)
+        assert future_value["data"]["runtime_policy"]["release_feed_required"] is False
+    write_probe(probe, observation())
 
     # Candidate drift is explicit: a recreated container changes both live-state and final hashes.
     write_probe(probe, observation(container="cid-new"))

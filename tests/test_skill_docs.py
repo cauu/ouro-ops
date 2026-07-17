@@ -112,6 +112,8 @@ def main():
     assert "ouro-ops inbox preview" in " ".join(upgrade.split())
     assert "--artifact-file <operator-named-docker-save.tar>" in " ".join(upgrade.split())
     assert "upgrade/preload-image" in upgrade
+    assert "ouro-ops release select --platform linux/amd64" in " ".join(upgrade.split())
+    assert "never has to maintain a local allowlist file" in " ".join(upgrade.split())
     assert "archive↔config↔signed-policy evidence" not in upgrade
     assert "archive↔config binding is still pending" in " ".join(upgrade.split())
     assert "before any image-store mutation" in " ".join(upgrade.split())

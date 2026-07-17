@@ -12,8 +12,9 @@ This is the current non-deploy operator contract. The embedded Skill shown by
   closed target action, bounds output/deadline and removes the directory.
 - A target-installed Ouro CLI, remote Ouro version, adoption attestation, global managed marker,
   resident gate/daemon and persistent remote transaction journal are not prerequisites.
-- Signed immutable OCI policy remains a write gate. A tag is descriptive; config/index/manifest
-  digests are the identity.
+- Deployment and Upgrade fetch the current signed `releases.json` without caching. A tag is
+  descriptive; config/index/manifest digests are the identity. Other operations enforce the stable
+  layout contract without requiring the current image to be listed in a changing release catalog.
 
 ## Supported non-deploy operations
 
@@ -43,6 +44,16 @@ For runtime, KES and upgrade, the public sequence is:
 
 Apply re-probes and refuses candidate drift before mutation. Capabilities must never be included in
 plan mode or interpreted from target output.
+
+Before Upgrade, select the signed next hop from the current live image config digest:
+
+```text
+ouro-ops release select --platform linux/amd64 --from sha256:<current-config-digest>
+```
+
+The command returns the release label and exact OCI tuple. Upgrade plan/apply and its fleet permit
+fetch and verify the document again; a changed release policy changes the candidate and invalidates
+the old approval. No command writes a release cache or target policy file.
 
 ## Public artifacts
 

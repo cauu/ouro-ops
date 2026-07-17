@@ -988,3 +988,73 @@ no target state is destroyed merely to test the new path.
   Python/Skill/website gates, warning-free lint, a statically linked x86-64 runner, current embedded
   control policy and manifest integrity passed. No production host was contacted or mutated, and
   root `pool-spec.yaml` remained unread and untouched.
+
+## 23. Minimal Online Release Selection (append-only)
+- 2026-07-17T23:42+0800 change request: an image catalog embedded in the CLI forces operators to
+  replace the local binary whenever a reliable node image is published. Replace that interaction
+  with the smallest useful mechanism: deploy/Upgrade selection reads one current signed
+  `releases.json` over HTTPS, verifies it with the already-pinned Ed25519 key, and either returns an
+  exact immutable image identity or stops before target mutation. Do not add a cache, background
+  updater, resident target state, TUF framework or a new operator maintenance workflow.
+- [x] p4-15 publish and consume a no-cache signed release catalog for deployment and Upgrade image
+  selection, carry the exact verified document through ephemeral Upgrade validation, and remove
+  ordinary non-Upgrade image admission from the release-update coupling.
+- ERTC-43 release source: the CLI has one fixed HTTPS `releases.json` URL and retains only the root
+  verification key. `release select --platform <platform>` returns the signed deployment
+  recommendation; adding `--from <image-config-digest>` returns the exact next signed Upgrade hop.
+  The selected record includes its human release label and complete OCI index/manifest/config tuple.
+- ERTC-44 no hidden state: every release selection and every Upgrade plan/apply/fleet authorization
+  obtains a current document; no successful or failed fetch writes a cache, floor, refresh daemon or
+  target policy file. Network, HTTP, size, schema, signature, platform, recommendation or transition
+  failure stops before SSH or mutation. A signed local-file seam exists only for deterministic tests.
+- ERTC-45 end-to-end binding: control verifies and compacts the public signed document, transports it
+  as ephemeral Upgrade input, and the runner independently verifies it before selecting the current
+  image, target image and exact directed transition. Policy bytes/digest/version and transition are
+  candidate-bound, so a release change between plan and apply invalidates the old approval.
+- ERTC-46 decoupling: Observability, Troubleshooting, Runtime and KES do not fetch the release feed
+  and do not require the current image digest to appear in a changing release catalog. They continue
+  enforcing the stable embedded layout/role/supervisor contract; Upgrade alone requires current and
+  target OCI identities plus an exact transition from the current signed document.
+- ERTC-47 product and quality: Upgrade Skill and website prompt discover the signed next release via
+  the CLI instead of asking the operator to know an allowlist digest. Tamper, stale embedded-policy,
+  unavailable source, wrong platform, direct skip and changed-policy cases fail closed; signed
+  selection, sealed Upgrade, Rust/Python/web regression, warning-free Clippy, static runner/control
+  rebuild, manifest verification and `git diff --check` pass without production contact or mutation.
+- 2026-07-18T00:19+0800 p4-15 completed. The control CLI now fetches one fixed HTTPS release source,
+  verifies its Ed25519 signature with the existing pinned public key and writes no cache. Production
+  release builds cannot redirect that source; the local-file seam is compiled only for debug/test
+  builds. `data/releases.json` v4 validates with canonical SHA-256
+  `b893835d2531aceabe21f397b1773152d3ad9c4bd4972e93eef74204fe45d0be`.
+- ERTC-43 | stack: signed release selection | command: `ouro-ops release select --platform
+  linux/amd64 [--from <current-config>]` | result: pass | note: deployment selection recommends exact
+  `11.0.1-1`; the production `10.5.4-1` config selects the unique adjacent `10.6.4-1` OCI tuple and
+  its exact forward-only transition. The signed graph continues through `10.7.1-3` to `11.0.1-1`.
+- ERTC-44 | stack: no-state and failure tests | command: `python3 tests/test_release_catalog.py` |
+  result: pass | note: an isolated `OURO_HOME` remained empty; a current binary selected a newly
+  signed v99 future recommendation without rebuilding; changed bytes, missing source, invalid
+  platform/schema/signature and anti-rollback inputs refused. The fixture seam did not bypass
+  signature verification and is unavailable in release builds.
+- ERTC-45 | stack: sealed Upgrade + context-free website-prompt agent | result: pass | note: the
+  fresh agent independently loaded Upgrade Skill v5, selected `10.6.4-1` from the typed production
+  baseline and produced separate preload candidate `f7b97fa0…09cf` and step candidate
+  `3e380678…9e7`. Sealed execution covered successful preload/activation, byte/config/multi-image
+  refusal, policy change, direct skip, reverse edge, backward restoration and forward-only recovery;
+  no candidate, preload approval or machine advanced the next phase automatically.
+- ERTC-45 | stack: mutation boundary | result: pass | note: the fresh-agent run used only the signed
+  local pre-release document because this branch's fixed public main URL does not exist until merge.
+  It contacted no production host, invoked no real Docker, minted no confirmation or fleet permit,
+  wrote no release cache and made no repository change. Production archive-to-config binding remains
+  an apply-time preflight and was intentionally not claimed by this simulation.
+- ERTC-46 | stack: stable-contract decoupling | commands: `python3
+  tests/test_s0020_observability.py`; `python3 tests/test_s0020_stateless_plan.py`; `python3
+  tests/test_s0020_troubleshooting.py` | result: pass | note: a conforming future image config absent
+  from the release catalog remains observable and usable by Runtime/KES under the embedded stable
+  layout/role/supervisor contract. Troubleshooting consumes that read evidence; only Upgrade asks
+  the changing release catalog for OCI identity and an exact transition.
+- ERTC-47 | stack: final regression/build | commands: `cargo test --workspace`; `make python-test`;
+  `cargo clippy --workspace --all-targets -- -D warnings`; `cargo zigbuild --release --target
+  x86_64-unknown-linux-musl -p ouro`; `cargo build -p ouro`; `ouro-ops manifest verify --against
+  packaging/bundle-manifest.json`; `git diff --check` | result: pass | note: 188 Rust tests, all
+  Python/Skill/website gates, warning-free lint, a statically linked x86-64 runner, current embedded
+  manifest and release signer inspection passed. The operator-owned root `pool-spec.yaml` remained
+  unread, untouched and excluded from p4-15.

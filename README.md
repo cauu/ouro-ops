@@ -68,6 +68,10 @@ target/debug/ouro-ops op run --op runtime/restart --spec <pool-spec> \
 
 # 本地 public artifact 预览（不会复制/暂存）
 target/debug/ouro-ops inbox preview --type <opcert|image> --file <path>
+
+# 在线验签并选择当前镜像；不带 --from 为部署推荐，带 --from 为升级下一跳
+target/debug/ouro-ops release select --platform linux/amd64 \
+  --from sha256:<current-image-config-digest>
 ```
 
 `pool-spec.yaml` 是运维方持有的声明式路由/身份/策略数据，schema 为

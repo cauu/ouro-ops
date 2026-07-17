@@ -1,7 +1,8 @@
-# Allowlist release signing
+# Release catalog signing
 
-`data/allowlist.json` is a release-security document. Production binaries accept it only when its
-canonical payload verifies under the Ed25519 public key pinned in `crates/ouro/src/convention.rs`.
+`data/releases.json` is the no-cache production release document fetched by deployment and Upgrade
+selection. Production binaries accept it only when its canonical payload verifies under the
+Ed25519 public key pinned in `crates/ouro/src/convention.rs`.
 An allowlisted image is an exact OCI index/platform-manifest/image-config tuple; a mutable tag is
 never sufficient, and adding a baseline does not authorize an upgrade transition.
 
@@ -38,7 +39,10 @@ swift -suppress-warnings tools/allowlist-release-key.swift create
 The command refuses to overwrite an existing item and prints only its public identity. Compare that
 public key with the reviewed change to `RELEASE_VERIFY_KEY_HEX` before signing.
 
-## Signing an allowlist release
+`data/allowlist.json` is the frozen embedded layout/test fixture. Publishing a new reliable image
+changes `data/releases.json`, not the CLI binary or embedded fixture.
+
+## Signing a release catalog
 
 1. Resolve each OCI tuple from the official registry and at least one independent source. Edit only
    `allowlist_version`, the reviewed immutable entries and any separately authorized transitions.
@@ -47,7 +51,7 @@ public key with the reviewed change to `RELEASE_VERIFY_KEY_HEX` before signing.
 
    ```sh
    cargo run --features release-signer --bin ouro-allowlist-signer -- \
-     inspect --input data/allowlist.json
+     inspect --input data/releases.json
    ```
 
 3. After review, request an atomic signature update. `--expect-public-key` must be the reviewed key
@@ -55,7 +59,7 @@ public key with the reviewed change to `RELEASE_VERIFY_KEY_HEX` before signing.
 
    ```sh
    cargo run --features release-signer --bin ouro-allowlist-signer -- \
-     sign --input data/allowlist.json --output data/allowlist.json \
+     sign --input data/releases.json --output data/releases.json \
      --expect-public-key <64-lowercase-hex>
    ```
 
@@ -70,5 +74,5 @@ public key with the reviewed change to `RELEASE_VERIFY_KEY_HEX` before signing.
 
 A rotation changes both the Keychain authority and `RELEASE_VERIFY_KEY_HEX`. Old signatures stop
 verifying immediately in the new binary. Rotation therefore requires explicit operator approval,
-an allowlist signed by the new authority, rebuilt control/target binaries, signature-tamper tests and
-parity validation. Never replace only the JSON signature or only the pinned public key.
+a release catalog signed by the new authority, rebuilt control/target binaries, signature-tamper
+tests and parity validation. Never replace only the JSON signature or only the pinned public key.

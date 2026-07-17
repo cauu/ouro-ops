@@ -324,12 +324,13 @@ fn fetch_fleet_status(
     machine: &Machine,
     paths: &ConfigPaths,
     allowlist_digest: &str,
+    release_policy: Option<&str>,
     network: &str,
     genesis: &str,
 ) -> Result<FleetLiveStatus> {
     let key = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
     let role = match machine.role { MachineRole::Bp => "bp", MachineRole::Relay => "relay" };
-    let remote = vec![
+    let mut remote = vec![
         "target".into(),
         "status".into(),
         "--node".into(),
@@ -343,6 +344,10 @@ fn fetch_fleet_status(
         "--expect-allowlist".into(),
         allowlist_digest.into(),
     ];
+    if let Some(document) = release_policy {
+        remote.push("--release-policy".into());
+        remote.push(document.into());
+    }
     let runner = crate::runner::linux_x86_64()?;
     let argv = crate::dispatch::ephemeral_runner_dispatch_argv(
         &machine.ssh.host,
@@ -645,7 +650,15 @@ pub fn run_fleet(args: &[String]) -> Result<()> {
     // Thus any unmanaged/unreachable/drifted target refuses without minting a permit or authority
     // state. The signed permit carries the resulting counts.
     let paths = ConfigPaths::discover();
-    let allowlist_digest = convention::Allowlist::active_verified()?.signed_digest()?;
+    let release_catalog = if operation == "upgrade/step" {
+        Some(convention::fetch_release_catalog()?)
+    } else {
+        None
+    };
+    let allowlist_digest = match &release_catalog {
+        Some(catalog) => catalog.policy.signed_digest()?,
+        None => convention::Allowlist::embedded()?.signed_digest()?,
+    };
     let facts_epoch = crate::s0019_confirmation::current_epoch()?;
     let mut statuses = Vec::with_capacity(spec.machines.len());
     for machine in &spec.machines {
@@ -653,6 +666,7 @@ pub fn run_fleet(args: &[String]) -> Result<()> {
             machine,
             &paths,
             &allowlist_digest,
+            release_catalog.as_ref().map(|catalog| catalog.document.as_str()),
             spec.pool.network.as_str(),
             &spec.pool.genesis_hashes.shelley,
         )?);
@@ -1047,6 +1061,7 @@ struct StatelessTargetPlan {
     candidate_hash: String,
     intent: Intent,
     observation: Observation,
+    policy: convention::Allowlist,
 }
 
 fn run_stateless_target_plan(args: &[String]) -> Result<()> {
@@ -1067,6 +1082,7 @@ fn run_stateless_target_artifact_preflight(args: &[String]) -> Result<()> {
             "--pool-spec-digest",
             "--min-online-relays",
             "--param",
+            "--release-policy",
             "--candidate-hash",
         ],
         &[],
@@ -1230,11 +1246,23 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
     canonicalize_typed_mounts(&mut observation.live.mounts);
     observation.supervisor.require_conformant()?;
     require_typed_mounts(&observation.live.mounts)?;
-    let allowlist = convention::Allowlist::active_verified()?;
-    let (contract, image) = allowlist.contract_and_image_for(
-        &observation.live.image_config_digest,
-        &observation.live.platform,
-    )?;
+    let is_upgrade = matches!(op, "upgrade/preload-image" | "upgrade/step");
+    let allowlist = if is_upgrade {
+        stateless_release_policy(args)?
+    } else {
+        convention::Allowlist::embedded()?
+    };
+    let stable_contract;
+    let (contract, image) = if is_upgrade {
+        let (contract, image) = allowlist.contract_and_image_for(
+            &observation.live.image_config_digest,
+            &observation.live.platform,
+        )?;
+        (contract, Some(image))
+    } else {
+        stable_contract = convention::Allowlist::stable_contract()?;
+        (&stable_contract, None)
+    };
     require_adoption_contract(contract, &observation, network, genesis, None, None)?;
     match role {
         Role::Relay if contract.role_rules.relay.forbids_forging_keys
@@ -1268,8 +1296,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
     if let Some(target) = payload.get("image").and_then(serde_json::Value::as_str) {
         allowlist.contract_and_image_for(target, &observation.live.platform)?;
         match op {
-            "upgrade/preload-image" => crate::executor::require_image_absent(target)?,
-            "upgrade/step" => {
+            "upgrade/preload-image" | "upgrade/step" => {
                 let transition = allowlist
                     .transition_for(&observation.live.image_config_digest, target)?;
                 crate::upgrade::validate_transition(
@@ -1278,7 +1305,11 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                     &observation.live.platform,
                 )?;
                 upgrade_transition = Some(transition.clone());
-                crate::executor::require_image_present(target)?;
+                if op == "upgrade/preload-image" {
+                    crate::executor::require_image_absent(target)?;
+                } else {
+                    crate::executor::require_image_present(target)?;
+                }
             }
             _ => {}
         }
@@ -1447,8 +1478,10 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             "contract_id": contract.contract_id,
             "convention_version": contract.convention_version,
             "running_image_config_digest": observation.live.image_config_digest,
-            "oci_index_digest": image.oci_index_digest,
-            "platform_manifest_digest": image.platform_manifest_digest,
+            "release": image.map(|value| value.release.as_str()),
+            "oci_index_digest": image.map(|value| value.oci_index_digest.as_str()),
+            "platform_manifest_digest": image.map(|value| value.platform_manifest_digest.as_str()),
+            "release_feed_required": is_upgrade,
         },
         "pool_binding": {
             "pool_id": pool_id,
@@ -1480,6 +1513,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         candidate_hash,
         intent,
         observation,
+        policy: allowlist,
     })
 }
 
@@ -1619,9 +1653,14 @@ fn require_stateless_post_contract(
     }
     observation.supervisor.require_conformant()?;
     require_typed_mounts(&observation.live.mounts)?;
-    let allowlist = convention::Allowlist::active_verified()?;
-    let (contract, _) =
-        allowlist.contract_and_image_for(expected_image, &observation.live.platform)?;
+    let stable_contract;
+    let contract = if matches!(plan.op.as_str(), "upgrade/preload-image" | "upgrade/step") {
+        plan.policy
+            .contract_for(expected_image, &observation.live.platform)?
+    } else {
+        stable_contract = convention::Allowlist::stable_contract()?;
+        &stable_contract
+    };
     require_adoption_contract(
         contract,
         observation,
@@ -1738,7 +1777,7 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
         &[
             "--op", "--node", "--role", "--network", "--genesis", "--pool-id",
             "--pool-spec-digest", "--min-online-relays", "--param", "--approved-candidate",
-            "--verified-fleet-permit",
+            "--verified-fleet-permit", "--release-policy",
         ],
         &[],
         &["--param"],
@@ -1987,8 +2026,7 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 &current_container,
                 target,
             )?;
-            let allowlist = convention::Allowlist::active_verified()?;
-            let transition = allowlist.transition_for(&current_image, target)?;
+            let transition = final_plan.policy.transition_for(&current_image, target)?;
             let automatic_rollback_allowed = crate::upgrade::rollback_possible(transition);
             let rollback = || {
                 crate::executor::run_rollback_plan("upgrade/step", &recovery.rollback)?;
@@ -2085,7 +2123,10 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
 fn run_stateless_target_status(args: &[String]) -> Result<()> {
     validate_closed_args(
         args,
-        &["--node", "--role", "--network", "--genesis", "--expect-allowlist"],
+        &[
+            "--node", "--role", "--network", "--genesis", "--expect-allowlist",
+            "--release-policy",
+        ],
         &[],
         &[],
     )?;
@@ -2104,15 +2145,26 @@ fn run_stateless_target_status(args: &[String]) -> Result<()> {
     let observation = read_observation(&[])?;
     observation.supervisor.require_conformant()?;
     require_typed_mounts(&observation.live.mounts)?;
-    let allowlist = convention::Allowlist::active_verified()?;
+    let release_policy = optional(args, "--release-policy");
+    let allowlist = match release_policy {
+        Some(document) => convention::Allowlist::release_document(document)?,
+        None => convention::Allowlist::embedded()?,
+    };
     if allowlist.signed_digest()? != flag(args, "--expect-allowlist")? {
         return Err(OuroError::Validation(
             "fleet status runner policy differs from the control release".into(),
         ));
     }
-    let (contract, _) = allowlist.contract_and_image_for(
-        &observation.live.image_config_digest, &observation.live.platform,
-    )?;
+    let stable_contract;
+    let contract = if release_policy.is_some() {
+        allowlist.contract_for(
+            &observation.live.image_config_digest,
+            &observation.live.platform,
+        )?
+    } else {
+        stable_contract = convention::Allowlist::stable_contract()?;
+        &stable_contract
+    };
     require_adoption_contract(contract, &observation, network, genesis, None, None)?;
     match role {
         Role::Relay if contract.role_rules.relay.forbids_forging_keys
@@ -2158,28 +2210,42 @@ fn run_stateless_target_status(args: &[String]) -> Result<()> {
 
 fn stateless_observation_output(node: &str, observation: &Observation) -> ToolOutput {
     let readiness = observation.readiness.as_ref();
-    let runtime_policy = match convention::Allowlist::active_verified() {
-        Ok(allowlist) => match allowlist.contract_and_image_for(
-            &observation.live.image_config_digest,
-            &observation.live.platform,
-        ) {
-            Ok((contract, image)) => json!({
-                "supported": true,
-                "contract_id": contract.contract_id,
-                "convention_version": contract.convention_version,
-                "oci_index_digest": image.oci_index_digest,
-                "platform_manifest_digest": image.platform_manifest_digest,
-            }),
-            Err(error) => json!({
-                "supported": false,
-                "detail": error.to_string(),
-                "effect": "informational_for_read; typed writes remain policy-gated",
-            }),
-        },
+    let runtime_policy = match convention::Allowlist::stable_contract() {
+        Ok(contract) => {
+            let conformity = observation
+                .supervisor
+                .require_conformant()
+                .and_then(|_| require_typed_mounts(&observation.live.mounts))
+                .and_then(|_| {
+                    require_adoption_contract(
+                        &contract,
+                        observation,
+                        &observation.live.network,
+                        &observation.live.genesis_hash,
+                        None,
+                        None,
+                    )
+                });
+            match conformity {
+                Ok(()) => json!({
+                    "supported": true,
+                    "contract_id": contract.contract_id,
+                    "convention_version": contract.convention_version,
+                    "image_release_admission": "not_required_for_read",
+                }),
+                Err(error) => json!({
+                    "supported": false,
+                    "contract_id": contract.contract_id,
+                    "convention_version": contract.convention_version,
+                    "detail": error.to_string(),
+                    "effect": "live layout does not conform to the stable contract",
+                }),
+            }
+        }
         Err(error) => json!({
             "supported": null,
             "detail": error.to_string(),
-            "effect": "policy unavailable; live read evidence is still returned",
+            "effect": "stable layout contract unavailable; live read evidence is still returned",
         }),
     };
     let mut result = ToolOutput::ok("ouro.observe", false).with_data(json!({
@@ -4422,6 +4488,11 @@ fn stateless_dispatch_context(
         "--min-online-relays".into(),
         spec.upgrade.min_online_relays.to_string(),
     ];
+    if matches!(op, "upgrade/preload-image" | "upgrade/step") {
+        let catalog = convention::fetch_release_catalog()?;
+        target_args.push("--release-policy".into());
+        target_args.push(catalog.document);
+    }
     let mut index = 0;
     while index < args.len() {
         if args[index] == "--param" {
@@ -5310,6 +5381,23 @@ fn flag<'a>(args: &'a [String], name: &str) -> Result<&'a str> {
 }
 fn optional<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.windows(2).find(|p| p[0] == name).map(|p| p[1].as_str())
+}
+
+fn stateless_release_policy(args: &[String]) -> Result<convention::Allowlist> {
+    if let Some(document) = optional(args, "--release-policy") {
+        return convention::Allowlist::release_document(document);
+    }
+    if cfg!(debug_assertions) {
+        if let Some(path) = std::env::var_os("OURO_RELEASES_FILE") {
+            let document = std::fs::read_to_string(&path).map_err(|error| {
+                OuroError::Validation(format!("cannot read OURO_RELEASES_FILE {path:?}: {error}"))
+            })?;
+            return convention::Allowlist::release_document(&document);
+        }
+    }
+    Err(OuroError::Validation(
+        "Upgrade requires the current signed release document from the control CLI".into(),
+    ))
 }
 
 #[cfg(test)]

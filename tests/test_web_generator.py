@@ -175,8 +175,8 @@ def main() -> int:
         if expected not in HTML:
             fails.append(f"troubleshooting selector/postamble contract missing {expected!r}")
 
-    # p4-9: observability is a bounded fleet-wide read. Unsupported image policy is evidence for
-    # the read rather than a fatal management-state prerequisite, and insufficient evidence must
+    # p4-9/p4-15: observability is a bounded fleet-wide read. A live layout mismatch is evidence for
+    # the read rather than an image-version admission check, and insufficient evidence must
     # hand off to a separate troubleshooting operation instead of silently broadening commands.
     observability_branch = re.search(
         r"observability:\s*\[(.*?)\]\.join\(\"\\n   \"\)", HTML, re.DOTALL
@@ -191,7 +191,8 @@ def main() -> int:
             "single sample proves only that the query path answered",
             "KES lifetime, forging, peer health, disk capacity and overall node health as not measured",
             "runtime_policy.supported is false",
-            "informational for this read",
+            "missing image release entry alone is not unsupported",
+            "never requires a CLI update",
         ]:
             if expected not in branch:
                 fails.append(f"observability branch lacks current bounded-read contract {expected!r}")
@@ -217,12 +218,15 @@ def main() -> int:
             "ONE user-visible Upgrade workflow",
             "two independently approved transaction boundaries",
             "continue the SAME workflow",
-            "node_version in the spec is only my descriptive release intent",
-            "exact config digest plus signed policy and signed N→N+1 transition are authoritative",
+            "ouro-ops release select --platform linux/amd64 --from",
+            "This fetches no image and writes no cache",
+            "current signed release selection is authoritative",
+            "Ask me only for an existing operator-named Docker-save archive",
             "preview the local file with inbox preview (no staging)",
             "FINAL target-validated upgrade/preload-image plan with no capabilities using --plan",
             "archive↔config binding is still pending",
             "approved apply preflight validates the supplied bytes",
+            "fetches and verifies the current signed release document again",
             "FINAL target-validated upgrade/step plan with no capabilities using --plan",
             "missing exact transition is a required typed stop",
             "allowlist membership alone is not authorization",

@@ -62,12 +62,14 @@ def write_allowlist(path, old_image, target_image, backward_compatible):
         "relay": {"requires_opcert": False, "forbids_forging_keys": True},
     }
     allowed_old = {
+        "release": "fixture-old",
         "platform": "linux/amd64",
         "oci_index_digest": "sha256:" + "1" * 64,
         "platform_manifest_digest": "sha256:" + "2" * 64,
         "image_config_digest": old_image,
     }
     allowed_target = {
+        "release": "fixture-target",
         "platform": "linux/amd64",
         "oci_index_digest": "sha256:" + "3" * 64,
         "platform_manifest_digest": "sha256:" + "4" * 64,
@@ -76,6 +78,7 @@ def write_allowlist(path, old_image, target_image, backward_compatible):
     document = {
         "allowlist_version": 77,
         "signature": "pending",
+        "recommended": {"linux/amd64": target_image},
         "contracts": [
             {
                 "convention_version": 1,
@@ -273,6 +276,7 @@ def production_step_plan(home, old_image, target_image):
     reset_state(state, old_image, target_image, target_present=True)
     env = {
         "OURO_PROBE_LIB": str(probe),
+        "OURO_RELEASES_FILE": str(ROOT / "data/releases.json"),
         "OURO_TEST_BASE_OBSERVATION": str(home / "base-observation.json"),
         "OURO_TEST_RUNTIME_STATE": str(state),
         "OURO_TEST_DOCKER_LOG": str(home / "docker.log"),
@@ -309,7 +313,7 @@ def main():
         docker_log = home / "docker.log"
         env = {
             "OURO_PROBE_LIB": str(probe),
-            "OURO_ALLOWLIST_FILE": str(policy),
+            "OURO_RELEASES_FILE": str(policy),
             "OURO_ALLOWLIST_TEST_KEY": TEST_KEY,
             "OURO_TEST_BASE_OBSERVATION": str(home / "base-observation.json"),
             "OURO_TEST_RUNTIME_STATE": str(state),
@@ -521,8 +525,8 @@ def main():
         # The production Ed25519 policy authorizes each reviewed adjacent runtime edge while all
         # releases retain the same Blink layout contract. Direct skips and reverse edges fail at
         # the target plan boundary before any executor can run.
-        production = json.loads((ROOT / "data/allowlist.json").read_text())
-        assert production["allowlist_version"] == 3
+        production = json.loads((ROOT / "data/releases.json").read_text())
+        assert production["allowlist_version"] == 4
         assert len(production["contracts"]) == 1
         assert production["contracts"][0]["convention_version"] == 1
         transitions = production["transitions"]
