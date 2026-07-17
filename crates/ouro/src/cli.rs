@@ -1810,10 +1810,13 @@ fn command_usage(command: &str) -> Option<&'static str> {
         "op" => "ouro-ops op run --op <operation> --spec <pool-spec> --dispatch <host> \
                  [--ssh-key creds://<name>] --node <id> --param machine=<id> [--param k=v] \
                  [--candidate-hash <approved-hash> --artifact-file <path>] \
-                 [--fleet-permit <json>] [--confirm-token <token>] [--plan|--transport-plan]\n  \
+                 [--fleet-permit <json>] [--confirm-token <token>] \
+                 [--plan|--artifact-preflight|--transport-plan]\n  \
                  --plan returns a final target-validated intent and rejects permit/confirm \
-                 capabilities. Apply repeats the same command without --plan, adds the approved \
-                 candidate hash and token, and automatically transports the ephemeral runner. \
+                 capabilities. KES --artifact-preflight sends the exact public opcert for deep \
+                 target validation without a capability or executor. Apply repeats the same \
+                 command without an inspection flag, adds the approved candidate hash and token, \
+                 and automatically transports the ephemeral runner. \
                  Dangerous disruptive ops mint a short-lived 180-second fleet permit last.",
         "inbox" => "ouro-ops inbox preview --type <opcert|tx|image> --file <path>\n  \
                     Hashes and validates the operator-named public file without copying it. Pass \

@@ -1017,10 +1017,12 @@ pub fn run_target(args: &[String]) -> Result<()> {
             }
         }
         Some("plan") => run_stateless_target_plan(&args[1..]),
+        Some("preflight") => run_stateless_target_artifact_preflight(&args[1..]),
         Some("apply") => run_stateless_target_apply(&args[1..]),
         Some("status") => run_stateless_target_status(&args[1..]),
         _ => Err(OuroError::InvalidArgs(
-            "expected internal target observe|plan|apply|status with closed arguments".into(),
+            "expected internal target observe|plan|preflight|apply|status with closed arguments"
+                .into(),
         )),
     }
 }
@@ -1050,6 +1052,107 @@ struct StatelessTargetPlan {
 fn run_stateless_target_plan(args: &[String]) -> Result<()> {
     let plan = build_stateless_target_plan(args)?;
     output::print_json(&plan.output)
+}
+
+fn run_stateless_target_artifact_preflight(args: &[String]) -> Result<()> {
+    validate_closed_args(
+        args,
+        &[
+            "--op",
+            "--node",
+            "--role",
+            "--network",
+            "--genesis",
+            "--pool-id",
+            "--pool-spec-digest",
+            "--min-online-relays",
+            "--param",
+            "--candidate-hash",
+        ],
+        &[],
+        &["--param"],
+    )?;
+    let expected_candidate = flag(args, "--candidate-hash")?;
+    if expected_candidate.len() != 64
+        || !expected_candidate.bytes().all(|byte| {
+            byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+        })
+    {
+        return Err(OuroError::Validation(
+            "--candidate-hash must be the 64 lowercase hex value from the target plan".into(),
+        ));
+    }
+    let plan_args = without_value_flag(args, "--candidate-hash")?;
+    let initial = build_stateless_target_plan(&plan_args)?;
+    if initial.op != "kes-rotation/install-opcert" {
+        return Err(OuroError::Validation(
+            "artifact preflight currently supports only kes-rotation/install-opcert".into(),
+        ));
+    }
+    if initial.candidate_hash != expected_candidate {
+        return Err(OuroError::Validation(format!(
+            "preflight candidate does not match current live state: expected={expected_candidate}, current={}",
+            initial.candidate_hash
+        )));
+    }
+    let reference = initial
+        .intent
+        .payload
+        .get("opcert")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| OuroError::Validation("KES preflight lost opcert reference".into()))?;
+    let path = std::env::var_os("OURO_EPHEMERAL_PAYLOAD")
+        .map(PathBuf::from)
+        .ok_or_else(|| OuroError::Validation(
+            "KES artifact preflight requires the sealed ephemeral public opcert payload".into(),
+        ))?;
+    let (_file, preview) = crate::inbox::preview_source(crate::inbox::ArtifactType::Opcert, &path)?;
+    if preview.artifact_ref != reference {
+        return Err(OuroError::Validation(
+            "ephemeral opcert bytes do not match the candidate-bound artifact reference".into(),
+        ));
+    }
+    let parsed = validate_ephemeral_kes_candidate(&initial, &path, reference)?;
+
+    // Deep validation invokes the live protocol query. Re-probe once more and require the exact
+    // same capability-free candidate before returning a positive preflight report.
+    let final_plan = build_stateless_target_plan(&plan_args)?;
+    if final_plan.candidate_hash != expected_candidate {
+        let changed = stateless_live_drift_components(
+            &initial.observation,
+            &final_plan.observation,
+            &final_plan.op,
+        );
+        return Err(OuroError::Validation(format!(
+            "live state changed during KES artifact preflight; no mutation executed; changed components: {}",
+            if changed.is_empty() { "candidate binding".into() } else { changed.join(", ") },
+        )));
+    }
+    let mut result = ToolOutput::ok("ouro.op.artifact_preflight", false).with_data(json!({
+        "op": final_plan.op,
+        "node": final_plan.node,
+        "candidate_hash": final_plan.candidate_hash,
+        "artifact_ref": reference,
+        "artifact_type": "opcert",
+        "validation": {
+            "text_envelope": "valid",
+            "cold_key_signature": "valid",
+            "hot_kes_key_matches_target": true,
+            "counter_and_live_kes_window": "valid",
+            "counter": parsed.counter,
+            "kes_period": parsed.kes_period,
+            "hot_kes_key_sha256": crate::intent::sha256_hex(
+                &parsed.hot_kes_verification_key,
+            ),
+        },
+        "confirmation_consumed": false,
+        "fleet_permit_consumed": false,
+        "executor_available": false,
+        "persistent_target_state_written": false,
+        "next": "show the unchanged final plan and wait for exact operator approval before apply",
+    }));
+    result.machine = Some(final_plan.node);
+    output::print_json(&result)
 }
 
 fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
@@ -2900,31 +3003,35 @@ fn run_op_inner(args: &[String]) -> Result<()> {
             "--expect-embedded", "--expect-allowlist", "--fleet-pool-id",
             "--fleet-spec-digest", "--fleet-min-online-relays", "--fleet-permit",
         ],
-        &["--plan", "--transport-plan", "--local"],
+        &["--plan", "--artifact-preflight", "--transport-plan", "--local"],
         &["--param"],
     )?;
     let op = flag(args, "--op")?.to_string();
     let node = flag(args, "--node")?.to_string();
     crate::intent::validate_machine_id(&node)?;
     let plan = args.iter().any(|a| a == "--plan");
+    let artifact_preflight = args.iter().any(|a| a == "--artifact-preflight");
     let transport_plan = args.iter().any(|a| a == "--transport-plan");
-    if plan && transport_plan {
+    if usize::from(plan) + usize::from(artifact_preflight) + usize::from(transport_plan) > 1 {
         return Err(OuroError::InvalidArgs(
-            "--plan (target-validated) and --transport-plan (SSH argv only) are mutually exclusive"
+            "--plan, --artifact-preflight and --transport-plan are mutually exclusive".into(),
+        ));
+    }
+    if (plan || artifact_preflight || transport_plan)
+        && optional(args, "--confirm-token").is_some()
+    {
+        return Err(OuroError::Validation(
+            "do not pass a confirm-token to plan/preflight/transport inspection; review the \
+             target-validated plan and artifact preflight first, then mint approval"
                 .into(),
         ));
     }
-    if (plan || transport_plan) && optional(args, "--confirm-token").is_some() {
+    if (plan || artifact_preflight || transport_plan)
+        && optional(args, "--fleet-permit").is_some()
+    {
         return Err(OuroError::Validation(
-            "do not pass a confirm-token to --plan/--transport-plan; review the target-validated \
-             plan first, then mint approval for its final intent_hash"
-                .into(),
-        ));
-    }
-    if (plan || transport_plan) && optional(args, "--fleet-permit").is_some() {
-        return Err(OuroError::Validation(
-            "do not pass a fleet permit to --plan/--transport-plan; the final intent is planned \
-             and approved first, then a short-lived 180-second permit is minted last for immediate execution"
+            "do not pass a fleet permit to plan/preflight/transport inspection; mint the \
+             short-lived permit last only after exact operator approval"
                 .into(),
         ));
     }
@@ -2934,6 +3041,16 @@ fn run_op_inner(args: &[String]) -> Result<()> {
     {
         return Err(OuroError::Validation(
             "--plan derives a fresh candidate and never accepts apply-only candidate/artifact flags"
+                .into(),
+        ));
+    }
+    if artifact_preflight
+        && (optional(args, "--candidate-hash").is_none()
+            || optional(args, "--artifact-file").is_none())
+    {
+        return Err(OuroError::Validation(
+            "--artifact-preflight requires --candidate-hash from the final plan and \
+             --artifact-file containing the exact public opcert"
                 .into(),
         ));
     }
@@ -3000,6 +3117,32 @@ fn run_op_inner(args: &[String]) -> Result<()> {
             }
             return dispatch_stateless_plan(host, &op, &node, args, &paths);
         }
+    }
+
+    if artifact_preflight {
+        if op != "kes-rotation/install-opcert" {
+            return Err(OuroError::Validation(
+                "--artifact-preflight currently supports only kes-rotation/install-opcert".into(),
+            ));
+        }
+        let host = optional(args, "--dispatch").ok_or_else(|| {
+            OuroError::Validation(
+                "--artifact-preflight requires --dispatch and the ephemeral target runner".into(),
+            )
+        })?;
+        for internal in [
+            "--local",
+            "--observation",
+            "--expect-embedded",
+            "--expect-allowlist",
+        ] {
+            if args.iter().any(|arg| arg == internal) {
+                return Err(OuroError::Validation(format!(
+                    "{internal} is target-internal and cannot be supplied to control dispatch"
+                )));
+            }
+        }
+        return dispatch_stateless_artifact_preflight(host, &op, &node, args, &paths);
     }
 
     // S0020 p2-2: every dispatched non-deploy write is now control-authorized and executed by the
@@ -4243,6 +4386,70 @@ fn stateless_apply_terminal(result: &crate::ssh::SshOutcome) -> (&'static str, &
         return ("apply_failed", "typed_target_failure");
     }
     ("apply_ambiguous", "untyped_or_transport_outcome")
+}
+
+fn dispatch_stateless_artifact_preflight(
+    host: &str,
+    op: &str,
+    node: &str,
+    args: &[String],
+    paths: &ConfigPaths,
+) -> Result<()> {
+    let candidate = flag(args, "--candidate-hash")?;
+    if candidate.len() != 64
+        || !candidate.bytes().all(|byte| {
+            byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+        })
+    {
+        return Err(OuroError::Validation(
+            "--candidate-hash must be the 64 lowercase hex value from the target plan".into(),
+        ));
+    }
+    let reference = collect_params(args)?
+        .get("opcert")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| OuroError::Validation("KES preflight lost opcert reference".into()))?
+        .to_string();
+    let artifact_path = flag(args, "--artifact-file")?;
+    let (file, preview) = crate::inbox::preview_source(
+        crate::inbox::ArtifactType::Opcert,
+        Path::new(artifact_path),
+    )?;
+    if preview.artifact_ref != reference {
+        return Err(OuroError::Validation(
+            "--artifact-file bytes do not match the candidate-bound opcert reference".into(),
+        ));
+    }
+    let digest = artifact_ref_digest(&reference)
+        .ok_or_else(|| OuroError::Validation("artifact reference lost its digest".into()))?;
+    let mut context = stateless_dispatch_context(host, op, node, args, paths, "preflight")?;
+    context.target_args.push("--candidate-hash".into());
+    context.target_args.push(candidate.to_string());
+    let runner = crate::runner::linux_x86_64()?;
+    let argv = crate::dispatch::ephemeral_runner_payload_dispatch_argv(
+        host,
+        context.machine.ssh.port,
+        "cardano",
+        &context.key,
+        &paths.known_hosts,
+        crate::dispatch::EphemeralPayloadInput {
+            runner_sha256: &runner.sha256,
+            runner_size: runner.bytes.len(),
+            payload_sha256: digest,
+            payload_size: preview.size_bytes,
+        },
+        &context.target_args,
+    )?;
+    let out = crate::ssh::bounded_ssh_with_payload(
+        &argv,
+        &runner.bytes,
+        file,
+        std::time::Duration::from_secs(10 * 60),
+        256 * 1024,
+        "ephemeral stateless KES artifact preflight SSH dispatch",
+    )
+    .map_err(|error| OuroError::Validation(format!("ssh dispatch failed: {error}")))?;
+    finish_ssh_dispatch("ouro.op.artifact_preflight.dispatch", &out)
 }
 
 fn dispatch_stateless_apply(

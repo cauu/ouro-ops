@@ -808,3 +808,64 @@ no target state is destroyed merely to test the new path.
   --check` | result: pass | note: all Python/static website gates, 187 Rust tests, warning-free
   Clippy, embedded bundle integrity and whitespace checks pass after the successful real restart.
   The operator-owned untracked `pool-spec.yaml` remained untouched and is excluded from p4-11.
+
+## 20. KES Air-gap And No-write Preflight Acceptance (append-only)
+- 2026-07-17T14:22+0800 change request: validate KES as two explicit phases. Phase A must generate
+  the fixed Ouro cold-sign script from public KES vkey + period, execute it in an isolated air-gap
+  simulation with disposable cold key/counter, prove counter backup/advance and return only the
+  public node.cert. Phase B must preview and deeply validate a protocol-valid mock node.cert against
+  a matching mock node environment, produce the final BP-only install plan, and stop before any
+  opcert backup/install/restart or confirmation/permit issuance.
+- [x] p4-12 add a typed one-shot `kes-rotation/install-opcert` artifact preflight that reuses the
+  production opcert parser, target public KES key and live protocol checks but is capability-free,
+  returns changed=false and has no executor; align the Skill/website with Phase A → manual air-gap
+  handoff → Phase B, then give the exact prompt to a context-free subagent for full mock acceptance.
+- ERTC-29 Phase A: the generated executable script embeds only public KES vkey/period, has an
+  out-of-band SHA-256, runs the fixed `cardano-cli node issue-op-cert` against disposable in-place
+  cold key/counter with networking disabled, backs up and advances the counter exactly once, emits
+  a valid public node.cert and returns no secret/counter material.
+- ERTC-30 Phase B: preview and target preflight reopen the exact public artifact bytes, validate
+  opcert shape/signature, hot KES key, counter and KES window against a matching sealed mock node,
+  return a stable install candidate plus changed=false validation evidence, and stop before
+  confirmation, permit, backup, copy or restart. Wrong key/counter/period and byte/path swaps refuse.
+- ERTC-31 product truth: website and embedded Skill start from evidence that renewal is due, generate
+  the Ouro-owned script, require human air-gap execution/digest review, accept only returned public
+  node.cert, use stateless preview/preflight/plan, and no longer direct the operator to legacy
+  `kes push`.
+- ERTC-32 quality: fresh-subagent command ledger, sealed Phase A/B fixtures, Rust/Python/web tests,
+  Clippy, manifest verification and `git diff --check` pass; no production BP opcert/container is
+  changed, no capability is minted and all temporary files are removed.
+- 2026-07-17T15:13+0800 p4-12 completed. The public `--artifact-preflight` path now reopens the
+  exact operator-named opcert, sends only release-selected runner bytes plus that public artifact,
+  rebuilds the candidate on the target, validates the cold signature, target public KES key,
+  counter and live period window, then re-probes for drift. Its typed success is `changed:false`,
+  `executor_available:false`, consumes no confirmation/permit and writes no persistent target state.
+- ERTC-29/30 | stack: executable sealed Phase A/B fixture | command: `python3
+  tests/test_s0020_kes_airgap_preflight.py` | result: pass | note: the generated fixed script's
+  separately emitted SHA-256 matched its bytes; its disposable offline command double observed
+  exactly one `cardano-cli node issue-op-cert`; the counter advanced 6→7 with backup 6 and returned
+  only a protocol-valid public node.cert. Preview, final plan and deep preflight returned stable
+  candidate `300103bd…9435c`; the captured public dispatch was exactly `runner || node.cert` with
+  closed `target preflight` argv. No apply, backup/copy/install or restart ran. The fixture is
+  network-free by construction but does not claim OS-level network namespace isolation; physical
+  air-gap/network-off enforcement remains the human ceremony boundary described by the script.
+- ERTC-30 | stack: concrete refusal scenes | result: pass | note: a different target hot KES key,
+  an expired live KES period, a corrupted cold signature and an artifact byte/path swap all refused
+  before any executor or SSH mutation. Candidate drift is re-probed after protocol validation.
+- ERTC-31 | stack: product parity | result: pass | note: KES Skill v5, website prompt, generated
+  script guidance and CLI help now describe Phase A → human air-gap handoff → public node.cert
+  preview/final plan/deep preflight → separate exact approval. No current Skill or website prompt
+  directs an agent to legacy `kes push`.
+- ERTC-32 | stack: context-free subagent | result: pass | note: the agent received only the current
+  website-style prompt plus disposable-fixture boundary, independently loaded embedded KES Skill
+  v5 and executed the full mock chain. It reported the exact script/artifact digests, stable
+  candidate, validation fields, closed transport argv and a bounded PASS; it minted no capability,
+  contacted no production host, left no temporary tree and never opened the operator-owned root
+  `pool-spec.yaml`.
+- ERTC-32 | stack: final regression | command: `cargo test --workspace`; `make python-test`;
+  `cargo clippy --workspace --all-targets -- -D warnings`; `ouro-ops manifest verify --against
+  packaging/bundle-manifest.json`; `git diff --check` | result: pass | note: 187 Rust tests, all
+  Python/security/website gates, warning-free Clippy, embedded manifest verification and whitespace
+  checks pass. Repository-wide `cargo fmt --all -- --check` remains red on pre-existing formatting
+  outside this item, so no unrelated mechanical rewrite was made. The operator-owned untracked
+  `pool-spec.yaml` remained untouched and is excluded from p4-12.

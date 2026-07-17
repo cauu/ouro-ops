@@ -7,7 +7,8 @@
 //!   3. The operator carries the script to the AIR-GAPPED machine and runs it: it reads
 //!      cold.skey + the opcert counter IN PLACE and issues the operational certificate.
 //!      cold.skey never moves; only the public node.cert comes back.
-//!   4. Back online: `ouro-ops kes push` installs node.cert and restarts the node.
+//!   4. Back online: the KES Rotation Skill previews and deeply validates node.cert, obtains the
+//!      final target plan, and waits for exact approval before the typed install/restart operation.
 //!
 //! Security invariant (p4-4): the generated script contains NO private key material — only the
 //! public KES verification key and the (public) period. cold.skey and the counter are referenced
@@ -119,7 +120,7 @@ fi
 mv -f "$OUT_TMP" "$OUT"
 
 echo "Wrote operational certificate: $OUT (counter advanced; backup at $COUNTER.ouro-bak)"
-echo "Bring $OUT back online and install it with: ouro-ops kes push"
+echo "Bring ONLY $OUT back online; follow the current KES Rotation Skill for preview, artifact preflight, final approval, and typed install."
 "#,
         kes_period = kes_period,
         cardano_cli = cardano_cli,

@@ -127,7 +127,12 @@ def main() -> int:
         "BEGIN POOL-SPEC.YAML (marker only — do not include)",
         "END POOL-SPEC.YAML (marker only — do not include)",
         "preview the local file with inbox preview (no staging)",
-        "preview the public local file with inbox preview",
+        "ouro-ops kes cold-sign-script",
+        "Accept back ONLY the PUBLIC node.cert",
+        "Preview that exact public local file with inbox preview",
+        "--artifact-preflight",
+        "changed:false",
+        "executor_available:false",
         "FINAL target-validated upgrade/step plan with no capabilities",
         "FINAL target-validated kes-rotation/install-opcert BP-only plan with no capabilities",
         "FINAL target-validated runtime/restart plan with no capabilities",
@@ -137,6 +142,8 @@ def main() -> int:
     for expected in routing_contract:
         if expected not in HTML:
             fails.append(f"generated prompts lack executable dispatch/intent routing {expected!r}")
+    if "ouro-ops kes push" in HTML:
+        fails.append("generated KES prompt still directs the agent to legacy kes push")
 
     # p4-8: troubleshooting is snapshot-first. The website provides concrete spec-host-bound
     # commands, then uses machine ids only for bounded diagnostic follow-up. Its operation-specific

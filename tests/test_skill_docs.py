@@ -80,6 +80,17 @@ def main():
     assert "does NOT expose remaining KES periods" in kes
     assert "Use managed health to determine" not in kes, \
         "KES Skill must not infer KES lifetime from the fixed tip-only health read"
+    for phrase in [
+        "ouro-ops kes cold-sign-script",
+        "air-gapped machine",
+        "Accept back ONLY the PUBLIC `node.cert`",
+        "--artifact-preflight",
+        "changed: false",
+        "executor_available: false",
+        "signature/key/counter/window evidence",
+    ]:
+        assert phrase in kes, f"KES Skill lacks Phase A/B contract {phrase!r}"
+    assert "ouro-ops kes push" not in kes, "KES Skill still directs the agent to legacy kes push"
     onboard = (ROOT / "ouro-skills/onboard/SKILL.md").read_text()
     for phrase in [
         "Legacy S0019 Migration Only",

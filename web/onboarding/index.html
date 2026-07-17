@@ -740,9 +740,11 @@ function prompt(d) {
       `Only after my separate exact approval may you mint that plan's confirm-token, mint the live fleet permit LAST for upgrade/step, and immediately execute the unchanged intent. Never mint a capability from preview output, a refused plan, or an earlier target.`,
     ].join("\n   "),
     "kes-rotation": [
-      `Ask me for the PUBLIC cold-signed opcert file; never request, generate, copy, inspect, or rotate a KES signing key.`,
-      `Follow the KES Rotation Skill's ingress exactly: preview the public local file with inbox preview, show its artifact ref and WAIT; do not stage it remotely. The approved apply transports the same bytes once.`,
-      `Derive pool/spec identity and obtain the FINAL target-validated kes-rotation/install-opcert BP-only plan with no capabilities. Show it and WAIT; only after my exact approval mint its confirm-token, mint the live fleet permit LAST, and immediately execute that unchanged intent.`,
+      `Establish from the BP troubleshooting snapshot or separate operator evidence that renewal is due and obtain the current target KES period. A tip-only health sample is insufficient; do not guess the period.`,
+      `Ask me only for an operator-named PUBLIC KES verification-key file. Use ouro-ops kes cold-sign-script with that public file and current period to generate Ouro's fixed script. Show me its separately emitted SHA-256 and WAIT while I review and execute it on my air-gapped machine. Never request, generate, copy, inspect, or rotate a KES signing key, and never improvise another signing script.`,
+      `Accept back ONLY the PUBLIC node.cert. Preview that exact public local file with inbox preview, show its artifact ref and state that no bytes were staged remotely.`,
+      `Derive pool/spec identity and obtain the FINAL target-validated kes-rotation/install-opcert BP-only plan with no capabilities. Before requesting approval, run --artifact-preflight with that candidate hash and exact public node.cert. Require the unchanged candidate, valid signature/key/counter/KES-window evidence, changed:false, executor_available:false, and no confirmation or permit consumption.`,
+      `Show the validation evidence and final backup/install/restart plan, then WAIT. Only after my separate exact approval may you mint its confirm-token, mint the live fleet permit LAST, and immediately execute that unchanged intent.`,
     ].join("\n   "),
     runtime: [
       `Ask me which ONE exact machine to restart; do not choose or infer it. Map its host/key from pool-spec.yaml.`,
