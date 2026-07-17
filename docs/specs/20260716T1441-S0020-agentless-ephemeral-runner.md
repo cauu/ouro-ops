@@ -679,3 +679,132 @@ no target state is destroyed merely to test the new path.
   current release `manifest verify --against packaging/bundle-manifest.json`; `git diff --check` |
   result: pass | note: full Python/website gates, JavaScript syntax, embedded manifest and whitespace
   checks pass. The operator-owned untracked repository `pool-spec.yaml` remained untouched.
+
+## 19. Current Website Runtime Restart Apply Acceptance (append-only)
+- 2026-07-17T11:58+0800 change request: apply the website-generated fresh-agent acceptance standard
+  to Runtime and authorize one real restart of relay `relay1` (`31.220.95.72`). The BP must not be
+  restarted or mutated. Acceptance must preserve the exact plan/approval boundary, use the current
+  repository-built control and ephemeral runner, and independently establish that the relay returned
+  ready after the disruptive operation.
+- [~] p4-11 align the website Runtime prompt and typed apply output with the current Skill contract,
+  generate the real prompt in a browser, and give it to a fresh context-free subagent. Review the
+  final live candidate before consuming the operator's authorization; mint confirmation only for
+  that candidate, mint its short-lived fleet permit last, execute it once, and collect terminal audit
+  plus bounded post-restart evidence.
+- ERTC-26 prompt and plan truth: the operator selects exactly one machine. The capability-free plan
+  reports its final candidate, target, current container identity, fixed restart executor,
+  availability impact and fleet policy, then waits without confirmation, permit or mutation.
+- ERTC-27 exact apply safety: only the approved relay candidate can receive a one-time confirmation;
+  the 30-second live fleet permit is minted last and no replan occurs afterward. Apply revalidates
+  live state, invokes only the fixed restart argv, verifies the live postcondition, returns that
+  evidence, and records an unambiguous terminal control audit. Drift, expired policy, verification
+  failure or ambiguous transport must stop without retrying a raw restart.
+- ERTC-28 real-host recovery: a no-context subagent receives the exact browser-generated prompt and
+  restarts `relay1` once. The returned result is `changed: true`, identifies the approved candidate
+  and verified container/readiness state, and a later bounded read confirms the relay's query path is
+  answering. No persistent runner remains, BP is not restarted or mutated, and no credential content
+  or repository-owned `pool-spec.yaml` is accessed.
+- 2026-07-17T12:42+0800 p4-11 acceptance correction: ERTC-27's originally stated 30-second permit
+  window is superseded by 180 seconds. Real target preflight safely refused because runner transport
+  plus two live probes consumed the entire 30-second window before Docker mutation. The longer
+  short-lived permit covers transport/revalidation only: the candidate and target are re-probed,
+  and other relay endpoints are still checked immediately before the fixed executor mutation.
+- 2026-07-17T12:28+0800 metadata correction: the immediately preceding append was recorded at
+  12:28+0800; its 12:42 timestamp was a transcription error. Its technical content is unchanged.
+- 2026-07-17T12:32+0800 p4-11 real apply discovery: the first permitted Docker restart executed
+  exactly once, but the target sampled readiness immediately after `docker restart` and returned a
+  typed socket-not-answering failure while cardano-node was still starting. Reconciliation proved
+  the new process start time and preserved container/image identity. Runtime must poll the same
+  closed postcondition for at most 300 seconds, tolerate only transient readiness failures, and
+  continue to fail identity/policy/layout drift immediately. No second real restart is authorized
+  by this correction.
+- 2026-07-17T12:46+0800 p4-11 acceptance progress. ERTC-26 passed in the browser and a post-fix
+  context-free agent: the website now emits explicit non-YAML BEGIN/END markers, a single-relay
+  `min_online_relays: 0` policy, 180-second permit/last-mint wording, immediate other-relay probe and
+  300-second readiness behavior. Skill v4 produced candidate `c1ca4f08…b8539` for only relay1 and
+  the fixed `docker restart cfabdd36…9bfc` executor, then stopped without capabilities or apply.
+- ERTC-27 | stack: mechanism + fake executor | result: pass for current source | note: fleet status
+  preserves a KES-unready non-target BP as typed offline evidence instead of blocking relay quorum;
+  permits allow 180 seconds for ephemeral transport while retaining the 30-second fleet-collection
+  bound and immediate endpoint check; runtime retries transient readiness for at most 300 seconds;
+  success returns structured live postcondition; failure after the restart reports `changed: true`,
+  `mutation_executed: true` and a no-retry reconciliation instruction. The deterministic test
+  observes one unready sample then success and separately proves honest post-mutation failure.
+- ERTC-28 | stack: real relay restart + reconciliation | result: partial | note: one real restart was
+  executed. Control audit records candidate `c1ca4f08…b8539` `apply_attempt` then typed failure;
+  process PID changed to 1680147 with start time 2026-07-17 06:30:48 target-local, while container
+  id and Blink Labs image digest stayed unchanged. At roughly four minutes, the independent health
+  read returned socket answering, Conway block 13688532 / slot 192696607 / sync 100.00, and no
+  ephemeral runner residue remained. This run used the pre-poll target behavior and therefore did
+  not return the required post-fix `changed: true` success/live-postcondition record. A second real
+  restart requires new explicit operator authorization before ERTC-28 and p4-11 can be completed.
+- ERTC-27 | stack: regression | command: `make python-test`; inline website `node --check`; current
+  release manifest verify; `cargo test -p ouro` (186 tests); `git diff --check` | result: pass | note:
+  the bundle manifest was regenerated for Runtime Skill v4 and the operator-owned untracked
+  repository `pool-spec.yaml` remained untouched.
+- 2026-07-17T13:05+0800 p4-11 final real-host rerun authorized. The operator explicitly approved a
+  second relay1 restart for a full fresh-subagent simulation using the corrected website contract.
+  The new agent must independently read Skill v4, use an isolated prompt-owned spec, obtain and show
+  a fresh capability-free candidate, and stop for exact-hash approval before minting a new
+  confirmation and 180-second permit. No previous token, permit or candidate authorization may be
+  reused; BP remains read-only fleet evidence and must not be restarted or mutated.
+- 2026-07-17T13:54+0800 p4-11 pre-mutation discoveries. The operator approved exact candidate
+  `c1ca4f08…b8539`, but no second restart has executed yet. Three independently safe refusals exposed
+  real contract defects: signed-permit verification still used 30 seconds after control issuance
+  moved to 180; fleet collection still required the two serial real-host probes to finish within 30
+  seconds; and Docker returned the same typed mount set in nondeterministic array order, which the
+  candidate incorrectly treated as state drift. Every refusal returned `changed:false`; independent
+  reads preserved container `cfabdd36…9bfc`, an answering socket and an advancing Conway/mainnet tip.
+- ERTC-27 | stack: mechanism + regression | result: pass for corrected source | note: one shared
+  `LIVE_FACTS_VALIDITY_SECONDS=180` now governs permit issuance, control collection freshness and
+  target verification; 31-second facts pass while 181-second/future facts fail. Runtime candidates
+  exclude the upgrade-only recreate spec and canonicalize the unique typed mount set by destination
+  before hashing. Reversing the Docker mount array and changing only recreate environment data leave
+  a restart candidate unchanged, while changing the container identity still changes it. Drift
+  refusal now identifies the changed non-sensitive live component without exposing values.
+- ERTC-27/28 | stack: fresh-agent read-only real host | command: capture alternating relay1 plans,
+  compare non-sensitive binding component hashes, then repeat three plans with typed-mount
+  canonicalization | result: pass for determinism, apply pending | note: the only varying component
+  was raw mount order (`[/data/db,/ipc,/opt/cardano/config/keys,/opt/cardano/config]` versus
+  `[/opt/cardano/config,/data/db,/ipc,/opt/cardano/config/keys]`); the canonical mount hash was
+  identical. After the fix, all three plans returned candidate `42af6d6e…8af909`, live hash
+  `b3076873…279c7`, the same container/epoch and the same fixed restart executor. No confirmation,
+  permit or mutation was produced for the new hash; exact operator approval is required before the
+  authorized second restart can continue.
+- ERTC-27 | stack: regression | command: `python3 tests/test_s0020_stateless_plan.py`; `python3
+  tests/test_s0020_stateless_apply.py`; targeted shared-facts Rust tests; static Linux release runner
+  + embedded control rebuild; manifest verify; `git diff --check` | result: pass | note: repository-
+  wide `cargo fmt --all -- --check` remains red on pre-existing formatting across unrelated files,
+  so no broad mechanical rewrite was made. The operator-owned untracked `pool-spec.yaml` remained
+  untouched.
+- 2026-07-17T13:57+0800 p4-11 exact candidate authorization: the operator explicitly approved
+  `42af6d6e9a1485e1346c44907fff678db34774a6a843bdde85b7c10e3d8af909` for one real relay1
+  restart. The fresh agent must reject any different current candidate, discard every prior
+  confirmation/permit, mint a new exact confirmation and mint the 180-second fleet permit last.
+  This authorization covers only relay1's fixed restart executor; BP remains read-only evidence.
+- 2026-07-17T14:05+0800 [x] p4-11 completed. The fresh agent revalidated exact candidate
+  `42af6d6e…8af909`, minted a new confirmation and last-moment permit, and executed only the fixed
+  relay1 restart once. The tracked apply exited 0 with `changed:true`,
+  `approved_candidate_revalidated`, no persistent target state, and a typed live postcondition for
+  the same container/image/network/genesis. No raw or retry path ran and BP remained read-only.
+- ERTC-26/27 | stack: fresh-agent real-host apply | command: current Runtime Skill v4 plan → exact
+  operator approval → fresh confirmation → fresh `rt-p411-final2` fleet permit → immediate apply |
+  result: pass | note: candidate `42af6d6e…8af909`; permit facts online relays 1, minimum 0; target
+  result `ouro.op.apply`, exit 0, changed true. Postcondition preserved container
+  `cfabdd36…9bfc`, creation epoch 1773457345 and image `sha256:a3223d93…c0c7a`; mainnet/genesis
+  matched, socket answered, Conway block 13688778 / slot 192701841 / sync 100.00. A successful
+  control dispatch is emitted only after its terminal `apply_succeeded` audit append succeeds; the
+  target record's null audit_id reflects the no-permanent-target-journal design, not a missing
+  control terminal event.
+- ERTC-28 | stack: fresh-agent real-host reconciliation | command: independent bounded Ouro health
+  reads for relay1 and bp1 plus relay1 `/tmp/ouro-run.*` residue check | result: pass | note: relay1
+  advanced beyond the typed postcondition to block 13688781 / slot 192701876 with socket answering
+  and sync 100.00; bp1 independently answered at block 13688770 / slot 192701599. Container IDs
+  remained relay `cfabdd36…9bfc` and BP `d50c302c…f97d`. The residue check exited 0 with empty output,
+  proving no ephemeral runner directory remained. These bounded reads do not claim BP forging,
+  public peer reachability or disk safety.
+- ERTC-26/27/28 | stack: final regression | command: `make python-test`; `cargo test -p ouro`;
+  `cargo clippy -p ouro --lib --tests -- -D warnings`; current release manifest verify; `git diff
+  --check` | result: pass | note: all Python/static website gates, 187 Rust tests, warning-free
+  Clippy, embedded bundle integrity and whitespace checks pass after the successful real restart.
+  The operator-owned untracked `pool-spec.yaml` remained untouched and is excluded from p4-11.

@@ -184,6 +184,34 @@ def main():
     assert second.returncode == 0
     assert second_value["data"]["candidate_hash"] == data["candidate_hash"]
 
+    # Runtime restart neither reads nor executes the upgrade-only recreate spec. Changes confined
+    # to that spec must not invalidate the restart approval candidate.
+    recreate_changed = observation()
+    recreate_changed["recreate"]["env"].append("UNRELATED_RECREATE_VALUE=changed")
+    write_probe(probe, recreate_changed)
+    recreate_only, recreate_only_value = invoke(
+        home,
+        *target_args("runtime/restart", "--param", "machine=bp1"),
+        env_extra=probe_env,
+    )
+    assert recreate_only.returncode == 0, recreate_only
+    assert recreate_only_value["data"]["candidate_hash"] == data["candidate_hash"]
+    write_probe(probe, observation())
+
+    # Docker's inspect Mounts array has set semantics and may arrive in different orders. All typed
+    # mount fields remain candidate-bound, but order alone cannot create a different candidate.
+    mounts_reordered = observation()
+    mounts_reordered["live"]["mounts"].reverse()
+    write_probe(probe, mounts_reordered)
+    reordered, reordered_value = invoke(
+        home,
+        *target_args("runtime/restart", "--param", "machine=bp1"),
+        env_extra=probe_env,
+    )
+    assert reordered.returncode == 0, reordered
+    assert reordered_value["data"]["candidate_hash"] == data["candidate_hash"]
+    write_probe(probe, observation())
+
     # KES planning accepts only the public content reference and shows the fixed durable previous-
     # certificate guard/backup, install/restart and post-verify cleanup. No signing key, ephemeral
     # rollback path or arbitrary target path enters the candidate.

@@ -193,6 +193,7 @@ def main():
         path=fakebin,
     )
     assert drift.returncode != 0 and "live state changed" in json.dumps(drift_value), drift_value
+    assert "container_id" in json.dumps(drift_value), drift_value
     assert not docker_log.exists()
 
     # Expired control-verified fleet evidence refuses at the target after final revalidation and
@@ -238,6 +239,25 @@ def main():
     fresh_permit = target_fleet_permit(
         restart_candidate, relay_port, int(time.time()) + 30
     )
+    # Docker restart returns before cardano-node necessarily answers on its socket. The target must
+    # keep the same approved identity and wait through a transient unready sample instead of
+    # declaring the already-executed restart failed immediately.
+    readiness_counter = home / "runtime-readiness-count"
+    ready_payload = json.dumps(observation(), separators=(",", ":"))
+    unready_observation = observation()
+    unready_observation["readiness"]["socket_answers"] = False
+    unready_observation["readiness"]["tip_synced"] = False
+    unready_payload = json.dumps(unready_observation, separators=(",", ":"))
+    probe.write_text(
+        "ouro_observe() {\n"
+        f"  if test -f '{docker_log}'; then\n"
+        f"    n=$(cat '{readiness_counter}' 2>/dev/null || printf 0)\n"
+        f"    if test \"$n\" = 0; then printf '%s\\n' '{unready_payload}'; "
+        f"else printf '%s\\n' '{ready_payload}'; fi\n"
+        f"    printf '%s' $((n + 1)) >'{readiness_counter}'\n"
+        f"  else printf '%s\\n' '{ready_payload}'; fi\n"
+        "}\n"
+    )
     applied, applied_value = invoke(
         home,
         *apply_args(
@@ -253,8 +273,76 @@ def main():
     )
     assert applied.returncode == 0, (applied, applied_value)
     assert applied_value["tool"] == "ouro.op.apply" and applied_value["changed"] is True
+    post = applied_value["data"]["live_postcondition"]
+    assert post == {
+        "verification": "typed_role_readiness_passed",
+        "container": {
+            "id": "cid-plan",
+            "creation_epoch": 1234,
+            "image_config_digest": observation()["live"]["image_config_digest"],
+        },
+        "network": "mainnet",
+        "genesis_hash": GENESIS,
+        "node_running": True,
+        "socket_answers": True,
+        "tip_block": 9,
+        "tip_slot": 10,
+        "tip_era": "Conway",
+        "sync_progress": "100.00",
+        "tip_synced": True,
+    }
+    assert readiness_counter.read_text() == "2"
     assert docker_log.read_text().splitlines() == ["restart cid-plan"]
     docker_log.unlink()
+
+    # Once the fixed restart argv has run, a postcondition failure must never fall back to the
+    # generic changed:false error contract. Return typed mutation truth and tell the caller to
+    # reconcile rather than retrying the restart.
+    drifted_post = observation()
+    drifted_post["live"]["network"] = "preprod"
+    ready_payload = json.dumps(observation(), separators=(",", ":"))
+    drifted_payload = json.dumps(drifted_post, separators=(",", ":"))
+    probe.write_text(
+        "ouro_observe() {\n"
+        f"  if test -f '{docker_log}'; then printf '%s\\n' '{drifted_payload}'; "
+        f"else printf '%s\\n' '{ready_payload}'; fi\n"
+        "}\n"
+    )
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    relay_port = listener.getsockname()[1]
+
+    def accept_reconciliation_probe():
+        connection, _ = listener.accept()
+        connection.close()
+        listener.close()
+
+    threading.Thread(target=accept_reconciliation_probe, daemon=True).start()
+    failed_after_restart, failed_value = invoke(
+        home,
+        *apply_args(
+            "runtime/restart",
+            restart_candidate,
+            "--param",
+            "machine=bp1",
+        ),
+        "--verified-fleet-permit",
+        target_fleet_permit(
+            restart_candidate, relay_port, int(time.time()) + 30
+        ),
+        env_extra=env,
+        path=fakebin,
+    )
+    assert failed_after_restart.returncode != 0, (failed_after_restart, failed_value)
+    assert failed_value["tool"] == "ouro.op.apply"
+    assert failed_value["status"] == "error" and failed_value["changed"] is True
+    assert failed_value["error"]["code"] == "postcondition_failed_after_mutation"
+    assert failed_value["data"]["mutation_executed"] is True
+    assert "do not retry restart" in failed_value["data"]["recovery"]
+    assert docker_log.read_text().splitlines() == ["restart cid-plan"]
+    docker_log.unlink()
+    write_probe(probe, observation())
 
     allowlist_doc = json.loads((ROOT / "data/allowlist.json").read_text())
     allowlist_digest = "sha256:" + hashlib.sha256(
@@ -281,6 +369,37 @@ def main():
     assert status_value["tool"] == "ouro.fleet.status"
     assert status_value["data"]["management_state"] == "not_required"
     assert status_value["data"]["online"] is True
+
+    # Fleet collection must preserve an unready BP as typed offline evidence rather than refusing
+    # the whole snapshot. Its forging state is irrelevant to the relay quorum count; a BP selected
+    # for mutation remains protected by its own plan and post-write role-readiness gates.
+    unready_bp = observation()
+    unready_bp["live"]["forging_key_permissions_safe"] = False
+    unready_bp["readiness"]["kes_opcert_valid"] = False
+    unready_bp["readiness"]["forging_credentials_ready"] = False
+    write_probe(probe, unready_bp)
+    status, status_value = invoke(
+        home,
+        "target",
+        "status",
+        "--node",
+        "bp1",
+        "--role",
+        "bp",
+        "--network",
+        "mainnet",
+        "--genesis",
+        GENESIS,
+        "--expect-allowlist",
+        allowlist_digest,
+        env_extra=env,
+        path=fakebin,
+    )
+    assert status.returncode == 0, (status, status_value)
+    assert status_value["tool"] == "ouro.fleet.status"
+    assert status_value["data"]["role"] == "bp"
+    assert status_value["data"]["online"] is False
+    write_probe(probe, observation())
 
     # Build a domain-valid, tag-free Docker-save artifact. Preload is intentionally non-disruptive,
     # so it lets this test prove the whole control approval/payload transport chain without a fleet
@@ -435,6 +554,12 @@ upgrade:
     )
     assert permit.returncode == 0, (permit, permit_value)
     assert permit_value["tool"] == "ouro.fleet.permit.create"
+    assert (
+        permit_value["data"]["facts"]["valid_until_epoch"]
+        - permit_value["data"]["facts"]["collected_from_epoch"]
+        == 180
+    )
+    assert permit_value["data"]["expires_at_epoch"] > int(time.time()) + 150
     fleet_remote = fleet_ssh_log.read_text()
     assert fleet_remote.count("'target' 'status'") == 2
     assert "/usr/local/bin/ouro-ops" not in fleet_remote and "ouro-op-run" not in fleet_remote

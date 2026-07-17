@@ -30,6 +30,8 @@ use crate::{convention, parity, OuroError, Result};
 
 const DISPATCH_DIAGNOSTIC_CAP: usize = 2048;
 const INBOX_OUTPUT_CAP: usize = 16 * 1024;
+const RUNTIME_RESTART_READINESS_TIMEOUT_SECONDS: u64 = 300;
+const RUNTIME_RESTART_READINESS_POLL_SECONDS: u64 = 1;
 
 /// Preserve the remote command's one-record contract. A well-formed remote ToolOutput is forwarded
 /// byte-for-byte and its exit code is retained without a second local error. SSH/protocol failures
@@ -521,6 +523,18 @@ fn pool_spec_identity(spec: &PoolSpec) -> Result<(String, String)> {
     Ok((digest, pool_id))
 }
 
+fn require_fleet_live_facts_fresh(facts_epoch: u64, now: u64) -> Result<()> {
+    if facts_epoch > now.saturating_add(5)
+        || now.saturating_sub(facts_epoch) > crate::fleet::LIVE_FACTS_VALIDITY_SECONDS
+    {
+        return Err(OuroError::Validation(format!(
+            "fleet live-facts collection exceeded the shared {}-second authorization window — retry",
+            crate::fleet::LIVE_FACTS_VALIDITY_SECONDS,
+        )));
+    }
+    Ok(())
+}
+
 /// Mint one short-lived, signed disruptive-step permit under the pool-wide authority. Controllers
 /// MUST share the same durable OURO_HOME authority; its kernel lock serializes acquisitions. Fleet
 /// availability/order facts are fetched from every declared target, never accepted from the agent.
@@ -674,13 +688,9 @@ pub fn run_fleet(args: &[String]) -> Result<()> {
     };
     crate::fleet::require_quorum(online_relays, min_online_relays, role == "relay")?;
     crate::fleet::require_bp_last(role == "bp", relays_remaining)?;
-    let ttl_seconds = 30;
+    let ttl_seconds = crate::fleet::LIVE_FACTS_VALIDITY_SECONDS;
     let now = crate::s0019_confirmation::current_epoch()?;
-    if now.saturating_sub(facts_epoch) > 30 {
-        return Err(OuroError::Validation(
-            "fleet live-facts collection exceeded the 30-second authorization window — retry".into(),
-        ));
-    }
+    require_fleet_live_facts_fresh(facts_epoch, now)?;
     let authority = crate::fleet::PoolAuthority::at(&paths.home.join("fleet-authority"), &pool_id);
     let lease = authority.acquire(&pool_id, holder, now, ttl_seconds)?;
     let secret = crate::confirm::load_or_create_secret(&paths.tool_run_secret)?;
@@ -731,7 +741,7 @@ pub fn run_fleet(args: &[String]) -> Result<()> {
         "facts": {
             "source": "target-validated-live-snapshot",
             "collected_from_epoch": facts_epoch,
-            "valid_until_epoch": facts_epoch.saturating_add(30),
+            "valid_until_epoch": facts_epoch.saturating_add(crate::fleet::LIVE_FACTS_VALIDITY_SECONDS),
             "online_relays": online_relays,
             "min_online_relays": min_online_relays,
             "relays_remaining": relays_remaining,
@@ -1113,7 +1123,8 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         ));
     }
 
-    let observation = read_observation(&[])?;
+    let mut observation = read_observation(&[])?;
+    canonicalize_typed_mounts(&mut observation.live.mounts);
     observation.supervisor.require_conformant()?;
     require_typed_mounts(&observation.live.mounts)?;
     let allowlist = convention::Allowlist::active_verified()?;
@@ -1168,10 +1179,17 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         }
     }
 
+    // Bind only operation-relevant target state. The recreate spec is consumed exclusively by
+    // upgrade/step; binding it into restart/KES/preload candidates makes unrelated Docker inspect
+    // details (including environment values) invalidate an otherwise identical operation.
     let live_binding = json!({
         "supervisor": observation.supervisor,
         "live": observation.live,
-        "recreate": observation.recreate,
+        "recreate": if op == "upgrade/step" {
+            observation.recreate.as_ref()
+        } else {
+            None
+        },
     });
     let live_bytes = serde_json::to_vec(&live_binding)
         .map_err(|error| OuroError::Validation(format!("cannot bind live state: {error}")))?;
@@ -1368,6 +1386,80 @@ fn stateless_readiness(
     .evaluate()
 }
 
+fn wait_runtime_restart_readiness(
+    plan: &StatelessTargetPlan,
+    expected_image: &str,
+) -> Result<Observation> {
+    let deadline = std::time::Instant::now()
+        + std::time::Duration::from_secs(RUNTIME_RESTART_READINESS_TIMEOUT_SECONDS);
+    loop {
+        let last_readiness_error = match read_observation(&[]) {
+            Ok(post) => {
+                // Identity/policy/layout drift is not a startup transient and must fail closed.
+                require_stateless_post_contract(plan, &post, expected_image)?;
+                match stateless_readiness(plan, &post, false) {
+                    Ok(()) => return Ok(post),
+                    Err(error) => error.to_string(),
+                }
+            }
+            Err(error) => error.to_string(),
+        };
+        if std::time::Instant::now() >= deadline {
+            return Err(OuroError::Validation(format!(
+                "node did not return ready within {RUNTIME_RESTART_READINESS_TIMEOUT_SECONDS} \
+                 seconds after restart: {last_readiness_error}"
+            )));
+        }
+        std::thread::sleep(std::time::Duration::from_secs(
+            RUNTIME_RESTART_READINESS_POLL_SECONDS,
+        ));
+    }
+}
+
+fn stateless_live_drift_components(
+    before: &Observation,
+    after: &Observation,
+    operation: &str,
+) -> Vec<&'static str> {
+    let mut changed = Vec::new();
+    if before.supervisor != after.supervisor {
+        changed.push("supervisor");
+    }
+    macro_rules! changed_live {
+        ($field:ident) => {
+            if before.live.$field != after.live.$field {
+                changed.push(stringify!($field));
+            }
+        };
+    }
+    changed_live!(image_config_digest);
+    changed_live!(platform);
+    changed_live!(container_id);
+    changed_live!(container_name);
+    changed_live!(image_reference);
+    changed_live!(container_creation_epoch);
+    changed_live!(entrypoint);
+    changed_live!(args);
+    changed_live!(image_entrypoint);
+    changed_live!(image_cmd);
+    changed_live!(mounts);
+    changed_live!(topology_hash);
+    changed_live!(config_hash);
+    changed_live!(kes_opcert_id);
+    changed_live!(has_forging_keys);
+    changed_live!(forging_key_permissions_safe);
+    changed_live!(host_key_sha256);
+    changed_live!(genesis_hash);
+    changed_live!(network);
+    if operation == "upgrade/step"
+        && serde_json::to_value(&before.recreate).ok()
+            != serde_json::to_value(&after.recreate).ok()
+    {
+        changed.push("upgrade_recreate_spec");
+    }
+    changed
+}
+
 fn require_stateless_post_contract(
     plan: &StatelessTargetPlan,
     observation: &Observation,
@@ -1473,7 +1565,7 @@ fn require_stateless_target_fleet_gate(
     let check_time = |now: u64| {
         if permit.expiry_epoch <= now
             || permit.facts_epoch > now.saturating_add(5)
-            || now.saturating_sub(permit.facts_epoch) > 30
+            || now.saturating_sub(permit.facts_epoch) > crate::fleet::LIVE_FACTS_VALIDITY_SECONDS
         {
             Err(OuroError::Validation(
                 "fleet permit expired before target mutation — collect fresh facts and approve again"
@@ -1571,22 +1663,69 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
     // exact approved candidate again so all drift is detected before the first executor mutation.
     let final_plan = build_stateless_target_plan(&plan_args)?;
     if final_plan.candidate_hash != approved {
-        return Err(OuroError::Validation(
-            "live state changed after approval/artifact validation; no mutation executed".into(),
-        ));
+        let changed = stateless_live_drift_components(
+            &initial.observation,
+            &final_plan.observation,
+            &final_plan.op,
+        );
+        return Err(OuroError::Validation(format!(
+            "live state changed after approval/artifact validation; no mutation executed; changed components: {}",
+            if changed.is_empty() { "candidate binding".into() } else { changed.join(", ") },
+        )));
     }
     let current_container = final_plan.observation.live.container_id.clone();
     let current_image = final_plan.observation.live.image_config_digest.clone();
     require_stateless_target_fleet_gate(&final_plan, args)?;
+    let mut live_postcondition: Option<serde_json::Value> = None;
 
     match final_plan.op.as_str() {
         "runtime/restart" => {
             crate::executor::run_argv(&[
                 "docker".into(), "restart".into(), current_container,
             ])?;
-            let post = read_observation(&[])?;
-            require_stateless_post_contract(&final_plan, &post, &current_image)?;
-            stateless_readiness(&final_plan, &post, false)?;
+            let post = match wait_runtime_restart_readiness(&final_plan, &current_image) {
+                Ok(post) => post,
+                Err(error) => {
+                    let mut failure = ToolOutput::failure(
+                        "ouro.op.apply",
+                        "postcondition_failed_after_mutation",
+                        format!("restart executed but live postcondition did not pass: {error}"),
+                    )
+                    .with_data(json!({
+                        "op": &final_plan.op,
+                        "node": &final_plan.node,
+                        "candidate_hash": &final_plan.candidate_hash,
+                        "mutation_executed": true,
+                        "live_postcondition": null,
+                        "recovery": "do not retry restart; reconcile the live node with bounded reads",
+                        "persistent_target_state_written": false,
+                    }));
+                    failure.changed = true;
+                    failure.machine = Some(final_plan.node.clone());
+                    output::print_json(&failure)?;
+                    return Err(OuroError::Reported(10));
+                }
+            };
+            let readiness = post.readiness.as_ref().expect(
+                "stateless_readiness returned success only after requiring readiness evidence",
+            );
+            live_postcondition = Some(json!({
+                "verification": "typed_role_readiness_passed",
+                "container": {
+                    "id": post.live.container_id,
+                    "creation_epoch": post.live.container_creation_epoch,
+                    "image_config_digest": post.live.image_config_digest,
+                },
+                "network": post.live.network,
+                "genesis_hash": post.live.genesis_hash,
+                "node_running": readiness.node_running,
+                "socket_answers": readiness.socket_answers,
+                "tip_block": readiness.tip_block_height,
+                "tip_slot": readiness.tip_slot,
+                "tip_era": readiness.tip_era,
+                "sync_progress": readiness.sync_progress,
+                "tip_synced": readiness.tip_synced,
+            }));
         }
         "kes-rotation/install-opcert" => {
             let (_, payload) = held_payload.as_ref().ok_or_else(|| {
@@ -1721,6 +1860,7 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
         "candidate_hash": final_plan.candidate_hash,
         "assurance": "approved_candidate_revalidated",
         "recovery_model": "live postcondition verification with in-invocation rollback where an inverse exists",
+        "live_postcondition": live_postcondition,
         "persistent_target_state_written": false,
         "ephemeral_artifact_removed_by_transport": held_payload.is_some(),
     }));
@@ -1765,14 +1905,10 @@ fn run_stateless_target_status(args: &[String]) -> Result<()> {
             && observation.live.has_forging_keys => return Err(OuroError::Validation(
                 "pool spec declares relay but live node bears forging keys".into(),
             )),
-        Role::Bp if contract.role_rules.bp.requires_opcert
-            && (observation.live.kes_opcert_id.is_empty()
-                || !observation.live.forging_key_permissions_safe) =>
-        {
-            return Err(OuroError::Validation(
-                "pool spec declares BP but live forging credentials are absent/unsafe".into(),
-            ));
-        }
+        // A non-target BP is part of the signed fleet snapshot, but its forging readiness does not
+        // contribute to relay quorum. Preserve an unhealthy BP as `online: false` below instead of
+        // making an unrelated relay restart impossible. A BP selected for a write still fails its
+        // own target plan/readiness gates before and after mutation.
         _ => {}
     }
     let online = observation.readiness.as_ref().is_some_and(|evidence| {
@@ -2105,6 +2241,14 @@ fn require_typed_mounts(mounts: &[TypedMount]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn canonicalize_typed_mounts(mounts: &mut [TypedMount]) {
+    mounts.sort_by(|left, right| {
+        left.destination
+            .cmp(&right.destination)
+            .then_with(|| left.source_id.cmp(&right.source_id))
+    });
 }
 
 fn require_adoption_contract(
@@ -2780,7 +2924,7 @@ fn run_op_inner(args: &[String]) -> Result<()> {
     if (plan || transport_plan) && optional(args, "--fleet-permit").is_some() {
         return Err(OuroError::Validation(
             "do not pass a fleet permit to --plan/--transport-plan; the final intent is planned \
-             and approved first, then a 30-second live permit is minted last for immediate execution"
+             and approved first, then a short-lived 180-second permit is minted last for immediate execution"
                 .into(),
         ));
     }
@@ -3278,7 +3422,7 @@ fn run_op_inner(args: &[String]) -> Result<()> {
                 "pool_spec_digest": digest,
                 "pool_id": pool_id,
                 "min_online_relays": min,
-                "permit_freshness_seconds": 30,
+                "permit_freshness_seconds": crate::fleet::LIVE_FACTS_VALIDITY_SECONDS,
             })),
             "confirmation_required": spec.mutability == Mutability::Dangerous,
             "commit_recheck_required": true,
@@ -3305,7 +3449,7 @@ fn run_op_inner(args: &[String]) -> Result<()> {
             "note": if fleet_sensitive {
                 "target-validated final plan; no node runtime/config/attestation/inbox/transaction \
                  mutation (audit and private temporary probe metadata may be written). Approve this \
-                 intent_hash, mint confirmation, then mint a 30-second fleet permit last and execute \
+                 intent_hash, mint confirmation, then mint a short-lived 180-second fleet permit last and execute \
                  immediately without replanning"
             } else {
                 "target-validated final plan; no node runtime/config/attestation/inbox/transaction \
@@ -4854,7 +4998,7 @@ fn optional<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 mod tests {
     use super::{
         extract_embedded_probe, parse_cardano_cli_json, rotate_attestation_for_upgrade,
-        stateless_apply_terminal, ObsLive, Observation,
+        require_fleet_live_facts_fresh, stateless_apply_terminal, ObsLive, Observation,
     };
     use crate::attestation::{AdoptionAttestation, ImmutableIdentity, ManagedState, Role, TypedMount};
     use crate::config::ConfigPaths;
@@ -4871,6 +5015,13 @@ mod tests {
 
         let ambiguous = b"diagnostic\n{\"a\":1}\n{\"a\":2}";
         assert!(parse_cardano_cli_json(ambiguous, "test KES").is_err());
+    }
+
+    #[test]
+    fn fleet_collection_uses_the_same_live_facts_window_as_the_signed_permit() {
+        assert!(require_fleet_live_facts_fresh(969, 1000).is_ok());
+        assert!(require_fleet_live_facts_fresh(819, 1000).is_err());
+        assert!(require_fleet_live_facts_fresh(1006, 1000).is_err());
     }
 
     #[test]

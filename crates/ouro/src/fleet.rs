@@ -16,6 +16,10 @@ use sha2::Sha256;
 
 use crate::{OuroError, Result};
 
+/// Covers ephemeral runner transport and target revalidation. Fleet collection itself remains
+/// bounded to 30 seconds, and other relay endpoints are re-probed immediately before mutation.
+pub const LIVE_FACTS_VALIDITY_SECONDS: u64 = 180;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Lease {
     pub pool_id: String,
@@ -368,7 +372,7 @@ impl StepPermit {
             return Err(OuroError::Validation("fleet step permit expired (§2.9)".into()));
         }
         if self.facts_epoch > now_epoch.saturating_add(5)
-            || now_epoch.saturating_sub(self.facts_epoch) > 30
+            || now_epoch.saturating_sub(self.facts_epoch) > LIVE_FACTS_VALIDITY_SECONDS
         {
             return Err(OuroError::Validation(
                 "fleet live-facts snapshot is stale or from the future — re-evaluate immediately \
@@ -560,9 +564,13 @@ mod tests {
     }
 
     #[test]
-    fn signed_permit_rejects_stale_live_facts() {
+    fn signed_permit_uses_the_shared_live_facts_window() {
         let mut p = permit(1, 5000);
         p.facts_epoch = 969;
+        p.signature.clear();
+        p = p.sign(b"secret").unwrap();
+        assert!(p.verify(&expectation("runtime/restart", None, &"h".repeat(64)), b"secret", 1000).is_ok());
+        p.facts_epoch = 819;
         p.signature.clear();
         p = p.sign(b"secret").unwrap();
         assert!(p.verify(&expectation("runtime/restart", None, &"h".repeat(64)), b"secret", 1000).is_err());

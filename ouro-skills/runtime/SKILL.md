@@ -1,5 +1,5 @@
 ---
-skill_version: 3
+skill_version: 4
 requires_ouro: ">=0.1.0"
 ---
 # Runtime Skill
@@ -15,9 +15,13 @@ returns ready.
 - You supply parameters, never an executor command. The ephemeral runner can execute only the fixed
   restart argv and rechecks the approved candidate immediately before mutation.
 - The operator's confirmation is one-time and exact-candidate-bound. A disruptive restart also
-  requires a live 30-second fleet permit enforcing relay quorum and BP-last policy.
-- Success is verified from live container/readiness state. There is no permanent target-side Ouro
-  journal or version parity to synchronize.
+  requires a short-lived 180-second fleet permit enforcing relay quorum and BP-last policy. The
+  window covers ephemeral transport and target revalidation; other relay endpoints are re-probed
+  immediately before mutation.
+- Success is verified from live container/readiness state. After Docker reports the restart, the
+  runner waits up to 300 seconds through transient startup samples for the role-specific readiness
+  contract; identity/policy/layout drift still fails immediately. There is no permanent target-side
+  Ouro journal or version parity to synchronize.
 
 ## Decision guidance (use your judgment; this is not a rigid script)
 - Diagnose first if the symptom is unclear. Ask the operator to name ONE exact machine; never infer

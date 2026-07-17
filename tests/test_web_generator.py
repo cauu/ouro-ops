@@ -123,6 +123,9 @@ def main() -> int:
             fails.append(f"generated prompts still expose retired/false S0019 contract {stale!r}")
 
     routing_contract = [
+        "Copy only the text between the BEGIN/END marker lines",
+        "BEGIN POOL-SPEC.YAML (marker only — do not include)",
+        "END POOL-SPEC.YAML (marker only — do not include)",
         "preview the local file with inbox preview (no staging)",
         "preview the public local file with inbox preview",
         "FINAL target-validated upgrade/step plan with no capabilities",
@@ -233,6 +236,45 @@ def main() -> int:
                 f"generated prompt must not inline the old capability-bearing execution shortcut "
                 f"{stale_shortcut!r}"
             )
+
+    # p4-11: Runtime has a two-boundary disruptive flow. The final target plan is capability-free;
+    # confirmation names that exact candidate, and the live fleet permit is minted immediately
+    # before the unchanged apply. Success reports verified readiness without overstating progress.
+    runtime_branch = re.search(r"runtime:\s*\[(.*?)\]\.join\(\"\\n   \"\)", HTML, re.DOTALL)
+    if not runtime_branch:
+        fails.append("generated prompt has no runtime branch")
+    else:
+        branch = runtime_branch.group(1)
+        for expected in [
+            "which ONE exact machine to restart",
+            "upgrade.min_online_relays as the availability policy",
+            "single-relay pool",
+            "accepts its brief downtime",
+            "with no capabilities using --plan",
+            "candidate/intent hash, target, current container identity, fixed restart executor",
+            "availability impact and fleet policy",
+            "one-time confirm-token",
+            "short-lived 180-second fleet permit LAST",
+            "Other relay endpoints are re-probed immediately before mutation",
+            "do not replan afterward",
+            "verified live postcondition and terminal audit outcome",
+            "waits up to 300 seconds through transient startup samples",
+            "later bounded tip sample before claiming chain progress",
+            "never retry through a raw restart",
+        ]:
+            if expected not in branch:
+                fails.append(f"runtime branch lacks current exact-apply contract {expected!r}")
+    for expected in [
+        'd.op === "runtime"',
+        "The --plan phase is no-write evidence only",
+        "I approve the exact final candidate in chat",
+        "Apply",
+        "only that unchanged candidate to the one selected machine",
+        'const isDisruptive = isUpgrade || d.op === "runtime"',
+        "if (isDisruptive) L.push",
+    ]:
+        if expected not in HTML:
+            fails.append(f"runtime plan/apply boundary contract missing {expected!r}")
 
     autonomy_contract = [
         "ouro-ops --version",

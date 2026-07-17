@@ -1814,7 +1814,7 @@ fn command_usage(command: &str) -> Option<&'static str> {
                  --plan returns a final target-validated intent and rejects permit/confirm \
                  capabilities. Apply repeats the same command without --plan, adds the approved \
                  candidate hash and token, and automatically transports the ephemeral runner. \
-                 Dangerous disruptive ops mint a 30-second fleet permit last.",
+                 Dangerous disruptive ops mint a short-lived 180-second fleet permit last.",
         "inbox" => "ouro-ops inbox preview --type <opcert|tx|image> --file <path>\n  \
                     Hashes and validates the operator-named public file without copying it. Pass \
                     data.artifact_ref to --plan; apply sends the same file once with --artifact-file.",
@@ -1824,7 +1824,7 @@ fn command_usage(command: &str) -> Option<&'static str> {
                     [--target-image sha256:<digest>]\n  \
                     Identity exposes stable pool id + exact spec revision. Permit derives signed \
                     target/network/host/quorum/BP-last facts and upgrade.min_online_relays directly \
-                    from the spec, then expires after 30 seconds.",
+                    from the spec, then expires after 180 seconds.",
         "tool" => "ouro-ops tool run <skill>/<script> [--dispatch <machine>] --spec <pool-spec> \
                    [--machine <id>] [--confirm-token <tok>]\n  LEGACY S0017 script path; ordinary S0020 operations use `ouro-ops op run`.",
         "confirm" => "ouro-ops confirm create --op <id> --node <id> --intent-hash <hash> | \
