@@ -1029,6 +1029,7 @@ fn run_release(args: &[String]) -> Result<()> {
             "source": catalog.source,
             "policy_version": catalog.policy.allowlist_version,
             "policy_digest": digest,
+            "repository": catalog.policy.repository,
             "image": image,
             "transition": transition,
             "cache_written": false,

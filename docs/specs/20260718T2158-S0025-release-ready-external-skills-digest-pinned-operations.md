@@ -262,7 +262,7 @@ a concrete defect.
   before every other CLI, credential, network, SSH, or mutating action
 - [x] p3-2 remove decision/Skill hashes and Skill-derived floors from manifest, identity, packaging,
   and self-description; implement and consume only the compact CLI contract/runner descriptor
-- [ ] p4-1 extend release-catalog schema and validation with the signed Blink Labs GHCR repository and
+- [x] p4-1 extend release-catalog schema and validation with the signed Blink Labs GHCR repository and
   exact OCI identity tuple; update release selection and transition validation
 - [ ] p4-2 replace archive preload with candidate-bound exact-digest GHCR pull and post-pull config/
   platform/repository verification; remove image-tar/artifact-file inputs and leave active containers
@@ -410,6 +410,14 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   and compiled-runner digest; debug builds honestly report a missing runner as null. The manifest
   route/file, Skill-derived required floor, local version-floor MAC state, and parity floor field are
   removed. Packaging and installer smoke checks consume the compact descriptor.
+- 2026-07-19 p4-1 started: binding the canonical Blink Labs GHCR repository into release-catalog v5,
+  adding strict schema/semantic validation, and carrying repository identity through selection and
+  transition results. The existing Keychain-backed authority signed the local candidate after an
+  explicit one-time operator authorization; publication remains p4-3.
+- 2026-07-19 p4-1 completed: catalog v5 and its JSON schema bind the exact Blink Labs repository,
+  index digest, platform manifest digest, image config digest, platform, layout and directed
+  transitions. Release signing refuses a missing/alternate repository, selection returns the signed
+  repository, and the Keychain signer produced a pinned-key-verifiable local document.
 
 ## 6. Validation Evidence (append-only)
 
@@ -472,6 +480,15 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   ouro --lib --tests -- -D warnings && make python-test && python3 -m pytest -q
   tests/test_web_generator.py tests/test_external_skill_boundary.py tests/test_contract_check.py` |
   result: pass | note: 169 Rust tests, clippy, all direct Python gates and 12 pytest cases pass
+- TC-8 | stack: rust | command: `cargo test -q -p ouro --lib` | result: pass | note: 169 tests pass;
+  release-candidate validation refuses missing/alternate repositories and selection binds all three
+  OCI digests to the fixed repository and platform
+- TC-8 | stack: python | command: `python3 tests/test_release_catalog.py` | result: pass | note:
+  Draft 2020-12 schema validation, deploy/transition selection, exact repository/tuple output,
+  signed semantic refusal and signature-tamper refusal all pass without cache state
+- TC-8 | stack: other | command: `ouro-allowlist-signer inspect --input data/releases.json` after
+  Keychain-backed sign | result: pass | note: catalog v5 validates under pinned public key
+  `3ceb1920…165dd`; signed canonical payload digest is `203fea05…a98d83`
 
 ## 7. Change Requests (append-only)
 

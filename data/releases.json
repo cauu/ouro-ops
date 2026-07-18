@@ -1,6 +1,7 @@
 {
-  "allowlist_version": 4,
-  "signature": "ed25519:84c9eeea67986a81c20cadc55e4da5104130fc1850d2f1d957e4eab90d993d2ea432fae4d6765f70cd95b12007d69eeab9a3e4fd3962452d857488210cf90f06",
+  "allowlist_version": 5,
+  "signature": "ed25519:2d87dd1128ea5abd0fee17dd53993f45b620101c332a161b58a61eb1399bbe854af576a3f178da5466e122dd874ed22c0cffd0650cc27196e0ab44adac06ad0f",
+  "repository": "ghcr.io/blinklabs-io/cardano-node",
   "recommended": {
     "linux/amd64": "sha256:0bb21e45159327c4e6109704df256c3c297c725a4b2cdf6d0e1899e3a9df468f",
     "linux/arm64": "sha256:f313721b677fbe9a64e9a25ed1f5790c47bf0b3e88f48bad22d822e243f47179"

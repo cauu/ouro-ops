@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import jsonschema
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BIN = ROOT / "target/debug/ouro-ops"
@@ -34,6 +36,9 @@ def run(home, source, *extra, test_key=None):
 
 def main():
     subprocess.run(["cargo", "build", "-p", "ouro"], cwd=ROOT, check=True)
+    schema = json.loads((ROOT / "schemas/release-catalog.schema.json").read_text())
+    jsonschema.Draft202012Validator.check_schema(schema)
+    jsonschema.validate(json.loads(RELEASES.read_text()), schema)
     with tempfile.TemporaryDirectory(prefix="ouro-release-catalog-") as temporary:
         home = Path(temporary)
 
@@ -41,6 +46,7 @@ def main():
         assert deploy.returncode == 0, deploy.stderr
         deploy_value = json.loads(deploy.stdout)
         assert deploy_value["data"]["selection"] == "deploy_recommended"
+        assert deploy_value["data"]["repository"] == "ghcr.io/blinklabs-io/cardano-node"
         assert deploy_value["data"]["image"]["release"] == "11.0.1-1"
         assert deploy_value["data"]["cache_written"] is False
         assert list(home.iterdir()) == [], "release selection must not create local state"
@@ -50,7 +56,14 @@ def main():
         assert upgrade.returncode == 0, upgrade.stderr
         upgrade_value = json.loads(upgrade.stdout)
         assert upgrade_value["data"]["selection"] == "upgrade_next"
+        assert upgrade_value["data"]["repository"] == "ghcr.io/blinklabs-io/cardano-node"
         assert upgrade_value["data"]["image"]["release"] == "10.6.4-1"
+        for field in (
+            "oci_index_digest",
+            "platform_manifest_digest",
+            "image_config_digest",
+        ):
+            assert upgrade_value["data"]["image"][field].startswith("sha256:")
         assert upgrade_value["data"]["transition"]["from_image_config_digest"] == current
         assert list(home.iterdir()) == []
 
@@ -80,6 +93,23 @@ def main():
         selected_future = run(home, future_file, test_key=test_key)
         assert selected_future.returncode == 0, selected_future.stderr
         assert json.loads(selected_future.stdout)["data"]["image"]["release"] == "future-1"
+
+        wrong_repository_doc = dict(dynamic)
+        wrong_repository_doc["repository"] = "docker.io/untrusted/cardano-node"
+        wrong_repository_doc["signature"] = "pending"
+        unsigned = dict(wrong_repository_doc)
+        unsigned.pop("signature")
+        canonical = json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+        wrong_repository_doc["signature"] = "test-hmac-sha256:" + hmac.new(
+            test_key.encode(), canonical, hashlib.sha256
+        ).hexdigest()
+        wrong_repository = home / "wrong-repository.json"
+        wrong_repository.write_text(json.dumps(wrong_repository_doc, separators=(",", ":")))
+        refused_repository = run(home, wrong_repository, test_key=test_key)
+        assert refused_repository.returncode != 0
+        assert "repository must be exactly" in (
+            refused_repository.stdout + refused_repository.stderr
+        )
 
         tampered = home / "tampered.json"
         tampered.write_text(RELEASES.read_text().replace("10.6.4-1", "10.6.4-evil"))

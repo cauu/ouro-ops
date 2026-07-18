@@ -35,6 +35,7 @@ const RELEASE_VERIFY_KEY_HEX: &str =
 /// the document. The branch URL becomes live when a reviewed release catalog lands on `main`.
 pub const RELEASES_URL: &str =
     "https://raw.githubusercontent.com/cauu/ouro-ops/refs/heads/main/data/releases.json";
+pub const BLINKLABS_REPOSITORY: &str = "ghcr.io/blinklabs-io/cardano-node";
 const MAX_RELEASE_DOCUMENT_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -44,6 +45,10 @@ pub struct Allowlist {
     /// Signature over the payload; verified against the pinned release key by S0018 infra. The
     /// literal `EMBEDDED-TRUSTED` marks the pre-infra state (embedded == trusted, never weaker).
     pub signature: String,
+    /// One signed upstream image authority for every OCI tuple in a release catalog. The frozen
+    /// embedded layout fixture predates remote pulls and therefore leaves this empty.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub repository: String,
     /// One current deployment recommendation per platform. Absent only in the frozen embedded
     /// layout fixture; a fetched release catalog must contain at least one entry.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -281,6 +286,9 @@ pub fn release_candidate(text: &str) -> Result<(Allowlist, Vec<u8>)> {
     let allowlist: Allowlist = serde_json::from_str(text)
         .map_err(|e| OuroError::Validation(format!("allowlist is malformed: {e}")))?;
     allowlist.validate_usability()?;
+    if !allowlist.recommended.is_empty() {
+        allowlist.validate_release_catalog()?;
+    }
     Ok((allowlist, canonical))
 }
 
@@ -414,6 +422,11 @@ impl Allowlist {
     }
 
     fn validate_release_catalog(&self) -> Result<()> {
+        if self.repository != BLINKLABS_REPOSITORY {
+            return Err(OuroError::Validation(format!(
+                "signed release catalog repository must be exactly {BLINKLABS_REPOSITORY}"
+            )));
+        }
         if self.recommended.is_empty() {
             return Err(OuroError::Validation(
                 "signed release catalog has no deployment recommendation".into(),
@@ -638,6 +651,7 @@ mod tests {
     #[test]
     fn signed_release_catalog_selects_deploy_and_next_upgrade() {
         let catalog = Allowlist::release_document(RELEASES).expect("signed catalog verifies");
+        assert_eq!(catalog.repository, BLINKLABS_REPOSITORY);
         let deploy = catalog.recommended_for("linux/amd64").unwrap();
         assert_eq!(deploy.release, "11.0.1-1");
         let (next, transition) = catalog.next_for(
@@ -791,6 +805,25 @@ mod tests {
         assert!(
             release_candidate(&serde_json::to_string(&self_edge).unwrap()).is_err(),
             "self transition refused"
+        );
+
+        let mut wrong_repository: serde_json::Value = serde_json::from_str(RELEASES).unwrap();
+        wrong_repository["signature"] = serde_json::json!("pending");
+        wrong_repository["repository"] = serde_json::json!("docker.io/untrusted/cardano-node");
+        assert!(
+            release_candidate(&serde_json::to_string(&wrong_repository).unwrap()).is_err(),
+            "alternate repository refused before signing"
+        );
+
+        let mut missing_repository: serde_json::Value = serde_json::from_str(RELEASES).unwrap();
+        missing_repository["signature"] = serde_json::json!("pending");
+        missing_repository
+            .as_object_mut()
+            .unwrap()
+            .remove("repository");
+        assert!(
+            release_candidate(&serde_json::to_string(&missing_repository).unwrap()).is_err(),
+            "missing repository refused before signing"
         );
     }
 

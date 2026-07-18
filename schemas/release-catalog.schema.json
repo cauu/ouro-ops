@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ouro.example/schemas/release-catalog.schema.json",
+  "title": "Ouro signed Blink Labs release catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "allowlist_version",
+    "signature",
+    "repository",
+    "recommended",
+    "contracts",
+    "denylist",
+    "transitions"
+  ],
+  "properties": {
+    "allowlist_version": { "type": "integer", "minimum": 1 },
+    "signature": { "type": "string", "pattern": "^ed25519:[0-9a-f]{128}$" },
+    "repository": { "const": "ghcr.io/blinklabs-io/cardano-node" },
+    "recommended": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/digest" },
+      "propertyNames": { "enum": ["linux/amd64", "linux/arm64"] }
+    },
+    "contracts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/contract" }
+    },
+    "denylist": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/digest" },
+      "uniqueItems": true
+    },
+    "transitions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/transition" }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "convention_version",
+        "contract_id",
+        "in_container_paths",
+        "role_rules",
+        "allowed"
+      ],
+      "properties": {
+        "convention_version": { "type": "integer", "minimum": 1 },
+        "contract_id": { "type": "string", "minLength": 1 },
+        "in_container_paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["socket", "db", "keys", "config", "topology", "genesis"],
+          "properties": {
+            "socket": { "$ref": "#/$defs/absolutePath" },
+            "db": { "$ref": "#/$defs/absolutePath" },
+            "keys": { "$ref": "#/$defs/absolutePath" },
+            "config": { "$ref": "#/$defs/absolutePath" },
+            "topology": { "$ref": "#/$defs/absolutePath" },
+            "genesis": { "$ref": "#/$defs/absolutePath" }
+          }
+        },
+        "role_rules": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bp", "relay"],
+          "properties": {
+            "bp": { "$ref": "#/$defs/roleRule" },
+            "relay": { "$ref": "#/$defs/roleRule" }
+          }
+        },
+        "allowed": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/image" }
+        }
+      }
+    },
+    "absolutePath": { "type": "string", "pattern": "^/" },
+    "roleRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requires_opcert", "forbids_forging_keys"],
+      "properties": {
+        "requires_opcert": { "type": "boolean" },
+        "forbids_forging_keys": { "type": "boolean" }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "release",
+        "platform",
+        "oci_index_digest",
+        "platform_manifest_digest",
+        "image_config_digest"
+      ],
+      "properties": {
+        "release": { "type": "string", "minLength": 1 },
+        "platform": { "enum": ["linux/amd64", "linux/arm64"] },
+        "oci_index_digest": { "$ref": "#/$defs/digest" },
+        "platform_manifest_digest": { "$ref": "#/$defs/digest" },
+        "image_config_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from_image_config_digest",
+        "to_image_config_digest",
+        "db_forward_compatible",
+        "db_backward_compatible",
+        "snapshot_taken"
+      ],
+      "properties": {
+        "from_image_config_digest": { "$ref": "#/$defs/digest" },
+        "to_image_config_digest": { "$ref": "#/$defs/digest" },
+        "db_forward_compatible": { "type": "boolean" },
+        "db_backward_compatible": { "type": "boolean" },
+        "snapshot_taken": { "type": "boolean" }
+      }
+    }
+  }
+}
