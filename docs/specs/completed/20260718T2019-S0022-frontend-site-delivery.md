@@ -1,12 +1,12 @@
 # Frontend Site Delivery Pipeline
 
 Spec-ID: S0022
-状态: active
+状态: completed
 创建时间: 2026-07-18T20:19:28+08:00
 开始时间: 2026-07-18T20:19:28+08:00
-完成时间:
+完成时间: 2026-07-18T21:27:40+08:00
 前一个 Spec-ID: S0021
-结项原因:
+结项原因: delivered
 
 ## 1. Requirement Details
 
@@ -72,6 +72,8 @@ production.
   `ouro-ops` onboarding artifact and selected the same Cloudflare preview/production topology.
 - 2026-07-18 p1-1 completed: added deterministic static staging, the assets-only Worker config,
   path-filtered build/preview/production workflow, and one-time infrastructure documentation.
+- 2026-07-18 spec completed as delivered after user approval; future prompt/Skill content changes
+  move to S0023 and do not change this site's publication-pipeline acceptance result.
 
 ## 6. Validation Evidence (append-only)
 
