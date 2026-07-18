@@ -250,7 +250,7 @@ a concrete defect.
 - [x] p1-1 inventory all six public Skill journeys and every current production reachability of
   `skill show`, `tool run`, embedded scripts, decision hashes, Skill-derived version floors, Docker
   image archives, and image repository/digest selection; record the disposition of each surface
-- [ ] p2-1 implement deterministic, injection-safe website delivery directly from the six canonical
+- [x] p2-1 implement deterministic, injection-safe website delivery directly from the six canonical
   Skill files, including complete clipboard content, front-matter validation, and a production-form
   local HTTP acceptance service
 - [ ] p2-2 remove `SKILL.md` build inputs and `skill list/show`; isolate only runner/probe/schema/
@@ -378,6 +378,12 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   journey and classifies legacy decision/script, release identity, website, catalog, and image
   transport surfaces. No named current production/recovery consumer of `tool run` exists; it may be
   retired. Upgrade archive transport is a current path that S0025 explicitly replaces.
+- 2026-07-18 p2-1 started: replacing the website's `skill show` bootstrap with deterministic,
+  front-matter-validated inert serialization of the six complete canonical Skills and a local HTTP
+  acceptance service.
+- 2026-07-18 p2-1 completed: the site build now owns an exact six-entry canonical mapping, validates
+  and safely serializes complete Skills, includes the selected Skill in the copied prompt, and ships
+  a loopback-only production-form service used by the website acceptance test.
 
 ## 6. Validation Evidence (append-only)
 
@@ -390,6 +396,15 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   positive image-archive surfaces and their exact signed-GHCR replacement boundary are enumerated
 - TC-22 | stack: other | command: `git diff --check` and inventory-table/search assertions | result:
   pass | note: inventory is internally complete and unrelated `pool-spec.yaml` remains untracked
+- TC-1 | stack: ui | command: `python3 -m pytest -q tests/test_web_generator.py` | result: pass |
+  note: exact six canonical files and their complete bytes/front matter appear once in generated
+  payloads and the copied-prompt path consumes the selected content without `skill show`
+- TC-2 | stack: ui | command: `web/onboarding/serve-local.sh <ephemeral-port>` via
+  `test_built_site_is_served_over_local_http` | result: pass | note: built release-form `index.html`
+  is byte-identical over loopback HTTP and retains the real copy path
+- TC-3 | stack: python | command: malformed/missing/unknown front-matter and script-terminator
+  generator tests | result: pass | note: invalid sources fail the build and `</script>` content is
+  escaped in HTML while round-tripping exactly as inert Skill text
 
 ## 7. Change Requests (append-only)
 

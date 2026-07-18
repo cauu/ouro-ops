@@ -1,6 +1,7 @@
 ---
 skill_version: 2
 requires_ouro: ">=0.1.0"
+requires_contract: 1
 ---
 # Deploy Skill
 

@@ -1,6 +1,7 @@
 ---
 skill_version: 4
 requires_ouro: ">=0.1.0"
+requires_contract: 1
 ---
 # Runtime Skill
 
