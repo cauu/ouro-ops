@@ -267,7 +267,7 @@ a concrete defect.
 - [x] p4-2 replace archive preload with candidate-bound exact-digest GHCR pull and post-pull config/
   platform/repository verification; remove image-tar/artifact-file inputs and leave active containers
   untouched
-- [ ] p4-3 regenerate and sign the release catalog with the existing local signer, publish it at the
+- [x] p4-3 regenerate and sign the release catalog with the existing local signer, publish it at the
   canonical live URL, and make online pinned-key verification the Upgrade acceptance path
 - [ ] p5-1 implement a release-candidate build/check that pairs the macOS CLI with its Linux/x86_64
   runner, verifies descriptor/package/checksums and smoke behavior, and excludes Skill text and image
@@ -426,6 +426,13 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   Blink Labs repository plus exact linux/amd64 manifest/config tuple, while approved apply performs
   one target-side digest pull, verifies Docker's repository/platform/config evidence, and requires
   role readiness plus the complete modeled active-container state to remain unchanged.
+- 2026-07-19 p4-3 started: publishing the already Keychain-signed catalog v5 to the canonical main-
+  branch HTTPS source, then exercising the release CLI's production no-cache fetch and pinned-key
+  verification rather than the local signed-file test seam.
+- 2026-07-19 p4-3 completed: published byte-identical catalog v5 as GitHub main commit `3d92fe1`;
+  the canonical raw URL returned the same SHA-256 bytes, and the current CLI with all local catalog/
+  test-key environment seams explicitly unset verified the Ed25519 signature online and selected
+  both the linux/amd64 deployment recommendation and the signed 10.5.4-1 → 10.6.4-1 transition.
 
 ## 6. Validation Evidence (append-only)
 
@@ -513,6 +520,16 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   clippy and the complete direct Python suite pass after exact-pull migration; the control apply
   transport test proves Upgrade sends runner bytes only and rejects a supplied image artifact before
   SSH
+- TC-9 | stack: other | command: publish `data/releases.json` to `origin/main` as `3d92fe1`, then
+  compare `shasum -a 256 data/releases.json` with no-cache canonical HTTPS bytes | result: pass |
+  note: local and live documents are byte-identical at
+  `85e7474475575357def24f540943511e1134bb0d672122a9741c65ee0900b66e`; remote main resolves to
+  `3d92fe100c4e1225152055d4b80286a94fb4c393`
+- TC-9 | stack: rust+network | command: `env -u OURO_RELEASES_FILE -u OURO_ALLOWLIST_TEST_KEY
+  target/debug/ouro-ops release select --platform linux/amd64` and the same command with `--from
+  sha256:a3223d…c0c7a` | result: pass | note: production no-cache HTTPS/pinned-Ed25519 path selected
+  11.0.1-1 for deploy and the exact 10.5.4-1 → 10.6.4-1 transition, reported catalog v5/fixed GHCR
+  repository, and wrote no cache
 
 ## 7. Change Requests (append-only)
 
