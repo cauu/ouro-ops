@@ -1,12 +1,12 @@
 # External Skills and Minimal CLI Boundary
 
 Spec-ID: S0023
-状态: active
+状态: completed
 创建时间: 2026-07-18T21:27:40+08:00
 开始时间: 2026-07-18T21:27:40+08:00
-完成时间:
+完成时间: 2026-07-18T21:46:22+08:00
 前一个 Spec-ID: S0022
-结项原因:
+结项原因: replaced
 
 ## 1. Requirement Details
 
@@ -170,6 +170,9 @@ by typed CLI inputs, target-revalidated plans, exact confirmation, and fleet per
 
 - 2026-07-18 S0023 activated after S0022 was completed as delivered. Execution has not started;
   p1-1 is the first pending item.
+- 2026-07-18 S0023 replaced before execution by S0024 after adversarial review found that the
+  proposed compatibility/manifest model was over-designed and legacy `tool run` was preserved
+  without a production-consumer decision.
 
 ## 6. Validation Evidence (append-only)
 
@@ -177,3 +180,5 @@ by typed CLI inputs, target-revalidated plans, exact confirmation, and fleet per
 
 - 2026-07-18 user approved separating decision Skills from the CLI so Skills call the minimal CLI
   directly, and requested a dedicated spec after completing S0022.
+- 2026-07-18 user approved revising the spec based on the adversarial review; replacement S0024
+  carries the corrected requirements, plan, and acceptance contract.
