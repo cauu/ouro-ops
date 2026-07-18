@@ -272,7 +272,7 @@ a concrete defect.
 - [x] p5-1 implement a release-candidate build/check that pairs the macOS CLI with its Linux/x86_64
   runner, verifies descriptor/package/checksums and smoke behavior, and excludes Skill text and image
   archives without publishing a formal CLI release
-- [ ] p5-2 update current README, operation, threat, release, website, and CI documentation/gates to
+- [x] p5-2 update current README, operation, threat, release, website, and CI documentation/gates to
   the external-decision, exact-upstream-pull, live-catalog, and deferred-publication boundaries
 - [ ] p6-1 run all automated regression gates and fresh-agent end-to-end acceptance for all six Skills
   from prompts copied from the locally served site, including the proportionate real/safe boundaries
@@ -441,6 +441,16 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   emits/validates descriptor, version, live catalog smoke, candidate manifest and SHA256SUMS
   evidence. The local arm64 candidate passed extraction/compatibility checks and explicitly remains
   `release-standard-not-published`; neither the CLI nor its tarball was published.
+- 2026-07-19 p5-2 started: reconciling current README/operation/threat/release/site documentation and
+  CI with the six external canonical Skills, pure compatibility preflight, no target-resident Ouro,
+  signed live catalog, exact upstream pull, local-site acceptance and deferred formal CLI/site
+  publication boundaries.
+- 2026-07-19 p5-2 completed: current product/release/threat/site documents now describe the external
+  Skill and ephemeral mechanism as separate trust surfaces, the live signed catalog and exact GHCR
+  pull, and honest terminal-bypass/custody limits. The website removed its unrelated upstream
+  release fetch, desired-version input and placeholder install claims. CI now validates the local
+  production-form site and paired CLI candidate on `next`/PR/manual triggers while intentionally
+  using no deploy/signing secrets, hosted artifacts, GitHub Release or production-site action.
 
 ## 6. Validation Evidence (append-only)
 
@@ -545,6 +555,19 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   descriptor, extracted-binary descriptor/contract smoke and all SHA256SUMS checks pass, live
   catalog v5 selection succeeds, and package/candidate inventories contain neither Skill Markdown
   nor node-image payloads; manifest status is `release-standard-not-published`
+- TC-1, TC-2, TC-3 | stack: ui+python | command: `./web/onboarding/build.sh && python3 -m pytest
+  -q tests/test_web_generator.py` | result: pass | note: eight generator/source-fidelity/copy/local-
+  HTTP cases pass; CSP now has `connect-src 'none'`, no ambient fetch exists, Upgrade carries no
+  operator-selected `node_version`, and copied prompts use the release-paired runner boundary
+- TC-4, TC-5, TC-10, TC-13 | stack: other | command: `python3 tests/test_skill_docs.py && python3
+  tests/test_release_candidate.py && python3 tests/test_release_surfaces.py` | result: pass | note:
+  current docs and workflows contain no embedded-Skill/legacy tool/Tauri/placeholder-install path;
+  release CI builds/checks without publication, site CI builds/tests without deployment or secrets,
+  and the locally built paired candidate retains its verified no-Skill/no-node-image inventory
+- TC-22 | stack: other | command: YAML-parse current workflows, stale-surface inventory and `git
+  diff --check` | result: pass | note: README, operation, threat, release and website documentation
+  agree on external decision custody, pure compatibility, target-side ephemeral execution, signed
+  live catalog, exact upstream pull, and deferred formal CLI/production-site publication
 
 ## 7. Change Requests (append-only)
 

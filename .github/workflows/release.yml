@@ -1,61 +1,57 @@
-name: Release
+name: CLI release standard
 
 on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "crates/ouro/**"
+      - "data/releases.json"
+      - "packaging/release-candidate.sh"
+      - "tests/test_release_candidate.py"
+      - ".github/workflows/release.yml"
   push:
-    tags:
-      - "v*"
+    branches:
+      - next
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "crates/ouro/**"
+      - "data/releases.json"
+      - "packaging/release-candidate.sh"
+      - "tests/test_release_candidate.py"
+      - ".github/workflows/release.yml"
+
+permissions:
+  contents: read
 
 jobs:
-  release:
-    permissions:
-      contents: write
-    runs-on: macos-latest
+  paired-candidate:
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: 22
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Setup Python (sidecar)
-        uses: actions/setup-python@v5
+          targets: x86_64-unknown-linux-musl
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install sidecar dependencies
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cross-build tools
         run: |
-          cd sidecar
-          pip install -r requirements.txt 2>/dev/null || true
+          brew install zig
+          cargo install cargo-zigbuild --locked
+      - name: Build and verify paired candidate
+        run: make release-candidate
+      - name: Recheck candidate contract
+        run: python3 tests/test_release_candidate.py
+      - name: Confirm publication is deferred
+        run: |
+          test "$(find dist/release-candidate -name candidate.json -print | wc -l | tr -d ' ')" = 1
+          grep -R '"status": "release-standard-not-published"' dist/release-candidate
 
-      - name: Build and release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Ouro Ops ${{ github.ref_name }}"
-          releaseBody: "See the commits for changes in this release."
-          releaseDraft: false
-          prerelease: false
-          args: --target aarch64-apple-darwin
+# This workflow intentionally creates no GitHub Release, tag, hosted CLI asset, Homebrew update or
+# signing request. Formal CLI publication belongs to the next specification.

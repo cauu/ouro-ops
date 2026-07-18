@@ -1,7 +1,8 @@
 # Ouro Ops onboarding website
 
-The public onboarding and skill-prompt generator is a client-only static page. Its release artifact
-contains one file and has no package-manager or frontend-runtime dependency.
+The Skill-prompt generator is a client-only static page. Its build output contains one file and has
+no package-manager or frontend-runtime dependency. Build time injects exactly the six complete
+canonical external Skills; the CLI does not carry a second decision copy.
 
 ## Local build
 
@@ -14,28 +15,24 @@ Run the build from any directory:
 The generated `web/onboarding/dist/index.html` must be byte-identical to the tracked
 `web/onboarding/index.html`. The repository-level `.gitignore` excludes `dist/`.
 
-## Deployment
+## Current acceptance boundary
 
-The site is hosted as an assets-only Cloudflare Worker named `ouro-ops-site` and deployed by
-`.github/workflows/site.yml`.
+`.github/workflows/site.yml` builds the production-form page, proves source fidelity/copy behavior
+and serves it over local HTTP in tests. The page's CSP disables ambient network access; pool data
+leaves the browser only when the operator copies and pastes the prompt.
 
 | Trigger | Result |
 | --- | --- |
-| Pull request touching the site or workflow | Build check for every PR |
-| Same-repository pull request | Build plus a Cloudflare preview URL posted to the PR |
-| Push to `main` touching the site or workflow | Production deployment through the `production` environment |
+| Pull request touching the site, Skills or workflow | Complete local production-form validation |
+| Push to `next` touching the site, Skills or workflow | Complete local production-form validation |
+| Manual workflow dispatch | Complete local production-form validation |
 
-Fork pull requests never receive deployment credentials. Do not change the workflow to
-`pull_request_target`.
+The workflow uses no deploy secret and uploads no hosted site artifact. Production Cloudflare
+deployment, custom-domain wiring and production-domain acceptance are explicitly deferred to the
+next spec.
 
-### One-time wiring
+## Future production wiring
 
-1. In Cloudflare, create an API token with **Workers Scripts: Edit** and copy the account ID.
-2. In the GitHub repository Actions secrets, add `CLOUDFLARE_API_TOKEN` and
-   `CLOUDFLARE_ACCOUNT_ID`.
-3. Create a GitHub environment named `production`; add required reviewers if production should
-   require a manual approval.
-4. Merge a site change to `main` to create/deploy the `ouro-ops-site` Worker.
-5. In the Worker settings, attach the production custom domain when one is available.
-
-Rollback is a normal revert on `main`; the push redeploys the reverted static artifact.
+The next spec may activate the prepared assets-only Cloudflare configuration after adding explicit
+production secrets/environment approval and validating the real domain. Do not infer production
+deployment from a passing local-form workflow.

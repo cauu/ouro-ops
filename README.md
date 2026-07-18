@@ -1,11 +1,11 @@
 # Ouro Ops
 
 面向 Cardano Stake Pool 的确定性运维 CLI。用户把网站生成的 operation prompt 交给 AI agent；
-agent 从已验证的 `ouro-ops` 二进制读取对应 Skill，只向类型化操作传参数，危险写入仍由运维方对
-最终 live plan 显式确认。
+prompt 已包含网站从 canonical `ouro-skills/` 生成的完整 Skill；agent 先运行纯兼容性检查，再只向
+类型化操作传参数，危险写入仍由运维方对最终 live plan 显式确认。CLI 不内嵌决策 Skill。
 
 当前 active 规格是
-[`S0020 Agentless Ephemeral Runner`](docs/specs/20260716T1441-S0020-agentless-ephemeral-runner.md)。
+[`S0025 Release-ready external Skills and digest-pinned operations`](docs/specs/20260718T2158-S0025-release-ready-external-skills-digest-pinned-operations.md)。
 S0019 的目标机常驻 CLI、adoption attestation 和 control↔target 版本耦合已退出普通操作路径。
 
 ## 当前架构
@@ -29,7 +29,7 @@ S0019 的目标机常驻 CLI、adoption attestation 和 control↔target 版本�
   策略与当前容器状态。
 - apply 必须携带 operator 批准的 `candidate_hash` 和一次性 confirm token，并在写前重新生成同一
   candidate；运行时漂移会在 mutation 前拒绝。
-- restart/KES/upgrade step 还需要最后生成、30 秒有效的 fleet permit，机制校验 relay quorum 与
+- restart/KES/upgrade step 还需要最后生成、180 秒有效的 fleet permit，机制校验 relay quorum 与
   BP-last。
 - KES opcert 先在 control 本地 `inbox preview`，实际 apply 才和 runner 一次性传输；目标没有持久
   inbox。Upgrade 镜像不经过 Ouro，由批准后的目标 runner 从 Blink Labs GHCR 拉取签名 catalog
@@ -38,8 +38,8 @@ S0019 的目标机常驻 CLI、adoption attestation 和 control↔target 版本�
   必须先运行按角色解释的 typed snapshot；仅针对剩余证据缺口使用 `diag exec`。诊断不是 OS
   机制强制的只读通道；这是 S0020 明确选择的 honest-agent 边界。
 
-完整命令与能力顺序见 [`docs/S0020-operations.md`](docs/S0020-operations.md) 和对应
-`ouro-ops skill show <operation>`。
+完整命令与能力顺序见 [`docs/S0020-operations.md`](docs/S0020-operations.md) 和网站复制的对应
+canonical Skill。每个 Skill 的第一个 Ouro 动作都是无状态的 `contract check`。
 
 ## 快速开始
 
@@ -87,6 +87,7 @@ make python-test
 bash ci/l2-integration.sh
 cargo clippy -p ouro --lib --tests -- -D warnings
 target/debug/ouro-ops contract
+make release-candidate   # macOS；构建并验收配对候选，但不发布
 ```
 
 `deploy/register-submit` 使用同一套 agentless 一次性 runner：先审阅 operator 已签名交易并绑定

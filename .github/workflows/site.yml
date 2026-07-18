@@ -1,118 +1,43 @@
-# Website CI/CD for the static onboarding page.
-#
-#   pull_request  -> build check (including forks; no secrets)
-#                 -> preview deploy + PR comment (same-repository PRs only)
-#   push to main  -> production deploy (environment: production)
-#
-# Never change this workflow to pull_request_target: fork code must not receive deploy secrets.
-
-name: site
+name: Site release-form validation
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
+      - "ouro-skills/**"
       - "web/onboarding/**"
+      - "tests/test_web_generator.py"
+      - "tests/test_skill_docs.py"
       - ".github/workflows/site.yml"
   push:
     branches:
-      - main
+      - next
     paths:
+      - "ouro-skills/**"
       - "web/onboarding/**"
+      - "tests/test_web_generator.py"
+      - "tests/test_skill_docs.py"
       - ".github/workflows/site.yml"
 
 permissions:
   contents: read
 
-concurrency:
-  group: site-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
-  build:
+  local-production-form:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build static site
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python3 -m pip install -r requirements-dev.txt
+      - name: Build site from exactly six canonical Skills
         run: ./web/onboarding/build.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: site-dist
-          path: web/onboarding/dist
-          if-no-files-found: error
-          retention-days: 1
+      - name: Verify generator, copied content and local HTTP form
+        run: |
+          python3 -m pytest -q tests/test_web_generator.py
+          python3 tests/test_skill_docs.py
 
-  preview:
-    needs: build
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: site-dist
-          path: web/onboarding/dist
-      - id: upload
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: web/onboarding
-          wranglerVersion: "4.107.0"
-          command: versions upload
-      - name: Comment preview URL on the PR
-        uses: actions/github-script@v7
-        env:
-          CMD_OUT: ${{ steps.upload.outputs.command-output }}
-        with:
-          script: |
-            const match = (process.env.CMD_OUT || '').match(/https:\/\/[^\s]+\.workers\.dev/);
-            if (!match) {
-              core.notice('No preview URL found in wrangler output');
-              return;
-            }
-            const marker = '<!-- site-preview -->';
-            const body = `${marker}\n🔍 **Site preview:** ${match[0]}`;
-            const { data: comments } = await github.rest.issues.listComments({
-              ...context.repo,
-              issue_number: context.issue.number
-            });
-            const previous = comments.find((comment) =>
-              comment.body && comment.body.includes(marker)
-            );
-            if (previous) {
-              await github.rest.issues.updateComment({
-                ...context.repo,
-                comment_id: previous.id,
-                body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                ...context.repo,
-                issue_number: context.issue.number,
-                body
-              });
-            }
-
-  deploy:
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: site-dist
-          path: web/onboarding/dist
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: web/onboarding
-          wranglerVersion: "4.107.0"
-          command: deploy
+# Production Cloudflare deployment and production-domain acceptance are deliberately deferred to
+# the next specification. This workflow uploads no hosted site artifact and uses no deploy secret.

@@ -1,84 +1,45 @@
-# S0016 — Threat Model & Applicability Boundary
+# Current website → agent → Ouro applicability boundary
 
-> Delivered for S0016 p4-3. This is the honest statement of **what the web-prompt →
-> agent → `ouro` flow protects, what it does not, and when it should not be used.**
-> It exists so an operator can calibrate risk correctly instead of over-trusting a
-> plausible-looking convenience.
+This document supersedes S0016's embedded-decision model. The current static website copies one
+complete canonical external Skill plus operation-scoped pool data into a prompt. The verified local
+CLI contains the typed execution mechanism, not Skill prose. The Skill's mandatory first Ouro action
+is the pure compatibility check; normal target operations use the release-paired ephemeral runner
+and require no target-resident Ouro installation or state.
 
-## The flow in one line
+## What the flow enforces
 
-A static website turns a form into a `pool-spec.yaml` + a **thin prompt** (data +
-which operation + a pointer). The operator pastes the prompt into their agent
-(Claude/Codex). The agent reads the **authoritative procedure from the verified local
-`ouro` binary** (`ouro-ops skill show <op>`) — not from the prompt — and drives every change
-through `ouro-ops tool run`, which enforces the S0015 mechanism (audit gate, sudoers-confined
-target wrapper, key isolation, exit-code discipline).
+| Dimension | Current boundary |
+| --- | --- |
+| Decision source | The copied prompt contains the complete canonical Skill generated from `ouro-skills/`; site build tests prove byte fidelity. |
+| Compatibility | `ouro-ops contract check` validates the Skill's CLI/contract requirement without filesystem, credential, network, SSH or audit state. |
+| Typed writes | Closed operation schema, target-side live plan, exact candidate confirmation and operation-specific fleet permit. |
+| Runner identity | The macOS release embeds its paired static Linux/x86_64 runner; public commands cannot select runner bytes/path/hash. |
+| Runtime images | A pinned-key-verified live catalog authorizes one fixed Blink Labs GHCR repository and exact OCI tuples/transitions; Upgrade never accepts node-image bytes. |
+| Site data | The CSP-locked generator makes no ambient network request. Copying still discloses the rendered topology to the chosen agent/provider. |
 
-## Central invariant
+## Residual risks — disclosed and accepted
 
-**The prompt supplies only data + operation + a pointer. It never supplies code, and it
-never supplies the decision tree.** All code (`ouro`, skill scripts) and the decision
-layer (`SKILL.md`) come from the verified binary, whose identity is fixed and integrity is
-checkable — not chosen by the prompt.
+- An agent with a general shell and the operator's SSH credential can deliberately act outside
+  Ouro. The current product prioritizes a correct, low-friction typed workflow and does not claim
+  mechanism isolation from raw terminal use.
+- The control machine remains sensitive because it holds fleet-reaching credentials. Key contents
+  must not enter prompts, JSON or audit output; hardware-backed keys remain preferable.
+- The website is zero-upload, but the prompt contains hostnames/IPs/roles. Pasting it into a cloud
+  agent sends those values to that provider and its logs.
+- Root, the host kernel, Docker daemon and the selected node image's own code remain trusted. Digest
+  pinning proves identity, not absence of upstream vulnerabilities.
 
-## What this protects (✅) vs does not (⚠️)
+## Supply-chain split
 
-| Dimension | Protected by | Verdict |
-|---|---|---|
-| `ouro-ops tool run` path — write authority, key isolation, target-side execution | Mechanism (wrapper/sudoers/audit, S0015) | ✅ Mechanism-enforced; a malicious prompt cannot exceed it |
-| `ouro` binary + skill **code** source | Fixed identity + integrity verification (not prompt-chosen) | ✅ See distribution red lines |
-| **Decision-layer integrity** (the procedure the agent follows) | Verified binary via `ouro-ops skill show`; never the prompt | ✅ A spoofed site cannot poison it (R2 N3) |
-| Version floor (no downgrade via a low prompt value) | `required = max(prompt, embedded, monotonic-rollback, security)` | ✅ Prompt can only raise; tamper-evident floor |
-| **Control machine itself** (agent acting *outside* `ouro`) | **Nothing** | ⚠️ = trust in the agent runtime; **weaker than manual SSH** |
-| **Topology confidentiality** | Website does not upload; pasting sends it to the agent provider | ⚠️ Disclosed at copy time; not confidential once pasted |
+- The CLI release candidate is a macOS control binary with its exact embedded runner. Skills and
+  node images are excluded. Formal CLI signing/publication is deferred to the next spec.
+- The small signed `releases.json` catalog is already public and independently Ed25519-verified by
+  the CLI. It contains metadata only; image layers come directly from Blink Labs GHCR.
+- First installation remains a deliberate trust decision. Until formal CLI publication exists, do
+  not present placeholder Homebrew/install vectors as production-ready.
 
-## Residual risks — inherent, disclosed, accepted
+## When not to use this mode
 
-- **#2 Control-machine bypass.** The agent has a shell on the machine that holds fleet
-  credentials, and it ingests an untrusted pasted prompt. A hostile prompt can try to make
-  the agent act *outside* `ouro` entirely — read `~/.ssh`, `curl … | sh`, exfiltrate. The
-  mechanism only guards the `ouro` path; it does **not** protect the control machine. This
-  cannot be patched away; it is a property of "untrusted text into a capable agent on a
-  credentialed host." **Manual SSH does not add a cloud/logged interpreter with shell
-  access to that host — so this flow is weaker than manual SSH on this axis.**
-- **#3 Control machine = crown jewel.** It both ingests untrusted input and holds
-  fleet-reaching credentials → the highest-value target. Mitigation: hardware-backed keys
-  (Secure Enclave / hardware token) so key material cannot be exfiltrated even if the host
-  is compromised.
-- **Website version fetch (read-only, no user data).** The generator makes exactly one outbound
-  request — a fixed-URL `GET https://api.github.com/…/cardano-node/releases/latest` to show the
-  current node version. CSP `connect-src` is locked to `api.github.com` so the page can reach
-  nowhere else. It carries NO topology / pool data; the only leak is that GitHub sees a page load
-  (IP/time). Fails safe to a baked version list when GitHub is unreachable.
-- **#4 Topology to the agent provider.** The pasted prompt contains hostnames/IPs/roles;
-  the agent provider (and its logs/retention) sees them. The website's "nothing uploaded"
-  claim is scoped to the website only. Mitigation: copy-time disclosure (the page requires
-  an explicit confirm), and a future minimized / local-agent mode.
-
-## Supply chain
-
-Universal cost (true of manual operation too), not unique to this flow: trusting the tool's
-provenance, and a laptop that holds SSH keys. Mitigations that are load-bearing here:
-
-- **Distribution:** single self-updating static binary; **strict signature verification +
-  monotonic anti-rollback** on self-update; transparency log + reproducible builds so a rogue
-  signature is publicly detectable and the binary is verifiable against source; signing key
-  hardware-held.
-- **First install (TOFU):** the whole chain is only as good as the first binary. Use the
-  **single** official install vector; pin the expected signing identity in a repo-controlled
-  artifact so the installer verifies automatically; cross-check the fingerprint across ≥2
-  independent channels. Defends typosquat / fake-package / bootstrap-key substitution.
-
-## Applicability boundary — when NOT to use this
-
-This flow is a **convenience mode whose control-machine posture is weaker than manual SSH.**
-It is appropriate only when **you trust your agent's runtime environment.**
-
-If you cannot accept that (e.g. compliance forbids untrusted input on a credentialed host,
-or the agent runs in a shared/loggable environment you do not control), then for
-key-touching or destructive operations you should **operate manually**: use the website to
-generate the `pool-spec.yaml` and a command checklist, and run `ouro` yourself — do not let
-an agent drive it. The optional hardened path (a restricted agent-run surface exposing only
-`ouro` subcommands, with no shell/network/credential access + adversarial bypass tests,
-S0016 p4-4) is what would raise this to a genuine "safe path"; until it is enabled, the
-default is the convenience mode described here.
+Do not give a general-purpose agent a credentialed control terminal if policy requires strict
+mechanism isolation from raw SSH or forbids sending topology to the agent provider. In that case,
+run the typed Ouro commands manually after reviewing the copied Skill and plans.

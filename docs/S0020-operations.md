@@ -1,7 +1,8 @@
 # Agentless Operations
 
-This is the current operator contract. The embedded Skill shown by
-`ouro-ops skill show <name>` remains the executable runbook authority.
+This is the current typed-operation contract. The website-copied prompt contains one complete
+canonical external Skill; its mandatory first action is the pure `ouro-ops contract check`
+compatibility preflight. The CLI carries execution mechanisms and no decision Skill text.
 
 ## Target model
 

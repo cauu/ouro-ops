@@ -76,12 +76,11 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
 def test_page_keeps_payload_inert_and_network_bounded() -> None:
     html = build()
     assert "default-src 'none'" in html
-    assert "connect-src https://api.github.com" in html
+    assert "connect-src 'none'" in html
     assert not re.search(r"<script[^>]+src=", html)
     assert not re.search(r"<link[^>]+href=", html)
     fetches = re.findall(r"fetch\((.*?)\)", html, re.DOTALL)
-    assert len(fetches) == 1
-    assert "api.github.com/repos/IntersectMBO/cardano-node/releases" in fetches[0]
+    assert fetches == [], "the prompt generator must not make ambient network requests"
     assert "clip(current.prompt)" in html
     assert '$("prompt-out").textContent = pr' in html
     assert "innerHTML = skill" not in html

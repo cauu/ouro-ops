@@ -1,8 +1,8 @@
-# S0016 — Release, Signing & Self-Update (p2-2/p2-3/p2-5)
+# Ouro CLI release boundary
 
 This documents the distribution mechanism S0016 specifies. The **code + verification logic +
 packaging artifacts** live in this repo; the parts that need external infrastructure (a
-hardware-held signing key, published Homebrew tap / npm package, a hosted release channel, a
+hardware-held CLI signing key, published Homebrew tap / package, a hosted CLI release channel, a
 Sigstore/Rekor transparency entry) are called out explicitly as **INFRA** — they are not, and
 should not be, runnable from the repo.
 
@@ -19,7 +19,9 @@ Ordinary non-deploy operations do not provision or update target-resident Ouro s
 macOS/control release carries its matching static Linux/x86_64 runner; each invocation sends it to a
 run-unique private directory through the operator's existing `cardano` SSH credential, verifies the
 control-known digest, executes a closed `target` action with a clean environment, bounds output and
-deadline, and removes it. Public artifacts are optionally appended to that same one-shot stream.
+deadline, and removes it. Public KES opcert or Deploy transaction artifacts may be appended to that
+same one-shot stream. Node images never are: approved Upgrade preparation makes the target Docker
+daemon pull the signed exact Blink Labs GHCR platform-manifest digest directly.
 
 This design deliberately targets an honest-but-fallible or misled agent using the Ouro command
 surface. The existing operator credential is **NOT mechanism-isolated from the agent** when it has
@@ -33,7 +35,23 @@ Legacy `init`/`onboard`/`adopt` remain for explicit S0017/S0019 migration or rec
 not ordinary-operation prerequisites and must never be suggested merely because a target lacks an
 Ouro binary, adoption metadata, or a matching remote version.
 
-## Release process (per version)
+## Current release standard
+
+Run `make release-candidate` on macOS. It performs locked paired builds, embeds the exact static
+Linux/x86_64 runner into the native control CLI, verifies the compact descriptor against the runner
+bytes, checks the live signed release catalog, packages only `ouro-ops`, validates SHA256SUMS and
+refuses Skill Markdown or node-image payloads. The resulting manifest says
+`release-standard-not-published`.
+
+Formal CLI signing and publication are deliberately deferred to the next spec. The current GitHub
+workflow runs this release-standard validation but creates no GitHub Release, tag publication,
+Homebrew update or hosted CLI artifact.
+
+The signed node-image release catalog is a different public artifact. It is served at the fixed
+`data/releases.json` HTTPS source, signed by Ouro's pinned Ed25519 catalog key, and authorizes only
+exact `ghcr.io/blinklabs-io/cardano-node` OCI tuples and transitions. It never hosts image layers.
+
+## Formal release process (next spec)
 
 1. **Controlled paired build** of the control `ouro-ops` binary (no Skills) and its matching static
    Linux/x86_64 runner. `ouro-ops contract` reports the CLI version/contract and the digest of the
@@ -45,11 +63,12 @@ Ouro binary, adoption metadata, or a matching remote version.
 4. **Signed release metadata** (`latest_version`, sequence number, timestamp/expiry,
    revocation/security floor) is published to the stable channel. *(INFRA: channel.)*
 
-## First install (once, deliberate)
+## Future formal first install (not available yet)
 
-Primary: `brew install ouro/tap/ouro` (macOS). Secondary: `npx @ouro/cli@<pinned>`. Both
-verify the signature against the pinned identity before trusting the binary. After install,
-`ouro-ops version` + `ouro-ops contract` are cross-checked against the official site.
+The next spec must replace every placeholder signing identity/URL and activate one official install
+vector whose package verifies the signature before trusting the binary. After installation,
+`ouro-ops version` and `ouro-ops contract` must be cross-checked against the official site. No
+current Homebrew, npm or install-script placeholder is a supported production channel.
 
 ## Self-update (steady state)
 
@@ -75,6 +94,7 @@ network is unavailable.
 ## What is runnable in-repo today
 
 - `ouro-ops contract` — compact CLI contract and paired-runner descriptor.
+- `make release-candidate` — complete paired build/package/check without publication.
 - `ouro-ops self-update --check` — version/update reporting, no unverified apply (p2-3, partial).
 - `packaging/` — SIGNING_IDENTITY, Homebrew formula, install.sh (verification logic).
 
