@@ -60,7 +60,6 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "fleet" => crate::s0019_cli::run_fleet(&args[2..])?,
         "kes" => run_kes(&args[2..])?,
         "legacy" => run_legacy(&args[2..])?,
-        "manifest" => run_manifest(&args[2..])?,
         "pool" => run_pool(&args[2..])?,
         "release" => run_release(&args[2..])?,
         "rollback" => run_rollback(&args[2..])?,
@@ -248,7 +247,7 @@ fn validate_creds_args(args: &[String], register: bool) -> Result<()> {
 
 /// `ouro-ops self-update --check [--against <signed-metadata.json>]` (S0016 p2-3).
 ///
-/// Reports the running version and the built-in required floor. With `--against`, compares
+/// Reports the running version. With `--against`, compares
 /// to a (signed at release) metadata file and reports whether an update is warranted, WITHOUT
 /// downgrading below the current version (monotonic). The actual network fetch + signature
 /// verification + in-place swap are RELEASE INFRASTRUCTURE (signing key, transparency log,
@@ -261,7 +260,6 @@ fn run_self_update(args: &[String]) -> Result<()> {
         ));
     }
     let current = crate::version::fmt(crate::version::current());
-    let embedded_floor = crate::assets::required_ouro();
     let mut update_available = false;
     let mut latest = current.clone();
     if let Some(path) = optional_flag_value(args, "--against") {
@@ -270,8 +268,8 @@ fn run_self_update(args: &[String]) -> Result<()> {
         if let Some(v) = meta.get("latest_version").and_then(|v| v.as_str()) {
             latest = v.to_string();
             if let (Some(c), Some(l)) = (
-                crate::assets::parse_floor(&current),
-                crate::assets::parse_floor(v),
+                crate::version::parse(&current),
+                crate::version::parse(v),
             ) {
                 update_available = l > c; // never downgrade: only flag when strictly newer
             }
@@ -279,7 +277,6 @@ fn run_self_update(args: &[String]) -> Result<()> {
     }
     output::print_json(&ToolOutput::ok("ouro.self-update.check", false).with_data(json!({
         "current": current,
-        "embedded_required_floor": embedded_floor,
         "latest_seen": latest,
         "update_available": update_available,
         "apply": "release infra: verify signature + transparency log, then swap (packaging/RELEASE.md)",
@@ -722,53 +719,6 @@ fn pin_host_key(
     }
     std::fs::write(known_hosts, existing)?;
     Ok(primary)
-}
-
-/// `ouro-ops manifest show | verify --against <file>` (S0016 p2-6).
-///
-/// `show` prints the bare bundle manifest derived from the binary's embedded assets (commit
-/// it as `packaging/bundle-manifest.json`). `verify` proves the running binary's embedded
-/// decision/mechanism/schema content matches a signed/committed manifest — the drift &
-/// tamper gate (TC-4/TC-13). A per-class mismatch names exactly which layer drifted.
-fn run_manifest(args: &[String]) -> Result<()> {
-    match args.first().map(String::as_str) {
-        Some("show") => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&crate::assets::bundle_manifest())
-                    .expect("manifest serializes")
-            );
-            Ok(())
-        }
-        Some("verify") => {
-            let path = flag_value(args, "--against")?;
-            let expected: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)
-                .map_err(|e| {
-                    OuroError::Validation(format!("manifest {path} is not valid JSON: {e}"))
-                })?;
-            let actual = crate::assets::bundle_manifest();
-            let mut drift = Vec::new();
-            for key in ["schema_hash", "embedded_digest"] {
-                if expected.get(key) != actual.get(key) {
-                    drift.push(key);
-                }
-            }
-            if drift.is_empty() {
-                output::print_json(&ToolOutput::ok("ouro.manifest.verify", false).with_data(
-                    json!({ "verified": true, "embedded_digest": actual.get("embedded_digest") }),
-                ))?;
-                Ok(())
-            } else {
-                Err(OuroError::Validation(format!(
-                    "bundle manifest drift in: {} — embedded assets differ from the signed manifest",
-                    drift.join(", ")
-                )))
-            }
-        }
-        _ => Err(OuroError::InvalidArgs(
-            "expected manifest show | manifest verify --against <file>".to_string(),
-        )),
-    }
 }
 
 fn run_confirm(args: &[String]) -> Result<()> {
@@ -1226,7 +1176,7 @@ fn print_help() {
     println!("  onboard/adopt  S0019 resident-target model (not an ordinary-flow prerequisite)");
     println!("Read-only / meta:");
     println!("  status    node status from a snapshot | spec validate | detection occurs in live reads/plans");
-    println!("  version | paths | contract | manifest show|verify | audit init|log");
+    println!("  version | paths | contract | audit init|log");
     println!("\nOutput is single-line JSON when captured (agents/pipes/dispatch); human-readable on a TTY (force JSON: --json).");
 }
 
@@ -1292,7 +1242,6 @@ fn command_usage(command: &str) -> Option<&'static str> {
         "pool" => "ouro-ops pool overview --spec <pool-spec> [--snapshot <json>] | register-tx --spec <pool-spec>",
         "spec" => "ouro-ops spec validate --spec <pool-spec>",
         "status" => "ouro-ops status --snapshot <json> [--diff-spec --spec <pool-spec>]",
-        "manifest" => "ouro-ops manifest show | verify --against <bundle-manifest.json>",
         "config" => "ouro-ops config render --spec <pool-spec> --machine <id> [--out <dir>] | apply ...",
         "audit" => "ouro-ops audit init | log",
         "rollback" => "ouro-ops rollback --spec <pool-spec> ...",

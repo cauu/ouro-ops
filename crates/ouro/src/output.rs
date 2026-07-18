@@ -1,5 +1,5 @@
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::Result;
 
@@ -158,7 +158,11 @@ fn render_human(v: &Value) -> String {
 
     if let Some(checks) = v.get("checks").and_then(Value::as_array) {
         for c in checks {
-            let cm = if c.get("pass").and_then(Value::as_bool) == Some(true) { "✓" } else { "✗" };
+            let cm = if c.get("pass").and_then(Value::as_bool) == Some(true) {
+                "✓"
+            } else {
+                "✗"
+            };
             let name = c.get("name").and_then(Value::as_str).unwrap_or("");
             let detail = c.get("detail").and_then(Value::as_str).unwrap_or("");
             s.push_str(&format!("  {cm} {name}"));
@@ -235,11 +239,7 @@ fn scalar_str(v: &Value) -> String {
 }
 
 pub fn contract_summary() -> Value {
-    json!({
-        "stdout": "single-line-json when captured (pipe/redirect/ssh); human-readable on an interactive TTY (or force JSON with --json / OURO_JSON=1)",
-        "exit_codes": [0, 10, 20, 30, 40],
-        "secret_policy": "hashes, paths, counters and metadata only"
-    })
+    serde_json::to_value(crate::contract::descriptor()).expect("contract descriptor serializes")
 }
 
 #[cfg(test)]

@@ -260,7 +260,7 @@ a concrete defect.
   before completing this item
 - [x] p3-1 add the pure `contract check` preflight and update all six Skills to invoke it exactly once
   before every other CLI, credential, network, SSH, or mutating action
-- [ ] p3-2 remove decision/Skill hashes and Skill-derived floors from manifest, identity, packaging,
+- [x] p3-2 remove decision/Skill hashes and Skill-derived floors from manifest, identity, packaging,
   and self-description; implement and consume only the compact CLI contract/runner descriptor
 - [ ] p4-1 extend release-catalog schema and validation with the signed Blink Labs GHCR repository and
   exact OCI identity tuple; update release selection and transition validation
@@ -404,6 +404,12 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   emits one typed success/refusal, and reaches no stateful subsystem. All six Skills invoke their
   front-matter requirements exactly once before pool-spec, credential, network, SSH, or other CLI
   work.
+- 2026-07-18 p3-2 started: replacing the legacy asset-taxonomy manifest and local version-floor
+  state with one compact CLI/runner descriptor while preserving internal execution-identity checks.
+- 2026-07-18 p3-2 completed: `ouro-ops contract` now exposes only version, contract, runner platform
+  and compiled-runner digest; debug builds honestly report a missing runner as null. The manifest
+  route/file, Skill-derived required floor, local version-floor MAC state, and parity floor field are
+  removed. Packaging and installer smoke checks consume the compact descriptor.
 
 ## 6. Validation Evidence (append-only)
 
@@ -455,6 +461,17 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   -q tests/test_web_generator.py tests/test_contract_check.py` | result: pass | note: 11 cases prove
   the exact six generated Skills each contain one front-matter-derived compatibility command as
   their first Ouro action
+- TC-4, TC-5 | stack: rust+python | command: compact descriptor unit tests and
+  `python3 tests/test_external_skill_boundary.py` | result: pass | note: public self-description has
+  exactly `ouro_version`, `cli_contract`, `runner_platform`, and `runner_sha256`; legacy manifest is
+  unknown and its committed taxonomy file is absent
+- TC-4 | stack: other | command: source/build dependency assertions for decision documents,
+  `required_ouro`, version-floor state, and parity identity | result: pass | note: Skill prose is not
+  a build or identity input; signed distribution metadata remains the owner of revocation policy
+- TC-14, TC-22 | stack: rust+python | command: `cargo test -q -p ouro --lib && cargo clippy -q -p
+  ouro --lib --tests -- -D warnings && make python-test && python3 -m pytest -q
+  tests/test_web_generator.py tests/test_external_skill_boundary.py tests/test_contract_check.py` |
+  result: pass | note: 169 Rust tests, clippy, all direct Python gates and 12 pytest cases pass
 
 ## 7. Change Requests (append-only)
 

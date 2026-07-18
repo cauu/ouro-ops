@@ -6,6 +6,23 @@ use serde::Serialize;
 pub const CLI_CONTRACT: u64 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Descriptor {
+    pub ouro_version: &'static str,
+    pub cli_contract: u64,
+    pub runner_platform: &'static str,
+    pub runner_sha256: Option<String>,
+}
+
+pub fn descriptor() -> Descriptor {
+    Descriptor {
+        ouro_version: env!("CARGO_PKG_VERSION"),
+        cli_contract: CLI_CONTRACT,
+        runner_platform: crate::runner::PLATFORM,
+        runner_sha256: crate::runner::embedded_sha256(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Compatibility {
     pub ouro_version: &'static str,
     pub cli_contract: u64,
@@ -90,6 +107,23 @@ mod tests {
     fn accepts_current_floor_and_exact_contract() {
         let result = check(">=0.1.0", "1").unwrap();
         assert_eq!(result.cli_contract, 1);
+    }
+
+    #[test]
+    fn descriptor_is_compact_and_runner_bound_when_present() {
+        let value = serde_json::to_value(descriptor()).unwrap();
+        let object = value.as_object().unwrap();
+        assert_eq!(
+            object.keys().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "cli_contract",
+                "ouro_version",
+                "runner_platform",
+                "runner_sha256"
+            ]
+        );
+        assert_eq!(value["cli_contract"], CLI_CONTRACT);
+        assert_eq!(value["runner_platform"], crate::runner::PLATFORM);
     }
 
     #[test]

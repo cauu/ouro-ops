@@ -35,7 +35,7 @@ class OuroOps < Formula
 
   test do
     assert_match "0.1.0", shell_output("#{bin}/ouro-ops version")
-    # The binary must self-verify its embedded skill bundle matches the signed manifest.
-    system "#{bin}/ouro-ops", "manifest", "show"
+    # The signed binary exposes only its compact CLI/runner contract descriptor.
+    system "#{bin}/ouro-ops", "contract"
   end
 end

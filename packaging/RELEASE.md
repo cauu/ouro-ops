@@ -35,11 +35,10 @@ Ouro binary, adoption metadata, or a matching remote version.
 
 ## Release process (per version)
 
-1. **Reproducible paired build** of the control `ouro-ops` binary (Skills embedded) and its matching
-   static Linux/x86_64 runner. The control artifact embeds or release-binds that exact runner.
-   `ouro-ops manifest show` is captured and committed as `packaging/bundle-manifest.json`; a CI
-   test (`skills::committed_manifest_matches_embedded`) fails the build on any drift.
-2. **Sign** the binary + the bundle manifest with the hardware-held key (cosign keyless +
+1. **Controlled paired build** of the control `ouro-ops` binary (no Skills) and its matching static
+   Linux/x86_64 runner. `ouro-ops contract` reports the CLI version/contract and the digest of the
+   exact embedded runner; release checks compare that digest with the paired artifact.
+2. **Sign** the binary and release checksums with the hardware-held key (cosign keyless +
    minisign for the offline fallback). *(INFRA: signing key.)*
 3. **Publish** the signature + a Rekor transparency entry, the tarballs, the Homebrew formula
    (`packaging/homebrew/ouro.rb`, sha filled), and the npm wrapper. *(INFRA: publish.)*
@@ -55,30 +54,28 @@ verify the signature against the pinned identity before trusting the binary. Aft
 ## Self-update (steady state)
 
 `ouro-ops self-update --check [--against <signed-metadata>]` (implemented) reports the running
-version, the built-in required floor, and — given release metadata — whether a strictly newer
-version exists (it never flags a downgrade).
+version and — given release metadata — whether a strictly newer version exists (it never flags a
+downgrade).
 
 The apply path (INFRA-gated) MUST, before swapping the binary:
 - verify the new release's signature against the pinned identity AND its Rekor entry;
-- enforce **monotonic anti-rollback** (never install below the current version — see
-  `version.rs`, the same tamper-evident floor the run-time gate uses, R2 N1);
+- enforce signed distribution rollback/revocation policy and never install below the current
+  version;
 - require the signed metadata to be **fresh** (unexpired) for write operations; fail closed
   past expiry except for an explicitly verified offline bundle;
-- compute the effective floor as `max(prompt_min, embedded_floor, security/revocation floor)`
-  and refuse known-vulnerable versions (denylist).
+- refuse versions revoked by verified release metadata.
 
 ## Offline fallback
 
 Near-offline BPs: a signed offline bundle carries its own minisign public key / Sigstore
 bundle so it is verifiable WITHOUT the network; `ouro-ops install --offline <bundle>` (INFRA)
-runs the SAME verify + denylist + `max(floor)` checks. Never skip verification because the
+runs the SAME signature, revocation, and no-downgrade checks. Never skip verification because the
 network is unavailable.
 
 ## What is runnable in-repo today
 
-- `ouro-ops manifest show|verify` — bundle integrity, drift/tamper gate (p2-6).
-- `ouro-ops self-update --check` — version/floor reporting, no unverified apply (p2-3, partial).
-- `version.rs` gate + tamper-evident monotonic anti-rollback (p3-2/3, R2 N1/P0-2).
+- `ouro-ops contract` — compact CLI contract and paired-runner descriptor.
+- `ouro-ops self-update --check` — version/update reporting, no unverified apply (p2-3, partial).
 - `packaging/` — SIGNING_IDENTITY, Homebrew formula, install.sh (verification logic).
 
 ## What is INFRA (not in-repo)

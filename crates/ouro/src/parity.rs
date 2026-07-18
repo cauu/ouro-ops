@@ -1,10 +1,10 @@
 //! Executor identity and anti-downgrade parity for typed target operations.
 //!
 //! The attestation binds the node image; §2.8 additionally binds the SECURITY-DECIDING code: the
-//! ouro-ops build id, the executor/registry/intent-schema digests, and a minimum security version.
+//! ouro-ops build id and the executor/registry/intent-schema digests.
 //! Typed operations require control↔target parity (same security identity family) before accepting an
-//! intent, and refuses a target below the minimum security version — so an attested node cannot run
-//! an older/mutable validator under weaker rules while the node fingerprint still matches. All
+//! intent, so an attested node cannot run different validator code while the node fingerprint still
+//! matches. All
 //! legacy S0017 write entry points are refused unless migrated into the deny-by-default registry.
 
 use sha2::{Digest, Sha256};
@@ -16,11 +16,10 @@ use crate::{assets, intent, OuroError, Result};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SecurityIdentity {
     pub build_id: String,
-    /// Digest over the embedded skill/executor assets (the registry + schemas live here).
+    /// Digest over security-deciding code and execution assets (the registry + schemas live here).
     pub executor_digest: String,
     pub intent_schema_version: u32,
     pub registry_len: usize,
-    pub min_security_version: (u64, u64, u64),
 }
 
 impl SecurityIdentity {
@@ -31,21 +30,14 @@ impl SecurityIdentity {
             executor_digest: security_code_digest(),
             intent_schema_version: 1,
             registry_len: intent::registry().len(),
-            min_security_version: crate::version::current(),
         }
     }
 
     /// Compact control→target identity covering every field checked by `require_parity`.
     pub fn wire_digest(&self) -> String {
         let material = format!(
-            "{}\n{}\n{}\n{}\n{}.{}.{}",
-            self.build_id,
-            self.executor_digest,
-            self.intent_schema_version,
-            self.registry_len,
-            self.min_security_version.0,
-            self.min_security_version.1,
-            self.min_security_version.2
+            "{}\n{}\n{}\n{}",
+            self.build_id, self.executor_digest, self.intent_schema_version, self.registry_len
         );
         sha256(material.as_bytes())
     }
@@ -115,7 +107,11 @@ fn security_code_digest() -> String {
     hasher.update((allowlist.len() as u64).to_be_bytes());
     hasher.update(allowlist.as_bytes());
     hasher.update(assets::embedded_digest().as_bytes());
-    hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[cfg(test)]
@@ -172,8 +168,7 @@ mod identity_tests {
 
 /// §2.8 — require control↔target parity before accepting an intent. The executor digest + intent
 /// schema version must match exactly (a mismatch means one side runs different security-deciding
-/// code), and the target must be at or above the control's minimum security version (anti-
-/// downgrade). Actionable error routes to re-adopt/upgrade.
+/// code). Actionable error routes to re-adopt/upgrade.
 pub fn require_parity(control: &SecurityIdentity, target: &SecurityIdentity) -> Result<()> {
     if control.build_id != target.build_id {
         return Err(OuroError::Validation(format!(
@@ -199,13 +194,6 @@ pub fn require_parity(control: &SecurityIdentity, target: &SecurityIdentity) -> 
         return Err(OuroError::Validation(format!(
             "intent registry mismatch: control has {} operations vs target {} (§2.8)",
             control.registry_len, target.registry_len
-        )));
-    }
-    if target.min_security_version < control.min_security_version {
-        return Err(OuroError::Validation(format!(
-            "target security version {:?} is below the control minimum {:?} — anti-downgrade \
-             refused; upgrade the target binary (§2.8)",
-            target.min_security_version, control.min_security_version
         )));
     }
     Ok(())
@@ -291,16 +279,8 @@ mod tests {
     }
 
     #[test]
-    fn downgrade_refused() {
+    fn schema_skew_refused() {
         let control = SecurityIdentity::local();
-        let mut target = control.clone();
-        // A target one patch version below the control minimum is refused.
-        let (a, b, c) = target.min_security_version;
-        target.min_security_version = (a, b, c.saturating_sub(1).min(c));
-        if target.min_security_version < control.min_security_version {
-            assert!(require_parity(&control, &target).is_err());
-        }
-        // schema skew also refused.
         let mut t2 = control.clone();
         t2.intent_schema_version = 2;
         assert!(require_parity(&control, &t2).is_err());

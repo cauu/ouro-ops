@@ -556,7 +556,7 @@ upgrade:
         (["fleet", "permit", "create", "--help"], "upgrade.min_online_relays"),
         (["inbox", "stage", "--help"], "--type <opcert|tx|image>"),
         (["adopt", "--help"], "--bootstrap-user <account>"),
-        (["manifest", "verify", "--help"], "--against <bundle-manifest.json>"),
+        (["contract", "--help"], "--requires-contract <integer>"),
     ):
         helped = subprocess.run([str(BIN), *help_args], text=True, capture_output=True)
         assert helped.returncode == 0 and needle in helped.stdout, (help_args, helped)

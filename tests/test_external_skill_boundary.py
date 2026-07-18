@@ -33,20 +33,26 @@ def test_cli_has_no_decision_skill_route_or_assets() -> None:
     assert retired_tool.returncode != 0
     assert "unknown command tool" in retired_tool.stdout
 
-    manifest = json.loads(ouro("manifest", "show").stdout)
-    assert "decision_hash" not in manifest
-    assert all(not path.endswith("/SKILL.md") for path in manifest["assets"])
-    assert set(manifest["assets"]) == {
-        "lib/ouro-probe.sh",
-        "schemas/audit-event.schema.json",
-        "schemas/pool-spec.schema.json",
-        "schemas/tool-output.schema.json",
+    descriptor = json.loads(ouro("contract").stdout)["data"]
+    assert set(descriptor) == {
+        "ouro_version",
+        "cli_contract",
+        "runner_platform",
+        "runner_sha256",
     }
+    assert descriptor["cli_contract"] == 1
+    assert descriptor["runner_platform"] == "linux/x86_64"
+
+    retired_manifest = ouro("manifest", "show", check=False)
+    assert retired_manifest.returncode != 0
+    assert "unknown command manifest" in retired_manifest.stdout
 
     build_script = (ROOT / "build.rs").read_text(encoding="utf-8")
     assert 'rel.ends_with("/SKILL.md")' not in build_script
     assert "cargo:rerun-if-changed=ouro-skills" not in build_script
     assert 'rel.ends_with(".sh")' not in build_script
+
+    assert not (ROOT / "packaging" / "bundle-manifest.json").exists()
 
     cli = (ROOT / "crates/ouro/src/cli.rs").read_text(encoding="utf-8")
     assert "fn run_tool" not in cli
@@ -54,6 +60,11 @@ def test_cli_has_no_decision_skill_route_or_assets() -> None:
     provision = (ROOT / "crates" / "ouro" / "src" / "provision.rs").read_text()
     assert "ouro-tool-run" not in provision
     assert "ouro-ops tool run" not in provision
+
+    version = (ROOT / "crates" / "ouro" / "src" / "version.rs").read_text()
+    assert "version-floor" not in version
+    assert "load_floor" not in version
+    assert "required_ouro" not in (ROOT / "crates" / "ouro" / "src" / "assets.rs").read_text()
 
 
 if __name__ == "__main__":

@@ -85,7 +85,7 @@ make test
 make python-test
 bash ci/l2-integration.sh
 cargo clippy -p ouro --lib --tests -- -D warnings
-target/debug/ouro-ops manifest verify --against packaging/bundle-manifest.json
+target/debug/ouro-ops contract
 ```
 
 `deploy/register-submit` 使用同一套 agentless 一次性 runner：先审阅 operator 已签名交易并绑定

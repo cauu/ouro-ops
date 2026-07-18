@@ -14,6 +14,14 @@ static EMBEDDED_LINUX_X86_64: &[u8] = include_bytes!(concat!(
     "/ephemeral_linux_x86_64_runner.bin"
 ));
 
+pub const PLATFORM: &str = "linux/x86_64";
+
+/// Digest of the runner compiled into this control binary. Development builds intentionally return
+/// `None` when no paired runner was supplied; release-candidate validation requires `Some`.
+pub fn embedded_sha256() -> Option<String> {
+    (!EMBEDDED_LINUX_X86_64.is_empty()).then(|| crate::assets::sha256_hex(EMBEDDED_LINUX_X86_64))
+}
+
 #[derive(Debug)]
 pub struct RunnerArtifact {
     pub bytes: Vec<u8>,
@@ -48,7 +56,7 @@ pub fn linux_x86_64() -> Result<RunnerArtifact> {
     Ok(RunnerArtifact {
         sha256: crate::assets::sha256_hex(&bytes),
         bytes,
-        platform: "linux/x86_64",
+        platform: PLATFORM,
     })
 }
 
@@ -64,5 +72,6 @@ mod tests {
         let runner = linux_x86_64().unwrap();
         assert_eq!(runner.sha256, crate::assets::sha256_hex(&runner.bytes));
         assert_eq!(runner.platform, "linux/x86_64");
+        assert_eq!(embedded_sha256().as_deref(), Some(runner.sha256.as_str()));
     }
 }
