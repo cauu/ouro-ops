@@ -6,6 +6,7 @@ pub mod cli;
 pub mod cold_sign;
 pub mod config;
 pub mod confirm;
+pub mod contract;
 pub mod convention;
 pub mod dispatch;
 pub mod domain;

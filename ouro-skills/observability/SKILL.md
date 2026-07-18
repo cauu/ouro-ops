@@ -5,6 +5,13 @@ requires_contract: 1
 ---
 # Observability Skill
 
+## Mandatory first action
+Before reading a pool spec, checking credentials, contacting a network/host, or running any other
+CLI command, run exactly once:
+`ouro-ops contract check --requires-ouro '>=0.1.0' --requires-contract 1`.
+If it refuses, stop and ask the operator to install the compatible CLI; do not continue by another
+path.
+
 ## Purpose
 Read the live node tip of every declared machine (BP and relays) and report only conclusions the
 returned evidence supports. The fixed health read proves that the node socket query answered; it

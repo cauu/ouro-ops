@@ -5,6 +5,13 @@ requires_contract: 1
 ---
 # KES Rotation Skill
 
+## Mandatory first action
+Before reading a pool spec, checking credentials, contacting a network/host, or running any other
+CLI command, run exactly once:
+`ouro-ops contract check --requires-ouro '>=0.1.0' --requires-contract 1`.
+If it refuses, stop and ask the operator to install the compatible CLI; do not continue by another
+path.
+
 ## Purpose
 Generate Ouro's fixed cold-signing script from a PUBLIC KES verification key and current period,
 hand that script to the operator for offline execution, then validate and install only the returned

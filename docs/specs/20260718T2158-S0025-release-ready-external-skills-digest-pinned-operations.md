@@ -258,7 +258,7 @@ a concrete defect.
 - [x] p2-3 remove the public legacy `tool run`/script path and obsolete-only parity gates when p1-1
   finds no production consumer; if one exists, obtain and implement the user's explicit disposition
   before completing this item
-- [ ] p3-1 add the pure `contract check` preflight and update all six Skills to invoke it exactly once
+- [x] p3-1 add the pure `contract check` preflight and update all six Skills to invoke it exactly once
   before every other CLI, credential, network, SSH, or mutating action
 - [ ] p3-2 remove decision/Skill hashes and Skill-derived floors from manifest, identity, packaging,
   and self-description; implement and consume only the compact CLI contract/runner descriptor
@@ -398,6 +398,12 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   legacy SSH wrapper dispatch, old provisioning recipe, embedded shell pack, and obsolete-only E2E
   fixtures are removed. Current onboarding cleanup, typed operations, probe/schema assets, durable
   transactions, confirmation, and target parity remain reachable and covered.
+- 2026-07-18 p3-1 started: adding a compile-time-only external-Skill compatibility comparison and
+  making its exact invocation the mandatory first action in every canonical public Skill.
+- 2026-07-18 p3-1 completed: `contract check` strictly parses the version floor and exact contract,
+  emits one typed success/refusal, and reaches no stateful subsystem. All six Skills invoke their
+  front-matter requirements exactly once before pool-spec, credential, network, SSH, or other CLI
+  work.
 
 ## 6. Validation Evidence (append-only)
 
@@ -439,6 +445,16 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   tests/test_web_generator.py tests/test_external_skill_boundary.py && git diff --check` | result:
   pass | note: all current direct Python gates and 9 pytest website/boundary cases pass; unrelated
   `pool-spec.yaml` remains untracked
+- TC-6 | stack: rust | command: `cargo test -q -p ouro --lib` | result: pass | note: 171 tests pass,
+  including compatible, too-old, wrong-contract and closed requirement-syntax cases for the pure
+  compatibility module
+- TC-6 | stack: python | command: `python3 tests/test_contract_check.py` | result: pass | note: five
+  success/refusal subprocess cases emit one typed record and leave HOME, OURO_HOME, XDG config,
+  cache and state trees byte-for-byte unchanged
+- TC-1, TC-6 | stack: python+ui | command: `python3 tests/test_skill_docs.py && python3 -m pytest
+  -q tests/test_web_generator.py tests/test_contract_check.py` | result: pass | note: 11 cases prove
+  the exact six generated Skills each contain one front-matter-derived compatibility command as
+  their first Ouro action
 
 ## 7. Change Requests (append-only)
 

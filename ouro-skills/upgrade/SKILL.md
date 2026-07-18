@@ -5,6 +5,13 @@ requires_contract: 1
 ---
 # Upgrade Skill
 
+## Mandatory first action
+Before reading a pool spec, checking credentials, contacting a network/host, or running any other
+CLI command, run exactly once:
+`ouro-ops contract check --requires-ouro '>=0.1.0' --requires-contract 1`.
+If it refuses, stop and ask the operator to install the compatible CLI; do not continue by another
+path.
+
 ## Purpose
 Run one user-visible Upgrade workflow across the fleet: obtain the current signed next release,
 prepare that exact image, then

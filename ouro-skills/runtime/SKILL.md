@@ -5,6 +5,13 @@ requires_contract: 1
 ---
 # Runtime Skill
 
+## Mandatory first action
+Before reading a pool spec, checking credentials, contacting a network/host, or running any other
+CLI command, run exactly once:
+`ouro-ops contract check --requires-ouro '>=0.1.0' --requires-contract 1`.
+If it refuses, stop and ask the operator to install the compatible CLI; do not continue by another
+path.
+
 ## Purpose
 Restart one operator-selected node through a live-state-bound, typed operation and verify that it
 returns ready.

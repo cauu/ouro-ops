@@ -44,11 +44,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
                 &ToolOutput::ok("ouro.paths", false).with_data(json!(ConfigPaths::discover())),
             )?;
         }
-        "contract" => {
-            output::print_json(
-                &ToolOutput::ok("ouro.contract", false).with_data(output::contract_summary()),
-            )?;
-        }
+        "contract" => run_contract(&args[2..])?,
         "audit" => run_audit(&args[2..])?,
         "confirm" => run_confirm(&args[2..])?,
         "config" => run_config(&args[2..])?,
@@ -74,6 +70,87 @@ pub fn run(args: Vec<String>) -> Result<()> {
         other => return Err(OuroError::InvalidArgs(format!("unknown command {other}"))),
     }
     Ok(())
+}
+
+/// Pure external-Skill compatibility check. Argument parsing and comparison happen before any
+/// ConfigPaths discovery or stateful subsystem is reached.
+fn run_contract(args: &[String]) -> Result<()> {
+    if args.is_empty() {
+        output::print_json(
+            &ToolOutput::ok("ouro.contract", false).with_data(output::contract_summary()),
+        )?;
+        return Ok(());
+    }
+    if args.first().map(String::as_str) != Some("check") {
+        return contract_refusal(
+            "invalid_contract_command",
+            "expected `contract check --requires-ouro >=MAJOR.MINOR.PATCH --requires-contract N`",
+        );
+    }
+
+    let mut requires_ouro = None;
+    let mut requires_contract = None;
+    let mut index = 1;
+    while index < args.len() {
+        let flag = args[index].as_str();
+        let slot = match flag {
+            "--requires-ouro" => &mut requires_ouro,
+            "--requires-contract" => &mut requires_contract,
+            other => {
+                return contract_refusal(
+                    "invalid_contract_arguments",
+                    &format!("unknown contract check argument {other}"),
+                )
+            }
+        };
+        if slot.is_some() {
+            return contract_refusal(
+                "invalid_contract_arguments",
+                &format!("duplicate contract check argument {flag}"),
+            );
+        }
+        let Some(value) = args.get(index + 1) else {
+            return contract_refusal(
+                "invalid_contract_arguments",
+                &format!("missing value for {flag}"),
+            );
+        };
+        if value.starts_with("--") {
+            return contract_refusal(
+                "invalid_contract_arguments",
+                &format!("missing value for {flag}"),
+            );
+        }
+        *slot = Some(value.as_str());
+        index += 2;
+    }
+
+    let Some(requires_ouro) = requires_ouro else {
+        return contract_refusal("invalid_contract_arguments", "missing --requires-ouro");
+    };
+    let Some(requires_contract) = requires_contract else {
+        return contract_refusal("invalid_contract_arguments", "missing --requires-contract");
+    };
+    match crate::contract::check(requires_ouro, requires_contract) {
+        Ok(compatibility) => {
+            output::print_json(
+                &ToolOutput::ok("ouro.contract.check", false)
+                    .with_data(serde_json::to_value(compatibility)?),
+            )?;
+            Ok(())
+        }
+        Err(refusal) => contract_refusal(refusal.code, &refusal.detail),
+    }
+}
+
+fn contract_refusal(code: &str, detail: &str) -> Result<()> {
+    let mut record = ToolOutput::failure("ouro.contract.check", code, detail);
+    if let Some(error) = record.error.as_mut() {
+        error.hint = "install the ouro-ops release matching the Skill requirements, then restart the workflow"
+            .to_string();
+    }
+    output::print_json(&record)?;
+    Err(OuroError::Reported(10))
 }
 
 /// Named-only credential namespace management. There is deliberately no list operation: the
@@ -1156,6 +1233,10 @@ fn print_help() {
 /// One-line usage for `<command> --help`. Covers the agent-facing surface; None → fall through.
 fn command_usage(command: &str) -> Option<&'static str> {
     Some(match command {
+        "contract" => "ouro-ops contract check --requires-ouro '>=MAJOR.MINOR.PATCH' \
+                       --requires-contract <integer>\n  \
+                       Pure external-Skill compatibility preflight; performs no filesystem, \
+                       credential, audit, confirmation, candidate, network, or SSH access.",
         "onboard" => "ouro-ops onboard --host <target> [--port 22] --bootstrap-user <account> \
                       --bootstrap-key creds://<name> --control-pubkey <operator-pub> \
                       --ouro-binary <target-arch ouro-ops> [--expected-host-key <SHA256:base64>] \

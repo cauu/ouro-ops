@@ -5,6 +5,13 @@ requires_contract: 1
 ---
 # Troubleshooting Skill
 
+## Mandatory first action
+Before reading a pool spec, checking credentials, contacting a network/host, or running any other
+CLI command, run exactly once:
+`ouro-ops contract check --requires-ouro '>=0.1.0' --requires-contract 1`.
+If it refuses, stop and ask the operator to install the compatible CLI; do not continue by another
+path.
+
 ## Purpose
 Find the cause behind a symptom or failed operation with evidence, then propose a repair through an
 existing typed operation. Diagnose freely; never repair by improvising a command.
