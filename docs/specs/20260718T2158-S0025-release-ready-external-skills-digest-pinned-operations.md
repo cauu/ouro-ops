@@ -247,7 +247,7 @@ a concrete defect.
 
 ## 3. Execution Plan
 
-- [ ] p1-1 inventory all six public Skill journeys and every current production reachability of
+- [x] p1-1 inventory all six public Skill journeys and every current production reachability of
   `skill show`, `tool run`, embedded scripts, decision hashes, Skill-derived version floors, Docker
   image archives, and image repository/digest selection; record the disposition of each surface
 - [ ] p2-1 implement deterministic, injection-safe website delivery directly from the six canonical
@@ -372,8 +372,24 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   implementation item has started; p1-1 is the first pending item.
 - 2026-07-18 S0025 activated as the only execution and acceptance source. No implementation item has
   started; p1-1 remains the first pending item.
+- 2026-07-18 p1-1 started: inventorying the six public journeys, legacy decision/script surfaces,
+  release identity, and Docker archive versus signed-digest image paths before changing behavior.
+- 2026-07-18 p1-1 completed: `docs/review/S0025-p1-1-surface-inventory.md` records every public
+  journey and classifies legacy decision/script, release identity, website, catalog, and image
+  transport surfaces. No named current production/recovery consumer of `tool run` exists; it may be
+  retired. Upgrade archive transport is a current path that S0025 explicitly replaces.
 
 ## 6. Validation Evidence (append-only)
+
+- TC-7 | stack: other | command: inspect CLI routes, six canonical Skills, website generator,
+  build inputs, release identity, wrappers, tests and current docs; record
+  `docs/review/S0025-p1-1-surface-inventory.md` | result: pass | note: six typed journeys are mapped;
+  `tool run` has no named current consumer and is approved for removal
+- TC-10 | stack: other | command: inventory `artifact-file`, `inbox preview --type image`, Docker
+  archive, `docker load`, release catalog and OCI digest call sites | result: pass | note: all current
+  positive image-archive surfaces and their exact signed-GHCR replacement boundary are enumerated
+- TC-22 | stack: other | command: `git diff --check` and inventory-table/search assertions | result:
+  pass | note: inventory is internally complete and unrelated `pool-spec.yaml` remains untracked
 
 ## 7. Change Requests (append-only)
 
