@@ -1028,6 +1028,15 @@ fn run_confirm(args: &[String]) -> Result<()> {
 
 fn run_tool(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {
+        Some("run") if args.get(1).map(String::as_str) == Some("deploy/register-submit") => {
+            Err(OuroError::Validation(
+                "legacy tool run deploy/register-submit is retired: use `ouro-ops op run --op \
+                 deploy/register-submit --spec <pool-spec> --dispatch <bp-host> --ssh-key \
+                 creds://<bp> --node <bp> --param machine=<bp> --param tx=<artifact-ref> \
+                 --param network=<network> --artifact-file <signed-tx> --plan`"
+                    .to_string(),
+            ))
+        }
         // S0019 §1.C: standalone S0017 supervisor discovery is not a supported happy-path read.
         // Keeping it callable produced a dangerous false success: an omitted --dispatch silently
         // described the control Mac, while the dispatched path depended on the retired

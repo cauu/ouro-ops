@@ -1,12 +1,12 @@
 # Agentless Ephemeral Runner Operations
 
 Spec-ID: S0020
-Status: active
+Status: completed
 Created Time: 2026-07-16T14:41:55+08:00
 Start Time: 2026-07-16T14:41:55+08:00
-Completion Time:
+Completion Time: 2026-07-18T12:55:27+08:00
 Previous Spec-ID: S0019
-Closure Reason:
+Closure Reason: replaced
 
 ## 1. Requirement Details
 

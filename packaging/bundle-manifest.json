@@ -2,7 +2,7 @@
   "assets": {
     "adopt/SKILL.md": "9dde50694633412245a00b4fac4eeed88ecec3c74155781c39c704e5aac50055",
     "config/SKILL.md": "12a70e3320b89d108d31264787b4b900e5baad914ed91efcf9926b28581c724c",
-    "deploy/SKILL.md": "a33a0c4fc4d06d67e231091f183c88f3086748e631699dd07e7a151a81371285",
+    "deploy/SKILL.md": "e3c576e853d9c1eb985a4d7d7881f78f1be178c4f7d23ae4bf793d64f89c1cc3",
     "deploy/scripts/preflight.sh": "4827982c84c48d207c9c8ffecd5cdf76a3b5144b2a69dc886f7e56a55aa66a5d",
     "deploy/scripts/provision.sh": "4e77fd0dcbe695cc09c4c97d610d8f387625c0bb2446c600d27e4cf062271a58",
     "deploy/scripts/register-build.sh": "5b69cfab043782b1a833fcccca9fd9fdb722f0b39f1413178fb98361c2f41610",
@@ -46,8 +46,8 @@
     "upgrade/scripts/upgrade-one.sh": "bdb9aeb009fea89027ede2f6b05a0b3ef0fd5e672c6c80f77df22b6662d8187c",
     "upgrade/scripts/verify.sh": "5c77cb2e4b82e1b67c8681d5fb5f197b4b5c4a306eb90b7e668e771d40eb9ff4"
   },
-  "decision_hash": "c870111ec648e998193e5f3116fc36643999b921f52b2badfa16004e4c2f85b7",
-  "embedded_digest": "7597a302c5497656c6e5612fb622f580bb4980c9ace0ce6b20c23660b2b174b8",
+  "decision_hash": "b102839c81405f86c1444a977a5c5c1d56b38c97949e94a066ce5bdea49b4770",
+  "embedded_digest": "c95c65d547d7a81891e0ee9babbf0c9075f5692835ef0cb32dbeeca458844c31",
   "manifest_version": 1,
   "ouro_version": "0.1.0",
   "required_ouro": ">=0.1.0",

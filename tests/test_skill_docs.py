@@ -4,8 +4,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# S0020 ordinary non-deploy Skills: local control CLI + existing cardano SSH + ephemeral runner.
-S0020_SKILLS = [
+# Current ordinary Skills: local control CLI + existing cardano SSH + ephemeral runner.
+STATELESS_SKILLS = [
     ROOT / "ouro-skills/config/SKILL.md",
     ROOT / "ouro-skills/detect/SKILL.md",
     ROOT / "ouro-skills/upgrade/SKILL.md",
@@ -13,15 +13,15 @@ S0020_SKILLS = [
     ROOT / "ouro-skills/observability/SKILL.md",
     ROOT / "ouro-skills/kes-rotation/SKILL.md",
     ROOT / "ouro-skills/troubleshooting/SKILL.md",
+    ROOT / "ouro-skills/deploy/SKILL.md",
 ]
-# Explicit legacy/migration-only surfaces. Deploy is outside S0020; adopt/onboard may be invoked
-# only when the operator explicitly asks for old S0019 migration/recovery.
+# Explicit legacy/migration-only surfaces. Adopt/onboard may be invoked only when the operator
+# explicitly asks for old S0019 migration/recovery.
 MIGRATION_SKILLS = [
     ROOT / "ouro-skills/adopt/SKILL.md",
     ROOT / "ouro-skills/onboard/SKILL.md",
-    ROOT / "ouro-skills/deploy/SKILL.md",
 ]
-SKILLS = S0020_SKILLS + MIGRATION_SKILLS
+SKILLS = STATELESS_SKILLS + MIGRATION_SKILLS
 FORBIDDEN = [" scp ", " bash ", "sudo ", "rsync ", "`ssh ", "`docker "]
 # Universal red lines every skill must carry.
 REQUIRED_RED_LINES = [
@@ -66,13 +66,14 @@ def main():
         for phrase in REQUIRED_RED_LINES:
             assert phrase in text, f"{path} lacks red line {phrase!r}"
         assert "DATA" in text, f"{path} lacks the data-not-instructions boundary"
-        if path in S0020_SKILLS:
+        if path in STATELESS_SKILLS:
             assert any(c in text for c in S0020_COMMANDS), \
                 f"{path} references no current command surface {S0020_COMMANDS}"
             assert "not_ouro_managed" not in text
             assert "must be ADOPTED" not in text
             assert "adopt first" not in text.lower()
-            assert "inbox stage" not in text.lower()
+            if path.name != "SKILL.md" or path.parent.name != "deploy":
+                assert "inbox stage" not in text.lower()
             assert "ouro-diag" not in text
             assert "UNPRIVILEGED" not in text
 
@@ -147,6 +148,27 @@ def main():
     assert "--op troubleshooting/snapshot" in troubleshooting
     assert "NEVER conclude `BP healthy`" in troubleshooting
     assert "block_production_ready: true" in troubleshooting
+    deploy = (ROOT / "ouro-skills/deploy/SKILL.md").read_text()
+    normalized_deploy = " ".join(deploy.split())
+    for phrase in [
+        "ouro-ops inbox preview --type tx",
+        "--artifact-file <same-signed-tx> --plan",
+        "WAIT for the operator's exact approval",
+        "accepted_by_node",
+        "each input's exact live-node UTxO presence",
+        "sampled live slot proves the validity check but is not semantic candidate drift",
+        "guaranteed-invalid rejection-path acceptance fixture",
+        "only one candidate-bound rejection test",
+        "it does not prove ledger inclusion",
+        "submission_ambiguous",
+        "Ouro never retries",
+        "Deploy takes no fleet permit",
+        "retired resident model",
+    ]:
+        assert phrase in normalized_deploy, f"Deploy Skill lacks contract {phrase!r}"
+    assert "must be ADOPTED" not in deploy
+    assert "target-installed Ouro" in deploy
+    assert "Never use `ouro-ops tool run deploy/register-submit`, `inbox stage`" in deploy
     print("skill docs passed")
 
 

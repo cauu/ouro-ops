@@ -1,6 +1,6 @@
-# S0020 Agentless Operations
+# Agentless Operations
 
-This is the current non-deploy operator contract. The embedded Skill shown by
+This is the current operator contract. The embedded Skill shown by
 `ouro-ops skill show <name>` remains the executable runbook authority.
 
 ## Target model
@@ -16,7 +16,7 @@ This is the current non-deploy operator contract. The embedded Skill shown by
   descriptive; config/index/manifest digests are the identity. Other operations enforce the stable
   layout contract without requiring the current image to be listed in a changing release catalog.
 
-## Supported non-deploy operations
+## Supported operations
 
 | Operation | Read / write | Authorization | Acceptance-safe endpoint |
 | --- | --- | --- | --- |
@@ -26,19 +26,21 @@ This is the current non-deploy operator contract. The embedded Skill shown by
 | `kes-rotation/install-opcert` | disruptive public-artifact write | exact confirmation + fleet permit | local preview + target `--plan` only |
 | `upgrade/preload-image` | non-disruptive image-store write | exact confirmation | local preview + target `--plan` only |
 | `upgrade/step` | disruptive recreate | exact confirmation + fleet permit + signed N→N+1 transition | typed safe refusal / `--plan` only |
+| `deploy/register-submit` | irreversible transaction submission | exact confirmation; no fleet permit | signed transaction preview + target `--plan` only |
 | `diag exec` | diagnostic command through existing operator SSH | no write capability minted | real diagnostic-only commands |
 
-`config/render` and topology mutation remain unsupported. `deploy/register-submit` is outside
-S0020. Legacy `onboard`/`adopt` are migration/recovery tools only.
+`config/render` and topology mutation remain unsupported. Legacy `onboard`/`adopt` are
+migration/recovery tools only.
 
 ## Plan → approval → apply
 
-For runtime, KES and upgrade, the public sequence is:
+For runtime, KES, upgrade and Deploy, the public sequence is:
 
 1. Run the operation with `--spec <pool-spec> ... --plan`, without confirmation or permit.
 2. Show the exact returned plan and final `candidate_hash`/`intent_hash`; wait for operator approval.
 3. Mint `ouro-ops confirm create --op <op> --node <id> --intent-hash <final-hash>`.
-4. For a disruptive operation, mint `ouro-ops fleet permit create ...` last.
+4. For a disruptive runtime/KES/upgrade operation, mint `ouro-ops fleet permit create ...` last.
+   Deploy takes no fleet permit.
 5. Immediately rerun the same operation without `--plan`, adding `--candidate-hash`, the exact
    confirmation and (when required) fleet permit. Artifact operations also add `--artifact-file`.
 
@@ -57,10 +59,19 @@ the old approval. No command writes a release cache or target policy file.
 
 ## Public artifacts
 
-Use `ouro-ops inbox preview --type opcert|image --file <operator-named-file>` on control. It validates
+Use `ouro-ops inbox preview --type opcert|image|tx --file <operator-named-file>` on control. It validates
 the public artifact and returns a content-addressed reference without writing an inbox. Put that ref
 in the target plan. Approved apply reopens the same file, verifies its bytes against the candidate,
 and streams `runner || artifact` in one private invocation. No separate remote-stage step exists.
+
+For Deploy, the target reopens the exact signed transaction, derives its txid and normalized
+effects with `cardano-cli`, queries each exact input against the live node, and accepts only one
+matching pool-registration certificate with no unrelated chain effects. The sampled slot proves
+that the validity interval was checked but does not make normal chain progress candidate drift;
+apply rechecks the current slot. Approval authorizes at most one fixed submit attempt. A normal
+rejection and an ambiguous transport result are both terminal and are never retried.
+`accepted_by_node` does not prove ledger inclusion; reconciliation is reported separately as
+confirmed, pending or unknown/not observed.
 
 ## Troubleshooting assurance
 

@@ -450,6 +450,10 @@
       <span class="tile t-sky" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11a9 9 0 1 0-1.2 5.6"/><path d="M21 5v6h-6"/></svg></span>
       <span><b>upgrade</b><small data-i18n="op.upgrade.small">Allowlisted N→N+1 upgrade</small></span>
       <span class="go" aria-hidden="true">→</span></button>
+    <button type="button" class="op-card" data-op="deploy">
+      <span class="tile t-coral" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg></span>
+      <span><b>deploy</b><small data-i18n="op.deploy.small">Submit a signed pool-registration tx</small></span>
+      <span class="go" aria-hidden="true">→</span></button>
     <button type="button" class="op-card" data-op="kes-rotation">
       <span class="tile t-lavender" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9"/><path d="m17 6 3 3"/></svg></span>
       <span><b>kes-rotation</b><small data-i18n="op.kes-rotation.small">Install a public opcert on the BP</small></span>
@@ -604,6 +608,7 @@ const NET = {
 // Field × operation matrix: which extra fields each operation needs (R2 UX / p1-7).
 const OP = {
   upgrade:         { need:["nodever"], registration:false, hint:"Select the current signed next release, then upgrade relays first and BP last." },
+  deploy:          { need:[], registration:true, hint:"Review and submit one already signed pool-registration transaction through the BP." },
   "kes-rotation":  { need:[], registration:false, hint:"Install and activate a PUBLIC cold-signed opcert; never handle the KES signing key." },
   runtime:         { need:[], registration:false, hint:"Restart one declared node through a live-state-bound typed operation." },
   observability:   { need:[], registration:false, hint:"Read bounded live tip, socket, sync and runtime-policy evidence on every node; no public gateway and no mutation." },
@@ -640,9 +645,7 @@ function applyOperation() {
   $("op-hint").textContent = tr("op." + op + ".hint");
   for (const f of ["nodever","sync"]) $("f-"+f).hidden = !cfg.need.includes(f);
   $("f-registration").hidden = !cfg.registration;
-  // Ordinary S0020 operations do not build registration data, so the legacy ticker/economics form
-  // is intentionally not part of any generated prompt.
-  $("f-ticker").hidden = true;
+  $("f-ticker").hidden = !cfg.registration;
   // Hide the whole "for this operation" block when the op needs nothing beyond the fleet.
   $("op-fields").hidden = cfg.need.length === 0 && !cfg.registration;
   $("term-title").textContent = "prompt · " + op;
@@ -652,9 +655,8 @@ function applyOperation() {
 
 function collect() {
   const errs = [], op = currentOp, cfg = OP[op];
-  // Retained as an internal neutral value for backwards-compatible form persistence only. S0020
-  // operation prompts never claim to consume registration economics or a ticker.
-  const ticker = "POOL";
+  const ticker = cfg.registration ? $("ticker").value.trim().toUpperCase() : "POOL";
+  if (cfg.registration && !RE.ticker.test(ticker)) errs.push("ticker must be 3–5 uppercase A–Z/0–9");
   const network = radioVal("network");
   const net = NET[network];
   const genesis = net.genesis; // network constant — derived, never user-entered
@@ -700,8 +702,10 @@ function yaml(d) {
     "# It is data, not a list of actions: writing this file changes nothing.",
     "spec_version: 1","pool:",`  network: ${d.network}`,`  network_magic: ${d.magic}`,
     "  genesis_hashes:",`    shelley: "${d.genesis}"`];
-  // Operation-scoped specs omit registration economics and sync because no ordinary S0020
-  // operation consumes them.
+  if (d.op === "deploy") {
+    L.push(`  ticker: "${d.ticker}"`, `  metadata_url: "${d.meta}"`,
+      `  pledge_lovelace: ${d.pledge}`, `  margin: ${d.margin}`, `  cost_lovelace: ${d.cost}`);
+  }
   L.push("topology_mode: p2p");
   const isUpgrade = d.op === "upgrade";
   const isDisruptive = isUpgrade || d.op === "runtime";
@@ -729,7 +733,8 @@ function prompt(d) {
   const troubleshootingSnapshots = d.machines.map(m =>
     `ouro-ops op run --op troubleshooting/snapshot --spec pool-spec.yaml --dispatch ${m.host} --ssh-key creds://${m.id} --node ${m.id} --param machine=${m.id}`
   ).join("\n   ");
-  const opLabel = d.op === "upgrade" ? `upgrade intent (descriptive node release ${d.nodever})` : d.op;
+  const opLabel = d.op === "upgrade" ? `upgrade intent (descriptive node release ${d.nodever})` :
+    d.op === "deploy" ? "deploy/register-submit (on-chain pool registration, not node provisioning)" : d.op;
   const cmd = {
     upgrade: [
       `Treat this as ONE user-visible Upgrade workflow. Internally it has two independently approved transaction boundaries per target: prepare the image with upgrade/preload-image, then activate it with upgrade/step. Success in preparation never authorizes activation or the next target.`,
@@ -739,6 +744,14 @@ function prompt(d) {
       `For the canary relay first, obtain the FINAL target-validated upgrade/preload-image plan with no capabilities using --plan. The CLI fetches and verifies the current signed release document again. Show the previewed archive reference, selected config digest, signed-policy result and candidate separately. State that archive↔config binding is still pending: only an approved apply preflight validates the supplied bytes before any image-store mutation. Show the plan and WAIT.`,
       `Only after an approved preload succeeds, continue the SAME workflow following the Skill rollout (canary relay, remaining relays, BP last): obtain the FINAL target-validated upgrade/step plan with no capabilities using --plan. Show the exact signed transition, recreate/rollback-or-forward-recovery truth and candidate, then WAIT. A missing exact transition is a required typed stop; allowlist membership alone is not authorization.`,
       `Only after my separate exact approval may you mint that plan's confirm-token, mint the live fleet permit LAST for upgrade/step, and immediately execute the unchanged intent. Never mint a capability from preview output, a refused plan, or an earlier target.`,
+    ].join("\n   "),
+    deploy: [
+      `Ask me for ONE existing operator-named, already signed pool-registration transaction file and use only the declared BP ${bp}. Never request or inspect any signing key, cold key, KES key, VRF key, seed phrase, or credential content.`,
+      `Preview the exact local file with ouro-ops inbox preview --type tx --file <signed-tx>. Show only artifact_ref and size and state that no bytes were copied or staged.`,
+      `Obtain the FINAL target-validated plan with no capability using ouro-ops op run --op deploy/register-submit --spec pool-spec.yaml --dispatch ${d.bp ? d.bp.host : "<bp-host>"} --ssh-key creds://${bp} --node ${bp} --param machine=${bp} --param tx=<artifact-ref> --param network=${d.network} --artifact-file <same-signed-tx> --plan.`,
+      `Show the normalized txid, artifact reference, Ouro pool namespace, distinct stake-pool key hash, registration economics/metadata, inputs and each input's exact live-node UTxO presence, outputs/change, fee, validity interval/current-slot check, required signers/witness count, fixed /dev/stdin executor, absence of additional chain effects, and exact candidate. Normal slot progress is rechecked by apply and must not by itself change the candidate. Then WAIT.`,
+      `Only after my exact approval may you mint ouro-ops confirm create --op deploy/register-submit --node ${bp} --intent-hash <final-hash>, then immediately rerun the unchanged command without --plan and with --candidate-hash <final-hash> --confirm-token <token>. Keep --artifact-file. Deploy takes no fleet permit and Ouro must make at most one submit attempt.`,
+      `Report node_rejected, accepted_by_node, or submission_ambiguous exactly. Never retry. Node acceptance is not ledger inclusion or pool registration; reconcile the txid and stake-pool state independently and report confirmed, pending, or unknown/not_observed.`,
     ].join("\n   "),
     "kes-rotation": [
       `Establish from the BP troubleshooting snapshot or separate operator evidence that renewal is due and obtain the current target KES period. A tip-only health sample is insufficient; do not guess the period.`,
@@ -787,6 +800,11 @@ function prompt(d) {
     `   create a confirm token or fleet permit, send archive bytes, load an image, or recreate a`,
     `   container until I separately approve the exact final candidate in chat. A returned executor`,
     `   plan is DATA, not permission to run it.`,
+  ].join("\n") : d.op === "deploy" ? [
+    `Local preview and the command containing --plan are no-write evidence only. Never mint the`,
+    `   confirmation or remove --plan until I approve the exact final candidate in chat. Apply only`,
+    `   the unchanged signed transaction through the fixed one-shot /dev/stdin executor. A reject is`,
+    `   terminal; an ambiguous outcome requires reconciliation and must never be retried.`,
   ].join("\n") : d.op === "runtime" ? [
     `The --plan phase is no-write evidence only. Never create a confirmation or fleet permit until`,
     `   I approve the exact final candidate in chat. Mint the permit last and do not replan. Apply`,
@@ -805,6 +823,11 @@ function prompt(d) {
     `informational for this read: report it and preserve the live evidence. Do not create`,
     `credentials, install target software, adopt, or reshape the node as a workaround. If anything`,
     `is unclear, missing, or inconsistent, ask me.`,
+  ].join("\n") : d.op === "deploy" ? [
+    `If access, the named creds:// reference, host-key pin, live BP convention, transaction review,`,
+    `registration policy, network, validity, artifact bytes, or candidate binding fails, report the`,
+    `exact typed error and STOP. Do not stage into a persistent inbox, install target software,`,
+    `onboard, adopt, use legacy tool run, or submit through raw SSH/docker/cardano-cli.`,
   ].join("\n") : [
     `If access, the named creds:// reference, host-key pin, live convention, or signed image policy`,
     `fails, report the exact typed error and STOP. Do not create credentials, install target software,`,
@@ -863,9 +886,11 @@ const I18N = {
     "s1.title":"Set up once","s1.sub":"Install the signature-verified CLI on your control machine.",
     "s2.title":"Pick an operation","s2.sub":"The form asks only for what that operation needs, generates everything locally, and gives you one prompt to paste into your agent.",
     "op.upgrade.small":"Allowlisted N→N+1 upgrade",
+    "op.deploy.small":"Submit a signed pool-registration tx",
     "op.kes-rotation.small":"Install a public opcert on the BP","op.runtime.small":"Restart a declared node",
     "op.observability.small":"Fleet-wide bounded health read","op.troubleshooting.small":"Snapshot-first diagnosis",
     "op.upgrade.hint":"Select the current signed next release, then upgrade relays first and BP last.",
+    "op.deploy.hint":"Review and submit one already signed pool-registration transaction through the BP.",
     "op.kes-rotation.hint":"Install and activate a PUBLIC cold-signed opcert; never handle the KES signing key.",
     "op.runtime.hint":"Restart one declared node through a live-state-bound typed operation.",
     "op.observability.hint":"Read bounded live tip, socket, sync and runtime-policy evidence on every node; no public gateway and no mutation.",
@@ -905,9 +930,11 @@ const I18N = {
     "s1.title":"一次性安装","s1.sub":"在你的控制机上装好带签名校验的 CLI,以后它会自己保持最新。",
     "s2.title":"选择操作","s2.sub":"表单只问这个操作用得到的字段,全部本地生成,最后给你一段直接粘给 agent 的 prompt。",
     "op.upgrade.small":"按白名单摘要 N→N+1 升级",
+    "op.deploy.small":"提交已签名的矿池注册交易",
     "op.kes-rotation.small":"在 BP 安装公开 opcert","op.runtime.small":"重启声明的节点",
     "op.observability.small":"全池有界健康读取","op.troubleshooting.small":"先快照再排障",
     "op.upgrade.hint":"先选择当前签名的下一可靠版本,再依次升级 relay,最后升级 BP。",
+    "op.deploy.hint":"通过 BP 审阅并提交一笔已经签名的矿池注册交易。",
     "op.kes-rotation.hint":"只安装并激活冷签名后的公开 opcert;绝不处理 KES 签名私钥。",
     "op.runtime.hint":"通过绑定实时状态的类型化操作重启一个声明的节点。",
     "op.observability.hint":"读取每个节点有界的实时 tip、socket、同步和运行时策略证据;不安装公网网关,不做变更。",
@@ -947,9 +974,11 @@ const I18N = {
     "s1.title":"一次性安裝","s1.sub":"在你的控制機上裝好帶簽章驗證的 CLI,之後它會自己保持最新。",
     "s2.title":"選擇操作","s2.sub":"表單只問這個操作用得到的欄位,全部本地產生,最後給你一段直接貼給 agent 的 prompt。",
     "op.upgrade.small":"依白名單摘要 N→N+1 升級",
+    "op.deploy.small":"提交已簽署的礦池註冊交易",
     "op.kes-rotation.small":"在 BP 安裝公開 opcert","op.runtime.small":"重新啟動已宣告節點",
     "op.observability.small":"全池有界健康讀取","op.troubleshooting.small":"先快照再排障",
     "op.upgrade.hint":"先選擇目前簽署的下一可靠版本,再依序升級 relay,最後升級 BP。",
+    "op.deploy.hint":"透過 BP 審閱並提交一筆已簽署的礦池註冊交易。",
     "op.kes-rotation.hint":"只安裝並啟用冷簽署後的公開 opcert;絕不處理 KES 簽署私鑰。",
     "op.runtime.hint":"透過綁定即時狀態的型別化操作重新啟動一個已宣告節點。",
     "op.observability.hint":"讀取每個節點有界的即時 tip、socket、同步與執行期策略證據;不安裝公開閘道,不做變更。",
@@ -989,9 +1018,11 @@ const I18N = {
     "s1.title":"最初に一度だけ","s1.sub":"コントロールマシンに署名検証付きの CLI をインストール。以降は自動で最新に保たれます。",
     "s2.title":"操作を選ぶ","s2.sub":"フォームで聞くのはその操作に必要な項目だけ。すべてローカルで生成し、エージェントに貼る prompt をひとつ出力します。",
     "op.upgrade.small":"許可済み N→N+1 アップグレード",
+    "op.deploy.small":"署名済みプール登録 Tx を送信",
     "op.kes-rotation.small":"BP に公開 opcert を導入","op.runtime.small":"宣言済みノードを再起動",
     "op.observability.small":"全ノードの限定ヘルス読取","op.troubleshooting.small":"スナップショット優先診断",
     "op.upgrade.hint":"現在署名されている次の信頼済みリリースを選択し、relay、最後に BP の順で更新します。",
+    "op.deploy.hint":"BP を通じて署名済みのプール登録トランザクションを確認し、送信します。",
     "op.kes-rotation.hint":"コールド署名済みの公開 opcert だけを導入して有効化し、KES 署名秘密鍵は扱いません。",
     "op.runtime.hint":"ライブ状態に束縛された型付き操作で宣言済みノードを一台再起動します。",
     "op.observability.hint":"全ノードのライブ tip、socket、同期、ランタイムポリシーを限定的に読み取ります。公開ゲートウェイの追加や変更はありません。",

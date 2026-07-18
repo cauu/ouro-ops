@@ -1,12 +1,12 @@
 # KES, Upgrade, And Deploy Fresh-Agent Acceptance
 
 Spec-ID: S0021
-Status: draft
+Status: completed
 Created Time: 2026-07-17T14:14:21+08:00
-Start Time:
-Completion Time:
+Start Time: 2026-07-18T12:55:27+08:00
+Completion Time: 2026-07-18T15:34:12+08:00
 Previous Spec-ID: S0020
-Closure Reason:
+Closure Reason: achieved
 
 ## 1. Requirement Details
 
@@ -35,8 +35,10 @@ Closure Reason:
 - Public KES vkey/opcert, Docker-save archive and signed transaction are operator-named regular
   files. Public artifacts are previewed without staging and streamed only by typed one-shot paths.
 - KES and Upgrade production acceptance performs no real install, image load or container recreate.
-- Deploy is irreversible. A no-submit acceptance can prove flow readiness, but only an explicitly
-  authorized real transaction plus independent ledger evidence can prove production submit success.
+- Deploy is irreversible. Acceptance may send exactly one guaranteed-invalid mock transaction to the
+  real BP after candidate-specific approval, proving the terminal rejection path without ledger
+  mutation. Only an explicitly authorized real transaction plus independent ledger evidence can
+  prove production submit success.
 
 ### Non-goals
 - Generating or rotating a KES signing key.
@@ -99,10 +101,11 @@ Closure Reason:
   it without a new operator request.
 - [x] p2-1 accept Upgrade preload/step safe-stops on real hosts and positive rollout/rollback behavior
   in the signed-policy bed.
-- [ ] p3-1 migrate Deploy to stateless plan/apply, update Skill/website, and accept the irreversible
-  no-submit flow-readiness tier.
-- [ ] p3-2 optionally execute production Deploy only with a separately supplied intended signed tx,
-  exact candidate authorization and independent ledger verification.
+- [x] p3-1 migrate Deploy to stateless plan/apply, update Skill/website, and accept the irreversible
+  mock-submit flow-readiness tier.
+- [x] p3-2 leave production Deploy unexecuted in this iteration; any intended signed transaction
+  requires a separate operator request, exact candidate authorization and independent ledger
+  verification.
 
 ## 4. Test And Acceptance Criteria
 
@@ -133,8 +136,11 @@ Closure Reason:
 - DATC-3 exactly-one invocation boundary: after exact approval the sealed bed observes one fixed
   submit argv; rejection is terminal, transport ambiguity is recorded and never retried, and no
   success path claims rollback or ledger inclusion.
-- DATC-4 no-submit real-host tier: a fresh agent reaches the complete stable final plan on the real BP,
-  waits for approval, and stops without confirmation/apply; node state and runner cleanup reconcile.
+- DATC-4 real-host mock tier: a fresh agent reaches the complete stable final plan on the real BP,
+  waits for exact approval, then makes one fixed submit attempt using a protocol-valid signed
+  transaction whose referenced input was independently proven absent immediately beforehand. The
+  node must reject it, Ouro must report a terminal non-ambiguous refusal without automatic retry,
+  and transaction/runner residue plus node/ledger/pool state must reconcile unchanged.
 - DATC-5 production tier: only when separately authorized, the exact signed tx is submitted once and
   independent ledger evidence reports tx inclusion and resulting pool registration. Without this
   evidence, production Deploy remains pending even if the node accepted submission.
@@ -144,8 +150,9 @@ Closure Reason:
 - XATC-2 regression: Rust/Python/security/web tests, Clippy, manifest verification and whitespace
   checks pass; temporary control/target files are removed and operator-owned files remain untouched.
 - Pass/fail: KES and Upgrade pass without real production mutation only when both real safe-stop and
-  sealed positive/recovery evidence pass. Deploy no-submit readiness and production submit success
-  are separate verdicts and must never be conflated.
+  sealed positive/recovery evidence pass. Deploy mechanism readiness requires real-host Phase A plus
+  the approved guaranteed-invalid Phase B refusal and sealed positive/ambiguity evidence; production
+  submit success remains a separate verdict and must never be conflated.
 
 ## 5. Execution Log (append-only)
 - Draft only; execution has not started.
@@ -153,13 +160,65 @@ Closure Reason:
   agent reached stable relay preload plans and the signed-transition safe stop without production
   mutation; sealed signed-policy fixtures proved preload, activation, rollback and forward-only
   recovery behavior. Deploy remains pending and is not broadened by this completion.
+- 2026-07-18 p3-1 implementation migrated Deploy to the stateless runner/payload path, retired the
+  legacy `tool run` entry point, restored the website prompt, added target-derived transaction
+  review/input-UTxO evidence and classified exactly-once submit outcomes. The first fresh-agent live
+  plan exposed a concrete defect: `live_slot` made the candidate drift under normal chain progress.
+  The slot remains displayed and is rechecked by apply but was removed from the semantic candidate.
+- 2026-07-18 p3-1 Phase A retry used a second context-free agent and the rebuilt Linux runner. Four
+  real-BP plans across slots 192787613..192787725 produced the same candidate
+  `38f6d10ae18ddb5cbd19e4c384bb107f74ed43cec2d5149e689ca59670e9869e` and independently reported
+  the all-zero fixture input `absent/all_absent`. No confirmation, apply or submit occurred; both
+  control and target runner residue checks were empty. Phase B waits for exact operator approval.
+- 2026-07-18T15:34:12+08:00 p3-1 Phase B completed after the operator approved the exact stable
+  candidate. The context-free agent minted one candidate-bound confirmation and executed one fixed
+  `/dev/stdin` submit. The node returned a normal typed rejection; no retry or second apply occurred.
+  Independent reconciliation found the input and pool state absent, the same running container and
+  image, advancing synced tip, unchanged artifact digest and no control/target runner or tx residue.
 
 ## 6. Validation Evidence (append-only)
 - None; criteria proposed for operator review.
 - Upgrade evidence is recorded in S0020 ERTC-33 through ERTC-37. Production containers/images were
   unchanged, no archive bytes or capabilities were sent, and temporary runner/spec/archive residue
   was removed.
+- DATC-1..3 sealed evidence: `python3 tests/test_s0021_deploy_workflow.py` passed for stable planning,
+  changed bytes/network/extra-effect/expiry refusal, exact stdin bytes, one normal rejection, one
+  accepted-by-node result and one signal-derived ambiguity; every terminal branch forbids retry and
+  writes no persistent target state. `make python-test`, 188 Rust tests, Clippy with warnings denied,
+  bundle manifest verification and `git diff --check` passed before live Phase A.
+- DATC-2/4 Phase A evidence: public artifact
+  `tx-09ed0665@sha256:09ed066539e809a439c93bbcc559f12cc0ea10bdfff7262ed687ac703ee7fdd2`,
+  txid `9d8a58be66d7c190534c0c407b03c041f60d9beff19744071e231c3a7dd211a0`, BP container
+  `d50c302cd08774707784023ceaa846880ede3f7d7c014aef436e42c71abbf97d`, one pool-registration
+  certificate, two witnesses, no extra effects, and exact input UTxO state `absent`. Tip advanced
+  while the fixed executor and candidate remained stable. The repository-root operator spec and
+  credential contents were not read.
+- DATC-3/4 Phase B evidence: approved candidate
+  `38f6d10ae18ddb5cbd19e4c384bb107f74ed43cec2d5149e689ca59670e9869e`;
+  apply return code 10, `error.code=submission_rejected`, `changed=false`,
+  `submission_attempted=true`, `accepted_by_node=false`, `outcome=node_rejected`,
+  `retry_allowed=false`, `persistent_target_state_written=false`. The rejection named
+  `BadInputsUTxO` for the all-zero input, value-not-conserved and missing witness evidence. It was
+  not ambiguous and produced no ledger/pool success claim.
+- DATC-4 reconciliation: exact input query `{}`, pool-state query `{}`, container
+  `d50c302cd08774707784023ceaa846880ede3f7d7c014aef436e42c71abbf97d` remained running on
+  `ghcr.io/blinklabs-io/cardano-node:10.5.4-1`; tip advanced to block 13693316 / slot 192793513 at
+  100% sync. Control/target `/tmp/ouro-run.*` and target 1207-byte transaction residue were empty;
+  the operator-named control artifact remained 1207 bytes at digest
+  `09ed066539e809a439c93bbcc559f12cc0ea10bdfff7262ed687ac703ee7fdd2`.
+- XATC-2 final gates: `make python-test`, `cargo test -p ouro` (188 passed),
+  `cargo clippy -p ouro --lib --tests -- -D warnings`, bundle manifest verification and
+  `git diff --check` all passed after the final Skill/runner rebuild.
+- Final cleanup removed the control-generated temporary spec, metadata, generation script and signed
+  mock fixture under `/tmp/ouro-s0021-deploy-acceptance`; the directory no longer exists. The
+  operator-owned repository-root `pool-spec.yaml` remains untouched and untracked.
 
 ## 7. Change Requests (append-only)
 - 2026-07-17 operator requested Runtime-equivalent acceptance standards for KES rotate, Upgrade and
   Deploy. Deploy's current legacy architecture requires migration before the standard is attainable.
+- 2026-07-18T12:55:27+08:00 operator accepted the bounded impact of one guaranteed-invalid mock
+  submission against the already-running real BP and requested Skill migration plus context-free
+  subagent acceptance. The mock uses disposable keys and an independently absent input, never a
+  production credential or UTxO. Real-host acceptance must observe one attempt, typed rejection, no
+  retry, temporary-artifact cleanup and unchanged node/ledger/pool state; accepted/included behavior
+  remains sealed unless a separate intended production transaction is explicitly authorized.

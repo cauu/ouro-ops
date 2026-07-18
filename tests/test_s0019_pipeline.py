@@ -236,12 +236,13 @@ def main():
                "--observation", o, *policy, "--plan")
     assert d["status"] == "error" and "artifact" in json.dumps(d), d
 
-    # The approved deploy network must be the same network the attested executor will use.
+    # Deploy plans are no longer synthetic: they must carry the exact operator-named signed
+    # transaction so the ephemeral target can derive and bind its effects.
     tx_ref = "tx-1@sha256:" + "b" * 64
     _, d = run(home, "op", "run", "--op", "deploy/register-submit", "--node", "bp1",
                "--param", "machine=bp1", "--param", f"tx={tx_ref}",
                "--param", "network=preview", "--observation", o, "--plan")
-    assert d["status"] == "error" and "payload network" in json.dumps(d), d
+    assert d["status"] == "error" and "requires --artifact-file" in json.dumps(d), d
 
     # 5. Permit/confirmation capabilities are rejected by plan and never change the final hash.
     _, ref = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",

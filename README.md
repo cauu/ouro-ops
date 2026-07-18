@@ -88,8 +88,10 @@ cargo clippy -p ouro --lib --tests -- -D warnings
 target/debug/ouro-ops manifest verify --against packaging/bundle-manifest.json
 ```
 
-`deploy` 仍属于 S0019 legacy/out-of-scope surface，不在 S0020 agentless E2E 验收范围。`onboard`
-和 `adopt` 仅保留给运维方明确要求的 S0019 migration/recovery，不是当前操作的恢复建议或前置步骤。
+`deploy/register-submit` 使用同一套 agentless 一次性 runner：先审阅 operator 已签名交易并绑定
+候选，精确批准后最多执行一次提交；节点接受不等于链上确认，拒绝或结果歧义都不会自动重试。
+`onboard` 和 `adopt` 仅保留给运维方明确要求的 S0019 migration/recovery，不是当前操作的恢复建议
+或前置步骤。
 
 项目采用 immutable-spec 交付：每个需求由一份 append-only spec 记录需求、设计、item 计划和验收
 证据，item 级提交引用 spec 文件名。索引见 [`docs/README.md`](docs/README.md)。

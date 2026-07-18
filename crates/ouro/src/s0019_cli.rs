@@ -1062,11 +1062,459 @@ struct StatelessTargetPlan {
     intent: Intent,
     observation: Observation,
     policy: convention::Allowlist,
+    deploy_transaction: Option<serde_json::Value>,
 }
 
 fn run_stateless_target_plan(args: &[String]) -> Result<()> {
     let plan = build_stateless_target_plan(args)?;
     output::print_json(&plan.output)
+}
+
+fn docker_cardano_cli_with_tx(
+    container: &str,
+    args: &[&str],
+    bytes: &[u8],
+    context: &str,
+) -> Result<std::process::Output> {
+    let mut child = std::process::Command::new("docker")
+        .args(["exec", "-i", container, "cardano-cli"])
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|error| OuroError::Validation(format!("cannot start {context}: {error}")))?;
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| OuroError::Validation(format!("{context} has no stdin")))?
+        .write_all(bytes)
+        .map_err(|error| OuroError::Validation(format!("cannot stream transaction to {context}: {error}")))?;
+    let output = child.wait_with_output()?;
+    if output.stdout.len() > 256 * 1024 || output.stderr.len() > 256 * 1024 {
+        return Err(OuroError::Validation(format!(
+            "{context} output exceeds the 256 KiB review limit"
+        )));
+    }
+    Ok(output)
+}
+
+fn docker_cardano_cli(
+    container: &str,
+    args: &[&str],
+    context: &str,
+) -> Result<std::process::Output> {
+    let output = std::process::Command::new("docker")
+        .args(["exec", container, "cardano-cli"])
+        .args(args)
+        .output()
+        .map_err(|error| OuroError::Validation(format!("cannot start {context}: {error}")))?;
+    if output.stdout.len() > 256 * 1024 || output.stderr.len() > 256 * 1024 {
+        return Err(OuroError::Validation(format!(
+            "{context} output exceeds the 256 KiB review limit"
+        )));
+    }
+    Ok(output)
+}
+
+enum DeploySubmitAttempt {
+    NotStarted(String),
+    Completed(std::process::Output),
+    Ambiguous(String),
+}
+
+fn submit_ephemeral_deploy_transaction(
+    container: &str,
+    network: &str,
+    bytes: &[u8],
+) -> DeploySubmitAttempt {
+    let mut command = std::process::Command::new("docker");
+    command.args([
+        "exec",
+        "-i",
+        container,
+        "cardano-cli",
+        "conway",
+        "transaction",
+        "submit",
+        "--tx-file",
+        "/dev/stdin",
+        "--socket-path",
+        "/ipc/node.socket",
+    ]);
+    if network == "mainnet" {
+        command.arg("--mainnet");
+    } else {
+        command.args([
+            "--testnet-magic",
+            if network == "preprod" { "1" } else { "2" },
+        ]);
+    }
+    let mut child = match command
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(error) => return DeploySubmitAttempt::NotStarted(error.to_string()),
+    };
+    let write_error = child
+        .stdin
+        .take()
+        .ok_or_else(|| "submit executor has no stdin".to_string())
+        .and_then(|mut input| input.write_all(bytes).map_err(|error| error.to_string()))
+        .err();
+    let output = match child.wait_with_output() {
+        Ok(output) => output,
+        Err(error) => return DeploySubmitAttempt::Ambiguous(format!(
+            "cannot observe the terminal submit process: {error}"
+        )),
+    };
+    if output.stdout.len() > 256 * 1024 || output.stderr.len() > 256 * 1024 {
+        return DeploySubmitAttempt::Ambiguous(
+            "submit output exceeded the 256 KiB terminal evidence limit".into(),
+        );
+    }
+    if output.status.code().is_none() {
+        return DeploySubmitAttempt::Ambiguous(
+            "submit process ended without a normal exit status".into(),
+        );
+    }
+    if let Some(error) = write_error {
+        if output.status.success() {
+            return DeploySubmitAttempt::Ambiguous(format!(
+                "transaction input stream failed although submit returned success: {error}"
+            ));
+        }
+    }
+    DeploySubmitAttempt::Completed(output)
+}
+
+fn json_effect_is_empty(value: Option<&serde_json::Value>) -> bool {
+    match value {
+        None | Some(serde_json::Value::Null) => true,
+        Some(serde_json::Value::Array(values)) => values.is_empty(),
+        Some(serde_json::Value::Object(values)) => values.is_empty(),
+        Some(serde_json::Value::Number(value)) => value.as_u64() == Some(0),
+        _ => false,
+    }
+}
+
+fn deploy_input_reference(value: &serde_json::Value) -> Result<String> {
+    let reference = if let Some(reference) = value.as_str() {
+        reference.to_string()
+    } else {
+        let txid = value
+            .get("txId")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| OuroError::Validation("Deploy transaction has a malformed input".into()))?;
+        let index = value
+            .get("index")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| OuroError::Validation("Deploy transaction has a malformed input".into()))?;
+        format!("{txid}#{index}")
+    };
+    let (txid, index) = reference
+        .split_once('#')
+        .ok_or_else(|| OuroError::Validation("Deploy transaction has a malformed input".into()))?;
+    if txid.len() != 64
+        || !txid.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || index.parse::<u32>().is_err()
+    {
+        return Err(OuroError::Validation(
+            "Deploy transaction has a malformed input".into(),
+        ));
+    }
+    Ok(format!("{}#{index}", txid.to_ascii_lowercase()))
+}
+
+fn inspect_deploy_input_utxos(
+    observation: &Observation,
+    inputs: &[serde_json::Value],
+    network: &str,
+) -> Result<serde_json::Value> {
+    let mut evidence = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        let reference = deploy_input_reference(input)?;
+        let mut argv = vec![
+            "conway",
+            "query",
+            "utxo",
+            "--tx-in",
+            reference.as_str(),
+            "--socket-path",
+            "/ipc/node.socket",
+            "--output-json",
+        ];
+        if network == "mainnet" {
+            argv.push("--mainnet");
+        } else {
+            argv.extend([
+                "--testnet-magic",
+                if network == "preprod" { "1" } else { "2" },
+            ]);
+        }
+        let output = docker_cardano_cli(
+            &observation.live.container_id,
+            &argv,
+            "cardano-cli transaction input UTxO query",
+        )?;
+        if !output.status.success() {
+            return Err(OuroError::Validation(format!(
+                "cardano-cli could not query Deploy input {reference}: {}",
+                String::from_utf8_lossy(&output.stderr)
+                    .chars()
+                    .take(2048)
+                    .collect::<String>()
+                    .trim()
+            )));
+        }
+        let value = parse_cardano_cli_json(&output.stdout, "cardano-cli transaction input query")?;
+        let object = value.as_object().ok_or_else(|| {
+            OuroError::Validation("cardano-cli input query did not return an object".into())
+        })?;
+        let state = if object.is_empty() {
+            "absent"
+        } else if object.len() == 1 && object.contains_key(&reference) {
+            "present"
+        } else {
+            return Err(OuroError::Validation(format!(
+                "cardano-cli input query returned unexpected keys for {reference}"
+            )));
+        };
+        evidence.push(json!({"input": reference, "state": state}));
+    }
+    let presence = if evidence.iter().all(|value| value.get("state") == Some(&json!("present"))) {
+        "all_present"
+    } else if evidence.iter().all(|value| value.get("state") == Some(&json!("absent"))) {
+        "all_absent"
+    } else {
+        "mixed"
+    };
+    Ok(json!({
+        "query": "live_node_utxo_by_exact_input",
+        "inputs": evidence,
+        "presence": presence,
+    }))
+}
+
+fn inspect_ephemeral_deploy_transaction(
+    observation: &Observation,
+    path: &Path,
+    expected_ref: &str,
+    network: &str,
+    registration_policy: &serde_json::Value,
+) -> Result<serde_json::Value> {
+    let (mut file, preview) =
+        crate::inbox::preview_source(crate::inbox::ArtifactType::Tx, path)?;
+    if preview.artifact_ref != expected_ref {
+        return Err(OuroError::Validation(
+            "ephemeral signed transaction bytes do not match the candidate-bound artifact reference"
+                .into(),
+        ));
+    }
+    let mut bytes = Vec::with_capacity(preview.size_bytes as usize);
+    file.read_to_end(&mut bytes)?;
+    let container = observation.live.container_id.as_str();
+    let view = docker_cardano_cli_with_tx(
+        container,
+        &[
+            "debug",
+            "transaction",
+            "view",
+            "--output-json",
+            "--tx-file",
+            "/dev/stdin",
+        ],
+        &bytes,
+        "cardano-cli signed transaction review",
+    )?;
+    if !view.status.success() {
+        return Err(OuroError::Validation(format!(
+            "cardano-cli rejected the signed transaction shape: {}",
+            String::from_utf8_lossy(&view.stderr)
+                .chars()
+                .take(2048)
+                .collect::<String>()
+                .trim()
+        )));
+    }
+    let facts = parse_cardano_cli_json(&view.stdout, "cardano-cli transaction review")?;
+    let txid_output = docker_cardano_cli_with_tx(
+        container,
+        &[
+            "conway",
+            "transaction",
+            "txid",
+            "--output-text",
+            "--tx-file",
+            "/dev/stdin",
+        ],
+        &bytes,
+        "cardano-cli transaction id",
+    )?;
+    if !txid_output.status.success() {
+        return Err(OuroError::Validation(
+            "cardano-cli could not derive the signed transaction id".into(),
+        ));
+    }
+    let txid = String::from_utf8(txid_output.stdout)
+        .map_err(|_| OuroError::Validation("transaction id is not UTF-8".into()))?
+        .trim()
+        .to_string();
+    if txid.len() != 64 || !txid.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(OuroError::Validation(
+            "cardano-cli returned a malformed transaction id".into(),
+        ));
+    }
+
+    let certificates = facts
+        .get("certificates")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| OuroError::Validation(
+            "Deploy transaction must contain exactly one pool registration certificate".into(),
+        ))?;
+    if certificates.len() != 1 {
+        return Err(OuroError::Validation(
+            "Deploy transaction must contain exactly one certificate and it must be pool registration"
+                .into(),
+        ));
+    }
+    let pool_params = certificates[0]
+        .get("Pool registration")
+        .and_then(|value| value.get("pool params"))
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| OuroError::Validation(
+            "Deploy transaction certificate is not a pool registration".into(),
+        ))?;
+    let pool_key_hash = pool_params
+        .get("publicKey")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| OuroError::Validation(
+            "pool registration certificate omitted its stake-pool key hash".into(),
+        ))?;
+    if pool_key_hash.len() != 56 || !pool_key_hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(OuroError::Validation(
+            "pool registration certificate has a malformed stake-pool key hash".into(),
+        ));
+    }
+
+    let expected_network = if network == "mainnet" { "Mainnet" } else { "Testnet" };
+    let inputs = facts.get("inputs").and_then(serde_json::Value::as_array)
+        .filter(|values| !values.is_empty())
+        .ok_or_else(|| OuroError::Validation("Deploy transaction has no inputs".into()))?;
+    let outputs = facts.get("outputs").and_then(serde_json::Value::as_array)
+        .filter(|values| !values.is_empty())
+        .ok_or_else(|| OuroError::Validation("Deploy transaction has no outputs".into()))?;
+    if outputs.iter().any(|output| {
+        output.get("network").and_then(serde_json::Value::as_str) != Some(expected_network)
+    }) {
+        return Err(OuroError::Validation(format!(
+            "Deploy transaction output network does not match {network}"
+        )));
+    }
+    let reward_network = pool_params
+        .get("rewardAccount")
+        .and_then(|value| value.get("network"))
+        .and_then(serde_json::Value::as_str);
+    if reward_network != Some(expected_network) {
+        return Err(OuroError::Validation(format!(
+            "pool registration reward account network does not match {network}"
+        )));
+    }
+    let witnesses = facts.get("witnesses").and_then(serde_json::Value::as_array)
+        .filter(|values| !values.is_empty())
+        .ok_or_else(|| OuroError::Validation(
+            "Deploy transaction has no signatures/witnesses".into(),
+        ))?;
+    let validity = facts.get("validity range").and_then(serde_json::Value::as_object)
+        .ok_or_else(|| OuroError::Validation("Deploy transaction omitted its validity range".into()))?;
+    let upper = validity.get("upper bound").and_then(serde_json::Value::as_i64)
+        .ok_or_else(|| OuroError::Validation(
+            "Deploy transaction requires a finite upper validity bound".into(),
+        ))?;
+    let current_slot = observation.readiness.as_ref().and_then(|value| value.tip_slot)
+        .ok_or_else(|| OuroError::Validation(
+            "Deploy planning requires the current target slot".into(),
+        ))?;
+    if validity.get("lower bound").and_then(serde_json::Value::as_i64)
+        .is_some_and(|lower| lower > current_slot)
+        || upper <= current_slot
+    {
+        return Err(OuroError::Validation(format!(
+            "Deploy transaction is outside its validity interval at live slot {current_slot}"
+        )));
+    }
+    for field in [
+        "auxiliary scripts",
+        "collateral inputs",
+        "currentTreasuryValue",
+        "datums",
+        "governance actions",
+        "mint",
+        "redeemers",
+        "reference inputs",
+        "return collateral",
+        "scripts",
+        "total collateral",
+        "treasuryDonation",
+        "update proposal",
+        "voters",
+        "withdrawals",
+    ] {
+        if !json_effect_is_empty(facts.get(field)) {
+            return Err(OuroError::Validation(format!(
+                "Deploy registration transaction contains unsupported additional effect {field:?}"
+            )));
+        }
+    }
+
+    let expected_pledge = registration_policy.get("pledge_lovelace").and_then(serde_json::Value::as_u64);
+    let expected_cost = registration_policy.get("cost_lovelace").and_then(serde_json::Value::as_u64);
+    let expected_margin = registration_policy.get("margin").and_then(serde_json::Value::as_f64);
+    let expected_metadata = registration_policy.get("metadata_url").and_then(serde_json::Value::as_str);
+    let actual_pledge = pool_params.get("pledge").and_then(serde_json::Value::as_u64);
+    let actual_cost = pool_params.get("cost").and_then(serde_json::Value::as_u64);
+    let actual_margin = pool_params.get("margin").and_then(serde_json::Value::as_f64);
+    let actual_metadata = pool_params.get("metadata")
+        .and_then(|value| value.get("url"))
+        .and_then(serde_json::Value::as_str);
+    if actual_pledge != expected_pledge
+        || actual_cost != expected_cost
+        || actual_margin.zip(expected_margin)
+            .is_none_or(|(actual, expected)| (actual - expected).abs() > 1e-12)
+        || actual_metadata != expected_metadata
+    {
+        return Err(OuroError::Validation(
+            "pool registration certificate economics/metadata differ from the operator pool spec"
+                .into(),
+        ));
+    }
+    let input_utxo_evidence = inspect_deploy_input_utxos(observation, inputs, network)?;
+
+    Ok(json!({
+        "artifact_ref": expected_ref,
+        "size_bytes": preview.size_bytes,
+        "txid": txid,
+        "era": facts.get("era"),
+        "network": network,
+        "ouro_pool_namespace": registration_policy.get("ouro_pool_namespace"),
+        "stake_pool_key_hash": pool_key_hash,
+        "registration": pool_params,
+        "inputs": inputs,
+        "input_utxo_evidence": input_utxo_evidence,
+        "outputs": outputs,
+        "fee": facts.get("fee"),
+        "validity_range": facts.get("validity range"),
+        "live_slot": current_slot,
+        "validity_evidence": "live at review; apply rechecks the current slot",
+        "metadata": facts.get("metadata"),
+        "required_signers": facts.get("required signers (payment key hashes needed for scripts)"),
+        "witness_count": witnesses.len(),
+        "strict_registration_v1": true,
+        "additional_chain_effects": "none",
+    }))
 }
 
 fn run_stateless_target_artifact_preflight(args: &[String]) -> Result<()> {
@@ -1083,6 +1531,7 @@ fn run_stateless_target_artifact_preflight(args: &[String]) -> Result<()> {
             "--min-online-relays",
             "--param",
             "--release-policy",
+            "--registration-policy",
             "--candidate-hash",
         ],
         &[],
@@ -1184,16 +1633,13 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             "--pool-spec-digest",
             "--min-online-relays",
             "--param",
+            "--release-policy",
+            "--registration-policy",
         ],
         &[],
         &["--param"],
     )?;
     let op = flag(args, "--op")?;
-    if op == "deploy/register-submit" {
-        return Err(OuroError::Validation(
-            "deploy is outside the S0020 ephemeral-runner migration scope".into(),
-        ));
-    }
     let node = flag(args, "--node")?;
     crate::intent::validate_machine_id(node)?;
     let role = match flag(args, "--role")? {
@@ -1236,9 +1682,11 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         .touched
         .iter()
         .any(|resource| matches!(*resource, "container:restart" | "container:recreate"));
-    if op == "kes-rotation/install-opcert" && role != Role::Bp {
+    if matches!(op, "kes-rotation/install-opcert" | "deploy/register-submit")
+        && role != Role::Bp
+    {
         return Err(OuroError::Validation(
-            "kes-rotation/install-opcert is BP-only".into(),
+            format!("{op} is BP-only"),
         ));
     }
 
@@ -1292,6 +1740,49 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             "intent payload machine {payload_machine:?} does not match target node {node:?}"
         )));
     }
+    if op == "deploy/register-submit"
+        && payload.get("network").and_then(serde_json::Value::as_str) != Some(network)
+    {
+        return Err(OuroError::Validation(
+            "Deploy transaction network parameter does not match the pool-spec network".into(),
+        ));
+    }
+    let deploy_transaction = if op == "deploy/register-submit" {
+        let reference = payload.get("tx").and_then(serde_json::Value::as_str)
+            .ok_or_else(|| OuroError::Validation("Deploy intent lost transaction reference".into()))?;
+        let policy: serde_json::Value = serde_json::from_str(flag(args, "--registration-policy")?)
+            .map_err(|error| OuroError::Validation(format!(
+                "malformed control-derived registration policy: {error}"
+            )))?;
+        let path = std::env::var_os("OURO_EPHEMERAL_PAYLOAD")
+            .map(PathBuf::from)
+            .ok_or_else(|| OuroError::Validation(
+                "Deploy planning requires the sealed ephemeral signed transaction payload".into(),
+            ))?;
+        Some(inspect_ephemeral_deploy_transaction(
+            &observation,
+            &path,
+            reference,
+            network,
+            &policy,
+        )?)
+    } else {
+        if optional(args, "--registration-policy").is_some() {
+            return Err(OuroError::Validation(
+                "registration policy is accepted only for deploy/register-submit".into(),
+            ));
+        }
+        None
+    };
+    let deploy_transaction_candidate = deploy_transaction.clone().map(|mut review| {
+        if let Some(object) = review.as_object_mut() {
+            // The sampled slot proves the interval check happened, but normal chain progress is not
+            // semantic drift. Apply rechecks the then-current slot against the candidate-bound
+            // validity interval instead of forcing the operator to chase a moving hash.
+            object.remove("live_slot");
+        }
+        review
+    });
     let mut upgrade_transition = None;
     if let Some(target) = payload.get("image").and_then(serde_json::Value::as_str) {
         allowlist.contract_and_image_for(target, &observation.live.platform)?;
@@ -1346,6 +1837,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             "min_online_relays": min_online_relays,
         },
         "operation": op,
+        "deploy_transaction": deploy_transaction_candidate,
         "recreate_binding": if op == "upgrade/step" { recreate_binding.as_deref() } else { None },
         "runtime_policy": {
             "signed_allowlist_digest": signed_allowlist_digest,
@@ -1385,6 +1877,31 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             let mut plan = recovery.commit;
             plan.extend(recovery.finalize);
             plan
+        }
+        "deploy/register-submit" => {
+            let mut argv = vec![
+                "docker".into(),
+                "exec".into(),
+                "-i".into(),
+                observation.live.container_id.clone(),
+                "cardano-cli".into(),
+                "conway".into(),
+                "transaction".into(),
+                "submit".into(),
+                "--tx-file".into(),
+                "/dev/stdin".into(),
+                "--socket-path".into(),
+                "/ipc/node.socket".into(),
+            ];
+            if network == "mainnet" {
+                argv.push("--mainnet".into());
+            } else {
+                argv.extend([
+                    "--testnet-magic".into(),
+                    if network == "preprod" { "1".into() } else { "2".into() },
+                ]);
+            }
+            vec![argv]
         }
         "upgrade/preload-image" => {
             let reference = intent
@@ -1472,6 +1989,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         "upgrade_transition": upgrade_transition,
         "upgrade_failure_outcome": upgrade_failure_outcome,
         "rollback_executor_plan": rollback_executor_plan,
+        "deploy_transaction": deploy_transaction,
         "runtime_policy": {
             "allowlist_version": allowlist.allowlist_version,
             "signed_allowlist_digest": signed_allowlist_digest,
@@ -1494,7 +2012,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         "fleet_permit_required": fleet_sensitive,
         "confirmation_required": validated.mutability == Mutability::Dangerous,
         "apply_revalidation_required": true,
-        "artifact_validation": if matches!(op, "kes-rotation/install-opcert" | "upgrade/preload-image") {
+        "artifact_validation": if matches!(op, "kes-rotation/install-opcert" | "upgrade/preload-image" | "deploy/register-submit") {
             "content digest is candidate-bound; public artifact shape/domain and live compatibility are revalidated before apply"
         } else {
             "not_applicable"
@@ -1514,6 +2032,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         intent,
         observation,
         policy: allowlist,
+        deploy_transaction,
     })
 }
 
@@ -1777,7 +2296,7 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
         &[
             "--op", "--node", "--role", "--network", "--genesis", "--pool-id",
             "--pool-spec-digest", "--min-online-relays", "--param", "--approved-candidate",
-            "--verified-fleet-permit", "--release-policy",
+            "--verified-fleet-permit", "--release-policy", "--registration-policy",
         ],
         &[],
         &["--param"],
@@ -1814,6 +2333,11 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
             initial.intent.payload.get("artifact").and_then(serde_json::Value::as_str)
                 .ok_or_else(|| OuroError::Validation("preload intent lost artifact reference".into()))?,
         )),
+        "deploy/register-submit" => Some((
+            crate::inbox::ArtifactType::Tx,
+            initial.intent.payload.get("tx").and_then(serde_json::Value::as_str)
+                .ok_or_else(|| OuroError::Validation("Deploy intent lost transaction reference".into()))?,
+        )),
         _ => None,
     };
     let mut held_payload = None;
@@ -1832,10 +2356,22 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
         }
         if initial.op == "kes-rotation/install-opcert" {
             validate_ephemeral_kes_candidate(&initial, path, expected_ref)?;
-        } else {
+        } else if initial.op == "upgrade/preload-image" {
             let target = initial.intent.payload.get("image").and_then(serde_json::Value::as_str)
                 .ok_or_else(|| OuroError::Validation("preload intent lost image digest".into()))?;
             crate::inbox::require_single_docker_config(path, target)?;
+        } else {
+            let policy: serde_json::Value = serde_json::from_str(flag(args, "--registration-policy")?)
+                .map_err(|error| OuroError::Validation(format!(
+                    "malformed control-derived registration policy: {error}"
+                )))?;
+            inspect_ephemeral_deploy_transaction(
+                &initial.observation,
+                path,
+                expected_ref,
+                &initial.network,
+                &policy,
+            )?;
         }
         held_payload = Some((file, path.to_path_buf()));
     } else if payload_path.is_some() {
@@ -1864,6 +2400,122 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
     let mut live_postcondition: Option<serde_json::Value> = None;
 
     match final_plan.op.as_str() {
+        "deploy/register-submit" => {
+            let (_, payload) = held_payload.as_ref().ok_or_else(|| {
+                OuroError::Validation("validated Deploy transaction payload was not retained".into())
+            })?;
+            let bytes = std::fs::read(payload)?;
+            let txid = final_plan.deploy_transaction.as_ref()
+                .and_then(|value| value.get("txid"))
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| OuroError::Validation(
+                    "validated Deploy transaction lost its txid".into(),
+                ))?;
+            match submit_ephemeral_deploy_transaction(
+                &current_container,
+                &final_plan.network,
+                &bytes,
+            ) {
+                DeploySubmitAttempt::NotStarted(detail) => {
+                    let mut failure = ToolOutput::failure(
+                        "ouro.op.apply",
+                        "submission_not_started",
+                        format!("signed transaction submit did not start: {detail}"),
+                    )
+                    .with_data(json!({
+                        "op": &final_plan.op,
+                        "node": &final_plan.node,
+                        "candidate_hash": &final_plan.candidate_hash,
+                        "txid": txid,
+                        "submission_attempted": false,
+                        "accepted_by_node": false,
+                        "outcome": "refused_before_submit",
+                        "retry_allowed": false,
+                        "ledger_inclusion": "not_observed",
+                        "pool_registration": "not_observed",
+                        "persistent_target_state_written": false,
+                    }));
+                    failure.machine = Some(final_plan.node.clone());
+                    output::print_json(&failure)?;
+                    return Err(OuroError::Reported(10));
+                }
+                DeploySubmitAttempt::Ambiguous(detail) => {
+                    let mut failure = ToolOutput::failure(
+                        "ouro.op.apply",
+                        "submission_ambiguous",
+                        format!(
+                            "signed transaction may have reached the node but no terminal result is available: {detail}"
+                        ),
+                    )
+                    .with_data(json!({
+                        "op": &final_plan.op,
+                        "node": &final_plan.node,
+                        "candidate_hash": &final_plan.candidate_hash,
+                        "txid": txid,
+                        "submission_attempted": true,
+                        "accepted_by_node": null,
+                        "outcome": "submission_ambiguous",
+                        "retry_allowed": false,
+                        "ledger_inclusion": "unknown",
+                        "pool_registration": "unknown",
+                        "recovery": "do not resubmit; reconcile this txid and pool state independently",
+                        "persistent_target_state_written": false,
+                    }));
+                    failure.changed = true;
+                    failure.machine = Some(final_plan.node.clone());
+                    output::print_json(&failure)?;
+                    return Err(OuroError::Reported(20));
+                }
+                DeploySubmitAttempt::Completed(completed) if !completed.status.success() => {
+                    let detail = String::from_utf8_lossy(&completed.stderr)
+                        .chars()
+                        .filter(|character| {
+                            !character.is_control() || matches!(character, '\n' | '\r' | '\t')
+                        })
+                        .take(2048)
+                        .collect::<String>()
+                        .trim()
+                        .to_string();
+                    let mut failure = ToolOutput::failure(
+                        "ouro.op.apply",
+                        "submission_rejected",
+                        format!(
+                            "the node rejected the signed transaction{}",
+                            if detail.is_empty() { String::new() } else { format!(": {detail}") }
+                        ),
+                    )
+                    .with_data(json!({
+                        "op": &final_plan.op,
+                        "node": &final_plan.node,
+                        "candidate_hash": &final_plan.candidate_hash,
+                        "txid": txid,
+                        "submission_attempted": true,
+                        "accepted_by_node": false,
+                        "outcome": "node_rejected",
+                        "retry_allowed": false,
+                        "ledger_inclusion": "not_inferred_from_rejection",
+                        "pool_registration": "not_inferred_from_rejection",
+                        "persistent_target_state_written": false,
+                    }));
+                    failure.machine = Some(final_plan.node.clone());
+                    output::print_json(&failure)?;
+                    return Err(OuroError::Reported(10));
+                }
+                DeploySubmitAttempt::Completed(_) => {
+                    live_postcondition = Some(json!({
+                        "verification": "accepted_by_local_node",
+                        "txid": txid,
+                        "submission_attempted": true,
+                        "accepted_by_node": true,
+                        "outcome": "accepted_by_node",
+                        "retry_allowed": false,
+                        "ledger_inclusion": "unknown",
+                        "pool_registration": "unknown",
+                        "next": "query this txid and the stake-pool state independently; node acceptance is not ledger inclusion",
+                    }));
+                }
+            }
+        }
         "runtime/restart" => {
             crate::executor::run_argv(&[
                 "docker".into(), "restart".into(), current_container,
@@ -2111,7 +2763,11 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
         "node": final_plan.node,
         "candidate_hash": final_plan.candidate_hash,
         "assurance": "approved_candidate_revalidated",
-        "recovery_model": "live postcondition verification with in-invocation rollback where an inverse exists",
+        "recovery_model": if final_plan.op == "deploy/register-submit" {
+            "irreversible submit; never auto-retry, and reconcile ledger/pool state independently"
+        } else {
+            "live postcondition verification with in-invocation rollback where an inverse exists"
+        },
         "live_postcondition": live_postcondition,
         "persistent_target_state_written": false,
         "ephemeral_artifact_removed_by_transport": held_payload.is_some(),
@@ -3212,13 +3868,21 @@ fn run_op_inner(args: &[String]) -> Result<()> {
                 .into(),
         ));
     }
-    if plan
-        && (optional(args, "--candidate-hash").is_some()
-            || optional(args, "--artifact-file").is_some())
-    {
+    if plan && optional(args, "--candidate-hash").is_some() {
         return Err(OuroError::Validation(
-            "--plan derives a fresh candidate and never accepts apply-only candidate/artifact flags"
+            "--plan derives a fresh candidate and never accepts an apply candidate"
                 .into(),
+        ));
+    }
+    if plan && op == "deploy/register-submit" && optional(args, "--artifact-file").is_none() {
+        return Err(OuroError::Validation(
+            "Deploy --plan requires --artifact-file so the ephemeral target can review the exact signed transaction bytes"
+                .into(),
+        ));
+    }
+    if plan && op != "deploy/register-submit" && optional(args, "--artifact-file").is_some() {
+        return Err(OuroError::Validation(
+            "--artifact-file is accepted during --plan only for deploy/register-submit".into(),
         ));
     }
     if artifact_preflight
@@ -3322,29 +3986,25 @@ fn run_op_inner(args: &[String]) -> Result<()> {
         return dispatch_stateless_artifact_preflight(host, &op, &node, args, &paths);
     }
 
-    // S0020 p2-2: every dispatched non-deploy write is now control-authorized and executed by the
+    // S0021 p3-1: every dispatched write is control-authorized and executed by the
     // ephemeral runner. It never falls through to the installed-CLI/attestation transaction path.
-    if op != "deploy/register-submit" {
-        if let Some(host) = optional(args, "--dispatch") {
-            for internal in [
-                "--local", "--observation", "--expect-embedded", "--expect-allowlist",
-            ] {
-                if args.iter().any(|arg| arg == internal) {
-                    return Err(OuroError::Validation(format!(
-                        "{internal} is target-internal and cannot be supplied to control dispatch"
-                    )));
-                }
+    if let Some(host) = optional(args, "--dispatch") {
+        for internal in [
+            "--local", "--observation", "--expect-embedded", "--expect-allowlist",
+        ] {
+            if args.iter().any(|arg| arg == internal) {
+                return Err(OuroError::Validation(format!(
+                    "{internal} is target-internal and cannot be supplied to control dispatch"
+                )));
             }
-            return dispatch_stateless_apply(
-                host, &op, &node, args, &paths, transport_plan,
-            );
         }
-        if !(cfg!(debug_assertions) && optional(args, "--observation").is_some()) {
-            return Err(OuroError::Validation(
-                "S0020 non-deploy operations require --dispatch and the ephemeral target runner; use the internal `target` command only in target-side tests"
-                    .into(),
-            ));
-        }
+        return dispatch_stateless_apply(host, &op, &node, args, &paths, transport_plan);
+    }
+    if !(cfg!(debug_assertions) && optional(args, "--observation").is_some()) {
+        return Err(OuroError::Validation(
+            "current operations require --dispatch and the ephemeral target runner; use the internal `target` command only in target-side tests"
+                .into(),
+        ));
     }
 
     if adoption_pending_path(&paths, &node).exists() {
@@ -4493,6 +5153,23 @@ fn stateless_dispatch_context(
         target_args.push("--release-policy".into());
         target_args.push(catalog.document);
     }
+    if op == "deploy/register-submit" {
+        let (ticker, metadata_url, pledge_lovelace, margin, cost_lovelace) =
+            spec.registration_fields()?;
+        let registration_policy = serde_json::to_string(&json!({
+            "ouro_pool_namespace": pool_id,
+            "ticker": ticker,
+            "metadata_url": metadata_url,
+            "pledge_lovelace": pledge_lovelace,
+            "margin": margin,
+            "cost_lovelace": cost_lovelace,
+        }))
+        .map_err(|error| OuroError::Validation(format!(
+            "cannot encode control-derived registration policy: {error}"
+        )))?;
+        target_args.push("--registration-policy".into());
+        target_args.push(registration_policy);
+    }
     let mut index = 0;
     while index < args.len() {
         if args[index] == "--param" {
@@ -4526,22 +5203,72 @@ fn dispatch_stateless_plan(
     }
     let context = stateless_dispatch_context(host, op, node, args, paths, "plan")?;
     let runner = crate::runner::linux_x86_64()?;
-    let argv = crate::dispatch::ephemeral_runner_dispatch_argv(
-        host,
-        context.machine.ssh.port,
-        "cardano",
-        &context.key,
-        &paths.known_hosts,
-        &runner.sha256,
-        &context.target_args,
-    )?;
-    let out = crate::ssh::bounded_ssh_with_input(
-        &argv,
-        &runner.bytes,
-        std::time::Duration::from_secs(5 * 60),
-        256 * 1024,
-        "ephemeral stateless plan SSH dispatch",
-    )
+    let deploy_payload = if op == "deploy/register-submit" {
+        let reference = collect_params(args)?
+            .get("tx")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| OuroError::Validation("Deploy plan lost transaction reference".into()))?
+            .to_string();
+        let (file, preview) = crate::inbox::preview_source(
+            crate::inbox::ArtifactType::Tx,
+            Path::new(flag(args, "--artifact-file")?),
+        )?;
+        if preview.artifact_ref != reference {
+            return Err(OuroError::Validation(
+                "--artifact-file bytes do not match the Deploy transaction reference".into(),
+            ));
+        }
+        let digest = artifact_ref_digest(&reference)
+            .ok_or_else(|| OuroError::Validation("Deploy transaction reference lost its digest".into()))?
+            .to_string();
+        Some((file, preview, digest))
+    } else {
+        None
+    };
+    let argv = if let Some((_, preview, digest)) = &deploy_payload {
+        crate::dispatch::ephemeral_runner_payload_dispatch_argv(
+            host,
+            context.machine.ssh.port,
+            "cardano",
+            &context.key,
+            &paths.known_hosts,
+            crate::dispatch::EphemeralPayloadInput {
+                runner_sha256: &runner.sha256,
+                runner_size: runner.bytes.len(),
+                payload_sha256: digest,
+                payload_size: preview.size_bytes,
+            },
+            &context.target_args,
+        )?
+    } else {
+        crate::dispatch::ephemeral_runner_dispatch_argv(
+            host,
+            context.machine.ssh.port,
+            "cardano",
+            &context.key,
+            &paths.known_hosts,
+            &runner.sha256,
+            &context.target_args,
+        )?
+    };
+    let out = if let Some((file, _, _)) = deploy_payload {
+        crate::ssh::bounded_ssh_with_payload(
+            &argv,
+            &runner.bytes,
+            file,
+            std::time::Duration::from_secs(5 * 60),
+            256 * 1024,
+            "ephemeral stateless Deploy plan SSH dispatch",
+        )
+    } else {
+        crate::ssh::bounded_ssh_with_input(
+            &argv,
+            &runner.bytes,
+            std::time::Duration::from_secs(5 * 60),
+            256 * 1024,
+            "ephemeral stateless plan SSH dispatch",
+        )
+    }
     .map_err(|error| OuroError::Validation(format!("ssh dispatch failed: {error}")))?;
     finish_ssh_dispatch("ouro.op.plan.dispatch", &out)
 }
@@ -4556,6 +5283,13 @@ fn stateless_apply_terminal(result: &crate::ssh::SshOutcome) -> (&'static str, &
         value.get("status").and_then(serde_json::Value::as_str) == Some("ok")
     }) {
         return ("apply_succeeded", "verified_success");
+    }
+    let error_code = typed.as_ref()
+        .and_then(|value| value.pointer("/error/code"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    if error_code == "submission_ambiguous" {
+        return ("apply_ambiguous", "submission_outcome_unknown_no_retry");
     }
     let detail = typed.as_ref()
         .and_then(|value| value.pointer("/error/detail"))
@@ -4645,9 +5379,9 @@ fn dispatch_stateless_apply(
     let registered = crate::intent::lookup(op).ok_or_else(|| {
         OuroError::Validation(format!("operation {op:?} is not in the typed registry"))
     })?;
-    if registered.mutability == Mutability::Read || op == "deploy/register-submit" {
+    if registered.mutability == Mutability::Read {
         return Err(OuroError::Validation(format!(
-            "operation {op:?} is not a S0020 stateless apply"
+            "operation {op:?} is not a stateless apply"
         )));
     }
     let candidate = flag(args, "--candidate-hash")?;
@@ -4677,6 +5411,12 @@ fn dispatch_stateless_apply(
                 .ok_or_else(|| OuroError::Validation("preload intent lost artifact reference".into()))?
                 .to_string(),
         )),
+        "deploy/register-submit" => Some((
+            crate::inbox::ArtifactType::Tx,
+            collect_params(args)?.get("tx").and_then(serde_json::Value::as_str)
+                .ok_or_else(|| OuroError::Validation("Deploy intent lost transaction reference".into()))?
+                .to_string(),
+        )),
         _ => None,
     };
     let payload = if let Some((kind, expected_ref)) = expected_artifact {
@@ -4694,7 +5434,7 @@ fn dispatch_stateless_apply(
     } else {
         if optional(args, "--artifact-file").is_some() {
             return Err(OuroError::Validation(
-                "--artifact-file is accepted only for KES install or image preload".into(),
+                "--artifact-file is accepted only for KES install, image preload, or Deploy submit".into(),
             ));
         }
         None
