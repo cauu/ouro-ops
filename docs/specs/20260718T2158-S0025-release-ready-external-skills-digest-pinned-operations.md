@@ -269,7 +269,7 @@ a concrete defect.
   untouched
 - [x] p4-3 regenerate and sign the release catalog with the existing local signer, publish it at the
   canonical live URL, and make online pinned-key verification the Upgrade acceptance path
-- [ ] p5-1 implement a release-candidate build/check that pairs the macOS CLI with its Linux/x86_64
+- [x] p5-1 implement a release-candidate build/check that pairs the macOS CLI with its Linux/x86_64
   runner, verifies descriptor/package/checksums and smoke behavior, and excludes Skill text and image
   archives without publishing a formal CLI release
 - [ ] p5-2 update current README, operation, threat, release, website, and CI documentation/gates to
@@ -433,6 +433,14 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   the canonical raw URL returned the same SHA-256 bytes, and the current CLI with all local catalog/
   test-key environment seams explicitly unset verified the Ed25519 signature online and selected
   both the linux/amd64 deployment recommendation and the signed 10.5.4-1 → 10.6.4-1 transition.
+- 2026-07-19 p5-1 started: defining one deterministic local release-candidate builder/checker for
+  the macOS control binary paired with its exact embedded Linux/x86_64 runner, checksums,
+  descriptor/package smoke evidence, and negative package inventory for Skills and image payloads.
+- 2026-07-19 p5-1 completed: `make release-candidate` now performs a locked x86_64-musl runner build,
+  embeds those exact bytes into a locked native macOS release build, packages only `ouro-ops`, and
+  emits/validates descriptor, version, live catalog smoke, candidate manifest and SHA256SUMS
+  evidence. The local arm64 candidate passed extraction/compatibility checks and explicitly remains
+  `release-standard-not-published`; neither the CLI nor its tarball was published.
 
 ## 6. Validation Evidence (append-only)
 
@@ -530,6 +538,13 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   sha256:a3223d…c0c7a` | result: pass | note: production no-cache HTTPS/pinned-Ed25519 path selected
   11.0.1-1 for deploy and the exact 10.5.4-1 → 10.6.4-1 transition, reported catalog v5/fixed GHCR
   repository, and wrote no cache
+- TC-13 | stack: other | command: `make release-candidate && python3
+  tests/test_release_candidate.py` | result: pass | note: locked macOS arm64 control package contains
+  only `ouro-ops`; paired statically linked Linux/x86_64 ELF SHA-256
+  `29dcaaa6e05ce6a427de17ac0833c62d2ad95db300199a9d593f1127c75c2c92` equals the release
+  descriptor, extracted-binary descriptor/contract smoke and all SHA256SUMS checks pass, live
+  catalog v5 selection succeeds, and package/candidate inventories contain neither Skill Markdown
+  nor node-image payloads; manifest status is `release-standard-not-published`
 
 ## 7. Change Requests (append-only)
 
