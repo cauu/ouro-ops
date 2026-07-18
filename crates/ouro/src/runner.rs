@@ -46,7 +46,7 @@ pub fn linux_x86_64() -> Result<RunnerArtifact> {
         ));
     }
     Ok(RunnerArtifact {
-        sha256: crate::skills::sha256_hex(&bytes),
+        sha256: crate::assets::sha256_hex(&bytes),
         bytes,
         platform: "linux/x86_64",
     })
@@ -62,7 +62,7 @@ mod tests {
             return;
         }
         let runner = linux_x86_64().unwrap();
-        assert_eq!(runner.sha256, crate::skills::sha256_hex(&runner.bytes));
+        assert_eq!(runner.sha256, crate::assets::sha256_hex(&runner.bytes));
         assert_eq!(runner.platform, "linux/x86_64");
     }
 }

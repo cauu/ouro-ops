@@ -253,7 +253,7 @@ a concrete defect.
 - [x] p2-1 implement deterministic, injection-safe website delivery directly from the six canonical
   Skill files, including complete clipboard content, front-matter validation, and a production-form
   local HTTP acceptance service
-- [ ] p2-2 remove `SKILL.md` build inputs and `skill list/show`; isolate only runner/probe/schema/
+- [x] p2-2 remove `SKILL.md` build inputs and `skill list/show`; isolate only runner/probe/schema/
   policy execution assets and generic version/hash utilities
 - [ ] p2-3 remove the public legacy `tool run`/script path and obsolete-only parity gates when p1-1
   finds no production consumer; if one exists, obtain and implement the user's explicit disposition
@@ -384,6 +384,13 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
 - 2026-07-18 p2-1 completed: the site build now owns an exact six-entry canonical mapping, validates
   and safely serializes complete Skills, includes the selected Skill in the copied prompt, and ships
   a loopback-only production-form service used by the website acceptance test.
+- 2026-07-18 p2-2 started: removing decision documents and public Skill routing from the Rust build
+  while preserving the runner, target probe, schemas, policy/key inputs, and generic hash/version
+  utilities consumed by typed execution.
+- 2026-07-18 p2-2 completed: Rust decision assets moved to an execution-only `assets` module,
+  `SKILL.md` and directory-wide Skill rebuild triggers are absent, the public `skill` route/help is
+  removed, and probe/schema/runner consumers plus the transitional legacy script executor still
+  compile pending its dedicated p2-3 removal.
 
 ## 6. Validation Evidence (append-only)
 
@@ -405,6 +412,15 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
 - TC-3 | stack: python | command: malformed/missing/unknown front-matter and script-terminator
   generator tests | result: pass | note: invalid sources fail the build and `</script>` content is
   escaped in HTML while round-tripping exactly as inert Skill text
+- TC-4 | stack: python | command: `python3 -m pytest -q tests/test_external_skill_boundary.py` |
+  result: pass | note: compiled manifest has no Skill documents/decision hash, build triggers do not
+  cover Skill prose, and probe/schema execution assets remain present
+- TC-5 | stack: rust | command: invoke CLI help and retired `skill list` through
+  `tests/test_external_skill_boundary.py` | result: pass | note: help has no embedded decision source
+  and `skill` is an unknown command
+- TC-14 | stack: rust | command: `cargo test -q -p ouro --lib` | result: pass | note: 187 runner,
+  probe, schema, transport, policy, confirmation and typed-mechanism unit tests pass after the asset
+  boundary change
 
 ## 7. Change Requests (append-only)
 

@@ -72,7 +72,6 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "release" => run_release(&args[2..])?,
         "rollback" => run_rollback(&args[2..])?,
         "self-update" => run_self_update(&args[2..])?,
-        "skill" => run_skill(&args[2..])?,
         "spec" => run_spec(&args[2..])?,
         "status" => run_status(&args[2..])?,
         "tool" => run_tool(&args[2..])?,
@@ -189,7 +188,7 @@ fn run_self_update(args: &[String]) -> Result<()> {
         ));
     }
     let current = crate::version::fmt(crate::version::current());
-    let embedded_floor = crate::skills::required_ouro();
+    let embedded_floor = crate::assets::required_ouro();
     let mut update_available = false;
     let mut latest = current.clone();
     if let Some(path) = optional_flag_value(args, "--against") {
@@ -198,7 +197,7 @@ fn run_self_update(args: &[String]) -> Result<()> {
         if let Some(v) = meta.get("latest_version").and_then(|v| v.as_str()) {
             latest = v.to_string();
             if let (Some(c), Some(l)) =
-                (crate::skills::parse_floor(&current), crate::skills::parse_floor(v))
+                (crate::assets::parse_floor(&current), crate::assets::parse_floor(v))
             {
                 update_available = l > c; // never downgrade: only flag when strictly newer
             }
@@ -301,7 +300,7 @@ fn run_onboard(args: &[String]) -> Result<()> {
         None => {
             return Err(OuroError::Validation(
                 "missing --control-pubkey: pass the operator's control public key (derive it with \
-                 `ssh-keygen -y -f <the operator's key>`). See `ouro-ops skill show adopt`."
+                 `ssh-keygen -y -f <the operator's key>`). See the operator's onboarding procedure."
                     .to_string(),
             ))
         }
@@ -594,7 +593,7 @@ fn run_init(args: &[String]) -> Result<()> {
             return Err(OuroError::Validation(
                 "missing --control-pubkey: pass the operator's control public key to authorize for \
                  ouro-exec (derive it with `ssh-keygen -y -f <the operator's key>`, or use their \
-                 existing *.pub). See `ouro-ops skill show onboard`."
+                 existing *.pub). See the operator's onboarding procedure."
                     .to_string(),
             ));
         }
@@ -854,50 +853,6 @@ fn run_deinit(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// `ouro-ops skill show <name>` / `ouro-ops skill list` (S0016 p2-7).
-///
-/// `show` prints the skill's decision tree (its embedded, compiled-in `SKILL.md`) as raw
-/// markdown for the agent to consume. This is the AUTHORITATIVE decision source: it comes
-/// from the verified binary, never from the (untrusted) pasted prompt (R2 N3). A spoofed
-/// onboarding site cannot alter what the agent follows here.
-fn run_skill(args: &[String]) -> Result<()> {
-    match args.first().map(String::as_str) {
-        Some("list") => {
-            output::print_json(&ToolOutput::ok("ouro.skill.list", false).with_data(json!({
-                "skills": crate::skills::skill_names(),
-                "embedded_digest": crate::skills::embedded_digest(),
-            })))?;
-            Ok(())
-        }
-        Some("show") => {
-            let name = args.get(1).map(String::as_str).ok_or_else(|| {
-                OuroError::InvalidArgs("expected skill show <name>".to_string())
-            })?;
-            // A skill name is a single [a-z0-9-] segment (same discipline as tool names).
-            if name.is_empty() || !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-            {
-                return Err(OuroError::InvalidArgs(format!(
-                    "skill name must be a single [a-z0-9-] segment: {name}"
-                )));
-            }
-            match crate::skills::skill_doc(name) {
-                Some(doc) => {
-                    std::io::stdout().write_all(doc.as_bytes())?;
-                    std::io::stdout().flush()?;
-                    Ok(())
-                }
-                None => Err(OuroError::Validation(format!(
-                    "unknown skill {name}; available: {}",
-                    crate::skills::skill_names().join(", ")
-                ))),
-            }
-        }
-        _ => Err(OuroError::InvalidArgs(
-            "expected skill show <name> | skill list".to_string(),
-        )),
-    }
-}
-
 /// `ouro-ops manifest show | verify --against <file>` (S0016 p2-6).
 ///
 /// `show` prints the bare bundle manifest derived from the binary's embedded assets (commit
@@ -909,7 +864,7 @@ fn run_manifest(args: &[String]) -> Result<()> {
         Some("show") => {
             println!(
                 "{}",
-                serde_json::to_string_pretty(&crate::skills::bundle_manifest())
+                serde_json::to_string_pretty(&crate::assets::bundle_manifest())
                     .expect("manifest serializes")
             );
             Ok(())
@@ -920,9 +875,9 @@ fn run_manifest(args: &[String]) -> Result<()> {
                 serde_json::from_slice(&std::fs::read(path)?).map_err(|e| {
                     OuroError::Validation(format!("manifest {path} is not valid JSON: {e}"))
                 })?;
-            let actual = crate::skills::bundle_manifest();
+            let actual = crate::assets::bundle_manifest();
             let mut drift = Vec::new();
-            for key in ["decision_hash", "skills_hash", "schema_hash", "embedded_digest"] {
+            for key in ["skills_hash", "schema_hash", "embedded_digest"] {
                 if expected.get(key) != actual.get(key) {
                     drift.push(key);
                 }
@@ -1115,7 +1070,7 @@ fn resolve_skill_script(tool_name: &str, label: &str) -> Result<(PathBuf, Option
         return Ok((disk, None));
     }
     // Installed-binary path: extract the embedded skill's shell assets to a fresh temp base.
-    if crate::skills::script(skill, script).is_none() {
+    if crate::assets::script(skill, script).is_none() {
         // p5-16: name WHICH binary is missing the tool — when this fires on a dispatched
         // TARGET, the operator sees it via the control machine and easily misreads it as a
         // local install problem (real acceptance case: a stale target binary predating a
@@ -1142,7 +1097,7 @@ fn resolve_skill_script(tool_name: &str, label: &str) -> Result<(PathBuf, Option
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700));
     }
-    crate::skills::extract_shell_assets(skill, &base.join("ouro-skills"))?;
+    crate::assets::extract_shell_assets(skill, &base.join("ouro-skills"))?;
     let path = base
         .join("ouro-skills")
         .join(skill)
@@ -1460,7 +1415,7 @@ fn run_tool_exec(args: &[String]) -> Result<()> {
     // digest; if THIS binary embeds a different pack, executing would silently run outdated
     // tool logic, so fail closed BEFORE any gate/audit/extraction with the recovery path.
     if let Some(expected) = optional_flag_value(args, "--expect-embedded") {
-        let actual = crate::skills::embedded_digest();
+        let actual = crate::assets::embedded_digest();
         if expected != actual {
             return Err(OuroError::Validation(format!(
                 "skill-pack digest mismatch: the control machine expects {expected} but THIS \
@@ -1644,7 +1599,7 @@ fn run_deploy(args: &[String]) -> Result<()> {
             std::io::stdout().write_all(script.as_bytes())?;
             std::io::stdout().flush()?;
             // p4-8 trusted delivery: digest to STDERR for out-of-band verification (see kes above).
-            eprintln!("sha256={}", crate::skills::sha256_hex(script.as_bytes()));
+            eprintln!("sha256={}", crate::assets::sha256_hex(script.as_bytes()));
             Ok(())
         }
         _ => Err(OuroError::InvalidArgs(
@@ -1773,7 +1728,7 @@ fn run_kes(args: &[String]) -> Result<()> {
             std::io::stdout().flush()?;
             // p4-8 trusted delivery: print the script digest to STDERR (out of the stdout script
             // stream) so the operator can verify the file on the cold machine matches this exactly.
-            eprintln!("sha256={}", crate::skills::sha256_hex(script.as_bytes()));
+            eprintln!("sha256={}", crate::assets::sha256_hex(script.as_bytes()));
             Ok(())
         }
         _ => Err(OuroError::InvalidArgs(
@@ -1801,13 +1756,12 @@ fn run_status(args: &[String]) -> Result<()> {
 
 fn print_help() {
     println!("ouro-ops: deterministic Cardano stake pool operations CLI");
-    println!("  Agent contract: read the procedure for any operation with `ouro-ops skill show <skill>`;");
+    println!("  Agent contract: use the complete canonical Skill supplied by the operator's website prompt;");
     println!("  run `<command> --help` for a command's usage.\n");
     println!("Control setup:");
     println!("  creds     check/register one operator-named existing SSH key (no list, no copy)");
     println!("  Ordinary targets use the existing cardano account; no target Ouro install/adoption.");
     println!("Operate (via the agent, S0020):");
-    println!("  skill     show|list — the authoritative decision trees + red lines");
     println!("  op        run --op <operation> --node <id> — live stateless read/plan/apply path");
     println!("  inbox     preview a typed public artifact locally (legacy stage also available)");
     println!("  fleet     permit create — authorize one disruptive fleet step");
@@ -1891,9 +1845,8 @@ fn command_usage(command: &str) -> Option<&'static str> {
         "diag" => "ouro-ops diag exec --dispatch <machine> --spec <pool-spec> [--timeout <s>] -- <command>\n  \
                    Free-form diagnosis through the spec's existing operator SSH account. Ouro \
                    adds no sudo but does not enforce read-only access. Host-key pinned, audited, \
-                   deadline/output bounded. See `ouro-ops skill show troubleshooting`.",
+                   deadline/output bounded. See the canonical Troubleshooting Skill supplied by the operator.",
         "pool" => "ouro-ops pool overview --spec <pool-spec> [--snapshot <json>] | register-tx --spec <pool-spec>",
-        "skill" => "ouro-ops skill list | show <skill>   (current: observability, runtime, kes-rotation, upgrade, troubleshooting, detect, config; legacy: deploy, onboard, adopt)",
         "spec" => "ouro-ops spec validate --spec <pool-spec>",
         "status" => "ouro-ops status --snapshot <json> [--diff-spec --spec <pool-spec>]",
         "manifest" => "ouro-ops manifest show | verify --against <bundle-manifest.json>",
@@ -2081,7 +2034,7 @@ mod tests_embedded_resolution {
         assert!(base.join("ouro-skills/lib/ouro-lib.sh").is_file());
         // Extracted bytes must equal the embedded source (no drift on materialization).
         let on_disk = std::fs::read(&script).unwrap();
-        let embedded = crate::skills::script("deploy", "status").unwrap();
+        let embedded = crate::assets::script("deploy", "status").unwrap();
         assert_eq!(on_disk, embedded);
 
         std::fs::remove_dir_all(&base).unwrap();

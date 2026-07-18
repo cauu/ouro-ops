@@ -9,7 +9,7 @@
 
 use sha2::{Digest, Sha256};
 
-use crate::{intent, skills, OuroError, Result};
+use crate::{assets, intent, OuroError, Result};
 
 /// The security identity a side presents. Derived from embedded, root-owned, content-addressed
 /// facts (no mutable on-disk override in production).
@@ -50,7 +50,7 @@ fn sha256(bytes: &[u8]) -> String {
     Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// Digest security-deciding Rust source together with embedded Skills/assets. `include_str!` makes
+/// Digest security-deciding Rust source together with embedded execution assets. `include_str!` makes
 /// builds from the same source portable across control/target platforms while detecting stale code.
 fn security_sources() -> [(&'static str, &'static str); 38] {
     [
@@ -84,7 +84,7 @@ fn security_sources() -> [(&'static str, &'static str); 38] {
         ("s0019_cli.rs", include_str!("s0019_cli.rs")),
         ("s0019_confirmation.rs", include_str!("s0019_confirmation.rs")),
         ("secrets.rs", include_str!("secrets.rs")),
-        ("skills.rs", include_str!("skills.rs")),
+        ("assets.rs", include_str!("assets.rs")),
         ("ssh.rs", include_str!("ssh.rs")),
         ("state.rs", include_str!("state.rs")),
         ("status.rs", include_str!("status.rs")),
@@ -104,7 +104,7 @@ fn security_code_digest() -> String {
     let allowlist = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/allowlist.json"));
     hasher.update((allowlist.len() as u64).to_be_bytes());
     hasher.update(allowlist.as_bytes());
-    hasher.update(skills::embedded_digest().as_bytes());
+    hasher.update(assets::embedded_digest().as_bytes());
     hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -121,7 +121,7 @@ mod identity_tests {
             "fleet.rs", "gate.rs", "inbox.rs", "intent.rs", "kes.rs", "lib.rs", "main.rs",
             "migration.rs", "onboard.rs", "output.rs", "parity.rs", "pool.rs", "provision.rs",
             "readiness.rs", "render.rs", "s0019_cli.rs", "s0019_confirmation.rs", "secrets.rs",
-            "skills.rs", "ssh.rs", "state.rs", "status.rs", "supervisor.rs", "transaction.rs",
+            "assets.rs", "ssh.rs", "state.rs", "status.rs", "supervisor.rs", "transaction.rs",
             "upgrade.rs", "version.rs",
         ]);
     }

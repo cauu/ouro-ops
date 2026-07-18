@@ -13,12 +13,12 @@ use std::path::Path;
 
 use serde_json::json;
 
-use crate::{confirm, skills, OuroError, Result};
+use crate::{assets, confirm, OuroError, Result};
 
 pub type Ver = (u64, u64, u64);
 
 pub fn current() -> Ver {
-    skills::parse_floor(env!("CARGO_PKG_VERSION")).unwrap_or((0, 0, 0))
+    assets::parse_floor(env!("CARGO_PKG_VERSION")).unwrap_or((0, 0, 0))
 }
 
 pub fn fmt(v: Ver) -> String {
@@ -27,7 +27,7 @@ pub fn fmt(v: Ver) -> String {
 
 /// The strictest `requires_ouro` compiled into the binary (from the embedded SKILL.md headers).
 fn embedded_floor() -> Ver {
-    skills::parse_floor(&skills::required_ouro()).unwrap_or((0, 0, 0))
+    assets::parse_floor(&assets::required_ouro()).unwrap_or((0, 0, 0))
 }
 
 /// The signed security/revocation floor (from signed release metadata). That feed is release
@@ -64,7 +64,7 @@ fn load_floor(home: &Path, secret: &str) -> (Ver, bool) {
     if !confirm::verify_invocation_token(secret, version, mac) {
         return (embedded_floor(), true); // tampered → reset to embedded floor, flag for audit
     }
-    match skills::parse_floor(version) {
+    match assets::parse_floor(version) {
         Some(ver) => (std::cmp::max(ver, embedded_floor()), false),
         None => (embedded_floor(), true),
     }
@@ -89,7 +89,7 @@ pub fn gate(home: &Path, prompt_min: Option<&str>) -> Result<GateOutcome> {
     let secret = confirm::load_or_create_secret(&home.join("tool-run.secret"))?;
     let (rollback_floor, rollback_reset) = load_floor(home, &secret);
     let prompt_floor = prompt_min
-        .and_then(skills::parse_floor)
+        .and_then(assets::parse_floor)
         .unwrap_or((0, 0, 0));
 
     let required = [

@@ -544,7 +544,7 @@ fn expected_file(path: &str, bytes: &[u8], ownership_and_mode: &str) -> String {
         "test -f {path} && test ! -L {path} && \
          test \"$(sha256sum {path} 2>/dev/null | awk '{{print $1}}')\" = \"{digest}\" && \
          test \"$(stat -c '%U:%G:%a' {path} 2>/dev/null)\" = \"{ownership_and_mode}\"",
-        digest = crate::skills::sha256_hex(bytes),
+        digest = crate::assets::sha256_hex(bytes),
     )
 }
 

@@ -323,7 +323,7 @@ impl SshRunner {
             // binaries ignore the unknown flag (protection is forward-looking; p5-16's
             // missing-tool error covers the stale-target case for new tools).
             "--expect-embedded".to_string(),
-            shell_quote(&crate::skills::embedded_digest()),
+            shell_quote(&crate::assets::embedded_digest()),
         ]
     }
 
@@ -459,7 +459,7 @@ mod bounded_tests {
             "runner payload fixture",
         )
         .unwrap();
-        let expected = crate::skills::sha256_hex(b"RUNNERPUBLIC-PAYLOAD");
+        let expected = crate::assets::sha256_hex(b"RUNNERPUBLIC-PAYLOAD");
         assert_eq!(outcome.stdout.trim(), expected);
         std::fs::remove_file(path).unwrap();
     }

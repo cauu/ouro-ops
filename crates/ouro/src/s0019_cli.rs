@@ -3375,7 +3375,7 @@ fn run_probe() -> Result<String> {
     let lib_path = match std::env::var_os("OURO_PROBE_LIB") {
         Some(p) => PathBuf::from(p),
         None => {
-            let bytes = crate::skills::asset("lib/ouro-probe.sh").ok_or_else(|| {
+            let bytes = crate::assets::asset("lib/ouro-probe.sh").ok_or_else(|| {
                 OuroError::Validation("embedded probe lib/ouro-probe.sh missing".into())
             })?;
             extracted = extract_embedded_probe(&std::env::temp_dir(), bytes)?;

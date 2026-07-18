@@ -27,7 +27,7 @@ pub mod runner;
 pub mod secrets;
 pub mod s0019_cli;
 pub mod s0019_confirmation;
-pub mod skills;
+pub mod assets;
 pub mod state;
 pub mod transaction;
 pub mod upgrade;

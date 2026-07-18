@@ -1,9 +1,8 @@
-//! S0016 p2-1/p2-6/p2-7 — access to skill assets embedded into the binary at compile time.
+//! Execution assets and generic digest/version helpers.
 //!
-//! The generated `EMBEDDED` slice (build.rs → `$OUT_DIR/embedded_skills.rs`) is the single
-//! in-binary source for BOTH the decision layer (`<skill>/SKILL.md`, served by
-//! `ouro-ops skill show`, R2 N3) and the mechanism layer (`<skill>/scripts/*.sh`, `lib/*.sh`,
-//! schemas). Nothing is fetched from disk or network at runtime for the installed binary.
+//! Decision documents are website inputs and are deliberately absent. The generated `EMBEDDED`
+//! slice contains only mechanism assets; legacy shell entries disappear with p2-3, while the target
+//! probe and schemas remain. Hashing and semver parsing live here without depending on Skill prose.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -11,31 +10,15 @@ use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
-include!(concat!(env!("OUT_DIR"), "/embedded_skills.rs"));
+include!(concat!(env!("OUT_DIR"), "/embedded_assets.rs"));
 // pub static EMBEDDED: &[(&str, &[u8])] = &[ ... ];
 
-/// Bytes of an embedded asset by its `ouro-skills`-relative path (e.g. `deploy/SKILL.md`).
+/// Bytes of an embedded execution asset by its repository-relative asset path.
 pub fn asset(rel_path: &str) -> Option<&'static [u8]> {
     EMBEDDED
         .iter()
         .find(|(p, _)| *p == rel_path)
         .map(|(_, b)| *b)
-}
-
-/// The decision-layer doc (`<skill>/SKILL.md`) for a skill, as text. This is the
-/// authoritative decision source the agent consumes via `ouro-ops skill show` — NOT the prompt.
-pub fn skill_doc(skill: &str) -> Option<&'static str> {
-    asset(&format!("{skill}/SKILL.md")).and_then(|b| std::str::from_utf8(b).ok())
-}
-
-/// Names of all embedded skills (those that carry a `SKILL.md`), sorted.
-pub fn skill_names() -> Vec<&'static str> {
-    let mut names: Vec<&str> = EMBEDDED
-        .iter()
-        .filter_map(|(p, _)| p.strip_suffix("/SKILL.md"))
-        .collect();
-    names.sort_unstable();
-    names
 }
 
 /// The embedded L2 script bytes for `<skill>/scripts/<script>.sh`.
@@ -87,8 +70,7 @@ pub fn asset_hashes() -> BTreeMap<String, String> {
         .collect()
 }
 
-/// A single digest over ALL embedded assets (path+content, deterministic order) — the
-/// binary's self-describing "embedded skills hash" used in the bundle manifest.
+/// A single digest over all embedded execution assets (path+content, deterministic order).
 pub fn embedded_digest() -> String {
     let mut h = Sha256::new();
     for (p, b) in EMBEDDED.iter() {
@@ -120,33 +102,10 @@ fn class_digest(pred: impl Fn(&str) -> bool) -> String {
     hex(&h.finalize())
 }
 
-/// `requires_ouro` floor parsed from a skill's SKILL.md YAML front matter (p3-1).
-fn skill_requires(skill: &str) -> Option<String> {
-    let doc = skill_doc(skill)?;
-    let fm = doc.strip_prefix("---\n")?;
-    let end = fm.find("\n---")?;
-    for line in fm[..end].lines() {
-        if let Some(rest) = line.trim().strip_prefix("requires_ouro:") {
-            return Some(rest.trim().trim_matches(['"', '\'']).to_string());
-        }
-    }
-    None
-}
-
-/// The strictest `>=x.y.z` floor across all embedded skills — the binary's built-in
-/// `required_ouro` (p3-2: one input to `required = max(prompt_min, embedded_floor, …)`).
+/// Temporary package floor used by the legacy version gate until p3-2 removes that stateful path.
+/// It depends only on package metadata and never on external Skill prose.
 pub fn required_ouro() -> String {
-    let mut best = (0u64, 0u64, 0u64);
-    for skill in skill_names() {
-        if let Some(req) = skill_requires(skill) {
-            if let Some(v) = parse_floor(&req) {
-                if v > best {
-                    best = v;
-                }
-            }
-        }
-    }
-    format!(">={}.{}.{}", best.0, best.1, best.2)
+    format!(">={}", env!("CARGO_PKG_VERSION"))
 }
 
 /// Parse a `>=x.y.z` (or bare `x.y.z`) constraint into a (major, minor, patch) tuple.
@@ -164,17 +123,13 @@ pub fn parse_floor(constraint: &str) -> Option<(u64, u64, u64)> {
     Some((major, minor, patch))
 }
 
-/// The build's **bundle manifest** (S0016 p2-6): per-class content hashes over the embedded
-/// decision docs / mechanism scripts / schemas, the overall embedded digest, and the built-in
-/// `required_ouro` floor. At release this is signed and published alongside the binary; a
-/// spoofed prompt cannot alter it (the prompt only *references* the digest, R2 N3), and
-/// `ouro-ops manifest verify` proves the running binary's embedded assets match the signed set.
+/// Transitional execution-asset manifest. p3-2 replaces this legacy exhaustive taxonomy with the
+/// compact public CLI contract/runner descriptor.
 pub fn bundle_manifest() -> serde_json::Value {
     serde_json::json!({
         "manifest_version": 1,
         "ouro_version": env!("CARGO_PKG_VERSION"),
         "required_ouro": required_ouro(),
-        "decision_hash": class_digest(|p| p.ends_with("/SKILL.md")),
         "skills_hash": class_digest(|p| p.ends_with(".sh")),
         "schema_hash": class_digest(|p| p.ends_with(".schema.json")),
         "embedded_digest": embedded_digest(),
@@ -187,26 +142,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn embeds_all_six_skill_docs() {
-        let names = skill_names();
-        for expected in [
-            "deploy",
-            "kes-rotation",
-            "upgrade",
-            "observability",
-            "runtime",
-            "troubleshooting",
-        ] {
-            assert!(names.contains(&expected), "missing embedded skill {expected}");
-        }
-    }
-
-    #[test]
-    fn skill_doc_carries_front_matter_and_red_lines() {
-        let doc = skill_doc("kes-rotation").expect("kes-rotation SKILL.md embedded");
-        assert!(doc.starts_with("---\n"), "front matter present");
-        assert!(doc.contains("skill_version"));
-        assert!(doc.contains("Red Lines"));
+    fn decision_documents_are_not_embedded() {
+        assert!(EMBEDDED.iter().all(|(path, _)| !path.ends_with("/SKILL.md")));
     }
 
     #[test]
@@ -226,7 +163,7 @@ mod tests {
             serde_json::from_slice(&std::fs::read(path).expect("committed manifest present"))
                 .expect("committed manifest is JSON");
         let actual = bundle_manifest();
-        for key in ["decision_hash", "skills_hash", "schema_hash", "embedded_digest", "required_ouro"] {
+        for key in ["skills_hash", "schema_hash", "embedded_digest", "required_ouro"] {
             assert_eq!(
                 committed.get(key),
                 actual.get(key),
