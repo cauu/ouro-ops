@@ -1,0 +1,94 @@
+{
+  "allowlist_version": 5,
+  "signature": "ed25519:2d87dd1128ea5abd0fee17dd53993f45b620101c332a161b58a61eb1399bbe854af576a3f178da5466e122dd874ed22c0cffd0650cc27196e0ab44adac06ad0f",
+  "repository": "ghcr.io/blinklabs-io/cardano-node",
+  "recommended": {
+    "linux/amd64": "sha256:0bb21e45159327c4e6109704df256c3c297c725a4b2cdf6d0e1899e3a9df468f",
+    "linux/arm64": "sha256:f313721b677fbe9a64e9a25ed1f5790c47bf0b3e88f48bad22d822e243f47179"
+  },
+  "contracts": [
+    {
+      "convention_version": 1,
+      "contract_id": "blinklabs-cardano-node-v1",
+      "in_container_paths": {
+        "socket": "/ipc/node.socket",
+        "db": "/data/db",
+        "keys": "/opt/cardano/config/keys",
+        "config": "/opt/cardano/config",
+        "topology": "/opt/cardano/config/mainnet/topology.json",
+        "genesis": "/opt/cardano/config/mainnet/shelley-genesis.json"
+      },
+      "role_rules": {
+        "bp": {
+          "requires_opcert": true,
+          "forbids_forging_keys": false
+        },
+        "relay": {
+          "requires_opcert": false,
+          "forbids_forging_keys": true
+        }
+      },
+      "allowed": [
+        {
+          "release": "11.0.1-1",
+          "platform": "linux/amd64",
+          "oci_index_digest": "sha256:d5ede07a890e9b6a0a5182cdba9dbaf73756336762235e0934a11690beedae02",
+          "platform_manifest_digest": "sha256:337e621185510eb7ca9ecbd33e2083d538b85d11373a19bec6a64f6b4325cee7",
+          "image_config_digest": "sha256:0bb21e45159327c4e6109704df256c3c297c725a4b2cdf6d0e1899e3a9df468f"
+        },
+        {
+          "release": "11.0.1-1",
+          "platform": "linux/arm64",
+          "oci_index_digest": "sha256:d5ede07a890e9b6a0a5182cdba9dbaf73756336762235e0934a11690beedae02",
+          "platform_manifest_digest": "sha256:03211991d65a019073657fe8ad5be1ac8a4cd889bc9b17660faa34ba8b67078d",
+          "image_config_digest": "sha256:f313721b677fbe9a64e9a25ed1f5790c47bf0b3e88f48bad22d822e243f47179"
+        },
+        {
+          "release": "10.5.4-1",
+          "platform": "linux/amd64",
+          "oci_index_digest": "sha256:6de965784be4134deccb94ca8d92c11dfb3e140a9d0616210f29a1836fdb13d7",
+          "platform_manifest_digest": "sha256:e4f7b5e761b0c739ebb4bd40359415817bfd782fcd4f427de0e1fa3109295983",
+          "image_config_digest": "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a"
+        },
+        {
+          "release": "10.6.4-1",
+          "platform": "linux/amd64",
+          "oci_index_digest": "sha256:29154a16decd311c92f60219dca1a6b212e874b0e665b250f0e8d4ce945e7de8",
+          "platform_manifest_digest": "sha256:8efeca0ecc75c2b574436fd8c7e4f5c3411261b2330082d2f43d863ce8472c65",
+          "image_config_digest": "sha256:0fb74b5921860a6547ce5b6c669d59b71169d1c48b014f2fafcec2e4d382f1b3"
+        },
+        {
+          "release": "10.7.1-3",
+          "platform": "linux/amd64",
+          "oci_index_digest": "sha256:ca12bcb51dece451eeb418c625fc0c5fd7b10c4d7bb46a1ecaf6fa80f4798aab",
+          "platform_manifest_digest": "sha256:f4f5b2dfadb89c4c64c2c120918fdf50edcf2b7555089c166e0a09473655cd9b",
+          "image_config_digest": "sha256:5fe0bf791a0af8884386479555996bf4ad7621493889625a2886039bf8734e51"
+        }
+      ]
+    }
+  ],
+  "denylist": [],
+  "transitions": [
+    {
+      "from_image_config_digest": "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a",
+      "to_image_config_digest": "sha256:0fb74b5921860a6547ce5b6c669d59b71169d1c48b014f2fafcec2e4d382f1b3",
+      "db_forward_compatible": true,
+      "db_backward_compatible": false,
+      "snapshot_taken": false
+    },
+    {
+      "from_image_config_digest": "sha256:0fb74b5921860a6547ce5b6c669d59b71169d1c48b014f2fafcec2e4d382f1b3",
+      "to_image_config_digest": "sha256:5fe0bf791a0af8884386479555996bf4ad7621493889625a2886039bf8734e51",
+      "db_forward_compatible": true,
+      "db_backward_compatible": true,
+      "snapshot_taken": false
+    },
+    {
+      "from_image_config_digest": "sha256:5fe0bf791a0af8884386479555996bf4ad7621493889625a2886039bf8734e51",
+      "to_image_config_digest": "sha256:0bb21e45159327c4e6109704df256c3c297c725a4b2cdf6d0e1899e3a9df468f",
+      "db_forward_compatible": true,
+      "db_backward_compatible": true,
+      "snapshot_taken": false
+    }
+  ]
+}
