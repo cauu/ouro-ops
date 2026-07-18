@@ -1,12 +1,12 @@
 # External Skills and Minimal CLI Boundary — Revised
 
 Spec-ID: S0024
-状态: active
+状态: completed
 创建时间: 2026-07-18T21:46:22+08:00
 开始时间: 2026-07-18T21:46:22+08:00
-完成时间:
+完成时间: 2026-07-18T21:58:58+08:00
 前一个 Spec-ID: S0023
-结项原因:
+结项原因: replaced
 
 ## 1. Requirement Details
 
@@ -236,6 +236,9 @@ the system does not restore `skill show` as a fallback decision source.
 
 - 2026-07-18 S0024 activated as the reviewed replacement for S0023. No implementation item has
   started; p1-1 is the first pending item.
+- 2026-07-18 S0024 closed as replaced before implementation started. S0025 restates the complete
+  scope with exact-digest Blink Labs GHCR pulls, live catalog publication, release-candidate quality,
+  and local-site acceptance while deferring formal CLI and production-site publication.
 
 ## 6. Validation Evidence (append-only)
 
@@ -244,3 +247,7 @@ the system does not restore `skill show` as a fallback decision source.
 - 2026-07-18 replaces S0023 after adversarial review. The review confirmed the real problem but
   rejected per-command stateful version floors, exhaustive replacement manifests, paired rollback,
   unnecessary production restart, and default preservation of legacy `tool run`.
+- 2026-07-18 operator changed the delivery boundary: Ouro must never host image archives; Upgrade
+  pulls an exact signed digest from Blink Labs GHCR; the signed catalog is published and accepted
+  live now; formal CLI publication and production-site acceptance move to a following spec. These
+  constraints replace S0024 with S0025 rather than rewriting the active specification.
