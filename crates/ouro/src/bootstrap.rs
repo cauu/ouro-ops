@@ -1,10 +1,10 @@
-//! S0017 p1-1 — target-mutating bootstrap transport for `ouro-ops init`.
+//! Target-mutating bootstrap transport for `ouro-ops onboard`.
 //!
 //! This is a DELIBERATE, isolated break from the per-operation dispatch in `ssh.rs`, which is
-//! exec-only and asserts no file transfer (no scp): a running node is driven only through the
-//! confined `ouro-exec` → `ouro-tool-run` wrapper. Provisioning a BARE machine, by contrast,
-//! must push a binary and write root-owned files ONCE. That privileged, file-writing path lives
-//! here — a separate module, used only by `ouro-ops init`, run as an existing sudo user (first
+//! exec-only and asserts no file transfer (no scp): a running node is driven through typed
+//! operations. Provisioning a BARE machine, by contrast, must push a binary and write root-owned
+//! files ONCE. That privileged, file-writing path lives here — a separate module, used only by
+//! `ouro-ops onboard`, run as an existing sudo user (first
 //! access = sudo-user + SSH key), never as `ouro-exec`.
 //!
 //! Files are pushed over the SSH channel itself (local bytes piped to a remote

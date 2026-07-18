@@ -4,10 +4,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# Current ordinary Skills: local control CLI + existing cardano SSH + ephemeral runner.
+# Exact public Skill set: local control CLI + existing cardano SSH + ephemeral runner.
 STATELESS_SKILLS = [
-    ROOT / "ouro-skills/config/SKILL.md",
-    ROOT / "ouro-skills/detect/SKILL.md",
     ROOT / "ouro-skills/upgrade/SKILL.md",
     ROOT / "ouro-skills/runtime/SKILL.md",
     ROOT / "ouro-skills/observability/SKILL.md",
@@ -15,13 +13,7 @@ STATELESS_SKILLS = [
     ROOT / "ouro-skills/troubleshooting/SKILL.md",
     ROOT / "ouro-skills/deploy/SKILL.md",
 ]
-# Explicit legacy/migration-only surfaces. Adopt/onboard may be invoked only when the operator
-# explicitly asks for old S0019 migration/recovery.
-MIGRATION_SKILLS = [
-    ROOT / "ouro-skills/adopt/SKILL.md",
-    ROOT / "ouro-skills/onboard/SKILL.md",
-]
-SKILLS = STATELESS_SKILLS + MIGRATION_SKILLS
+SKILLS = STATELESS_SKILLS
 FORBIDDEN = [" scp ", " bash ", "sudo ", "rsync ", "`ssh ", "`docker "]
 # Universal red lines every skill must carry.
 REQUIRED_RED_LINES = [
@@ -50,12 +42,14 @@ def _front_matter(text):
 def main():
     for path in SKILLS:
         text = path.read_text()
-        # S0016 p3-1: machine-readable version header (feeds embedded floor p3-2 + manifest p2-6).
+        # Website generator/CLI compatibility metadata.
         meta = _front_matter(text)
         assert str(meta.get("skill_version", "")).isdigit(), \
             f"{path} front matter needs integer skill_version, got {meta.get('skill_version')!r}"
         assert re.match(r"^(>=|>|=|\^|~)?\d+\.\d+\.\d+", meta.get("requires_ouro", "")), \
             f"{path} front matter needs semver requires_ouro, got {meta.get('requires_ouro')!r}"
+        assert meta.get("requires_contract") == "1", \
+            f"{path} front matter needs current requires_contract"
         # A decision layer (S0017 "Decision Tree" or S0019 "Decision guidance"), stops, red lines.
         assert "Decision Tree" in text or "Decision guidance" in text, f"{path} lacks a decision layer"
         assert "Stop Conditions" in text
@@ -92,23 +86,6 @@ def main():
     ]:
         assert phrase in kes, f"KES Skill lacks Phase A/B contract {phrase!r}"
     assert "ouro-ops kes push" not in kes, "KES Skill still directs the agent to legacy kes push"
-    onboard = (ROOT / "ouro-skills/onboard/SKILL.md").read_text()
-    for phrase in [
-        "Legacy S0019 Migration Only",
-        "ignored by S0020",
-        "data.ssh_access_policy",
-        "bootstrap_user_preserved: true",
-        "Never infer runtime-formatted values from static binary string fragments",
-        "ouro-ops creds check --name <name>",
-        "ouro-ops creds register --name <name>",
-        "legacy_s0017_paths_retired",
-        "effective_ssh_policy_verified: true",
-        "--apply",
-    ]:
-        assert phrase in onboard, f"onboard Skill lacks rendered-policy guard {phrase!r}"
-    adopt = (ROOT / "ouro-skills/adopt/SKILL.md").read_text()
-    assert "Legacy S0019 Migration Only" in adopt
-    assert "S0020 ordinary" in adopt
     upgrade = (ROOT / "ouro-skills/upgrade/SKILL.md").read_text()
     assert "ouro-ops inbox preview" in " ".join(upgrade.split())
     assert "--artifact-file <operator-named-docker-save.tar>" in " ".join(upgrade.split())

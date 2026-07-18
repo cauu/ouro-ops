@@ -88,7 +88,7 @@ pub fn print_json(output: &ToolOutput) -> Result<()> {
     emit_value(&value)
 }
 
-/// Forward a child L2 script's single-line-JSON stdout (from `tool run`). Same rule: render human
+/// Forward a dispatched typed operation's single-line-JSON stdout. Same rule: render human
 /// for an interactive TTY, otherwise pass the JSON through verbatim (byte-for-byte, so a captured
 /// dispatch result is unchanged). If the bytes are not the expected JSON shape, pass them through.
 pub fn forward_tool_stdout(raw: &[u8]) -> Result<()> {

@@ -5,7 +5,7 @@
 //! before any mutation.
 //!
 //! Decision (recorded in the spec): S0019 uses a NEW `op` command rather than overloading the
-//! S0017 `tool run` (which carries the legacy write path, disabled by §2.8). The dispatched
+//! the retired S0017 script executor. The dispatched
 //! live-observation probe and the sealed docker executor are the target-side seam; here the probe
 //! reads a closed observation JSON (`--observation`) and the executor runs in `--plan` mode (gates
 //! fire, no mutation) until the p4-2 executor scripts land. Real target execution is p4-2.

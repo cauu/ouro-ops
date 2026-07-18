@@ -1,6 +1,6 @@
-// Compile-time embedding of execution assets only. Decision documents (`SKILL.md`) are website
-// inputs and must never affect the CLI build. Legacy shell assets remain temporarily until p2-3
-// removes the retired executor; schemas and the live target probe remain mechanism inputs.
+// Compile-time embedding of execution assets only. Decision documents (`SKILL.md`) and legacy
+// script packs are website/history inputs and must never affect the CLI build. The live target probe
+// and schemas remain mechanism inputs.
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -21,9 +21,7 @@ fn collect(dir: &Path, root: &Path, out: &mut Vec<(String, PathBuf)>) {
                 .expect("under root")
                 .to_string_lossy()
                 .replace('\\', "/");
-            // Never embed SKILL.md. Shell assets are still consumed only by the legacy executor
-            // removed in p2-3; schemas/probe remain current typed mechanism assets.
-            if rel.ends_with(".sh") || rel.ends_with(".schema.json") {
+            if rel.ends_with(".schema.json") {
                 out.push((rel, path));
             }
         }
@@ -32,10 +30,12 @@ fn collect(dir: &Path, root: &Path, out: &mut Vec<(String, PathBuf)>) {
 
 fn main() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let skills_root = manifest_dir.join("ouro-skills");
-
     let mut files = Vec::new();
-    collect(&skills_root, &skills_root, &mut files);
+    let probe = manifest_dir.join("ouro-skills/lib/ouro-probe.sh");
+    if !probe.is_file() {
+        panic!("missing typed target probe {}", probe.display());
+    }
+    files.push(("lib/ouro-probe.sh".to_string(), probe));
 
     // Also embed the pool-spec JSON schema (lives at repo-root schemas/, outside ouro-skills/)
     // so the bundle manifest's schema_hash is meaningful and the binary can self-describe the

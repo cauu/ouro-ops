@@ -3,7 +3,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from _ctx import ROOT, ouro_bin
+ROOT = Path(__file__).resolve().parents[1]
 
 AUDIT = ROOT / "docs/parity/S0014-parity-audit.md"
 REQUIRED = [
@@ -35,7 +35,7 @@ def main():
     # Executable parity for the retired Delegators/staking point-in-time view: the
     # replacement `ouro-ops pool overview` must run and return structured pool facts.
     result = subprocess.run(
-        [ouro_bin(), "pool", "overview", "--spec", "examples/pool-spec.minimal.yaml"],
+        ["cargo", "run", "-q", "-p", "ouro", "--", "pool", "overview", "--spec", "examples/pool-spec.minimal.yaml"],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,

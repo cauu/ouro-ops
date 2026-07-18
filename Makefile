@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help fmt test python-test check ci e2e status e2e-build-base e2e-bed-up e2e-bed-down e2e-provision e2e-t2 e2e-t2-node e2e-t2-kes e2e-t2-secrets e2e-t2-takeover e2e-t2-observability e2e-t2-upgrade e2e-t3 e2e-t2-runtime e2e-t2-coldsign e2e-t2-offline-rotation e2e-t2-register e2e-clean
+.PHONY: help fmt test python-test check ci status site-build site-serve
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -13,82 +13,21 @@ fmt: ## Format Rust code
 test: ## Run Rust tests
 	cargo test
 
-python-test: ## Run Python tests (first install requirements-dev.txt in your environment)
-	@python3 -c 'import jsonschema, yaml' || { echo 'missing Python test deps: python3 -m pip install -r requirements-dev.txt' >&2; exit 2; }
+python-test: ## Run maintained Python tests
+	@python3 -c 'import jsonschema, yaml, pytest' || { echo 'missing Python test deps: python3 -m pip install -r requirements-dev.txt' >&2; exit 2; }
 	@set -e; for test_file in tests/test_*.py; do python3 "$$test_file"; done
 
 check: ## Run Rust compile checks
 	cargo check
 
-ci: ## Run L2 integration suite
+ci: ## Run the current integration suite
 	bash ci/l2-integration.sh
 
-e2e: ## Run harness-style end-to-end flow
-	bash ci/harness-e2e.sh
+site-build: ## Build the production-form local website
+	./web/onboarding/build.sh
+
+site-serve: ## Build and serve the site on http://127.0.0.1:4173
+	./web/onboarding/serve-local.sh 4173
 
 status: ## Show concise git status
 	git status --short
-
-# Repo root + E2E paths, independent of the caller's CWD.
-REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-E2E_COMPOSE := $(REPO_ROOT)/fixtures/e2e/compose.yaml
-
-e2e-build-base: ## Compile ouro + build the shared E2E base image (ouro-e2e-base:local)
-	docker build -f "$(REPO_ROOT)/fixtures/e2e/Dockerfile.base" -t ouro-e2e-base:local "$(REPO_ROOT)"
-
-e2e-bed-up: e2e-build-base ## Build + start the S0015 E2E container bed (waits for healthy)
-	docker compose -f "$(E2E_COMPOSE)" up -d --build --wait
-
-e2e-provision: ## Provision SSH keys/creds/spec into the running bed (run after e2e-bed-up)
-	bash "$(REPO_ROOT)/fixtures/e2e/provision.sh"
-
-e2e-t2: e2e-build-base ## Run the deterministic T2 container E2E suite (build, up, provision, assert, teardown)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2.sh"
-
-e2e-t2-node: e2e-build-base ## Run the T2 REAL-node status E2E (p2-2: live cardano-cli query tip over dispatch)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-node.sh"
-
-e2e-t2-kes: e2e-build-base ## Run the T2 REAL KES rotation E2E (p2-3: opcert issuance + counter + forging ground-truth)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-kes.sh"
-
-e2e-bed-down: ## Tear down the S0015 E2E bed (incl. volumes/networks)
-	docker compose -f "$(E2E_COMPOSE)" down -v --remove-orphans
-
-e2e-t2-secrets: e2e-build-base ## Run the T2 secret-leak scanner E2E (p2-4: fingerprint corpus, canary + 0-hit)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-secrets.sh"
-
-e2e-t2-takeover: e2e-build-base ## Run the T2 legacy-takeover E2E (p2-7: real takeover, key preservation, rollback-safe)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-takeover.sh"
-
-e2e-t2-observability: e2e-build-base ## Run the T2 observability basic-auth E2E (p2-8: authed 200 / unauth 401 / no leak)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-observability.sh"
-
-e2e-t2-upgrade: e2e-build-base ## Run the T2 rolling-upgrade E2E (p2-5: BP-last, quorum, lock, verify-stop)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-upgrade.sh"
-
-e2e-t3: e2e-build-base ## Run the T3 agent-harness E2E (p3: scenarios + mechanical 5-invariant asserter, N>=3)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t3.sh"
-
-e2e-t2-runtime: e2e-build-base ## Run the T2 REAL runtime E2E (restart/topology-apply/verify against the live node)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-runtime.sh"
-
-e2e-t2-runtime-modes: ## Run the T2 supervision-mode E2E (p2-9: detect + systemctl-restart against a REAL systemd host)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-runtime-modes.sh"
-
-e2e-t2-init: ## Run the T2 init E2E (p1-2: provision a BARE box -> constrained target -> confined ouro-exec dispatch)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-init.sh"
-
-e2e-t2-coldsign: ## Run the T2 REAL KES cold-signing roundtrip E2E (p4-1: generated script -> valid opcert, cold.skey never moves)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-coldsign.sh"
-
-e2e-t2-offline-rotation: ## Run the T2 REAL offline KES rotation E2E (p4-6: generate-offline -> cold-sign -> push-offline, counter advances + node forges)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-offline-rotation.sh"
-
-e2e-t2-register: ## Run the T2 REAL pool-registration cold-sign E2E (p4-2: build-unsigned -> cold-sign -> submit, 2nd pool lands on chain)
-	bash "$(REPO_ROOT)/fixtures/e2e/e2e-t2-register.sh"
-
-accept: ## Automated acceptance: fast tests + full docker E2E suite, with apt-retry + a PASS/FAIL summary
-	bash "$(REPO_ROOT)/fixtures/e2e/accept.sh"
-
-e2e-clean: ## Remove ALL S0015 test artifacts (containers, our images, build cache, /tmp); preserves your pre-existing images
-	bash "$(REPO_ROOT)/fixtures/e2e/clean.sh"

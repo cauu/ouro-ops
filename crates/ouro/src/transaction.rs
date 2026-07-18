@@ -2,7 +2,7 @@
 //!
 //! A managed write is a state machine whose every transition is fsync'd to a target-local journal
 //! BEFORE its side effect is observable, so a crash at any point is recoverable. A recovery pass
-//! runs at the start of every `tool run` and reconciles an interrupted transaction before any new
+//! runs at the start of every typed write and reconciles an interrupted transaction before any new
 //! write. Each phase is idempotent / CAS-guarded so recovery can re-drive it. A failed or
 //! unverifiable rollback writes a durable WRITE-SEAL; further writes refuse until an explicit
 //! operator recovery clears it.
@@ -290,7 +290,7 @@ fn rollback_to_terminal(
     }
 }
 
-/// Recovery pass — run at the START of every `tool run` before any new write. Reconciles an
+/// Recovery pass — run at the START of every typed write before any new write. Reconciles an
 /// interrupted transaction from the journal: re-drive verify (and rollback on failure), re-run an
 /// idempotent rollback, or leave a seal in place. Returns the terminal state (or None if clean).
 pub fn recover(

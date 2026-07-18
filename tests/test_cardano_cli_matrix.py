@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""S0017 p4-5 — cardano-cli version pin + era-discipline golden gate.
+"""Current fixed cold-signing scripts preserve cardano-cli era discipline.
 
 The cold-sign / registration flows separate the cardano-cli VERSION from the ledger ERA:
   * KES opcert commands are era-NEUTRAL — `node issue-op-cert` / `node key-gen-KES` are NEVER
@@ -8,8 +8,7 @@ The cold-sign / registration flows separate the cardano-cli VERSION from the led
     certificate builders always carry the era (the tx/cert format DOES depend on it).
 
 This gate freezes that discipline so a future edit cannot silently add an era to an opcert command
-(or drop it from a tx command) and desync from the validated cardano-cli line. It also asserts the
-read-only version probe pins a supported floor + a validated reference version. Fast, standalone:
+or drop it from a transaction witness.
 
     python3 tests/test_cardano_cli_matrix.py
 """
@@ -19,7 +18,6 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SK = ROOT / "ouro-skills"
 KES_VKEY = ROOT / "tests/fixtures/kes/kes-vkey-public.json"
 TXBODY = ROOT / "tests/fixtures/deploy/tx-body-unsigned.json"
 
@@ -50,20 +48,14 @@ def no_era_prefix(text, cmd):
 def main():
     binary = ouro_bin()
 
-    # 1. version probe pins a supported floor + a validated reference version.
-    probe = (SK / "detect/scripts/cardano-cli.sh").read_text()
-    check("SUPPORTED_MAJOR_MIN=" in probe, "detect/cardano-cli must pin SUPPORTED_MAJOR_MIN")
-    check(re.search(r'VALIDATED_VERSION="\d+\.\d+\.\d+', probe) is not None,
-          "detect/cardano-cli must record a VALIDATED_VERSION")
-
-    # 2. KES cold-sign script: era-NEUTRAL issue-op-cert.
+    # KES cold-sign script: era-neutral issue-op-cert.
     kes = subprocess.run([binary, "kes", "cold-sign-script", "--kes-vkey", str(KES_VKEY),
                           "--kes-period", "10"], cwd=ROOT, capture_output=True, text=True).stdout
     check("node issue-op-cert" in kes, "kes cold-sign must call `node issue-op-cert`")
     for cmd in ERA_NEUTRAL:
         check(no_era_prefix(kes, cmd), f"kes cold-sign wrongly era-prefixes `{cmd}`")
 
-    # 3. deploy cold-sign script: era-SCOPED transaction witness.
+    # Deploy cold-sign script: era-scoped transaction witness.
     dep = subprocess.run([binary, "deploy", "cold-sign-script", "--tx-body", str(TXBODY),
                           "--cold-key", "cold", "--testnet-magic", "1"],
                          cwd=ROOT, capture_output=True, text=True).stdout
@@ -72,28 +64,12 @@ def main():
     check(re.search(r'\btransaction\s+witness', dep) and "conway transaction witness" in dep,
           "deploy cold-sign transaction witness must be era-scoped")
 
-    # 4. committed KES L2 scripts keep the opcert commands era-neutral.
-    for rel in ("kes-rotation/scripts/rotate.sh",
-                "kes-rotation/scripts/generate-offline.sh",
-                "kes-rotation/scripts/push-offline.sh"):
-        t = (SK / rel).read_text()
-        for cmd in ERA_NEUTRAL:
-            check(no_era_prefix(t, cmd), f"{rel} wrongly era-prefixes `{cmd}`")
-
-    # 5. the registration builder keeps tx/cert commands era-scoped (conway).
-    rb = (SK / "deploy/scripts/register-build.sh").read_text()
-    # register-build pins the era in its cardano-cli prefix; the binary now routes through the
-    # managed-mode adapter (S0017 p5-1), so the array is `(ouro_cardano_cli conway)`.
-    check('CLI=(ouro_cardano_cli conway)' in rb, "register-build must pin the era via the adapter prefix")
-    check("transaction build" in rb and "registration-certificate" in rb,
-          "register-build must build the tx + registration certs")
-
     if failures:
         print("FAIL — cardano-cli era/version gate:")
         for f in failures:
             print(f"  - {f}")
         sys.exit(1)
-    print("PASS — cardano-cli era/version gate: opcert era-neutral, tx era-scoped, version pinned")
+    print("PASS — cardano-cli era gate: opcert era-neutral, transaction witness era-scoped")
 
 
 if __name__ == "__main__":

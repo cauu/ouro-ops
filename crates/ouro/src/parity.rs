@@ -1,8 +1,8 @@
-//! S0019 p2-4 (§2.8) — executor identity / anti-downgrade parity, and legacy-write disablement.
+//! Executor identity and anti-downgrade parity for typed target operations.
 //!
 //! The attestation binds the node image; §2.8 additionally binds the SECURITY-DECIDING code: the
 //! ouro-ops build id, the executor/registry/intent-schema digests, and a minimum security version.
-//! `tool run` requires control↔target parity (same security identity family) BEFORE accepting an
+//! Typed operations require control↔target parity (same security identity family) before accepting an
 //! intent, and refuses a target below the minimum security version — so an attested node cannot run
 //! an older/mutable validator under weaker rules while the node fingerprint still matches. All
 //! legacy S0017 write entry points are refused unless migrated into the deny-by-default registry.
@@ -39,20 +39,28 @@ impl SecurityIdentity {
     pub fn wire_digest(&self) -> String {
         let material = format!(
             "{}\n{}\n{}\n{}\n{}.{}.{}",
-            self.build_id, self.executor_digest, self.intent_schema_version, self.registry_len,
-            self.min_security_version.0, self.min_security_version.1, self.min_security_version.2
+            self.build_id,
+            self.executor_digest,
+            self.intent_schema_version,
+            self.registry_len,
+            self.min_security_version.0,
+            self.min_security_version.1,
+            self.min_security_version.2
         );
         sha256(material.as_bytes())
     }
 }
 
 fn sha256(bytes: &[u8]) -> String {
-    Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 /// Digest security-deciding Rust source together with embedded execution assets. `include_str!` makes
 /// builds from the same source portable across control/target platforms while detecting stale code.
-fn security_sources() -> [(&'static str, &'static str); 38] {
+fn security_sources() -> [(&'static str, &'static str); 37] {
     [
         ("attestation.rs", include_str!("attestation.rs")),
         ("audit.rs", include_str!("audit.rs")),
@@ -82,11 +90,13 @@ fn security_sources() -> [(&'static str, &'static str); 38] {
         ("readiness.rs", include_str!("readiness.rs")),
         ("render.rs", include_str!("render.rs")),
         ("s0019_cli.rs", include_str!("s0019_cli.rs")),
-        ("s0019_confirmation.rs", include_str!("s0019_confirmation.rs")),
+        (
+            "s0019_confirmation.rs",
+            include_str!("s0019_confirmation.rs"),
+        ),
         ("secrets.rs", include_str!("secrets.rs")),
         ("assets.rs", include_str!("assets.rs")),
         ("ssh.rs", include_str!("ssh.rs")),
-        ("state.rs", include_str!("state.rs")),
         ("status.rs", include_str!("status.rs")),
         ("supervisor.rs", include_str!("supervisor.rs")),
         ("transaction.rs", include_str!("transaction.rs")),
@@ -115,15 +125,48 @@ mod identity_tests {
     #[test]
     fn security_identity_source_set_is_explicit_and_complete() {
         let names = security_sources().map(|(name, _)| name);
-        assert_eq!(names, [
-            "attestation.rs", "audit.rs", "bootstrap.rs", "cli.rs", "cold_sign.rs", "config.rs",
-            "confirm.rs", "convention.rs", "dispatch.rs", "domain.rs", "error.rs", "executor.rs",
-            "fleet.rs", "gate.rs", "inbox.rs", "intent.rs", "kes.rs", "lib.rs", "main.rs",
-            "migration.rs", "onboard.rs", "output.rs", "parity.rs", "pool.rs", "provision.rs",
-            "readiness.rs", "render.rs", "s0019_cli.rs", "s0019_confirmation.rs", "secrets.rs",
-            "assets.rs", "ssh.rs", "state.rs", "status.rs", "supervisor.rs", "transaction.rs",
-            "upgrade.rs", "version.rs",
-        ]);
+        assert_eq!(
+            names,
+            [
+                "attestation.rs",
+                "audit.rs",
+                "bootstrap.rs",
+                "cli.rs",
+                "cold_sign.rs",
+                "config.rs",
+                "confirm.rs",
+                "convention.rs",
+                "dispatch.rs",
+                "domain.rs",
+                "error.rs",
+                "executor.rs",
+                "fleet.rs",
+                "gate.rs",
+                "inbox.rs",
+                "intent.rs",
+                "kes.rs",
+                "lib.rs",
+                "main.rs",
+                "migration.rs",
+                "onboard.rs",
+                "output.rs",
+                "parity.rs",
+                "pool.rs",
+                "provision.rs",
+                "readiness.rs",
+                "render.rs",
+                "s0019_cli.rs",
+                "s0019_confirmation.rs",
+                "secrets.rs",
+                "assets.rs",
+                "ssh.rs",
+                "status.rs",
+                "supervisor.rs",
+                "transaction.rs",
+                "upgrade.rs",
+                "version.rs",
+            ]
+        );
     }
 }
 

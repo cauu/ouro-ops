@@ -143,7 +143,7 @@ pub fn parse_ttl(value: &str) -> Result<Duration> {
 }
 
 /// Load (or lazily create) the per-home signing secret used to bind an
-/// `ouro-ops tool run` invocation to its audit context. The file is created `0600` so
+/// typed operation invocation to its audit context. The file is created `0600` so
 /// only the executing user can read it; a diagnostic principal without read access
 /// to it cannot forge a valid invocation token.
 pub fn load_or_create_secret(path: &Path) -> Result<String> {
@@ -170,8 +170,8 @@ pub fn load_or_create_secret(path: &Path) -> Result<String> {
 
 /// Signed token binding an audit invocation id to the local signing secret. It is a
 /// keyed MAC (HMAC-SHA256, secret = key, audit id = message), injected into
-/// `ouro-ops tool run` child scripts as `OURO_INVOCATION_TOKEN`; the scripts verify it
-/// (via `ouro-ops tool verify-context`), so a fabricated `OURO_AUDIT_ID` env var alone
+/// operation context as `OURO_INVOCATION_TOKEN`; the executor verifies it, so a fabricated
+/// `OURO_AUDIT_ID` env var alone
 /// cannot satisfy the L2 write gate. Bound to the audit id only (not the tool name)
 /// so an orchestrator batch that re-labels `OURO_TOOL_NAME` for sub-steps keeps a
 /// valid token.

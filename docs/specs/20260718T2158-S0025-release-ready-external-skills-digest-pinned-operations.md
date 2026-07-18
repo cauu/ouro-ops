@@ -255,7 +255,7 @@ a concrete defect.
   local HTTP acceptance service
 - [x] p2-2 remove `SKILL.md` build inputs and `skill list/show`; isolate only runner/probe/schema/
   policy execution assets and generic version/hash utilities
-- [ ] p2-3 remove the public legacy `tool run`/script path and obsolete-only parity gates when p1-1
+- [x] p2-3 remove the public legacy `tool run`/script path and obsolete-only parity gates when p1-1
   finds no production consumer; if one exists, obtain and implement the user's explicit disposition
   before completing this item
 - [ ] p3-1 add the pure `contract check` preflight and update all six Skills to invoke it exactly once
@@ -391,6 +391,13 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   `SKILL.md` and directory-wide Skill rebuild triggers are absent, the public `skill` route/help is
   removed, and probe/schema/runner consumers plus the transitional legacy script executor still
   compile pending its dedicated p2-3 removal.
+- 2026-07-18 p2-3 started: deleting the unconsumed public legacy script executor, resident-target
+  dispatch wrapper/parity path, embedded script pack and obsolete-only CI fixtures while retaining
+  shared code reached by current typed operations.
+- 2026-07-18 p2-3 completed: the public `tool`/`init`/`deinit` routes, script resolver/extractor,
+  legacy SSH wrapper dispatch, old provisioning recipe, embedded shell pack, and obsolete-only E2E
+  fixtures are removed. Current onboarding cleanup, typed operations, probe/schema assets, durable
+  transactions, confirmation, and target parity remain reachable and covered.
 
 ## 6. Validation Evidence (append-only)
 
@@ -421,6 +428,17 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
 - TC-14 | stack: rust | command: `cargo test -q -p ouro --lib` | result: pass | note: 187 runner,
   probe, schema, transport, policy, confirmation and typed-mechanism unit tests pass after the asset
   boundary change
+- TC-5, TC-7 | stack: rust+python | command: external-boundary source/CLI assertions plus searches
+  for legacy routes, resolvers, wrappers and embedded scripts | result: pass | note: `tool` is an
+  unknown command, no executable legacy script path remains, and the only wrapper-name references
+  are explicit negative assertions or current onboarding removal of an old installed artifact
+- TC-14 | stack: rust | command: `cargo test -q -p ouro --lib` | result: pass | note: 168 current
+  typed-operation, transport, probe, schema, confirmation, transaction and policy tests pass after
+  obsolete-only modules and fixtures are retired
+- TC-22 | stack: python+ui | command: `make python-test && python3 -m pytest -q
+  tests/test_web_generator.py tests/test_external_skill_boundary.py && git diff --check` | result:
+  pass | note: all current direct Python gates and 9 pytest website/boundary cases pass; unrelated
+  `pool-spec.yaml` remains untracked
 
 ## 7. Change Requests (append-only)
 

@@ -540,15 +540,14 @@ upgrade:
     assert "Permission denied" in transport_result["error"]["detail"], transport_result
     assert len(transport_result["error"]["detail"]) < 4096, transport_result
 
-    # Standalone S0017 detection is retired before local execution or legacy dispatch can produce
+    # The entire S0017 tool family is absent before local execution or legacy dispatch can produce
     # control-host facts under a target machine id.
     for detect_args in (
         ["tool", "run", "detect/runtime", "--machine", "bp1"],
         ["tool", "run", "detect/runtime", "--dispatch", "bp1", "--spec", "pool-spec.yaml"],
     ):
         _, retired = run(home, *detect_args)
-        assert retired["status"] == "error" and "retired in S0019" in json.dumps(retired), retired
-        assert "--spec <pool-spec>" in json.dumps(retired), retired
+        assert retired["status"] == "error" and "unknown command tool" in json.dumps(retired), retired
 
     # Nested agent-facing help must be discoverable without supplying the operation's required
     # arguments first.

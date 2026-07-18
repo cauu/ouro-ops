@@ -3,9 +3,9 @@
 
 P0-1 (user decision): the bootstrap credential is NOT mechanism-isolated from the agent; the only
 retained, non-defensive obligation is to say so honestly in every operator-facing place — the
-`ouro-ops init` output, the spec, and the packaging docs — and to NEVER claim it IS isolated.
+legacy onboarding output and packaging docs — and to NEVER claim it IS isolated.
 
-This gate freezes that: the honest note is present in the init output + packaging, and no doc
+This gate freezes that: the honest note is present in onboarding output + packaging, and no doc
 makes the false positive claim. Fast, standalone: `python3 tests/test_honest_labeling.py`.
 """
 import re
@@ -25,8 +25,8 @@ def main():
     cli = (ROOT / "crates/ouro/src/cli.rs").read_text()
     rel = (ROOT / "packaging/RELEASE.md").read_text()
 
-    # 1. present in the init output (security_note) and the packaging docs.
-    check(HONEST in cli, "ouro-ops init security_note must carry the honest convenience-mode label")
+    # 1. present in legacy onboarding output (security_note) and the packaging docs.
+    check(HONEST in cli, "legacy onboarding security_note must carry the honest convenience-mode label")
     check(HONEST in rel, "packaging/RELEASE.md must carry the honest convenience-mode label")
 
     # 2. no FALSE positive claim of isolation. Check at SENTENCE granularity: any sentence that
@@ -45,7 +45,7 @@ def main():
         for f in failures:
             print(f"  - {f}")
         sys.exit(1)
-    print("PASS — honest-labeling gate: convenience-mode note present (init + packaging), no false isolation claim")
+    print("PASS — honest-labeling gate: convenience-mode note present (onboarding + packaging), no false isolation claim")
 
 
 if __name__ == "__main__":
