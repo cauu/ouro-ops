@@ -87,14 +87,14 @@ def main():
         assert phrase in kes, f"KES Skill lacks Phase A/B contract {phrase!r}"
     assert "ouro-ops kes push" not in kes, "KES Skill still directs the agent to legacy kes push"
     upgrade = (ROOT / "ouro-skills/upgrade/SKILL.md").read_text()
-    assert "ouro-ops inbox preview" in " ".join(upgrade.split())
-    assert "--artifact-file <operator-named-docker-save.tar>" in " ".join(upgrade.split())
+    assert "ouro-ops inbox preview" not in " ".join(upgrade.split())
+    assert "--artifact-file" not in " ".join(upgrade.split())
     assert "upgrade/preload-image" in upgrade
     assert "ouro-ops release select --platform linux/amd64" in " ".join(upgrade.split())
     assert "never has to maintain a local allowlist file" in " ".join(upgrade.split())
-    assert "archive↔config↔signed-policy evidence" not in upgrade
-    assert "archive↔config binding is still pending" in " ".join(upgrade.split())
-    assert "before any image-store mutation" in " ".join(upgrade.split())
+    assert "ghcr.io/blinklabs-io/cardano-node@sha256:<platform-manifest>" in upgrade
+    assert "planning performed no pull or mutation" in " ".join(upgrade.split())
+    assert "active-container invariance" in " ".join(upgrade.split())
     normalized_upgrade = " ".join(upgrade.split())
     for phrase in [
         "ONE Upgrade workflow",

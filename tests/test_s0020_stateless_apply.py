@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """S0020 p2-2 — approved stateless applies revalidate before sealed fake mutations."""
 
-import hashlib
-import io
 import json
+import hashlib
 import os
 import socket
 import subprocess
-import tarfile
 import tempfile
 import threading
 import time
@@ -58,38 +56,6 @@ def target_fleet_permit(candidate, port, expiry):
             "signature": "0" * 64,
         },
         separators=(",", ":"),
-    )
-
-
-def docker_save(path):
-    config = b'{"rootfs":{"type":"layers","diff_ids":[]}}'
-    config_digest = hashlib.sha256(config).hexdigest()
-    manifest = json.dumps(
-        [
-            {
-                "Config": f"{config_digest}.json",
-                "RepoTags": None,
-                "Layers": ["layer/layer.tar"],
-            }
-        ],
-        separators=(",", ":"),
-    ).encode()
-    with tarfile.open(path, "w") as archive:
-        for name, payload in (
-            (f"{config_digest}.json", config),
-            ("layer/layer.tar", b"layer"),
-            ("manifest.json", manifest),
-        ):
-            info = tarfile.TarInfo(name)
-            info.size = len(payload)
-            info.mode = 0o600
-            archive.addfile(info, io.BytesIO(payload))
-    payload = path.read_bytes()
-    artifact_digest = hashlib.sha256(payload).hexdigest()
-    return (
-        f"sha256:{config_digest}",
-        f"image-{artifact_digest[:8]}@sha256:{artifact_digest}",
-        payload,
     )
 
 
@@ -401,11 +367,10 @@ def main():
     assert status_value["data"]["online"] is False
     write_probe(probe, observation())
 
-    # Build a domain-valid, tag-free Docker-save artifact. Preload is intentionally non-disruptive,
-    # so it lets this test prove the whole control approval/payload transport chain without a fleet
-    # permit or any real target mutation.
-    image_path = home / "image.tar"
-    _, artifact_ref, artifact_bytes = docker_save(image_path)
+    # Image preparation is non-disruptive but never accepts a payload. A stray payload must be
+    # rejected before Docker, proving the image archive transport path is gone.
+    stray_image_payload = home / "image.tar"
+    stray_image_payload.write_bytes(b"operator image bytes are forbidden")
     allowed = json.loads((ROOT / "data/allowlist.json").read_text())["contracts"][0]["allowed"]
     target_image = next(
         image["image_config_digest"]
@@ -421,8 +386,6 @@ def main():
         "--param",
         "machine=bp1",
         "--param",
-        f"artifact={artifact_ref}",
-        "--param",
         f"image={target_image}",
     )
 
@@ -434,16 +397,14 @@ def main():
             "--param",
             "machine=bp1",
             "--param",
-            f"artifact={artifact_ref}",
-            "--param",
             f"image={target_image}",
         ),
-        env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(image_path)},
+        env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(stray_image_payload)},
         path=fakebin,
     )
     assert target_preload.returncode != 0
-    assert "differs from approved" in json.dumps(target_preload_value), target_preload_value
-    assert not docker_log.exists(), "artifact domain mismatch must precede docker load"
+    assert "does not accept an ephemeral artifact" in json.dumps(target_preload_value), target_preload_value
+    assert not docker_log.exists(), "forbidden image payload must be refused before Docker"
 
     pool_spec = home / "pool-spec.yaml"
     pool_spec.write_text(
@@ -608,8 +569,6 @@ upgrade:
         "--param",
         "machine=bp1",
         "--param",
-        f"artifact={artifact_ref}",
-        "--param",
         f"image={target_image}",
         "--dispatch",
         "192.0.2.1",
@@ -619,8 +578,6 @@ upgrade:
         str(pool_spec),
         "--candidate-hash",
         preload_candidate,
-        "--artifact-file",
-        str(image_path),
     )
 
     missing, missing_value = invoke(
@@ -629,15 +586,17 @@ upgrade:
     assert missing.returncode != 0 and "missing --confirm-token" in json.dumps(missing_value)
     assert not ssh_count.exists(), "missing approval must not open SSH"
 
-    bad_ref_args = list(base_control)
-    bad_ref_args[bad_ref_args.index(f"artifact={artifact_ref}")] = (
-        "artifact=image-00000000@sha256:" + "0" * 64
+    forbidden_archive, forbidden_archive_value = invoke(
+        home,
+        *base_control,
+        "--artifact-file",
+        str(stray_image_payload),
+        env_extra=control_env,
+        path=fakebin,
     )
-    mismatch, mismatch_value = invoke(
-        home, *bad_ref_args, env_extra=control_env, path=fakebin
-    )
-    assert mismatch.returncode != 0 and "do not match" in json.dumps(mismatch_value)
-    assert not ssh_count.exists(), "artifact mismatch must not open SSH"
+    assert forbidden_archive.returncode != 0
+    assert "accepted only for KES install or Deploy submit" in json.dumps(forbidden_archive_value)
+    assert not ssh_count.exists(), "forbidden image archive must not open SSH"
 
     confirmed, confirmation_value = invoke(
         home,
@@ -662,12 +621,12 @@ upgrade:
         path=fakebin,
     )
     assert control_apply.returncode == 0 and control_value["tool"] == "ouro.op.apply"
-    assert stream.read_bytes() == runner_bytes + artifact_bytes
+    assert stream.read_bytes() == runner_bytes
     remote = ssh_args.read_text()
     assert "'target' 'apply'" in remote
     assert f"'--approved-candidate' '{preload_candidate}'" in remote
-    assert str(image_path) not in remote and "/usr/local/bin/ouro-ops" not in remote
-    assert "ouro-op-run" not in remote and "OURO_EPHEMERAL_PAYLOAD" in remote
+    assert str(stray_image_payload) not in remote and "/usr/local/bin/ouro-ops" not in remote
+    assert "ouro-op-run" not in remote and "OURO_EPHEMERAL_PAYLOAD" not in remote
     assert ssh_count.read_text().splitlines() == ["1"]
     audit_events = [json.loads(line) for line in (home / "s0019-audit.jsonl").read_text().splitlines()]
     apply_events = [

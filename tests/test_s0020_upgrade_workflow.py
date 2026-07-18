@@ -4,12 +4,10 @@
 import copy
 import hashlib
 import hmac
-import io
 import json
 import os
 import socket
 import subprocess
-import tarfile
 import tempfile
 import threading
 import time
@@ -22,33 +20,13 @@ from test_s0020_stateless_plan import BIN, GENESIS, ROOT, invoke, observation, t
 TEST_KEY = "s0020-upgrade-workflow-key"
 
 
-def make_archive(path, configs):
-    manifests = []
-    entries = []
-    for index, config in enumerate(configs):
-        digest = hashlib.sha256(config).hexdigest()
-        layer = f"layer-{index}/layer.tar"
-        manifests.append(
-            {"Config": f"{digest}.json", "RepoTags": None, "Layers": [layer]}
-        )
-        entries.extend(((f"{digest}.json", config), (layer, f"layer-{index}".encode())))
-    entries.append(("manifest.json", json.dumps(manifests, separators=(",", ":")).encode()))
-    with tarfile.open(path, "w") as archive:
-        for name, payload in entries:
-            info = tarfile.TarInfo(name)
-            info.size = len(payload)
-            info.mode = 0o600
-            archive.addfile(info, io.BytesIO(payload))
-    payload = path.read_bytes()
-    digest = hashlib.sha256(payload).hexdigest()
-    return (
-        [f"sha256:{hashlib.sha256(config).hexdigest()}" for config in configs],
-        f"image-{digest[:8]}@sha256:{digest}",
-        payload,
-    )
-
-
-def write_allowlist(path, old_image, target_image, backward_compatible):
+def write_allowlist(
+    path,
+    old_image,
+    target_image,
+    backward_compatible,
+    repository="ghcr.io/blinklabs-io/cardano-node",
+):
     paths = {
         "socket": "/ipc/node.socket",
         "db": "/data/db",
@@ -78,6 +56,7 @@ def write_allowlist(path, old_image, target_image, backward_compatible):
     document = {
         "allowlist_version": 77,
         "signature": "pending",
+        "repository": repository,
         "recommended": {"linux/amd64": target_image},
         "contracts": [
             {
@@ -107,15 +86,29 @@ def write_allowlist(path, old_image, target_image, backward_compatible):
     path.write_text(json.dumps(document, separators=(",", ":")))
 
 
-def reset_state(path, old_image, target_image, *, target_present, fail_readiness=False,
-                fail_present_once=False):
+def reset_state(
+    path,
+    old_image,
+    target_image,
+    *,
+    target_present,
+    fail_readiness=False,
+    inspect_config=None,
+    inspect_platform="linux/amd64",
+    inspect_repository="ghcr.io/blinklabs-io/cardano-node",
+    inspect_manifest=None,
+    pull_fail=False,
+):
     path.write_text(
         json.dumps(
             {
                 "target": target_image,
                 "images": [target_image] if target_present else [],
-                "loaded": False,
-                "fail_present_once": fail_present_once,
+                "inspect_config": inspect_config or target_image,
+                "inspect_platform": inspect_platform,
+                "inspect_repository": inspect_repository,
+                "inspect_manifest": inspect_manifest or "sha256:" + "4" * 64,
+                "pull_fail": pull_fail,
                 "fail_readiness": fail_readiness,
                 "current": {"id": "cid-old", "image": old_image, "epoch": 1234},
                 "previous": None,
@@ -169,15 +162,17 @@ def write_sealed_runtime(home, old_image, target_image):
         " open(state_path,'w').write(json.dumps(state,separators=(',',':')))\n"
         "target=state['target']\n"
         "if args[:2]==['image','inspect']:\n"
-        " if target in state['images']:\n"
-        "  if state['loaded'] and state['fail_present_once']:\n"
-        "   state['fail_present_once']=False; save(); print('No such image',file=sys.stderr); raise SystemExit(1)\n"
-        "  print(target); raise SystemExit(0)\n"
-        " print('No such image',file=sys.stderr); raise SystemExit(1)\n"
-        "if args[:2]==['load','--input']:\n"
-        " state['images']=sorted(set(state['images']+[target])); state['loaded']=True; save(); print('Loaded'); raise SystemExit(0)\n"
-        "if args[:2]==['image','rm']:\n"
-        " state['images']=[item for item in state['images'] if item!=args[2]]; save(); raise SystemExit(0)\n"
+        " reference=args[-1]\n"
+        " if target not in state['images']:\n"
+        "  print('No such image',file=sys.stderr); raise SystemExit(1)\n"
+        " if '{{json .}}' in args:\n"
+        "  os_name,arch=state['inspect_platform'].split('/',1)\n"
+        "  manifest=state['inspect_manifest']\n"
+        "  print(json.dumps({'Id':state['inspect_config'],'RepoDigests':[state['inspect_repository']+'@'+manifest],'Os':os_name,'Architecture':arch},separators=(',',':'))); raise SystemExit(0)\n"
+        " print(target); raise SystemExit(0)\n"
+        "if args and args[0]=='pull':\n"
+        " if state['pull_fail']: print('registry unavailable',file=sys.stderr); raise SystemExit(1)\n"
+        " state['images']=sorted(set(state['images']+[target])); save(); print('Pulled'); raise SystemExit(0)\n"
         "if args and args[0]=='rename':\n"
         " if args[1]=='cid-old': state['previous']=state['current']; state['current']=None\n"
         " else: state['current']=state['previous']; state['previous']=None\n"
@@ -196,10 +191,8 @@ def write_sealed_runtime(home, old_image, target_image):
     return state, probe, fakebin
 
 
-def plan(home, env, fakebin, operation, artifact_ref, target_image):
+def plan(home, env, fakebin, operation, target_image):
     params = ["--param", "machine=bp1"]
-    if operation == "upgrade/preload-image":
-        params += ["--param", f"artifact={artifact_ref}"]
     params += ["--param", f"image={target_image}"]
     completed, value = invoke(home, *target_args(operation, *params), env_extra=env, path=fakebin)
     assert completed.returncode == 0, (completed, value)
@@ -301,11 +294,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="ouro-s0020-upgrade-") as temporary:
         home = Path(temporary)
         old_image = observation()["live"]["image_config_digest"]
-        archive = home / "target-image.tar"
-        configs, artifact_ref, artifact_bytes = make_archive(
-            archive, [b'{"rootfs":{"type":"layers","diff_ids":[]},"sealed":"target"}']
-        )
-        target_image = configs[0]
+        target_image = "sha256:" + "b" * 64
         assert target_image != old_image
         policy = home / "allowlist.json"
         write_allowlist(policy, old_image, target_image, True)
@@ -321,145 +310,134 @@ def main():
             "OURO_READINESS_SAMPLE_DELAY": "0",
         }
 
-        # Preparation success: candidate-bound bytes are deeply inspected before exactly one load;
-        # the running node identity remains unchanged and exact target presence is reported.
+        # Read-only planning exposes the signed pull tuple and never contacts the registry.
         reset_state(state, old_image, target_image, target_present=False)
-        preload_plan = plan(
-            home, env, fakebin, "upgrade/preload-image", artifact_ref, target_image
-        )
+        preload_plan = plan(home, env, fakebin, "upgrade/preload-image", target_image)
         preload_candidate = preload_plan["data"]["candidate_hash"]
+        runtime_policy = preload_plan["data"]["runtime_policy"]
+        assert runtime_policy["target_pull_reference"] == (
+            "ghcr.io/blinklabs-io/cardano-node@sha256:" + "4" * 64
+        )
+        assert runtime_policy["target_platform"] == "linux/amd64"
+        assert runtime_policy["target_image_config_digest"] == target_image
+        assert preload_plan["data"]["executor_plan"] == [[
+            "docker",
+            "pull",
+            "--platform",
+            "linux/amd64",
+            runtime_policy["target_pull_reference"],
+        ]]
+        assert not docker_log.exists(), "plan must not pull or inspect the target image store"
+
         preload_args = apply_args(
             "upgrade/preload-image",
             preload_candidate,
             "--param",
             "machine=bp1",
             "--param",
-            f"artifact={artifact_ref}",
-            "--param",
             f"image={target_image}",
         )
-        applied, applied_value = invoke(
-            home,
-            *preload_args,
-            env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(archive)},
-            path=fakebin,
-        )
+        applied, applied_value = invoke(home, *preload_args, env_extra=env, path=fakebin)
         assert applied.returncode == 0, (applied, applied_value)
-        assert applied_value["data"]["live_postcondition"] == {
-            "verification": "exact_image_config_present",
+        postcondition = applied_value["data"]["live_postcondition"]
+        assert postcondition["verification"] == "signed_exact_oci_tuple_present"
+        assert postcondition["pulled_image"] == {
+            "reference": runtime_policy["target_pull_reference"],
+            "repository": "ghcr.io/blinklabs-io/cardano-node",
+            "platform": "linux/amd64",
+            "platform_manifest_digest": "sha256:" + "4" * 64,
             "image_config_digest": target_image,
-            "running_container_unchanged": {
-                "id": "cid-old",
-                "creation_epoch": 1234,
-                "image_config_digest": old_image,
-            },
         }
+        assert postcondition["running_container_unchanged"]["id"] == "cid-old"
+        assert postcondition["running_container_unchanged"]["creation_epoch"] == 1234
+        assert postcondition["running_container_unchanged"]["image_config_digest"] == old_image
+        assert postcondition["running_container_unchanged"]["readiness"] == (
+            "passed_before_and_after_pull"
+        )
         commands = mutation_commands(docker_log)
-        assert sum(command[:2] == ["load", "--input"] for command in commands) == 1
+        assert sum(command and command[0] == "pull" for command in commands) == 1
+        assert commands[0] == [
+            "pull",
+            "--platform",
+            "linux/amd64",
+            runtime_policy["target_pull_reference"],
+        ]
         assert not any(command and command[0] in {"rename", "run", "restart"} for command in commands)
         assert json.loads(state.read_text())["current"]["id"] == "cid-old"
 
-        # Preparation rollback: an injected post-load presence failure removes only the exact target.
-        docker_log.unlink()
-        reset_state(
-            state,
+        # Pull and post-pull tuple failures refuse without touching the active container.
+        failure_cases = [
+            ({"pull_fail": True}, "exited"),
+            ({"inspect_config": "sha256:" + "c" * 64}, "config digest mismatch"),
+            ({"inspect_platform": "linux/arm64"}, "platform mismatch"),
+            ({"inspect_repository": "docker.io/untrusted/cardano-node"}, "not bound"),
+            ({"inspect_manifest": "sha256:" + "9" * 64}, "not bound"),
+        ]
+        for index, (state_options, expected_error) in enumerate(failure_cases):
+            docker_log.unlink(missing_ok=True)
+            reset_state(
+                state,
+                old_image,
+                target_image,
+                target_present=False,
+                **state_options,
+            )
+            failed, failed_value = invoke(home, *preload_args, env_extra=env, path=fakebin)
+            assert failed.returncode != 0, (index, failed_value)
+            assert expected_error in json.dumps(failed_value), (index, failed_value)
+            failed_state = json.loads(state.read_text())
+            assert failed_state["current"] == {"id": "cid-old", "image": old_image, "epoch": 1234}
+            assert not any(
+                command and command[0] in {"rename", "run", "restart"}
+                for command in mutation_commands(docker_log)
+            )
+
+        # Tags and an alternate signed repository are rejected before any pull.
+        docker_log.unlink(missing_ok=True)
+        tagged, tagged_value = invoke(
+            home,
+            *target_args(
+                "upgrade/preload-image",
+                "--param",
+                "machine=bp1",
+                "--param",
+                "image=10.5.4-1",
+            ),
+            env_extra=env,
+            path=fakebin,
+        )
+        assert tagged.returncode != 0, tagged_value
+        assert not docker_log.exists()
+
+        alternate_policy = home / "alternate-repository.json"
+        write_allowlist(
+            alternate_policy,
             old_image,
             target_image,
-            target_present=False,
-            fail_present_once=True,
+            True,
+            repository="docker.io/untrusted/cardano-node",
         )
-        failed, failed_value = invoke(
+        alternate, alternate_value = invoke(
             home,
-            *preload_args,
-            env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(archive)},
+            *target_args(
+                "upgrade/preload-image",
+                "--param",
+                "machine=bp1",
+                "--param",
+                f"image={target_image}",
+            ),
+            env_extra={**env, "OURO_RELEASES_FILE": str(alternate_policy)},
             path=fakebin,
         )
-        assert failed.returncode != 0
-        assert "live-state rollback completed" in json.dumps(failed_value)
-        failed_state = json.loads(state.read_text())
-        assert target_image not in failed_state["images"] and failed_state["current"]["id"] == "cid-old"
-        commands = mutation_commands(docker_log)
-        assert sum(command[:2] == ["load", "--input"] for command in commands) == 1
-        assert ["image", "rm", target_image] in commands
-
-        # Wrong archive config and a byte/path swap refuse before docker load.
-        wrong_archive = home / "wrong-image.tar"
-        _, wrong_ref, _ = make_archive(wrong_archive, [b'{"sealed":"wrong-config"}'])
-        docker_log.unlink()
-        reset_state(state, old_image, target_image, target_present=False)
-        wrong_plan = plan(
-            home, env, fakebin, "upgrade/preload-image", wrong_ref, target_image
-        )
-        wrong_args = apply_args(
-            "upgrade/preload-image",
-            wrong_plan["data"]["candidate_hash"],
-            "--param",
-            "machine=bp1",
-            "--param",
-            f"artifact={wrong_ref}",
-            "--param",
-            f"image={target_image}",
-        )
-        wrong, wrong_value = invoke(
-            home,
-            *wrong_args,
-            env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(wrong_archive)},
-            path=fakebin,
-        )
-        assert wrong.returncode != 0 and "differs from approved" in json.dumps(wrong_value), wrong_value
-        assert not any(command[:2] == ["load", "--input"] for command in mutation_commands(docker_log))
-
-        multi_archive = home / "multi-image.tar"
-        _, multi_ref, _ = make_archive(
-            multi_archive,
-            [
-                b'{"rootfs":{"type":"layers","diff_ids":[]},"sealed":"target"}',
-                b'{"sealed":"unexpected-second-image"}',
-            ],
-        )
-        docker_log.unlink()
-        reset_state(state, old_image, target_image, target_present=False)
-        multi_plan = plan(
-            home, env, fakebin, "upgrade/preload-image", multi_ref, target_image
-        )
-        multi_args = apply_args(
-            "upgrade/preload-image",
-            multi_plan["data"]["candidate_hash"],
-            "--param",
-            "machine=bp1",
-            "--param",
-            f"artifact={multi_ref}",
-            "--param",
-            f"image={target_image}",
-        )
-        multi, multi_value = invoke(
-            home,
-            *multi_args,
-            env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(multi_archive)},
-            path=fakebin,
-        )
-        assert multi.returncode != 0 and "exactly one image" in json.dumps(multi_value), multi_value
-        assert not any(command[:2] == ["load", "--input"] for command in mutation_commands(docker_log))
-
-        swapped = home / "swapped-image.tar"
-        swapped.write_bytes(artifact_bytes + b"\n")
-        docker_log.unlink()
-        reset_state(state, old_image, target_image, target_present=False)
-        swapped_result, swapped_value = invoke(
-            home,
-            *preload_args,
-            env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(swapped)},
-            path=fakebin,
-        )
-        assert swapped_result.returncode != 0 and "bytes do not match" in json.dumps(swapped_value)
-        assert not any(command[:2] == ["load", "--input"] for command in mutation_commands(docker_log))
+        assert alternate.returncode != 0 and "repository must be exactly" in json.dumps(alternate_value)
+        assert not docker_log.exists()
 
         # Activation success: signed transition is candidate-bound and reviewable; N is retained
         # until N+1 passes readiness, then finalized. Environment values stay redacted.
-        docker_log.unlink()
+        docker_log.unlink(missing_ok=True)
         reset_state(state, old_image, target_image, target_present=True)
-        step_plan = plan(home, env, fakebin, "upgrade/step", "", target_image)
-        repeated = plan(home, env, fakebin, "upgrade/step", "", target_image)
+        step_plan = plan(home, env, fakebin, "upgrade/step", target_image)
+        repeated = plan(home, env, fakebin, "upgrade/step", target_image)
         assert repeated["data"]["candidate_hash"] == step_plan["data"]["candidate_hash"]
         assert step_plan["data"]["upgrade_transition"]["to_image_config_digest"] == target_image
         assert step_plan["data"]["upgrade_failure_outcome"] == "verified_rollback_to_N"
@@ -478,9 +456,9 @@ def main():
         assert ["rm", "-f", "cardano-node.ouro-prev"] in commands
 
         # Backward-compatible failure restores and verifies N.
-        docker_log.unlink()
+        docker_log.unlink(missing_ok=True)
         reset_state(state, old_image, target_image, target_present=True, fail_readiness=True)
-        rollback_plan = plan(home, env, fakebin, "upgrade/step", "", target_image)
+        rollback_plan = plan(home, env, fakebin, "upgrade/step", target_image)
         rolled, rolled_value = step_apply(
             home,
             env,
@@ -500,9 +478,9 @@ def main():
         # N+1 has run. The retained prior container is recovery evidence, not permission to start N.
         backward_candidate = rollback_plan["data"]["candidate_hash"]
         write_allowlist(policy, old_image, target_image, False)
-        docker_log.unlink()
+        docker_log.unlink(missing_ok=True)
         reset_state(state, old_image, target_image, target_present=True, fail_readiness=True)
-        forward_plan = plan(home, env, fakebin, "upgrade/step", "", target_image)
+        forward_plan = plan(home, env, fakebin, "upgrade/step", target_image)
         assert forward_plan["data"]["candidate_hash"] != backward_candidate
         assert forward_plan["data"]["upgrade_failure_outcome"] == "forward_recovery_or_resync_required"
         assert forward_plan["data"]["rollback_executor_plan"] is None
@@ -526,7 +504,7 @@ def main():
         # releases retain the same Blink layout contract. Direct skips and reverse edges fail at
         # the target plan boundary before any executor can run.
         production = json.loads((ROOT / "data/releases.json").read_text())
-        assert production["allowlist_version"] == 4
+        assert production["allowlist_version"] == 5
         assert len(production["contracts"]) == 1
         assert production["contracts"][0]["convention_version"] == 1
         transitions = production["transitions"]

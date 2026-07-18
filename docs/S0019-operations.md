@@ -14,7 +14,7 @@ manual commands.
 | observability/health | read | no | managed read; no mutation, no confirm |
 | troubleshooting/snapshot | read | no | stateless role-readiness baseline; BP output requires KES/opcert evidence before reporting block-production readiness |
 | fleet/status | read | no | internal closed role/network/genesis/host-key/readiness/image/generation projection; no agent-supplied counts |
-| upgrade/preload-image | dangerous | yes | loads one staged Docker-save archive only after exact archive→config-digest→signed-allowlist binding; running node untouched |
+| upgrade/preload-image | dangerous | yes | stateless target pulls one signed exact Blink Labs GHCR manifest and proves the running node is untouched |
 | upgrade/step | dangerous | yes | one N→N+1 step to an exact preloaded image config digest |
 
 Disruptive operations bind the final plan to the stable pool id, exact pool-spec revision and
@@ -22,12 +22,12 @@ minimum-online-relay policy. After exact approval, confirmation is minted; a tar
 snapshot permit is minted last, expires after 30 seconds, and is used immediately without replanning.
 Plan rejects both permit and confirmation capabilities.
 
-Upgrade image ingress is a separate non-disruptive managed write: `inbox stage --type image`
-content-addresses the operator-named Docker-save archive, then `upgrade/preload-image` proves it has
-exactly one config matching the approved allowlisted digest and that the digest was absent before
-`docker load`. It verifies the exact digest afterward and has a fixed image-removal rollback; it
-does not receive a fleet permit because it never restarts or recreates the running node. Only after
-that succeeds may `upgrade/step` enter the permit-last disruptive flow.
+Upgrade image preparation is a separate non-disruptive stateless write. After exact approval,
+`upgrade/preload-image` makes the target runtime pull the signed
+`ghcr.io/blinklabs-io/cardano-node@<platform-manifest-digest>` and verifies repository, platform and
+config digest. Ouro never hosts or transports image bytes. The operation receives no fleet permit
+because it proves the active container is unchanged. Only after that succeeds may `upgrade/step`
+enter the permit-last disruptive flow.
 
 ## Retired (S0017 tools NOT carried into S0019; disabled by §2.8)
 - config/render — retired until a closed config artifact and real sealed renderer exist; a restart is not rendering.

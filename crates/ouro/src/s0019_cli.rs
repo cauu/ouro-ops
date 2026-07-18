@@ -98,8 +98,8 @@ pub fn run_inbox(args: &[String]) -> Result<()> {
     let action = args.first().map(String::as_str);
     if !matches!(action, Some("preview" | "stage")) {
         return Err(OuroError::InvalidArgs(
-            "expected: ouro-ops inbox preview --type <opcert|tx|image> --file <path> | \
-             ouro-ops inbox stage --type <opcert|tx|image> \
+            "expected: ouro-ops inbox preview --type <opcert|tx> --file <path> | \
+             ouro-ops inbox stage --type <opcert|tx> \
              (--file <path> [--dispatch <host>] | --stdin --local)"
                 .into(),
         ));
@@ -110,9 +110,8 @@ pub fn run_inbox(args: &[String]) -> Result<()> {
         let kind = match flag(args, "--type")? {
             "opcert" => crate::inbox::ArtifactType::Opcert,
             "tx" => crate::inbox::ArtifactType::Tx,
-            "image" => crate::inbox::ArtifactType::Image,
             other => return Err(OuroError::Validation(format!(
-                "--type must be opcert|tx|image, got {other}"
+                "--type must be opcert|tx, got {other}"
             ))),
         };
         let file = flag(args, "--file")?;
@@ -136,8 +135,7 @@ pub fn run_inbox(args: &[String]) -> Result<()> {
     let kind = match flag(args, "--type")? {
         "opcert" => crate::inbox::ArtifactType::Opcert,
         "tx" => crate::inbox::ArtifactType::Tx,
-        "image" => crate::inbox::ArtifactType::Image,
-        other => return Err(OuroError::Validation(format!("--type must be opcert|tx|image, got {other}"))),
+        other => return Err(OuroError::Validation(format!("--type must be opcert|tx, got {other}"))),
     };
     let paths = ConfigPaths::discover();
     if let Some(host) = optional(args, "--dispatch") {
@@ -1784,8 +1782,10 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         review
     });
     let mut upgrade_transition = None;
+    let mut target_upgrade_image = None;
     if let Some(target) = payload.get("image").and_then(serde_json::Value::as_str) {
-        allowlist.contract_and_image_for(target, &observation.live.platform)?;
+        let (_, target_image) =
+            allowlist.contract_and_image_for(target, &observation.live.platform)?;
         match op {
             "upgrade/preload-image" | "upgrade/step" => {
                 let transition = allowlist
@@ -1796,9 +1796,8 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                     &observation.live.platform,
                 )?;
                 upgrade_transition = Some(transition.clone());
-                if op == "upgrade/preload-image" {
-                    crate::executor::require_image_absent(target)?;
-                } else {
+                target_upgrade_image = Some(target_image.clone());
+                if op == "upgrade/step" {
                     crate::executor::require_image_present(target)?;
                 }
             }
@@ -1842,6 +1841,8 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         "runtime_policy": {
             "signed_allowlist_digest": signed_allowlist_digest,
             "upgrade_transition": upgrade_transition,
+            "repository": if is_upgrade { Some(allowlist.repository.as_str()) } else { None },
+            "target_image": target_upgrade_image,
         },
     }))
     .map_err(|error| OuroError::Validation(format!("cannot bind expected state: {error}")))?;
@@ -1904,16 +1905,18 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             vec![argv]
         }
         "upgrade/preload-image" => {
-            let reference = intent
-                .payload
-                .get("artifact")
-                .and_then(serde_json::Value::as_str)
-                .ok_or_else(|| OuroError::Validation("preload plan lost artifact reference".into()))?;
+            let target_image = target_upgrade_image.as_ref().ok_or_else(|| {
+                OuroError::Validation("preload plan lost signed target OCI tuple".into())
+            })?;
             vec![vec![
                 "docker".into(),
-                "load".into(),
-                "--input".into(),
-                format!("<ephemeral-inbox:{reference}>"),
+                "pull".into(),
+                "--platform".into(),
+                target_image.platform.clone(),
+                format!(
+                    "{}@{}",
+                    allowlist.repository, target_image.platform_manifest_digest
+                ),
             ]]
         }
         "upgrade/step" => {
@@ -1996,9 +1999,18 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             "contract_id": contract.contract_id,
             "convention_version": contract.convention_version,
             "running_image_config_digest": observation.live.image_config_digest,
+            "repository": if is_upgrade { Some(allowlist.repository.as_str()) } else { None },
             "release": image.map(|value| value.release.as_str()),
             "oci_index_digest": image.map(|value| value.oci_index_digest.as_str()),
             "platform_manifest_digest": image.map(|value| value.platform_manifest_digest.as_str()),
+            "target_release": target_upgrade_image.as_ref().map(|value| value.release.as_str()),
+            "target_oci_index_digest": target_upgrade_image.as_ref().map(|value| value.oci_index_digest.as_str()),
+            "target_platform": target_upgrade_image.as_ref().map(|value| value.platform.as_str()),
+            "target_platform_manifest_digest": target_upgrade_image.as_ref().map(|value| value.platform_manifest_digest.as_str()),
+            "target_image_config_digest": target_upgrade_image.as_ref().map(|value| value.image_config_digest.as_str()),
+            "target_pull_reference": target_upgrade_image.as_ref().map(|value| format!(
+                "{}@{}", allowlist.repository, value.platform_manifest_digest
+            )),
             "release_feed_required": is_upgrade,
         },
         "pool_binding": {
@@ -2012,8 +2024,10 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         "fleet_permit_required": fleet_sensitive,
         "confirmation_required": validated.mutability == Mutability::Dangerous,
         "apply_revalidation_required": true,
-        "artifact_validation": if matches!(op, "kes-rotation/install-opcert" | "upgrade/preload-image" | "deploy/register-submit") {
+        "artifact_validation": if matches!(op, "kes-rotation/install-opcert" | "deploy/register-submit") {
             "content digest is candidate-bound; public artifact shape/domain and live compatibility are revalidated before apply"
+        } else if op == "upgrade/preload-image" {
+            "not_applicable: target pulls and verifies the signed exact OCI tuple"
         } else {
             "not_applicable"
         },
@@ -2328,11 +2342,6 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
             initial.intent.payload.get("opcert").and_then(serde_json::Value::as_str)
                 .ok_or_else(|| OuroError::Validation("KES intent lost opcert reference".into()))?,
         )),
-        "upgrade/preload-image" => Some((
-            crate::inbox::ArtifactType::Image,
-            initial.intent.payload.get("artifact").and_then(serde_json::Value::as_str)
-                .ok_or_else(|| OuroError::Validation("preload intent lost artifact reference".into()))?,
-        )),
         "deploy/register-submit" => Some((
             crate::inbox::ArtifactType::Tx,
             initial.intent.payload.get("tx").and_then(serde_json::Value::as_str)
@@ -2356,10 +2365,6 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
         }
         if initial.op == "kes-rotation/install-opcert" {
             validate_ephemeral_kes_candidate(&initial, path, expected_ref)?;
-        } else if initial.op == "upgrade/preload-image" {
-            let target = initial.intent.payload.get("image").and_then(serde_json::Value::as_str)
-                .ok_or_else(|| OuroError::Validation("preload intent lost image digest".into()))?;
-            crate::inbox::require_single_docker_config(path, target)?;
         } else {
             let policy: serde_json::Value = serde_json::from_str(flag(args, "--registration-policy")?)
                 .map_err(|error| OuroError::Validation(format!(
@@ -2620,50 +2625,46 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
             })?;
         }
         "upgrade/preload-image" => {
-            let (_, payload) = held_payload.as_ref().ok_or_else(|| {
-                OuroError::Validation("validated preload payload was not retained".into())
-            })?;
             let target = final_plan.intent.payload.get("image").and_then(serde_json::Value::as_str)
                 .ok_or_else(|| OuroError::Validation("preload image digest was lost".into()))?;
-            let rollback = || {
-                crate::executor::run_rollback_plan(
-                    "upgrade/preload-image",
-                    &[vec!["docker".into(), "image".into(), "rm".into(), target.to_string()]],
-                )?;
-                crate::executor::require_image_absent(target)
-            };
-            let commit = crate::executor::run_argv(&[
-                "docker".into(), "load".into(), "--input".into(), payload.display().to_string(),
-            ]);
-            if let Err(error) = commit {
-                return Err(rollback_failure(&final_plan.op, error, rollback()));
-            }
-            if let Err(error) = crate::executor::require_image_present(target) {
-                return Err(rollback_failure(&final_plan.op, error, rollback()));
-            }
-            let post = read_observation(&[])?;
-            if let Err(error) = (|| {
-                require_stateless_post_contract(&final_plan, &post, &current_image)?;
-                stateless_readiness(&final_plan, &post, false)?;
-                if post.live.container_id != current_container
-                    || post.live.container_creation_epoch
-                        != final_plan.observation.live.container_creation_epoch
-                {
-                    return Err(OuroError::Validation(
-                        "preload changed the running container identity unexpectedly".into(),
-                    ));
-                }
-                Ok(())
-            })() {
-                return Err(rollback_failure(&final_plan.op, error, rollback()));
+            let (_, target_image) = final_plan.policy.contract_and_image_for(
+                target,
+                &final_plan.observation.live.platform,
+            )?;
+            stateless_readiness(&final_plan, &final_plan.observation, false)?;
+            let pulled = crate::executor::pull_verified_image(
+                &final_plan.policy.repository,
+                &target_image.platform_manifest_digest,
+                &target_image.image_config_digest,
+                &target_image.platform,
+            )?;
+            let mut post = read_observation(&[])?;
+            canonicalize_typed_mounts(&mut post.live.mounts);
+            require_stateless_post_contract(&final_plan, &post, &current_image)?;
+            stateless_readiness(&final_plan, &post, false)?;
+            let changed = stateless_live_drift_components(
+                &final_plan.observation,
+                &post,
+                &final_plan.op,
+            );
+            if !changed.is_empty() {
+                return Err(OuroError::Validation(format!(
+                    "exact image pull changed active-container state unexpectedly: {}",
+                    changed.join(", ")
+                )));
             }
             live_postcondition = Some(json!({
-                "verification": "exact_image_config_present",
-                "image_config_digest": target,
+                "verification": "signed_exact_oci_tuple_present",
+                "pulled_image": pulled,
                 "running_container_unchanged": {
                     "id": post.live.container_id,
                     "creation_epoch": post.live.container_creation_epoch,
                     "image_config_digest": post.live.image_config_digest,
+                    "entrypoint": post.live.entrypoint,
+                    "args": post.live.args,
+                    "mounts": post.live.mounts,
+                    "network": post.live.network,
+                    "readiness": "passed_before_and_after_pull",
                 },
             }));
         }
@@ -4169,21 +4170,6 @@ fn run_op_inner(args: &[String]) -> Result<()> {
     } else {
         None
     };
-    let preload_candidate = if op == "upgrade/preload-image" {
-        let reference = payload.get("artifact").and_then(serde_json::Value::as_str)
-            .ok_or_else(|| OuroError::Validation("preload intent lost its image artifact".into()))?;
-        let target = payload.get("image").and_then(serde_json::Value::as_str)
-            .ok_or_else(|| OuroError::Validation("preload intent lost its target digest".into()))?;
-        active_allowlist.contract_and_image_for(target, &att.immutable.platform)?;
-        let artifact = crate::inbox::resolve_typed(
-            &paths.home.join("inbox"), reference, crate::inbox::ArtifactType::Image,
-        )?;
-        crate::inbox::require_single_docker_config(&artifact, target)?;
-        crate::executor::require_image_absent(target)?;
-        Some((reference.to_string(), target.to_string()))
-    } else {
-        None
-    };
     let expected_post_state = serde_json::to_string(&json!({
         "fleet": fleet_policy.as_ref().map(|(digest, pool_id, min)| json!({
             "pool_spec_digest": digest,
@@ -4418,14 +4404,6 @@ fn run_op_inner(args: &[String]) -> Result<()> {
                 "live_protocol_window_valid": true,
                 "artifact_replay": false,
             })),
-            "preload_candidate": preload_candidate.as_ref().map(|(artifact, target)| json!({
-                "artifact_ref": artifact,
-                "target_image_config_digest": target,
-                "archive_contains_exactly_one_target_config": true,
-                "tag_changes": "none",
-                "target_absent_before_load": true,
-                "running_node_untouched": true,
-            })),
             "note": if fleet_sensitive {
                 "target-validated final plan; no node runtime/config/attestation/inbox/transaction \
                  mutation (audit and private temporary probe metadata may be written). Approve this \
@@ -4614,17 +4592,6 @@ fn run_op_inner(args: &[String]) -> Result<()> {
         let reference = intent.payload.get("opcert").and_then(serde_json::Value::as_str)
             .ok_or_else(|| OuroError::Validation("KES intent lost its opcert reference".into()))?;
         validate_kes_candidate(&att, &inbox, reference)?;
-    }
-    if is_preload {
-        let reference = intent.payload.get("artifact").and_then(serde_json::Value::as_str)
-            .ok_or_else(|| OuroError::Validation("preload intent lost its image artifact".into()))?;
-        let target = intent.payload.get("image").and_then(serde_json::Value::as_str)
-            .ok_or_else(|| OuroError::Validation("preload intent lost its target digest".into()))?;
-        let artifact = crate::inbox::resolve_typed(
-            &inbox, reference, crate::inbox::ArtifactType::Image,
-        )?;
-        crate::inbox::require_single_docker_config(&artifact, target)?;
-        crate::executor::require_image_absent(target)?;
     }
     let commit = || crate::executor::run_plan(&commit_plan);
     let verify = || {
@@ -5405,12 +5372,6 @@ fn dispatch_stateless_apply(
                 .ok_or_else(|| OuroError::Validation("KES intent lost opcert reference".into()))?
                 .to_string(),
         )),
-        "upgrade/preload-image" => Some((
-            crate::inbox::ArtifactType::Image,
-            collect_params(args)?.get("artifact").and_then(serde_json::Value::as_str)
-                .ok_or_else(|| OuroError::Validation("preload intent lost artifact reference".into()))?
-                .to_string(),
-        )),
         "deploy/register-submit" => Some((
             crate::inbox::ArtifactType::Tx,
             collect_params(args)?.get("tx").and_then(serde_json::Value::as_str)
@@ -5434,7 +5395,7 @@ fn dispatch_stateless_apply(
     } else {
         if optional(args, "--artifact-file").is_some() {
             return Err(OuroError::Validation(
-                "--artifact-file is accepted only for KES install, image preload, or Deploy submit".into(),
+                "--artifact-file is accepted only for KES install or Deploy submit".into(),
             ));
         }
         None

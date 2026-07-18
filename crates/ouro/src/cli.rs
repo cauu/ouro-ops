@@ -1213,7 +1213,7 @@ fn command_usage(command: &str) -> Option<&'static str> {
                  command without an inspection flag, adds the approved candidate hash and token, \
                  and automatically transports the ephemeral runner. \
                  Dangerous disruptive ops mint a short-lived 180-second fleet permit last.",
-        "inbox" => "ouro-ops inbox preview --type <opcert|tx|image> --file <path>\n  \
+        "inbox" => "ouro-ops inbox preview --type <opcert|tx> --file <path>\n  \
                     Hashes and validates the operator-named public file without copying it. Pass \
                     data.artifact_ref to --plan; apply sends the same file once with --artifact-file.",
         "fleet" => "ouro-ops fleet spec identity --spec <pool-spec> | \

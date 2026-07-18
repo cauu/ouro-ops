@@ -554,7 +554,7 @@ upgrade:
     for help_args, needle in (
         (["op", "run", "--help"], "--dispatch <host>"),
         (["fleet", "permit", "create", "--help"], "upgrade.min_online_relays"),
-        (["inbox", "stage", "--help"], "--type <opcert|tx|image>"),
+        (["inbox", "stage", "--help"], "--type <opcert|tx>"),
         (["adopt", "--help"], "--bootstrap-user <account>"),
         (["contract", "--help"], "--requires-contract <integer>"),
     ):

@@ -6,7 +6,8 @@
 //! the attestation. Rollback restores runtime AND attestation ONLY if a tested backward-compatible
 //! downgrade exists; otherwise the ONLY honest outcome is
 //! forward-recovery / re-sync — and we say so rather than promise a rollback we cannot deliver.
-//! Images arrive preloaded via the inbox (§2.7); no on-target fetch.
+//! Images are prepared target-side by pulling the signed Blink Labs repository at an exact
+//! platform-manifest digest; tags and operator-supplied image archives are never authority.
 
 use serde::{Deserialize, Serialize};
 

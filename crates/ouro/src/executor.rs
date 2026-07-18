@@ -7,7 +7,7 @@
 //! argv as a command token). So even a hostile-but-schema-valid parameter cannot become injection:
 //! the executor builds `["docker","restart","<attested container id>"]`, not `sh -c "<anything>"`.
 //!
-//! Artifact-bearing ops (kes-rotation opcert, deploy signed-tx, upgrade image) consume a
+//! Artifact-bearing ops (KES opcert and Deploy signed-tx) consume a
 //! content-addressed inbox artifact resolved BY DIGEST (`inbox::resolve` re-verifies the bytes
 //! against the ref). The resolved path is a target-side, digest-verified fact — never the agent's
 //! string. If a required artifact is not staged, the op is REFUSED (it never silently degrades to a
@@ -181,17 +181,10 @@ pub fn build_plan(
                 submit,
             ])
         }
-        // Load exactly one digest-bound Docker-save artifact into the target image store. The
-        // consuming op validates archive↔config↔allowlist binding before this argv is built.
-        "upgrade/preload-image" => {
-            let archive = resolve_artifact(
-                intent,
-                "artifact",
-                crate::inbox::ArtifactType::Image,
-                inbox,
-            )?;
-            Ok(vec![vec![s("docker"), s("load"), s("--input"), archive]])
-        }
+        "upgrade/preload-image" => Err(OuroError::Validation(
+            "upgrade image preparation is built from the fetched signed release catalog in the stateless target flow"
+                .into(),
+        )),
         // upgrade/step: the recreate is built by the op flow from the TARGET's own `docker inspect`
         // run-spec (§2.10, `recreate_argv`) + the allowlisted target digest, not from `build_plan`
         // (which has no observation here). This arm is only reached in plan/read PREVIEW, where the
@@ -247,13 +240,9 @@ pub fn recoverable_plans(
             Ok((commit, Some(rollback)))
         }
         "deploy/register-submit" => Ok((commit, None)),
-        "upgrade/preload-image" => {
-            let target = intent.payload.get("image").and_then(serde_json::Value::as_str)
-                .ok_or_else(|| OuroError::Validation("preload intent lost target image".into()))?;
-            Ok((commit, Some(vec![vec![
-                s("docker"), s("image"), s("rm"), target.to_string(),
-            ]])))
-        }
+        "upgrade/preload-image" => Err(OuroError::Validation(
+            "upgrade image preparation is stateless and has no durable transaction plan".into(),
+        )),
         _ => Ok((commit, Some(rollback_plan(att)))),
     }
 }
@@ -441,29 +430,102 @@ pub fn require_image_present(target: &str) -> Result<()> {
     verify_image_inspect_output(target, &output.stdout)
 }
 
-/// Preload is additive and rollback removes the exact target, so it may begin only when that
-/// immutable config digest is absent. Distinguish the normal Docker "no such image" response from
-/// daemon/permission failures; the latter must fail closed.
-pub fn require_image_absent(target: &str) -> Result<()> {
-    let output = std::process::Command::new("docker")
-        .args(["image", "inspect", "--format", "{{.Id}}", target])
-        .output()
-        .map_err(|e| OuroError::Validation(format!("cannot inspect preload target image: {e}")))?;
-    if output.status.success() {
-        verify_image_inspect_output(target, &output.stdout)?;
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PulledImageEvidence {
+    pub reference: String,
+    pub repository: String,
+    pub platform: String,
+    pub platform_manifest_digest: String,
+    pub image_config_digest: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct DockerImageInspect {
+    id: String,
+    repo_digests: Vec<String>,
+    os: String,
+    architecture: String,
+}
+
+/// Pull and verify one signed-catalog image tuple. The repository is a fixed Ouro convention and
+/// the selector is an immutable platform-manifest digest; a tag or alternate registry can never
+/// enter the executor argv.
+pub fn pull_verified_image(
+    repository: &str,
+    platform_manifest_digest: &str,
+    expected_config_digest: &str,
+    expected_platform: &str,
+) -> Result<PulledImageEvidence> {
+    if repository != crate::convention::BLINKLABS_REPOSITORY {
         return Err(OuroError::Validation(format!(
-            "upgrade target image {target} is already present; no preload mutation is needed"
+            "upgrade image repository must be exactly {}",
+            crate::convention::BLINKLABS_REPOSITORY
         )));
     }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if stderr.contains("No such image") || stderr.contains("No such object") {
-        Ok(())
-    } else {
-        Err(OuroError::Validation(format!(
-            "cannot prove preload target image is absent: {}",
-            stderr.chars().take(2048).collect::<String>().trim()
-        )))
+    if expected_platform != "linux/amd64" {
+        return Err(OuroError::Validation(format!(
+            "upgrade image pull supports only linux/amd64, got {expected_platform:?}"
+        )));
     }
+    let valid_digest = |value: &str| {
+        value.len() == 71
+            && value.starts_with("sha256:")
+            && value[7..]
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    };
+    if !valid_digest(platform_manifest_digest) || !valid_digest(expected_config_digest) {
+        return Err(OuroError::Validation(
+            "upgrade pull requires lowercase sha256 platform-manifest and config digests".into(),
+        ));
+    }
+    let reference = format!("{repository}@{platform_manifest_digest}");
+    run_argv(&[
+        s("docker"),
+        s("pull"),
+        s("--platform"),
+        expected_platform.to_string(),
+        reference.clone(),
+    ])?;
+    let output = std::process::Command::new("docker")
+        .args(["image", "inspect", "--format", "{{json .}}", &reference])
+        .output()
+        .map_err(|error| {
+            OuroError::Validation(format!("cannot inspect exact pulled image: {error}"))
+        })?;
+    if !output.status.success() {
+        return Err(OuroError::Validation(
+            "exact pulled image could not be inspected after pull".into(),
+        ));
+    }
+    let inspected: DockerImageInspect = serde_json::from_slice(&output.stdout).map_err(|error| {
+        OuroError::Validation(format!("docker returned malformed image inspection: {error}"))
+    })?;
+    let platform = format!("{}/{}", inspected.os, inspected.architecture);
+    if inspected.id != expected_config_digest {
+        return Err(OuroError::Validation(format!(
+            "pulled image config digest mismatch: expected {expected_config_digest}, got {}",
+            inspected.id
+        )));
+    }
+    if platform != expected_platform {
+        return Err(OuroError::Validation(format!(
+            "pulled image platform mismatch: expected {expected_platform}, got {platform}"
+        )));
+    }
+    if !inspected.repo_digests.iter().any(|value| value == &reference) {
+        return Err(OuroError::Validation(format!(
+            "pulled image is not bound to the approved repository manifest {reference}"
+        )));
+    }
+    Ok(PulledImageEvidence {
+        reference,
+        repository: repository.to_string(),
+        platform,
+        platform_manifest_digest: platform_manifest_digest.to_string(),
+        image_config_digest: expected_config_digest.to_string(),
+    })
 }
 
 /// The upgrade rollback plan: recreate the container onto the PRIOR (attested) image digest with the
@@ -630,32 +692,6 @@ pub fn run_rollback_plan(operation_id: &str, plan: &[Vec<String>]) -> Result<()>
         let _ = run_argv(remove); // absent container is expected after a partial recreate
         return run_plan(recreate);
     }
-    if operation_id == "upgrade/preload-image" {
-        let remove = plan.first().ok_or_else(|| {
-            OuroError::Validation("preload rollback plan is empty".into())
-        })?;
-        if remove.first().map(String::as_str) != Some("docker")
-            || remove.get(1).map(String::as_str) != Some("image")
-            || remove.get(2).map(String::as_str) != Some("rm")
-        {
-            return Err(OuroError::Validation(
-                "preload rollback lacks fixed image removal step".into(),
-            ));
-        }
-        return match run_argv(remove) {
-            Ok(()) => Ok(()),
-            Err(remove_error) => {
-                let target = remove.get(3).ok_or_else(|| {
-                    OuroError::Validation("preload rollback lost target image digest".into())
-                })?;
-                require_image_absent(target).map_err(|absence_error| {
-                    OuroError::Validation(format!(
-                        "preload rollback failed ({remove_error}) and absence was not proven ({absence_error})"
-                    ))
-                })
-            }
-        };
-    }
     run_plan(plan)
 }
 
@@ -733,21 +769,16 @@ mod tests {
     }
 
     #[test]
-    fn image_preload_is_one_digest_resolved_load_and_never_restarts_node() {
-        let artifact = format!("image-aaaaaaaa@sha256:{}", "a".repeat(64));
+    fn legacy_executor_cannot_accept_an_operator_image_archive() {
         let target = format!("sha256:{}", "b".repeat(64));
-        let plan = build_plan(
+        let result = build_plan(
             &intent("upgrade/preload-image", json!({
-                "machine": "bp1", "artifact": artifact, "image": target,
+                "machine": "bp1", "image": target,
             })),
             &att(),
             None,
-        ).unwrap();
-        assert_eq!(plan, vec![vec![
-            "docker".to_string(), "load".to_string(), "--input".to_string(),
-            format!("<inbox:image-aaaaaaaa@sha256:{}>", "a".repeat(64)),
-        ]]);
-        assert!(!plan.iter().flatten().any(|part| part == "restart"));
+        );
+        assert!(result.is_err(), "only the signed-catalog stateless pull flow is valid");
     }
 
     #[test]

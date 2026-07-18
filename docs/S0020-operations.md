@@ -24,7 +24,7 @@ This is the current operator contract. The embedded Skill shown by
 | `troubleshooting/snapshot` | read | none | real role-aware baseline; no overall-health claim |
 | `runtime/restart` | disruptive write | exact confirmation + fleet permit | stop after `--plan` |
 | `kes-rotation/install-opcert` | disruptive public-artifact write | exact confirmation + fleet permit | local preview + target `--plan` only |
-| `upgrade/preload-image` | non-disruptive image-store write | exact confirmation | local preview + target `--plan` only |
+| `upgrade/preload-image` | non-disruptive exact GHCR pull | exact confirmation | target `--plan` only |
 | `upgrade/step` | disruptive recreate | exact confirmation + fleet permit + signed N→N+1 transition | typed safe refusal / `--plan` only |
 | `deploy/register-submit` | irreversible transaction submission | exact confirmation; no fleet permit | signed transaction preview + target `--plan` only |
 | `diag exec` | diagnostic command through existing operator SSH | no write capability minted | real diagnostic-only commands |
@@ -42,7 +42,8 @@ For runtime, KES, upgrade and Deploy, the public sequence is:
 4. For a disruptive runtime/KES/upgrade operation, mint `ouro-ops fleet permit create ...` last.
    Deploy takes no fleet permit.
 5. Immediately rerun the same operation without `--plan`, adding `--candidate-hash`, the exact
-   confirmation and (when required) fleet permit. Artifact operations also add `--artifact-file`.
+   confirmation and (when required) fleet permit. KES and Deploy artifact operations also add
+   `--artifact-file`; Upgrade never accepts an image artifact.
 
 Apply re-probes and refuses candidate drift before mutation. Capabilities must never be included in
 plan mode or interpreted from target output.
@@ -53,13 +54,16 @@ Before Upgrade, select the signed next hop from the current live image config di
 ouro-ops release select --platform linux/amd64 --from sha256:<current-config-digest>
 ```
 
-The command returns the release label and exact OCI tuple. Upgrade plan/apply and its fleet permit
+The command returns the release label, fixed Blink Labs repository and exact OCI tuple. Upgrade
+preparation pulls the signed `repository@platform-manifest-digest` directly on the target only after
+candidate approval, then verifies repository/platform/config while proving the active container is
+unchanged. Upgrade plan/apply and its fleet permit
 fetch and verify the document again; a changed release policy changes the candidate and invalidates
 the old approval. No command writes a release cache or target policy file.
 
 ## Public artifacts
 
-Use `ouro-ops inbox preview --type opcert|image|tx --file <operator-named-file>` on control. It validates
+Use `ouro-ops inbox preview --type opcert|tx --file <operator-named-file>` on control. It validates
 the public artifact and returns a content-addressed reference without writing an inbox. Put that ref
 in the target plan. Approved apply reopens the same file, verifies its bytes against the candidate,
 and streams `runner || artifact` in one private invocation. No separate remote-stage step exists.

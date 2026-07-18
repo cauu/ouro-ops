@@ -147,17 +147,15 @@ pub fn registry() -> &'static [OperationSpec] {
             may_expose_secret: false,
         },
         OperationSpec {
-            // Load one reviewed Docker-save artifact into the target image store without touching
-            // the running node. The target config digest is independently allowlist-checked and
-            // must be the archive's only image config.
+            // Pull one signed-catalog OCI manifest by exact digest without touching the running
+            // node. Repository, platform manifest and config digest are verified target-side.
             operation_id: "upgrade/preload-image",
             mutability: Mutability::Dangerous,
             params: &[
                 ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true },
-                ParamSpec { name: "artifact", kind: ParamKind::ArtifactRef, required: true },
                 ParamSpec { name: "image", kind: ParamKind::ImageDigest, required: true },
             ],
-            touched: &["image:load"],
+            touched: &["image:pull"],
             may_expose_secret: false,
         },
         OperationSpec {
@@ -167,7 +165,7 @@ pub fn registry() -> &'static [OperationSpec] {
                 ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true },
                 // The N+1 target image, named by its config digest — must be on the signed allowlist
                 // (enforced at op time). The recreate preserves the observed run-spec; the operator
-                // delivers the image through upgrade/preload-image as a precondition.
+                // prepares the image through upgrade/preload-image as a precondition.
                 ParamSpec { name: "image", kind: ParamKind::ImageDigest, required: true },
             ],
             touched: &["container:recreate"],
@@ -394,13 +392,12 @@ mod tests {
         let good = format!("opcert-1@sha256:{}", "a".repeat(64));
         assert!(intent("kes-rotation/install-opcert",
             json!({"machine":"bp1","opcert": good})).validate(0).is_ok());
-        let image_artifact = format!("image-aaaaaaaa@sha256:{}", "a".repeat(64));
         let image = format!("sha256:{}", "b".repeat(64));
         assert!(intent("upgrade/preload-image", json!({
-            "machine":"bp1", "artifact": image_artifact, "image": image,
+            "machine":"bp1", "image": image,
         })).validate(0).is_ok());
         assert!(intent("upgrade/preload-image", json!({
-            "machine":"bp1", "artifact":"/tmp/image.tar", "image":format!("sha256:{}", "b".repeat(64)),
+            "machine":"bp1", "unexpected":"value", "image":format!("sha256:{}", "b".repeat(64)),
         })).validate(0).is_err());
     }
 

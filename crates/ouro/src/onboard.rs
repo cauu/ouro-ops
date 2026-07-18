@@ -25,7 +25,7 @@ exec /usr/local/bin/ouro-ops op \"$@\"\n";
 /// into the target-local inbox; it cannot invoke any other ouro command.
 pub const INBOX_WRAPPER: &str = "#!/bin/sh\n\
 [ \"$#\" -eq 2 ] || exit 64\n\
-case \"$1\" in opcert|tx|image) ;; *) exit 64 ;; esac\n\
+case \"$1\" in opcert|tx) ;; *) exit 64 ;; esac\n\
 unset OURO_ATTESTATION OURO_ALLOWLIST_FILE OURO_PROBE_LIB OURO_PLATFORM OURO_HOST_KEY_SHA256 OURO_READINESS_SAMPLE_DELAY\n\
 export HOME=/root OURO_HOME=/var/lib/ouro\n\
 exec /usr/local/bin/ouro-ops inbox stage --local --type \"$1\" --stdin --expect-ref \"$2\"\n";

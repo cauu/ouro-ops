@@ -264,7 +264,7 @@ a concrete defect.
   and self-description; implement and consume only the compact CLI contract/runner descriptor
 - [x] p4-1 extend release-catalog schema and validation with the signed Blink Labs GHCR repository and
   exact OCI identity tuple; update release selection and transition validation
-- [ ] p4-2 replace archive preload with candidate-bound exact-digest GHCR pull and post-pull config/
+- [x] p4-2 replace archive preload with candidate-bound exact-digest GHCR pull and post-pull config/
   platform/repository verification; remove image-tar/artifact-file inputs and leave active containers
   untouched
 - [ ] p4-3 regenerate and sign the release catalog with the existing local signer, publish it at the
@@ -418,6 +418,14 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   index digest, platform manifest digest, image config digest, platform, layout and directed
   transitions. Release signing refuses a missing/alternate repository, selection returns the signed
   repository, and the Keychain signer produced a pinned-key-verifiable local document.
+- 2026-07-19 p4-2 started: replacing Upgrade archive preview/payload/load with a candidate-bound
+  exact GHCR pull, target-side repository/platform/config verification, and active-container
+  before/after invariance checks.
+- 2026-07-19 p4-2 completed: removed the image inbox/type/archive schema and every Upgrade
+  `artifact`/`--artifact-file` transport; preload planning now binds and discloses only the signed
+  Blink Labs repository plus exact linux/amd64 manifest/config tuple, while approved apply performs
+  one target-side digest pull, verifies Docker's repository/platform/config evidence, and requires
+  role readiness plus the complete modeled active-container state to remain unchanged.
 
 ## 6. Validation Evidence (append-only)
 
@@ -489,6 +497,22 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
 - TC-8 | stack: other | command: `ouro-allowlist-signer inspect --input data/releases.json` after
   Keychain-backed sign | result: pass | note: catalog v5 validates under pinned public key
   `3ceb1920…165dd`; signed canonical payload digest is `203fea05…a98d83`
+- TC-10 | stack: rust+python+docs | command: source inventory plus `python3
+  tests/test_skill_docs.py` and `python3 tests/test_s0019_dispatch.py` within `make python-test` |
+  result: pass | note: image ArtifactType, archive parser, inbox image preview/stage, Upgrade artifact
+  parameter/payload and image `--artifact-file` path are absent; help, current docs and Skill expose
+  only exact target-side GHCR preparation
+- TC-11, TC-12 | stack: python | command: `python3 tests/test_s0020_upgrade_workflow.py` |
+  result: pass | note: plan emits the exact signed
+  `ghcr.io/blinklabs-io/cardano-node@<platform-manifest>` tuple without Docker access; approved apply
+  verifies repo digest/linux-amd64/config and unchanged identity/image/command/mounts/network/
+  creation-epoch/readiness; tag, alternate repo, wrong manifest/config/platform and pull failure all
+  refuse without container activation
+- TC-10, TC-14 | stack: rust+python | command: `cargo test -p ouro --lib && cargo clippy -q -p
+  ouro --lib --tests -- -D warnings && make python-test` | result: pass | note: 169 Rust tests,
+  clippy and the complete direct Python suite pass after exact-pull migration; the control apply
+  transport test proves Upgrade sends runner bytes only and rejects a supplied image artifact before
+  SSH
 
 ## 7. Change Requests (append-only)
 
