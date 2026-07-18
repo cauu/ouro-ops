@@ -1,0 +1,118 @@
+# Website CI/CD for the static onboarding page.
+#
+#   pull_request  -> build check (including forks; no secrets)
+#                 -> preview deploy + PR comment (same-repository PRs only)
+#   push to main  -> production deploy (environment: production)
+#
+# Never change this workflow to pull_request_target: fork code must not receive deploy secrets.
+
+name: site
+
+on:
+  pull_request:
+    paths:
+      - "web/onboarding/**"
+      - ".github/workflows/site.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "web/onboarding/**"
+      - ".github/workflows/site.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build static site
+        run: ./web/onboarding/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-dist
+          path: web/onboarding/dist
+          if-no-files-found: error
+          retention-days: 1
+
+  preview:
+    needs: build
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: site-dist
+          path: web/onboarding/dist
+      - id: upload
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web/onboarding
+          wranglerVersion: "4.107.0"
+          command: versions upload
+      - name: Comment preview URL on the PR
+        uses: actions/github-script@v7
+        env:
+          CMD_OUT: ${{ steps.upload.outputs.command-output }}
+        with:
+          script: |
+            const match = (process.env.CMD_OUT || '').match(/https:\/\/[^\s]+\.workers\.dev/);
+            if (!match) {
+              core.notice('No preview URL found in wrangler output');
+              return;
+            }
+            const marker = '<!-- site-preview -->';
+            const body = `${marker}\n🔍 **Site preview:** ${match[0]}`;
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: context.issue.number
+            });
+            const previous = comments.find((comment) =>
+              comment.body && comment.body.includes(marker)
+            );
+            if (previous) {
+              await github.rest.issues.updateComment({
+                ...context.repo,
+                comment_id: previous.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: site-dist
+          path: web/onboarding/dist
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web/onboarding
+          wranglerVersion: "4.107.0"
+          command: deploy
