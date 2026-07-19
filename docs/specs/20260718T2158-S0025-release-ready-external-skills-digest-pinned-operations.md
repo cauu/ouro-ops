@@ -274,7 +274,7 @@ a concrete defect.
   archives without publishing a formal CLI release
 - [x] p5-2 update current README, operation, threat, release, website, and CI documentation/gates to
   the external-decision, exact-upstream-pull, live-catalog, and deferred-publication boundaries
-- [ ] p6-1 run all automated regression gates and fresh-agent end-to-end acceptance for all six Skills
+- [~] p6-1 run all automated regression gates and fresh-agent end-to-end acceptance for all six Skills
   from prompts copied from the locally served site, including the proportionate real/safe boundaries
   defined below
 
@@ -451,6 +451,9 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   release fetch, desired-version input and placeholder install claims. CI now validates the local
   production-form site and paired CLI candidate on `next`/PR/manual triggers while intentionally
   using no deploy/signing secrets, hosted artifacts, GitHub Release or production-site action.
+- 2026-07-19 p6-1 started: running the complete repository/release gate set while isolated fresh
+  agents consume the actual locally generated website prompts and exercise all six real/safe
+  acceptance boundaries against the declared BP/relay fleet.
 
 ## 6. Validation Evidence (append-only)
 
@@ -575,3 +578,48 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
   acceptance now, defers formal CLI publication and production-site acceptance, requires Ouro to
   never host image archives and to pull exact signed digests only from Blink Labs GHCR, and authorizes
   publication/online acceptance of the signed release catalog in this spec.
+
+## 8. Follow-up Execution Plan (append-only)
+
+- [x] p6-1-fix1 make copied-operation selection unambiguous and make the disclosure copy result
+  truthful before handing the remaining real-machine acceptance to the operator
+
+## 9. Follow-up Test And Acceptance Criteria (append-only)
+
+- TC-23 Prompt handoff integrity: after generating different operations in succession, the real
+  disclosure action copies the currently displayed operation prompt, never the previous prompt. The
+  UI reports success only after the clipboard write completes. Generated instructions distinguish
+  the literal SSH host required by `op run --dispatch` from the machine id required by
+  `diag exec --dispatch`.
+
+## 10. Follow-up Execution Log (append-only)
+
+- 2026-07-19 p6-1-fix1 started: two fresh agents independently substituted a machine id where the
+  typed operation requires the spec's literal SSH host, and browser acceptance observed a stale
+  previous-operation clipboard value while the page already displayed `Copied`. The operator will
+  perform the remaining real-machine journeys after this development defect is fixed and automated
+  release gates pass.
+- 2026-07-19 p6-1-fix1 completed: generated prompts now state the distinct typed selectors, and the
+  disclosure approval performs a synchronous user-gesture copy before the modern clipboard write,
+  awaits completion, reports failure without closing, and reports success only after at least one
+  copy mechanism succeeds. The operator can now use the site for the remaining real-machine
+  acceptance while p6-1 remains active.
+
+## 11. Follow-up Validation Evidence (append-only)
+
+- TC-23 | stack: ui | command: local HTTP browser flow with clipboard preloaded to a stale sentinel;
+  generate/copy Observability once, then generate/copy KES Rotate once | result: pass | note: each
+  first disclosure approval copied bytes exactly equal to the currently displayed prompt, the
+  second operation replaced the first, success appeared only afterward, and the copied KES prompt
+  distinguishes literal SSH host dispatch from diagnostic machine-id dispatch
+- TC-23 | stack: python+ui | command: `./web/onboarding/build.sh && python3 -m pytest -q
+  tests/test_web_generator.py tests/test_release_surfaces.py` | result: pass | note: eight cases
+  cover the direct approval handler, awaited copy, selector wording, canonical Skill source, local
+  HTTP form and current release surfaces
+- TC-14, TC-22 | stack: rust+python+shell | command: `cargo test -q`, `cargo clippy -q -p ouro
+  --lib --tests -- -D warnings`, `make python-test`, `python3 -m pytest -q`, and `bash
+  ci/l2-integration.sh` | result: pass | note: 169 Rust tests, clippy, every direct Python gate, 12
+  pytest cases and the complete L2 integration gate pass after the handoff fix
+- TC-13, TC-22 | stack: other | command: `make release-candidate` | result: pass | note: the paired
+  release candidate rebuilt successfully and its package, runner, descriptor, version, live release
+  selection, candidate manifest and checksums all verify

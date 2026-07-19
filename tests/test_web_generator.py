@@ -69,6 +69,8 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "skill.content.trimEnd()" in html
     assert "BEGIN OURO-SKILL.MD" in html
     assert "END OURO-SKILL.MD" in html
+    assert "never its machine id" in html
+    assert "diag exec --dispatch" in html
     assert "ouro-ops skill show" not in html
     assert html.count('data-op="') == 6
 
@@ -81,7 +83,11 @@ def test_page_keeps_payload_inert_and_network_bounded() -> None:
     assert not re.search(r"<link[^>]+href=", html)
     fetches = re.findall(r"fetch\((.*?)\)", html, re.DOTALL)
     assert fetches == [], "the prompt generator must not make ambient network requests"
-    assert "clip(current.prompt)" in html
+    assert 'id="copy-anyway"' in html
+    assert "await clip(pendingPrompt)" in html
+    assert html.index('document.execCommand("copy")') < html.index("navigator.clipboard.writeText(text)")
+    assert '$("disclose-dlg").close("ok")' in html
+    assert 'dlg.addEventListener("close"' not in html
     assert '$("prompt-out").textContent = pr' in html
     assert "innerHTML = skill" not in html
 
