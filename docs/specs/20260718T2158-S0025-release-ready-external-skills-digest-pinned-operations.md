@@ -1417,3 +1417,45 @@ candidate, and activate only after every typed fact passes.
   tests/test_s0020_stateless_plan.py`, and `python3 tests/test_skill_docs.py` | result: pass | note:
   success and rollback command logs prove the directory never appears in a chown argv while both
   private files still reach and restore their bound owners.
+
+## 59. Thirteenth Follow-up Requirement And Design (append-only)
+
+- [x] p6-1-fix14 align the permission normalizer postcondition with the directory-owner policy
+- Concrete defect: with a candidate-bound keys directory owned by an account other than the
+  container node service user, the executor correctly preserves that owner while normalizing the
+  directory mode and two private files, but the postcondition still requires the directory owner
+  to equal the service owner. Every such approved repair therefore mutates, fails validation and
+  rolls back even when the shared KES permission predicate is satisfied.
+- Contract: directory ownership has no KES-rotation constraint and remains immutable candidate-bound
+  drift evidence. The fixed target is directory mode `0700`; both private keys are regular files at
+  `0600` owned by the captured container service user. Review output must state those distinct owner
+  semantics without exposing numeric IDs.
+- Implementation: remove the contradictory directory-owner equality from exact postvalidation,
+  make the review object explicit about preserved versus normalized owners, and change the
+  stateful fixture to retain a non-service directory owner after successful normalization.
+- TC-46 acceptance: a `0770` non-service-owned real directory with `0400` regular private keys and
+  unsupported private-key owners reaches all five KES permission facts after the approved typed
+  repair, while command evidence proves no directory `chown`. A deliberate unrelated postcondition
+  failure must still restore the exact candidate-bound metadata. The canonical website prompt must
+  embed Skill v17, and the complete release-candidate validation must pass without publishing or
+  contacting a production host.
+
+## 60. Thirteenth Follow-up Completion And Evidence (append-only)
+
+- [x] p6-1-fix14 completed: exact postvalidation now leaves the bound directory owner unconstrained,
+  matching both the executor and shared KES predicate. The review contract says the directory owner
+  is preserved and assigns the service-user owner only to the two fixed private files. Skill v17
+  carries the same distinction into the canonical local website prompt.
+- TC-46 | stack: rust+python | command: `cargo fmt --all -- --check`, `cargo test -q -p ouro`,
+  `cargo clippy -q -p ouro --lib --tests -- -D warnings`, `python3
+  tests/test_s0025_permission_normalize.py`, `python3 tests/test_s0020_stateless_plan.py`, and
+  `python3 tests/test_skill_docs.py` | result: pass | note: 173 Rust tests pass; the stateful
+  production regression uses a preserved non-service directory owner, original directory mode
+  `0770`, private modes `0400`, unsupported private owners, verifies successful normalization with
+  no directory chown, and retains exact rollback on deliberate unrelated drift.
+- TC-46 | stack: website | command: `./web/onboarding/build.sh` and `python3 -m pytest -q
+  tests/test_web_generator.py` | result: pass | note: all nine website cases pass and the generated
+  local site embeds canonical KES Skill v17.
+- TC-46 | stack: release | command: `make release-candidate` | result: pass | note: validation
+  produced and checksum-verified `dist/release-candidate/v0.1.0-aarch64-apple-darwin` without
+  publishing or contacting a production node.

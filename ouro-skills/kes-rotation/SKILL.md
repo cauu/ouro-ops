@@ -1,5 +1,5 @@
 ---
-skill_version: 16
+skill_version: 17
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -77,10 +77,12 @@ reads or prints it.
   approval. If approved, mint `ouro-ops confirm create --op
   credentials/normalize-forging-permissions --node <bp> --intent-hash <repair-hash>` and immediately
   rerun the unchanged repair command without `--plan`, adding `--candidate-hash <repair-hash>
-  --confirm-token <token>`. Require all five facts true, exact fixed target metadata, no restart and
-  rollback availability before returning to a fresh normal Phase-A or Phase-B plan. If it refuses
-  a symlink/non-regular path or cannot verify/roll back, stop for operator recovery. Never suggest
-  raw chmod/chown.
+  --confirm-token <token>`. The fixed target preserves the candidate-bound keys-directory owner,
+  changes its mode to 0700, and normalizes only the two private-key owners and modes to the
+  container node service user and 0600. Require all five facts true, those exact target semantics,
+  no restart and rollback availability before returning to a fresh normal Phase-A or Phase-B plan.
+  If it refuses a symlink/non-regular path or cannot verify/roll back, stop for operator recovery.
+  Never suggest raw chmod/chown.
 - If that plan reports `pending_existing: true`, require `executor_plan: []`,
   `confirmation_required: false`, no fleet permit, a complete PUBLIC `staged_vkey` plus its hash,
   typed period and `cardano_cli_version`. Show the pending public-key hash and ask the operator to

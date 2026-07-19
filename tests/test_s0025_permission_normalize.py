@@ -63,16 +63,16 @@ def main():
         "  *'stat -c %f:%u:%g /proc/1'*) printf '41ed:1000:1000\\n' ;;\n"
         "  *'stat -c %f:%u:%g /opt/cardano/config/keys/kes.skey'*)\n"
         "    if test \"${OURO_PERMISSION_BAD_TYPE:-0}\" = 1; then printf 'a1ff:0:0\\n'; "
-        "elif test \"$current\" = safe; then printf '8180:1000:1000\\n'; else printf '81a4:0:0\\n'; fi ;;\n"
+        "elif test \"$current\" = safe; then printf '8180:1000:1000\\n'; else printf '8100:0:0\\n'; fi ;;\n"
         "  *'stat -c %f:%u:%g /opt/cardano/config/keys/vrf.skey'*)\n"
-        "    if test \"$current\" = safe; then printf '8180:1000:1000\\n'; else printf '81a4:0:0\\n'; fi ;;\n"
+        "    if test \"$current\" = safe; then printf '8180:1000:1000\\n'; else printf '8100:0:0\\n'; fi ;;\n"
         "  *'stat -c %f:%u:%g /opt/cardano/config/keys'*)\n"
-        "    if test \"$current\" = safe; then printf '41c0:1000:1000\\n'; else printf '41fd:0:0\\n'; fi ;;\n"
+        "    if test \"$current\" = safe; then printf '41c0:0:0\\n'; else printf '41f8:0:0\\n'; fi ;;\n"
         "  *'chmod 600 /opt/cardano/config/keys/kes.skey /opt/cardano/config/keys/vrf.skey'*)\n"
         "    printf safe >\"$OURO_PERMISSION_STATE\" ;;\n"
-        "  *'chmod 0644 /opt/cardano/config/keys/vrf.skey'*)\n"
+        "  *'chmod 0400 /opt/cardano/config/keys/vrf.skey'*)\n"
         "    printf unsafe >\"$OURO_PERMISSION_STATE\" ;;\n"
-        "  *'chown --no-dereference '*|*'chmod 700 '*|*'chmod 0775 '*|*'chmod 0644 '*) ;;\n"
+        "  *'chown --no-dereference '*|*'chmod 700 '*|*'chmod 0770 '*|*'chmod 0400 '*) ;;\n"
         "  *) exit 90 ;;\n"
         "esac\n"
     )
@@ -103,6 +103,10 @@ def main():
         path=fakebin,
     )
     assert planned.returncode == 0, (planned, planned_value)
+    repair = planned_value["data"]["permission_repair"]
+    assert repair["after"]["keys_directory"]["owner"] == "preserved_candidate_bound"
+    assert repair["after"]["kes_skey"]["owner"] == "container_node_service_user"
+    assert repair["after"]["vrf_skey"]["owner"] == "container_node_service_user"
     candidate = planned_value["data"]["candidate_hash"]
     log.unlink()
 
@@ -151,9 +155,9 @@ def main():
     assert "rollback completed" in json.dumps(failed_value)
     assert state.read_text() == "unsafe"
     rollback_commands = log.read_text()
-    assert "chmod 0775 /opt/cardano/config/keys" in rollback_commands
-    assert "chmod 0644 /opt/cardano/config/keys/kes.skey" in rollback_commands
-    assert "chmod 0644 /opt/cardano/config/keys/vrf.skey" in rollback_commands
+    assert "chmod 0770 /opt/cardano/config/keys" in rollback_commands
+    assert "chmod 0400 /opt/cardano/config/keys/kes.skey" in rollback_commands
+    assert "chmod 0400 /opt/cardano/config/keys/vrf.skey" in rollback_commands
     assert rollback_commands.count("chown --no-dereference 0:0") == 2
 
     print("S0025 typed forging-permission normalization passed")

@@ -1295,10 +1295,21 @@ fn capture_forging_permission_repair(observation: &Observation) -> Result<Forgin
             "owner_supported": observation.live.forging_key_owner_supported,
         },
         "after": {
-            "keys_directory": {"file_type": "directory", "mode": "0700"},
-            "kes_skey": {"file_type": "regular_file", "mode": "0600"},
-            "vrf_skey": {"file_type": "regular_file", "mode": "0600"},
-            "owner": "container_node_service_user",
+            "keys_directory": {
+                "file_type": "directory",
+                "mode": "0700",
+                "owner": "preserved_candidate_bound",
+            },
+            "kes_skey": {
+                "file_type": "regular_file",
+                "mode": "0600",
+                "owner": "container_node_service_user",
+            },
+            "vrf_skey": {
+                "file_type": "regular_file",
+                "mode": "0600",
+                "owner": "container_node_service_user",
+            },
         },
         "reads_key_contents": false,
         "fixed_paths_only": true,
@@ -3087,7 +3098,6 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 let normalized = capture_forging_permission_repair(&post)?;
                 if normalized.service_owner != repair.service_owner
                     || normalized.keys.mode != "0700"
-                    || normalized.keys.owner() != repair.service_owner
                     || normalized.kes_skey.mode != "0600"
                     || normalized.kes_skey.owner() != repair.service_owner
                     || normalized.vrf_skey.mode != "0600"

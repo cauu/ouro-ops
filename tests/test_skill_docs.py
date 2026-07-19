@@ -106,6 +106,8 @@ def main():
         "credentials/normalize-forging-permissions",
         "accepts no path, mode or owner parameter",
         "needs confirmation but no fleet permit",
+        "preserves the candidate-bound keys-directory owner",
+        "normalizes only the two private-key owners",
         "rollback availability",
         "a real BP container restart",
         "actually activated",

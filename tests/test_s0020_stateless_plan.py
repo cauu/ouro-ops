@@ -403,6 +403,9 @@ def main():
     assert repair_data["executor_plan_secret_values_redacted"] is True
     assert repair_data["permission_repair"]["before"]["keys_directory"]["mode"] == "0775"
     assert repair_data["permission_repair"]["before"]["kes_skey"]["mode"] == "0644"
+    assert repair_data["permission_repair"]["after"]["keys_directory"]["owner"] == (
+        "preserved_candidate_bound"
+    )
     assert repair_data["permission_repair"]["after"]["kes_skey"]["mode"] == "0600"
     encoded_repair = json.dumps(repair_data)
     assert "1000:1000" not in encoded_repair and '"0:0"' not in encoded_repair
