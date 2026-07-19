@@ -623,3 +623,47 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
 - TC-13, TC-22 | stack: other | command: `make release-candidate` | result: pass | note: the paired
   release candidate rebuilt successfully and its package, runner, descriptor, version, live release
   selection, candidate manifest and checksums all verify
+
+## 12. Second Follow-up Execution Plan (append-only)
+
+- [x] p6-1-fix2 bind locally copied acceptance prompts to the paired release-candidate CLI instead
+  of an unrelated pre-existing PATH installation
+
+## 13. Second Follow-up Test And Acceptance Criteria (append-only)
+
+- TC-24 Candidate execution binding: after `make release-candidate`, every generated local-acceptance
+  prompt invokes the exact repository-local control candidate for compatibility and all subsequent
+  Skill commands. A stale bare `ouro-ops` earlier on PATH cannot receive an operation, and the
+  binding neither overwrites nor installs into the operator's existing CLI location.
+
+## 14. Second Follow-up Execution Log (append-only)
+
+- 2026-07-19 p6-1-fix2 started: operator-run Troubleshooting stopped before SSH because the copied
+  prompt invoked bare `ouro-ops`; PATH resolved `/Users/caiyufu/.local/bin/ouro-ops`, whose help still
+  exposes retired embedded `skill`, `tool`, and `manifest` surfaces, instead of the newly built
+  repository-local candidate. The current candidate recognizes `troubleshooting/snapshot`; candidate
+  construction succeeded but candidate selection was absent from the website handoff contract.
+- 2026-07-19 p6-1-fix2 completed: every local acceptance prompt now replaces the Skill's bare
+  command name with `./target/release-candidate-control/release/ouro-ops`, including the mandatory
+  first contract check, and explicitly refuses PATH fallback or installation overwrite. The final
+  inline JavaScript now has a syntax gate, and clipboard success uses available readback to retry or
+  refuse a stale value instead of reporting success.
+
+## 15. Second Follow-up Validation Evidence (append-only)
+
+- TC-24 | stack: other | command: compare `command -v ouro-ops`, PATH binary help/SHA-256 and paired
+  candidate help/SHA-256; run candidate Troubleshooting `--transport-plan` against operator spec |
+  result: pass | note: PATH resolves an older distinct binary with retired surfaces; the exact paired
+  candidate accepts `troubleshooting/snapshot`, binds the current linux/x86_64 runner and produces a
+  no-SSH transport plan
+- TC-23, TC-24 | stack: ui | command: build and serve local site, preload a stale clipboard, then
+  generate and approve one Troubleshooting copy in the real browser | result: pass | note: the first
+  copy exactly equals the displayed Troubleshooting prompt, names the repository-local candidate for
+  the mandatory contract check, forbids PATH fallback and reports copied only after success
+- TC-3, TC-24 | stack: python+ui | command: `./web/onboarding/build.sh && python3 -m pytest -q
+  tests/test_web_generator.py tests/test_release_surfaces.py && python3 tests/test_skill_docs.py` |
+  result: pass | note: nine focused cases include final inline-JavaScript syntax parsing and exact
+  candidate-binding assertions; release-surface and canonical Skill gates pass
+- TC-14, TC-22, TC-24 | stack: python+shell | command: `make python-test` | result: pass | note: all
+  maintained contract, release-candidate, site, schema, policy, stateless operation, KES, Upgrade and
+  Deploy gates pass after the candidate-selection repair

@@ -31,6 +31,12 @@ The workflow uses no deploy secret and uploads no hosted site artifact. Producti
 deployment, custom-domain wiring and production-domain acceptance are explicitly deferred to the
 next spec.
 
+Because formal CLI publication is also deferred, prompts copied from this local acceptance page
+bind every Ouro command to `./target/release-candidate-control/release/ouro-ops`, the control binary
+produced by `make release-candidate`. They never select or overwrite a pre-existing `ouro-ops` on
+`PATH`. The next release spec must replace this repository-local binding with the verified formal
+installation channel before production-site acceptance.
+
 ## Future production wiring
 
 The next spec may activate the prepared assets-only Cloudflare configuration after adding explicit

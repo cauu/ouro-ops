@@ -47,6 +47,10 @@ Formal CLI signing and publication are deliberately deferred to the next spec. T
 workflow runs this release-standard validation but creates no GitHub Release, tag publication,
 Homebrew update or hosted CLI artifact.
 
+For S0025 local website acceptance, invoke the built control candidate explicitly as
+`./target/release-candidate-control/release/ouro-ops`. `make release-candidate` validates and packages
+the candidate but intentionally neither installs it nor replaces an older `ouro-ops` on `PATH`.
+
 The signed node-image release catalog is a different public artifact. It is served at the fixed
 `data/releases.json` HTTPS source, signed by Ouro's pinned Ed25519 catalog key, and authorizes only
 exact `ghcr.io/blinklabs-io/cardano-node` OCI tuples and transitions. It never hosts image layers.

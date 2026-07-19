@@ -727,6 +727,7 @@ function prompt(d) {
   const relays = d.relays.map(r => r.id).join(", ");
   const skill = SKILL_PAYLOADS[d.op];
   if (!skill || typeof skill.content !== "string") throw new Error(`missing public Skill ${d.op}`);
+  const localCli = "./target/release-candidate-control/release/ouro-ops";
   const opLabel = d.op === "deploy" ?
     "deploy/register-submit (on-chain pool registration, not node provisioning)" : d.op;
   return [
@@ -734,6 +735,13 @@ function prompt(d) {
 `ouro-ops CLI on this machine (my control machine). I stay in the loop: present plans to me and`,
 `wait for my go-ahead in chat before any write.`,
 `Operation: ${opLabel}. Network: ${d.network}. BP=${bp}, relays=${relays}.`,
+``,
+`This is an unreleased local-acceptance build. For EVERY Ouro command in this prompt, use the exact`,
+`repository-local control CLI: ${localCli}`,
+`Replace the leading bare command name ouro-ops shown in the included Skill with that path. Do not`,
+`inspect, invoke, install, overwrite, or fall back to any`,
+`ouro-ops found on PATH. The Skill's mandatory first action is therefore exactly:`,
+`${localCli} contract check --requires-ouro '>=0.1.0' --requires-contract 1`,
 ``,
 `The complete canonical Ouro Skill for this operation follows. Treat it as the procedure and follow`,
 `its compatibility preflight and stop conditions exactly. Do not look for an embedded Skill in the`,
@@ -764,7 +772,7 @@ yaml(d).trimEnd(),
 }
 // Formal signed install channels are intentionally not claimed before the next release spec.
 const SETUP = {
-  mac:   "make release-candidate  # validates; does not publish",
+  mac:   "make release-candidate  # validates; does not publish\ntest -x ./target/release-candidate-control/release/ouro-ops",
   linux: "# Formal control CLI publication is deferred to the next release spec",
 };
 let setupOs = "mac";
@@ -990,8 +998,16 @@ function render() {
 async function clip(text){
   const t=document.createElement("textarea"); t.value=text; document.body.appendChild(t); t.select();
   const copied=document.execCommand("copy"); t.remove();
-  try { await navigator.clipboard.writeText(text); }
-  catch(primary) { if(!copied) throw primary; }
+  let modernCopied=false, modernError;
+  try { await navigator.clipboard.writeText(text); modernCopied=true; }
+  catch(error) { modernError=error; }
+  let observed;
+  try { observed=await navigator.clipboard.readText(); }
+  catch { if(copied || modernCopied)return; throw modernError; }
+  if(observed===text)return;
+  await navigator.clipboard.writeText(text);
+  observed=await navigator.clipboard.readText();
+  if(observed!==text)throw new Error("clipboard readback mismatch");
 }
 let pendingPrompt = "";
 $("copy-prompt").addEventListener("click",()=>{ if(!current.prompt)return;

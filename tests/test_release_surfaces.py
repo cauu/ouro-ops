@@ -44,6 +44,8 @@ def main() -> None:
     assert "fetch(" not in page
     assert "node_version:" not in page
     assert "release-paired ephemeral Linux runner" in page
+    assert "./target/release-candidate-control/release/ouro-ops" in page
+    assert "fall back to any" in page
     assert "brew install ouro/tap/ouro" not in page
     assert "ouro.example/install.sh" not in page
     print("current release/site/documentation boundaries passed")

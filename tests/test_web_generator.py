@@ -71,6 +71,10 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "END OURO-SKILL.MD" in html
     assert "never its machine id" in html
     assert "diag exec --dispatch" in html
+    assert "./target/release-candidate-control/release/ouro-ops" in html
+    assert "Replace the leading bare command name ouro-ops" in html
+    assert "inspect, invoke, install, overwrite, or fall back" in html
+    assert "The Skill's mandatory first action is therefore exactly:" in html
     assert "ouro-ops skill show" not in html
     assert html.count('data-op="') == 6
 
@@ -86,10 +90,25 @@ def test_page_keeps_payload_inert_and_network_bounded() -> None:
     assert 'id="copy-anyway"' in html
     assert "await clip(pendingPrompt)" in html
     assert html.index('document.execCommand("copy")') < html.index("navigator.clipboard.writeText(text)")
+    assert "observed=await navigator.clipboard.readText()" in html
+    assert 'throw new Error("clipboard readback mismatch")' in html
     assert '$("disclose-dlg").close("ok")' in html
     assert 'dlg.addEventListener("close"' not in html
     assert '$("prompt-out").textContent = pr' in html
     assert "innerHTML = skill" not in html
+
+
+def test_built_inline_javascript_parses() -> None:
+    html = build()
+    scripts = re.findall(r"<script>(.*?)</script>", html, re.DOTALL)
+    assert len(scripts) == 1, "the static page must keep one auditable inline script"
+    with tempfile.TemporaryDirectory() as td:
+        script = Path(td) / "onboarding.js"
+        script.write_text(scripts[0], encoding="utf-8")
+        checked = subprocess.run(
+            ["node", "--check", str(script)], text=True, capture_output=True
+        )
+    assert checked.returncode == 0, checked.stderr
 
 
 def copy_public_skills(destination: Path) -> None:
