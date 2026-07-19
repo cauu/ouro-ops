@@ -880,3 +880,114 @@ cold counter. Windows and multi-platform bundles are out of scope.
 - TC-13, TC-22 | stack: other | command: `make release-candidate` | result: pass | note: the final
   source rebuilt and verified the paired macOS control CLI, linux/x86_64 ephemeral runner, package,
   descriptor, candidate, version, release selection and checksums without publishing.
+
+## 31. Sixth Follow-up Requirement And Design (append-only)
+
+After a successful Phase A, a fresh agent invocation currently runs `kes-rotation/stage-key` again
+and is correctly refused because the fixed staging directory already exists. The refusal prevents
+secret-key replacement but leaves no typed continuation path, so an otherwise valid rotation cannot
+be resumed from the website prompt. Phase A planning must be idempotent across agent invocations:
+when no staged directory exists it keeps the existing generate-and-approve behavior; when a complete
+staged pair exists it returns the existing PUBLIC verification-key envelope/hash, current typed KES
+period and container `cardano-cli_version` without mutation, confirmation or fleet permit. The Skill
+must build/rebuild the local public bundle from that evidence and continue the offline handoff.
+
+An existing but incomplete, unreadable or incorrectly permissioned staged pair remains a hard stop.
+It must never be overwritten, auto-deleted or treated as resumable. Explicit destructive recovery is
+out of scope for this repair and requires a separately approved typed operation if later needed.
+
+## 32. Sixth Follow-up Execution Plan (append-only)
+
+- [~] p6-1-fix6 make KES Phase A safely resumable from a complete existing staged pair and align
+  the external Skill and website prompt
+
+## 33. Sixth Follow-up Test And Acceptance Criteria (append-only)
+
+- TC-32 Resumable Phase A: after an approved Phase A has staged a complete pair, a fresh invocation
+  of the canonical website prompt obtains a successful `stage-key --plan` whose typed evidence
+  identifies `resume_existing`, includes only the public staged vkey/hash plus current period and
+  CLI version, declares no executor steps and requires no confirmation or fleet permit. The agent
+  regenerates only the local public bundle and proceeds to the cold handoff; no target write command,
+  new key generation, approval capability or raw SSH occurs. A missing stage preserves the existing
+  approved generation flow, while an incomplete stage still refuses without cleanup or overwrite.
+
+## 34. Sixth Follow-up Execution Log (append-only)
+
+- 2026-07-19 p6-1-fix6 started: real manual acceptance restarted the website prompt after Phase A
+  and hit `a staged KES rotation already exists`. The target guard behaved correctly, but the Skill
+  had modeled Phase A as one-shot rather than a resumable transaction. The repair will expose only
+  the already-public staged key through the existing typed plan boundary and leave all secret and
+  destructive recovery behavior unchanged.
+
+## 35. Sixth Follow-up Change Request (append-only)
+
+- 2026-07-19 operator refinement: detecting a complete staged pair must not silently choose the
+  continuation path. The agent must present the bound public key/hash and ask the operator to choose
+  either continuing that pending rotation or discarding it and starting a new Phase A. Discard is a
+  separate candidate-bound typed write requiring exact confirmation; it may not be implemented as
+  raw SSH, implicit cleanup or delete-and-regenerate in one step. This supersedes section 31's
+  statement that continuation occurs directly without operator decision.
+- A successfully completed Phase B must leave no remote rotation transaction residue. Acceptance
+  must verify removal of the fixed staging directory and all `.ouro-prev` key/certificate backups,
+  while preserving the newly active triple and readiness. The deterministic temporary local public
+  vkey must also be removed after bundle creation; the operator-owned bundle and returned public
+  certificate are outputs, not hidden target state.
+
+## 36. Sixth Follow-up Additional Acceptance Criteria (append-only)
+
+- TC-33 Explicit pending-rotation decision: a complete staged pair makes the Skill stop for an
+  operator choice before bundle creation. Continue performs no target mutation and uses the exact
+  typed public pair. Restart first previews `kes-rotation/discard-stage`, waits for exact approval,
+  applies only the candidate-bound stage removal, proves the active key/cert/container unchanged and
+  stage absent, then begins a separate normal Phase A with a separate approval. Neither branch reads
+  the signing key or uses raw SSH. An incomplete stage cannot be continued or discarded through the
+  complete-stage decision path.
+- TC-34 Successful cleanup: after a verified `install-opcert` activation, the fixed stage directory
+  and all prior-key/opcert backup files are absent, the new KES key/certificate remains active and
+  readiness passes. A subsequent `stage-key --plan` reports no pending rotation and returns the
+  normal new-generation candidate. Skill instructions remove their temporary public-vkey input
+  after bundle creation and do not confuse the operator-owned air-gap bundle with remote residue.
+
+## 37. Sixth Follow-up Completion Status (append-only)
+
+- [x] p6-1-fix6 make KES Phase A explicitly resumable or discardable from a complete existing
+  staged pair, and prove successful activation leaves no transaction residue
+
+## 38. Sixth Follow-up Completion Log (append-only)
+
+- 2026-07-19 p6-1-fix6 completed: `stage-key --plan` now distinguishes an absent stage from one
+  complete pending pair. A pending plan contains only its PUBLIC envelope/hash, current period and
+  CLI version, has no executor steps and requires no confirmation, but Skill v10 stops for an
+  explicit operator continue/discard decision. Continue builds the public bundle without target
+  mutation. Discard uses the new BP-only `kes-rotation/discard-stage` typed write, binds the exact
+  pending public-key hash, requires confirmation, removes only the fixed stage and proves active
+  container/key/opcert unchanged. A new pair remains a separate candidate and approval.
+- Successful activation now executes and verifies cleanup of the fixed stage plus all three
+  `.ouro-prev` rollback files before reporting success. Its typed postcondition exposes both staging
+  and rollback cleanup. The Skill removes its temporary local public-vkey input after bundle
+  creation while preserving the operator-owned bundle and returned public certificate as explicit
+  outputs. Incomplete or unsafe staging residue continues to refuse both continuation and the
+  complete-stage discard path.
+
+## 39. Sixth Follow-up Validation Evidence (append-only)
+
+- TC-32, TC-33, TC-34 | stack: python+rust | command: `python3
+  tests/test_s0025_kes_rotation.py` and `cargo test -q -p ouro` | result: pass | note: a stateful fake
+  BP proves initial generation, fresh-agent pending detection with public-only evidence and zero
+  executor steps, incomplete-stage refusal, explicit candidate-bound discard, stale-candidate
+  refusal before deletion, separate regeneration approval, matched activation, verified residue
+  removal and a subsequent clean new-generation plan; 173 Rust tests include the fixed four-path
+  cleanup verifier.
+- TC-33 | stack: ui+python | command: `./web/onboarding/build.sh`, `python3
+  tests/test_skill_docs.py`, and `python3 -m pytest -q tests/test_web_generator.py` | result: pass |
+  note: the locally built website embeds canonical Skill v10 and exact pending decision,
+  `discard-stage`, no-silent-choice, cleanup and no-raw-SSH requirements; all nine generator cases
+  pass.
+- TC-14, TC-22, TC-32, TC-33, TC-34 | stack: rust+python+shell | command: `cargo clippy -q -p ouro
+  --lib --tests -- -D warnings`, `make python-test`, `python3 -m pytest -q`, and `bash
+  ci/l2-integration.sh` | result: pass | note: all maintained contract/operation/site gates, 13
+  pytest cases, warnings-denied clippy and complete L2 regression pass.
+- TC-13, TC-22 | stack: other | command: `make release-candidate` | result: pass | note: final source
+  rebuilt and verified the paired macOS control CLI, linux/x86_64 ephemeral runner, package,
+  descriptor, candidate, version, release selection and checksums without publishing. No real host
+  was contacted and the operator's current pending staged pair was intentionally left untouched.

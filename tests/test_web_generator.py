@@ -81,7 +81,13 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "ouro-ops kes airgap-bundle" in html
     assert "M-series Mac" in html and "Intel/AMD Linux" in html
     assert "uname -s" in html and "uname -m" in html
-    assert "ouro-ops kes cold-sign-script" not in payload(html)["kes-rotation"]["content"]
+    kes_prompt = payload(html)["kes-rotation"]["content"]
+    assert "pending_existing: true" in kes_prompt
+    assert "choose: continue this pending rotation, or discard it" in kes_prompt
+    assert "kes-rotation/discard-stage" in kes_prompt
+    assert "Do not silently choose" in kes_prompt
+    assert "staging directory is absent" in kes_prompt
+    assert "ouro-ops kes cold-sign-script" not in kes_prompt
     assert "ouro-ops skill show" not in html
     assert html.count('data-op="') == 6
 

@@ -115,6 +115,19 @@ pub fn registry() -> &'static [OperationSpec] {
             may_expose_secret: false,
         },
         OperationSpec {
+            // Explicitly abandon one complete candidate-bound staged KES pair. This never touches
+            // the active key/certificate and is intentionally separate from generating a new pair.
+            operation_id: "kes-rotation/discard-stage",
+            mutability: Mutability::Dangerous,
+            params: &[ParamSpec {
+                name: "machine",
+                kind: ParamKind::MachineId,
+                required: true,
+            }],
+            touched: &["file:kes-staged-key"],
+            may_expose_secret: false,
+        },
+        OperationSpec {
             operation_id: "deploy/register-submit",
             mutability: Mutability::Dangerous,
             params: &[

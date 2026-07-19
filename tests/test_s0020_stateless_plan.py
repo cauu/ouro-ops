@@ -267,6 +267,7 @@ def main():
     assert staged.returncode == 0, (staged, staged_value)
     assert staged_value["data"]["kes_rotation"]["current_period"] == 100
     assert staged_value["data"]["kes_rotation"]["staged_vkey_sha256"] is None
+    assert staged_value["data"]["kes_rotation"]["pending_existing"] is False
     stage_plan = staged_value["data"]["executor_plan"]
     assert any("key-gen-KES" in argv for argv in stage_plan)
     assert any(".ouro-kes-stage/kes.skey.tmp" in arg for argv in stage_plan for arg in argv)

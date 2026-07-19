@@ -381,6 +381,29 @@ pub fn stateless_kes_prepare_cleanup_plan(cid: &str) -> ExecutionPlan {
     ]]
 }
 
+/// Prove a completed KES transaction left neither a staged pair nor rollback backups behind.
+pub fn stateless_kes_cleanup_verification_plan(cid: &str) -> ExecutionPlan {
+    [
+        KES_STAGE_DIR,
+        KES_SKEY_PREVIOUS,
+        KES_VKEY_PREVIOUS,
+        OPCERT_PREVIOUS,
+    ]
+    .into_iter()
+    .map(|path| {
+        vec![
+            s("docker"),
+            s("exec"),
+            cid.to_string(),
+            s("test"),
+            s("!"),
+            s("-e"),
+            s(path),
+        ]
+    })
+    .collect()
+}
+
 /// Preserve the prior container as `<name>.ouro-prev` until the replacement is live-verified.
 pub fn stateless_recreate_recovery_plan(
     spec: &RecreateSpec,
@@ -977,6 +1000,22 @@ mod tests {
         assert!(encoded.contains("600"));
         assert!(!encoded.contains("cold.skey"));
         assert!(!encoded.contains("/tmp/ouro-run"));
+    }
+
+    #[test]
+    fn stateless_kes_completion_verifies_all_transaction_residue_absent() {
+        let plan = stateless_kes_cleanup_verification_plan("cid");
+        assert_eq!(plan.len(), 4);
+        for path in [
+            KES_STAGE_DIR,
+            KES_SKEY_PREVIOUS,
+            KES_VKEY_PREVIOUS,
+            OPCERT_PREVIOUS,
+        ] {
+            assert!(plan
+                .iter()
+                .any(|argv| { argv == &vec!["docker", "exec", "cid", "test", "!", "-e", path] }));
+        }
     }
 
     #[test]

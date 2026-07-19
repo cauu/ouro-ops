@@ -52,6 +52,7 @@ def main() -> None:
     state = home / "docker-state.json"
     state.write_text(json.dumps({
         "stage": False,
+        "stage_complete": True,
         "active_vkey": ACTIVE_KES_VKEY,
         "staged_vkey": KES_VKEY,
         "active_opcert": "opcert-public-digest",
@@ -82,13 +83,13 @@ def main() -> None:
         "  exists=s['stage'] if target==stage else s['backups']\n"
         "  sys.exit(1 if exists else 0)\n"
         "if a[:2]==['test','-s']:\n"
-        "  sys.exit(0 if s['stage'] else 1)\n"
+        "  sys.exit(0 if s['stage'] and s['stage_complete'] else 1)\n"
         "if a[:3]==['stat','-c','%a']:\n"
         "  print('600'); sys.exit(0)\n"
         "if a[:3]==['head','-c','65537']:\n"
         "  print(json.dumps(s['staged_vkey'] if stage in a[-1] else s['active_vkey'],separators=(',',':'))); sys.exit(0)\n"
         "if a and a[0]=='mkdir': s['stage']=True\n"
-        "elif 'key-gen-KES' in a: s['stage']=True\n"
+        "elif 'key-gen-KES' in a: s['stage']=True; s['stage_complete']=True\n"
         "elif a and a[0] in ('chmod','mv'): pass\n"
         "elif a[:2]==['cp','-p']:\n"
         "  src,dst=a[-2:]\n"
@@ -170,6 +171,114 @@ def main() -> None:
     assert "SigningKey" not in json.dumps(staged_value)
     assert json.loads(state.read_text())["active_vkey"] == ACTIVE_KES_VKEY
 
+    # A fresh agent sees the complete pending pair through typed PUBLIC evidence and must ask the
+    # operator to continue or discard it. Planning the choice performs no target mutation.
+    before_pending_log = docker_log.read_text().splitlines()
+    pending_plan, pending_value = invoke(
+        home,
+        *target_args("kes-rotation/stage-key", "--param", "machine=bp1"),
+        env_extra=env,
+        path=fakebin,
+    )
+    assert pending_plan.returncode == 0, (pending_plan, pending_value)
+    pending = pending_value["data"]["kes_rotation"]
+    assert pending["pending_existing"] is True
+    assert pending["staged_vkey"] == KES_VKEY
+    assert pending["staged_vkey_sha256"] == stage_post["kes_vkey_sha256"]
+    assert pending_value["data"]["executor_plan"] == []
+    assert pending_value["data"]["confirmation_required"] is False
+    pending_commands = docker_log.read_text().splitlines()[len(before_pending_log):]
+    assert not any("key-gen-KES" in command or " rm " in f" {command} " for command in pending_commands)
+
+    incomplete = json.loads(state.read_text())
+    incomplete["stage_complete"] = False
+    state.write_text(json.dumps(incomplete))
+    for operation in ("kes-rotation/stage-key", "kes-rotation/discard-stage"):
+        refused_incomplete, _ = invoke(
+            home,
+            *target_args(operation, "--param", "machine=bp1"),
+            env_extra=env,
+            path=fakebin,
+        )
+        assert refused_incomplete.returncode != 0
+        assert json.loads(state.read_text())["stage"] is True
+    incomplete = json.loads(state.read_text())
+    incomplete["stage_complete"] = True
+    state.write_text(json.dumps(incomplete))
+
+    # The restart choice is a separate candidate-bound discard. Drift refuses before deletion;
+    # exact approval removes only the staged pair and leaves the active BP untouched.
+    discard_plan, discard_value = invoke(
+        home,
+        *target_args("kes-rotation/discard-stage", "--param", "machine=bp1"),
+        env_extra=env,
+        path=fakebin,
+    )
+    assert discard_plan.returncode == 0, (discard_plan, discard_value)
+    discard_candidate = discard_value["data"]["candidate_hash"]
+    assert discard_value["data"]["confirmation_required"] is True
+    assert discard_value["data"]["kes_rotation"]["staged_vkey_sha256"] == stage_post["kes_vkey_sha256"]
+    drifted = json.loads(state.read_text())
+    original_staged_vkey = drifted["staged_vkey"]
+    drifted["staged_vkey"] = {**KES_VKEY, "cborHex": "5820" + "11" * 32}
+    state.write_text(json.dumps(drifted))
+    refused_discard, _ = invoke(
+        home,
+        *apply_args("kes-rotation/discard-stage", discard_candidate, "--param", "machine=bp1"),
+        env_extra=env,
+        path=fakebin,
+    )
+    assert refused_discard.returncode != 0 and json.loads(state.read_text())["stage"] is True
+    drifted = json.loads(state.read_text())
+    drifted["staged_vkey"] = original_staged_vkey
+    state.write_text(json.dumps(drifted))
+    discard_plan, discard_value = invoke(
+        home,
+        *target_args("kes-rotation/discard-stage", "--param", "machine=bp1"),
+        env_extra=env,
+        path=fakebin,
+    )
+    discarded, discarded_value = invoke(
+        home,
+        *apply_args(
+            "kes-rotation/discard-stage",
+            discard_value["data"]["candidate_hash"],
+            "--param",
+            "machine=bp1",
+        ),
+        env_extra=env,
+        path=fakebin,
+    )
+    assert discarded.returncode == 0, (discarded, discarded_value)
+    assert json.loads(state.read_text())["stage"] is False
+    assert json.loads(state.read_text())["active_vkey"] == ACTIVE_KES_VKEY
+    assert discarded_value["data"]["live_postcondition"]["staging_directory_absent"] is True
+
+    # Starting over is a second, separately approved normal Phase A.
+    stage_plan, stage_value = invoke(
+        home,
+        *target_args("kes-rotation/stage-key", "--param", "machine=bp1"),
+        env_extra=env,
+        path=fakebin,
+    )
+    assert stage_plan.returncode == 0, (stage_plan, stage_value)
+    assert stage_value["data"]["kes_rotation"]["pending_existing"] is False
+    assert stage_value["data"]["confirmation_required"] is True
+    assert any("key-gen-KES" in " ".join(command) for command in stage_value["data"]["executor_plan"])
+    staged, staged_value = invoke(
+        home,
+        *apply_args(
+            "kes-rotation/stage-key",
+            stage_value["data"]["candidate_hash"],
+            "--param",
+            "machine=bp1",
+        ),
+        env_extra=env,
+        path=fakebin,
+    )
+    assert staged.returncode == 0, (staged, staged_value)
+    stage_post = staged_value["data"]["live_postcondition"]
+
     # Deterministic local public handoff consumes the typed period and returned public envelope.
     handoff = home / "ouro-kes-rotation" / "bp1-period-100"
     handoff.mkdir(parents=True)
@@ -231,7 +340,19 @@ def main() -> None:
     assert final["restart_count"] == 1
     assert applied_value["data"]["live_postcondition"]["verification"] == \
         "staged_kes_pair_and_bound_opcert_activated"
+    assert applied_value["data"]["live_postcondition"]["staging_residue_removed"] is True
     assert "SigningKey" not in json.dumps(applied_value)
+
+    # Successful activation leaves no transaction residue, so the next rotation is a fresh plan.
+    next_plan, next_value = invoke(
+        home,
+        *target_args("kes-rotation/stage-key", "--param", "machine=bp1"),
+        env_extra=env,
+        path=fakebin,
+    )
+    assert next_plan.returncode == 0, (next_plan, next_value)
+    assert next_value["data"]["kes_rotation"]["pending_existing"] is False
+    assert next_value["data"]["confirmation_required"] is True
     print("S0025 genuine staged KES rotation mock end-to-end passed")
 
 

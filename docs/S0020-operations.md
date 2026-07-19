@@ -25,6 +25,7 @@ compatibility preflight. The CLI carries execution mechanisms and no decision Sk
 | `troubleshooting/snapshot` | read | none | real role-aware baseline; no overall-health claim |
 | `runtime/restart` | disruptive write | exact confirmation + fleet permit | stop after `--plan` |
 | `kes-rotation/stage-key` | non-disruptive private-key staging | exact confirmation; no fleet permit | target `--plan` only |
+| `kes-rotation/discard-stage` | destructive pending-key cleanup | exact confirmation; no fleet permit | target `--plan` only |
 | `kes-rotation/install-opcert` | disruptive matched KES-pair + public-opcert activation | exact confirmation + fleet permit | local preview + target preflight/`--plan` only |
 | `upgrade/preload-image` | non-disruptive exact GHCR pull | exact confirmation | target `--plan` only |
 | `upgrade/step` | disruptive recreate | exact confirmation + fleet permit + signed N→N+1 transition | typed safe refusal / `--plan` only |
@@ -77,11 +78,17 @@ verifies its published archive checksum and atomically emits `kes.vkey`, `cold-s
 choices are M-series Mac, Intel Mac, Intel/AMD Linux and ARM Linux, with `uname -s` plus `uname -m`
 as the only fallback when the operator does not recognize the device. The cold script verifies its
 adjacent public manifest, vkey, executable digest and reported version before it reads the counter,
-so no preinstalled CLI or network is needed on the air-gapped machine. After the offline
-cold-signing handoff, `install-opcert` requires the
-returned certificate to name that exact staged public key. Approved activation backs up and
+so no preinstalled CLI or network is needed on the air-gapped machine. If a complete staged pair
+already exists, the same Phase-A plan returns that PUBLIC vkey plus current period/version with no
+executor steps, then requires the operator to choose whether to continue or discard it. Continue
+uses the public evidence without target mutation. Discard is a separate candidate-bound confirmed
+write that removes only the fixed stage; a new pair requires another plan and approval. Incomplete
+or unsafe staging residue remains a typed refusal. After the offline cold-signing handoff,
+`install-opcert` requires the returned certificate to name that exact staged public key. Approved
+activation backs up and
 promotes `kes.skey`, `kes.vkey` and `node.cert` together, restarts once, verifies typed readiness,
-and restores the previous triple on failure.
+and restores the previous triple on failure. Success verifies the fixed stage and all rollback
+backups are absent before reporting completion.
 
 Use `ouro-ops inbox preview --type opcert|tx --file <operator-named-file>` on control. It validates
 the public artifact and returns a content-addressed reference without writing an inbox. Put that ref

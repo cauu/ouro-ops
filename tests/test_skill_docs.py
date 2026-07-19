@@ -77,6 +77,10 @@ def main():
         "KES Skill must not infer KES lifetime from the fixed tip-only health read"
     for phrase in [
         "kes-rotation/stage-key",
+        "kes-rotation/discard-stage",
+        "pending_existing: true",
+        "choose: continue this pending rotation, or discard it",
+        "Do not silently choose",
         "ouro-ops kes airgap-bundle",
         "cardano_cli_version",
         "M-series Mac",
@@ -97,6 +101,8 @@ def main():
         "takes no fleet permit",
         "already invalid/expired active",
         "not Phase-A success gates",
+        "staging directory is absent",
+        "rollback files were removed",
     ]:
         assert phrase in kes, f"KES Skill lacks Phase A/B contract {phrase!r}"
     for unnecessary_prompt in [

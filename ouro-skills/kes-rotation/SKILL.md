@@ -1,5 +1,5 @@
 ---
-skill_version: 8
+skill_version: 10
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -45,13 +45,28 @@ reads or prints it.
 - Discover the BP, host and credential reference from `pool-spec.yaml`; do not ask the operator to
   repeat them. Obtain the FINAL Phase-A plan with `ouro-ops op run --op kes-rotation/stage-key
   --spec <pool-spec> --dispatch <bp-host> --ssh-key creds://<name> --node <bp> --param machine=<bp>
-  --plan`. The typed BP observation supplies the current KES period automatically. Show the exact
-  candidate, period, active public-key hash and fixed staging plan; WAIT for exact approval.
-- After approval mint `ouro-ops confirm create --op kes-rotation/stage-key --node <bp> --intent-hash
-  <stage-hash>`, then immediately rerun the plan command without `--plan`, adding `--candidate-hash
-  <stage-hash> --confirm-token <token>`. Stage-key takes no fleet permit. Require a returned PUBLIC
-  `kes_vkey`, its hash, typed period and `cardano_cli_version`, signing-key mode `0600`, and explicit
-  evidence that the active container/key/certificate were unchanged.
+  --plan`. The typed BP observation supplies the current KES period automatically.
+- If that plan reports `pending_existing: true`, require `executor_plan: []`,
+  `confirmation_required: false`, no fleet permit, a complete PUBLIC `staged_vkey` plus its hash,
+  typed period and `cardano_cli_version`. Show the pending public-key hash and ask the operator to
+  choose: continue this pending rotation, or discard it and start a new Phase A. WAIT for that
+  decision. Do not silently choose, call stage-key apply, generate another pair or use raw SSH.
+- If the operator chooses CONTINUE, treat the typed `staged_vkey` plan field as the Phase-A public
+  handoff and proceed to bundle generation with no target mutation or approval capability.
+- If the operator chooses DISCARD AND RESTART, obtain a FINAL `kes-rotation/discard-stage` plan with
+  the same spec/dispatch/key/node/machine arguments. Require it to bind the exact pending public-key
+  hash, remove only the fixed stage, require confirmation and require no fleet permit. Show it and
+  WAIT for exact approval. Mint `ouro-ops confirm create --op kes-rotation/discard-stage --node <bp>
+  --intent-hash <discard-hash>`, immediately apply the unchanged candidate, and require typed proof
+  that the stage is absent while active container/key/opcert are unchanged. Only then rerun the
+  normal `stage-key --plan`; generation is a separate candidate and requires a separate approval.
+- Otherwise require `pending_existing: false` and no staged vkey, show the exact candidate, period,
+  active public-key hash and fixed generation plan, then WAIT for exact approval. After approval
+  mint `ouro-ops confirm create --op kes-rotation/stage-key --node <bp> --intent-hash <stage-hash>`,
+  then immediately rerun the plan command without `--plan`, adding `--candidate-hash <stage-hash>
+  --confirm-token <token>`. Stage-key takes no fleet permit. Require a returned PUBLIC `kes_vkey`,
+  its hash, typed period and `cardano_cli_version`, signing-key mode `0600`, and explicit evidence
+  that the active container/key/certificate were unchanged.
 - Treat returned `preexisting_kes_opcert_valid` and `preexisting_forging_credentials_ready` as
   pre-state facts, not Phase-A success gates. If either was already false, report that Phase A
   safely staged the replacement while the old credentials remain unusable; proceed to the offline
@@ -100,14 +115,20 @@ reads or prints it.
 - Immediately rerun the plan command without `--plan`, adding `--candidate-hash <final-hash>
   --artifact-file <operator-named-public-opcert> --confirm-token <token> --fleet-permit
   '<fleet_permit-json>'`. Never replan with either capability. Report only after the typed
-  postcondition confirms the staged KES pair and bound opcert were activated and readiness passed.
+  postcondition confirms the staged KES pair and bound opcert were activated, readiness passed,
+  the fixed staging directory is absent and all previous-key/opcert rollback files were removed.
+  Remove the deterministic temporary public-vkey input if it still exists. Preserve the
+  operator-owned air-gap bundle and returned public certificate unless the operator asks to remove
+  them; they are explicit outputs, not hidden remote transaction state.
 
 ## Stop Conditions
-- Stop if typed current-period evidence is missing, an earlier staged rotation exists, the offline
-  ceremony is incomplete, typed `cardano_cli_version` is missing, the device cannot map to one of
+- Stop if typed current-period evidence is missing, the offline ceremony is incomplete, typed
+  `cardano_cli_version` is missing, the device cannot map to one of
   the four supported platforms, the official release/checksum/bundle verification fails, the file
   is not a public opcert, its bytes change, deep preflight refuses it, the target is not the declared
-  BP, or approval/permit is absent.
+  BP, or approval/permit is absent. A complete existing staged pair requires an explicit operator
+  continue/discard decision; an incomplete, unreadable or incorrectly permissioned staged pair is a
+  stop and must not enter the complete-stage discard flow.
 - Stop on signed-policy, role/network/genesis/layout drift or a Phase-A regression relative to the
   bound readiness pre-state. An unchanged pre-existing invalid KES/opcert is not drift. Report a
   typed refusal; do not adopt, reconfigure, or work around it.
