@@ -51,6 +51,7 @@ def main():
         '     elif echo "$*" | grep -q "cat /opt/cardano/config/mainnet/shelley-genesis.json"; then echo \'{"slotsPerKESPeriod":2}\';\n'
         '     elif echo "$*" | grep -q "ss -Htn state established"; then echo 2;\n'
         '     elif echo "$*" | grep -q netstat; then echo 0;\n'
+        '     elif echo "$*" | grep -q "keys_directory_safe=%s"; then printf "keys_directory_safe=true\\nkes_skey_private=true\\nvrf_skey_private=true\\nforging_key_owner_supported=true\\nkes_rotation_permissions_ready=true\\n";\n'
         '     elif echo "$*" | grep -q kes.skey; then echo true;\n'
         '     elif echo "$*" | grep -q node.cert; then echo "opcerthash  /x";\n'
         '     else echo "deadbeef  /x"; fi;;\n'
@@ -65,6 +66,13 @@ def main():
         "'cardano_node_metrics_currentKESPeriod_int 0'\n"
     )
     (binp / "curl").chmod(0o755)
+    (binp / "stat").write_text(
+        "#!/usr/bin/env python3\n"
+        "import os,sys\n"
+        "value=os.stat(sys.argv[3])\n"
+        "print(format(value.st_mode & 0o777, 'o') if sys.argv[2]=='%a' else value.st_uid)\n"
+    )
+    (binp / "stat").chmod(0o755)
 
     env = dict(os.environ, PATH=f"{binp}:{os.environ['PATH']}", OURO_READINESS_SAMPLE_DELAY="0",
                OURO_HOST_KEY_SHA256="SHA256:" + "a" * 43)
@@ -96,8 +104,14 @@ def main():
     for k in ["image_config_digest", "platform", "container_id", "container_creation_epoch",
               "entrypoint", "args", "mounts", "topology_hash", "config_hash",
               "kes_opcert_id", "has_forging_keys", "forging_key_permissions_safe",
+              "keys_directory_safe", "kes_skey_private", "vrf_skey_private",
+              "forging_key_owner_supported", "kes_rotation_permissions_ready",
               "host_key_sha256", "genesis_hash", "network"]:
         assert k in live, f"observation missing {k}"
+    assert live["keys_directory_safe"] is True
+    assert live["kes_skey_private"] is True and live["vrf_skey_private"] is True
+    assert live["forging_key_owner_supported"] is True
+    assert live["kes_rotation_permissions_ready"] is True
     readiness = obs["readiness"]
     for k in ["node_running", "socket_answers", "tip_block", "tip_block_next",
               "tip_block_height", "tip_slot", "tip_era", "sync_progress", "tip_synced",
@@ -118,6 +132,85 @@ def main():
     }
     assert readiness["established_peers"] == 2, "ss-only Blink Labs image peers must be detected"
     assert obs["recreate"] is not None, "inherited nonempty OCI labels remain a valid baseline"
+
+    def permission_facts(root: Path, service_uid: int) -> dict[str, bool]:
+        checked = subprocess.run(
+            [
+                "bash",
+                "-c",
+                f"source {LIB}\nouro_kes_rotation_permission_fixture_facts '{root}' '{service_uid}'",
+            ],
+            text=True,
+            capture_output=True,
+            env=env,
+        )
+        assert checked.returncode == 0, checked.stderr
+        return {
+            key: value == "true"
+            for key, value in (line.split("=", 1) for line in checked.stdout.splitlines())
+        }
+
+    permission_root = Path(tempfile.mkdtemp(prefix="ouro-kes-permission-fixture-"))
+    keys = permission_root / "opt/cardano/config/keys"
+    keys.mkdir(parents=True)
+    kes_key = keys / "kes.skey"
+    vrf_key = keys / "vrf.skey"
+    kes_key.write_text("fixture metadata only")
+    vrf_key.write_text("fixture metadata only")
+    service_uid = os.getuid()
+
+    os.chmod(keys, 0o755)
+    os.chmod(kes_key, 0o600)
+    os.chmod(vrf_key, 0o600)
+    facts = permission_facts(permission_root, service_uid)
+    assert all(facts.values()), facts
+
+    os.chmod(keys, 0o700)
+    os.chmod(kes_key, 0o400)
+    os.chmod(vrf_key, 0o400)
+    assert all(permission_facts(permission_root, service_uid).values())
+
+    os.chmod(keys, 0o775)
+    assert permission_facts(permission_root, service_uid)["keys_directory_safe"] is False
+    os.chmod(keys, 0o755)
+    for path, mode, fact in [
+        (kes_key, 0o640, "kes_skey_private"),
+        (vrf_key, 0o644, "vrf_skey_private"),
+    ]:
+        os.chmod(kes_key, 0o600)
+        os.chmod(vrf_key, 0o600)
+        os.chmod(path, mode)
+        refused = permission_facts(permission_root, service_uid)
+        assert refused[fact] is False and refused["kes_rotation_permissions_ready"] is False
+
+    os.chmod(kes_key, 0o600)
+    os.chmod(vrf_key, 0o600)
+    kes_key.unlink()
+    symlink_target = permission_root / "outside.skey"
+    symlink_target.write_text("fixture metadata only")
+    os.chmod(symlink_target, 0o600)
+    kes_key.symlink_to(symlink_target)
+    symlink_facts = permission_facts(permission_root, service_uid)
+    assert symlink_facts["kes_skey_private"] is False
+    assert symlink_facts["kes_rotation_permissions_ready"] is False
+    kes_key.unlink()
+    kes_key.mkdir()
+    non_regular = permission_facts(permission_root, service_uid)
+    assert non_regular["kes_skey_private"] is False
+    kes_key.rmdir()
+    kes_key.write_text("fixture metadata only")
+    os.chmod(kes_key, 0o600)
+    wrong_owner = permission_facts(permission_root, service_uid + 1)
+    assert wrong_owner["forging_key_owner_supported"] is False
+    assert wrong_owner["kes_rotation_permissions_ready"] is False
+
+    permission_script = subprocess.run(
+        ["bash", "-c", f"source {LIB}\nprintf '%s' \"$OURO_KES_ROTATION_PERMISSION_CHECK\""],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+    assert "diag_uid" not in permission_script and "ouro-diag" not in permission_script
 
     # Expired cardano-cli queries can return no JSON. The fallback derives current KES from tip slot
     # and the public genesis value, never from the known-unreliable currentKESPeriod metric.

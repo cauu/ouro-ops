@@ -99,6 +99,9 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "target_qualification: kes_rotation_repair_ready" in kes_prompt
     assert "target_kes_rotation_repair_ready: true" in kes_prompt
     assert "target_online: false" in kes_prompt
+    assert "target_kes_rotation_permissions" in kes_prompt
+    assert "keys_directory_safe" in kes_prompt
+    assert "`forging_key_permissions_safe:false` alone is not a KES refusal" in kes_prompt
     assert "<operator-named-public-opcert>" not in kes_prompt
     assert "ouro-ops kes cold-sign-script" not in kes_prompt
     assert "ouro-ops skill show" not in html

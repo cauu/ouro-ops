@@ -1280,3 +1280,87 @@ candidate.
   Python gates, 13 pytest cases, full L2, macOS control CLI, linux/x86_64 ephemeral runner, package,
   descriptors, release selection and checksums pass without contacting the production BP or
   changing its retained stage/certificate.
+
+## 54. Eleventh Follow-up Requirement And Design (append-only)
+
+The production KES permit now reaches its operation-scoped repair qualification, but the target
+reports `key_permissions_safe:false` for the ordinary layout `keys=0755`, `kes.skey=0600`,
+`vrf.skey=0600`. That legacy aggregate belongs to S0019 adoption/diagnostic isolation: it requires
+the directory and both private files to share one owner and match `[0-7]00`, and compares the host
+`ouro-diag` UID to container file UIDs. It is not the KES rotation privacy contract and creates
+another late false refusal after offline signing.
+
+The probe must preserve the legacy aggregate for historical adoption behavior and add one separate,
+closed KES permission evidence set. It reads only metadata for the fixed in-container paths and
+emits the following non-secret booleans: `keys_directory_safe`, `kes_skey_private`,
+`vrf_skey_private`, `forging_key_owner_supported`, and `kes_rotation_permissions_ready`. The fixed
+directory must be a real non-symlink directory with mode 0700, 0750 or 0755. Each fixed private key
+must be a real non-symlink regular file with mode 0400 or 0600. Both private files must be owned by
+the effective container node service UID; the directory may independently be root-owned. Blink
+Labs' official `run-node` ends with `exec /usr/local/bin/cardano-node`, so `/proc/1` is the node
+process and its owner is the closed container-namespace identity. No host UID participates. Public
+`kes.vkey` and `node.cert` are intentionally outside this private-key predicate.
+
+Phase-A stage planning, Phase-B install planning, fleet repair qualification and post-activation
+verification must all call the same aggregate predicate. Phase A therefore refuses before key
+generation or air-gap handoff when the fixed active credential layout is genuinely unsafe. A
+complete existing stage does not bypass this preflight. Every plan/status/permit exposes the five
+booleans, but never key bytes or raw owner identifiers. Candidate live-state binding includes the
+facts so a permission change forces a re-plan.
+
+A separate typed `credentials/normalize-forging-permissions` write is not folded into the predicate
+repair. Its contract must bind the exact fixed paths and original container-namespace metadata,
+require explicit approval, restore the exact prior metadata on verification failure, and never
+accept agent paths/modes/owners. This is tracked separately so the current safe 0755/0600 false
+positive does not justify an unreviewed chown capability.
+
+Production recovery remains non-mutating until a fresh approval: preserve the current staged pair
+and returned `node.cert`; do not re-run Phase A, cold signing or the counter. After the new RC, repeat
+Phase-B final planning and artifact preflight, mint fresh confirmation and permit for the new
+candidate, and activate only after every typed fact passes.
+
+## 55. Eleventh Follow-up Execution Plan And Acceptance (append-only)
+
+- [~] p6-1-fix11 replace the KES repair permission dependency with one shared container-namespace
+  metadata predicate
+- [ ] p6-1-fix12 add a separately approved, fixed-path forging-permission normalizer with exact
+  metadata rollback
+- TC-43 KES permission fixtures: directory 0755/private 0600 and directory 0700/private 0400 pass;
+  group/world-writable directories, private 0640/0644, any symlink, non-regular private file and
+  owner different from the container node process refuse. A root-owned directory with service-owned
+  private files passes when the service UID matches; host/container numeric UID collision is absent
+  from the decision.
+- TC-44 Shared early/late contract: Phase-A stage plan, Phase-B install plan, fleet permit and
+  post-activation verification consume the same five facts. A false fact refuses Phase A before
+  executor/approval and refuses Phase B without mutation; a safe 0755/0600 layout produces
+  `target_qualification: kes_rotation_repair_ready` and `target_kes_rotation_repair_ready:true`.
+- TC-45 Typed normalization: only the fixed directory and two private keys can be selected; the plan
+  discloses original/target metadata without secret content, needs exact approval, verifies the same
+  predicate, rolls back exact original mode/owner on failure and refuses symlink/type/path drift.
+
+## 56. Eleventh Follow-up Partial Completion And Evidence (append-only)
+
+- [x] p6-1-fix11 replace the KES repair permission dependency with one shared container-namespace
+  metadata predicate
+- 2026-07-19 p6-1-fix11 completed: the probe retains the legacy adoption/diag aggregate and emits a
+  separate five-boolean KES permission record from fixed in-container metadata. Directory safety is
+  the exact 0700/0750/0755 non-symlink directory set; both private files are exact 0400/0600
+  non-symlink regular files; their owners must equal the `/proc/1` node service UID. Directory owner
+  is independent, public vkey/opcert are excluded and no host UID enters the predicate.
+- Phase-A stage planning (including pending-stage resume), Phase-B install planning, fleet KES repair
+  qualification and activation postcondition all require the same five facts. The facts are bound in
+  the candidate/live drift model and exposed in KES plans, fleet status and permit output. The old
+  `forging_key_permissions_safe:false` alone no longer blocks KES repair.
+- Skill v15 and the locally built website prompt describe the dedicated predicate, early Phase-A
+  stop, Phase-B permit facts and raw chmod/chown prohibition.
+- TC-43 | stack: shell+python | command: `python3 tests/test_probe.py` | result: pass | note: 0755/0600
+  and 0700/0400 pass; 0775, 0640, 0644, private symlink, non-regular private path and service-owner
+  mismatch refuse. The dedicated script contains no `ouro-diag` or host UID input.
+- TC-44 | stack: rust+python | command: `cargo test -q -p ouro`, `cargo clippy -q -p ouro --lib
+  --tests -- -D warnings`, `python3 tests/test_s0020_stateless_plan.py`, `python3
+  tests/test_s0020_stateless_apply.py`, `python3 tests/test_s0020_kes_airgap_preflight.py`, and
+  `python3 tests/test_s0025_kes_rotation.py` | result: pass | note: 173 Rust tests, Phase-A/Phase-B
+  symmetric refusals, offline-KES permit admission, artifact preflight, activation and rollback pass.
+- TC-44 | stack: ui+python | command: `./web/onboarding/build.sh`, `python3
+  tests/test_skill_docs.py`, and `python3 -m pytest -q tests/test_web_generator.py` | result: pass |
+  note: canonical Skill v15 is embedded byte-for-byte and all nine local site cases pass.

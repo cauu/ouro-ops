@@ -82,6 +82,11 @@ def observation(container="cid-plan"):
             "kes_opcert_id": "opcert-public-digest",
             "has_forging_keys": True,
             "forging_key_permissions_safe": True,
+            "keys_directory_safe": True,
+            "kes_skey_private": True,
+            "vrf_skey_private": True,
+            "forging_key_owner_supported": True,
+            "kes_rotation_permissions_ready": True,
             "host_key_sha256": "SHA256:" + "a" * 43,
             "genesis_hash": GENESIS,
             "network": "mainnet",
@@ -269,6 +274,7 @@ def main():
     assert staged_value["data"]["kes_rotation"]["current_period"] == 100
     assert staged_value["data"]["kes_rotation"]["staged_vkey_sha256"] is None
     assert staged_value["data"]["kes_rotation"]["pending_existing"] is False
+    assert all(staged_value["data"]["kes_rotation"]["permissions"].values())
     stage_plan = staged_value["data"]["executor_plan"]
     assert any("key-gen-KES" in argv for argv in stage_plan)
     assert any(".ouro-kes-stage/kes.skey.tmp" in arg for argv in stage_plan for arg in argv)
@@ -292,6 +298,7 @@ def main():
     )
     assert kes.returncode == 0, kes
     assert kes_value["data"]["kes_rotation"]["staged_vkey_sha256"]
+    assert all(kes_value["data"]["kes_rotation"]["permissions"].values())
     kes_plan = kes_value["data"]["executor_plan"]
     assert kes_plan[0] == [
         "docker",
@@ -310,6 +317,38 @@ def main():
     assert ["docker", "restart", "cid-plan"] in kes_plan
     assert any(any(".ouro-kes-stage" in arg for arg in argv) and "rm" in argv for argv in kes_plan)
     assert all("ouro-run." not in arg for argv in kes_plan for arg in argv)
+
+    # Phase A and Phase B consume the exact same dedicated permission facts before constructing an
+    # executor or asking for approval. The legacy adoption/diag aggregate is intentionally ignored.
+    for broken_permission in [
+        "keys_directory_safe",
+        "kes_skey_private",
+        "vrf_skey_private",
+        "forging_key_owner_supported",
+        "kes_rotation_permissions_ready",
+    ]:
+        unsafe = observation()
+        unsafe["live"]["forging_key_permissions_safe"] = True
+        unsafe["live"][broken_permission] = False
+        write_probe(probe, unsafe)
+        for operation, params in (
+            ("kes-rotation/stage-key", ("--param", "machine=bp1")),
+            (
+                "kes-rotation/install-opcert",
+                ("--param", "machine=bp1", "--param", f"opcert={opcert}"),
+            ),
+        ):
+            refused, refused_value = invoke(
+                home,
+                *target_args(operation, *params),
+                env_extra=probe_env,
+                path=fakebin,
+            )
+            assert refused.returncode != 0, (broken_permission, operation, refused_value)
+            assert "KES rotation permission contract failed" in json.dumps(refused_value)
+            refusal = json.dumps(refused_value)
+            assert broken_permission in refusal and "false" in refusal
+    write_probe(probe, observation())
 
     # Runtime and KES use the stable inspected layout, not membership in a changing release feed.
     # A future config digest therefore needs no CLI rebuild when the live layout still conforms.

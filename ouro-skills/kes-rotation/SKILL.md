@@ -1,5 +1,5 @@
 ---
-skill_version: 14
+skill_version: 15
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -45,6 +45,13 @@ reads or prints it.
   the BP must be running, socket-responsive, synchronized, convention-conformant and have its BP
   credential layout/permissions intact, but the old KES/opcert may already be invalid. Ordinary
   fleet `online`, every other disruptive operation and relay quorum remain fully fail-closed.
+- KES permission readiness is its own container-namespace contract, not the legacy
+  `forging_key_permissions_safe` adoption/diagnostic aggregate. Require all five typed facts:
+  `keys_directory_safe`, `kes_skey_private`, `vrf_skey_private`,
+  `forging_key_owner_supported`, and `kes_rotation_permissions_ready`. A real non-symlink keys
+  directory may be 0700, 0750 or 0755; the two fixed private keys must be non-symlink regular files
+  at 0400 or 0600 and owned by the container node service user. Public `kes.vkey` and `node.cert`
+  are not private-key inputs. Never compare a host account UID to a container UID.
 - `kes airgap-bundle` is a local public-artifact write, not a target operation. It downloads the
   exact Intersect release matching the typed BP `cardano_cli_version`, verifies the official archive
   checksum, extracts one platform-specific binary, and atomically promotes the completed directory.
@@ -60,6 +67,9 @@ reads or prints it.
   repeat them. Obtain the FINAL Phase-A plan with `ouro-ops op run --op kes-rotation/stage-key
   --spec <pool-spec> --dispatch <bp-host> --ssh-key creds://<name> --node <bp> --param machine=<bp>
   --plan`. The typed BP observation supplies the current KES period automatically.
+- Before any Phase-A generation or pending-stage decision, require the plan's five KES permission
+  facts above to all be true. If any is false, stop before approval/generation and report the typed
+  non-secret facts; do not proceed to offline signing or suggest raw chmod/chown.
 - If that plan reports `pending_existing: true`, require `executor_plan: []`,
   `confirmation_required: false`, no fleet permit, a complete PUBLIC `staged_vkey` plus its hash,
   typed period and `cardano_cli_version`. Show the pending public-key hash and ask the operator to
@@ -148,7 +158,8 @@ reads or prints it.
   --spec <pool-spec> --node <bp> --op kes-rotation/install-opcert --intent-hash <final-hash>
   --holder <controller-id>`. Require its facts to report
   `target_qualification: kes_rotation_repair_ready` and
-  `target_kes_rotation_repair_ready: true`. `target_online: false` is allowed only here when the
+  `target_kes_rotation_repair_ready: true`, and require every boolean in
+  `target_kes_rotation_permissions` to be true. `target_online: false` is allowed only here when the
   bound pre-existing KES/opcert readiness is the failed component; it is not permission to ignore
   liveness, socket, sync, network/genesis, role/layout/host identity, relay quorum or permit
   freshness.
@@ -183,6 +194,10 @@ reads or prints it.
 - Stop if the KES activation permit lacks the typed repair qualification or if any non-KES
   availability/layout evidence is false. Do not substitute ordinary offline status, weaken another
   operation's permit or reinterpret an unhealthy relay as quorum.
+- Stop if any dedicated KES permission fact is false. The legacy
+  `forging_key_permissions_safe:false` alone is not a KES refusal when the five dedicated facts are
+  true. Do not use raw SSH, chmod or chown as a workaround; only a registered typed normalization
+  operation may repair a genuinely unsafe layout.
 - Stop and require operator recovery if the live-verified inverse cannot establish a known state.
 
 ## Red Lines

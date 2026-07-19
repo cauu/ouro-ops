@@ -313,6 +313,7 @@ struct FleetLiveStatus {
     host_key_sha256: String,
     online: bool,
     kes_rotation_repair_ready: bool,
+    kes_rotation_permissions: KesRotationPermissionEvidence,
     image_config_digest: String,
     state_generation: u64,
 }
@@ -474,13 +475,38 @@ fn fetch_fleet_status(
             .get("kes_rotation_repair_ready")
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false),
+        kes_rotation_permissions: KesRotationPermissionEvidence {
+            keys_directory_safe: result
+                .get("keys_directory_safe")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            kes_skey_private: result
+                .get("kes_skey_private")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            vrf_skey_private: result
+                .get("vrf_skey_private")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            forging_key_owner_supported: result
+                .get("forging_key_owner_supported")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            kes_rotation_permissions_ready: result
+                .get("kes_rotation_permissions_ready")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+        },
         image_config_digest: image.into(),
         state_generation: result
             .get("state_generation")
             .and_then(serde_json::Value::as_u64)
-            .ok_or_else(|| OuroError::Validation(format!(
-                "fleet live-facts target {} omitted state_generation", machine.id
-            )))?,
+            .ok_or_else(|| {
+                OuroError::Validation(format!(
+                    "fleet live-facts target {} omitted state_generation",
+                    machine.id
+                ))
+            })?,
     })
 }
 
@@ -700,7 +726,9 @@ pub fn run_fleet(args: &[String]) -> Result<()> {
             OuroError::Validation(format!("fleet live-facts snapshot omitted target {node}"))
         })?;
     let target_qualified = if operation == "kes-rotation/install-opcert" {
-        role == "bp" && target_status.kes_rotation_repair_ready
+        role == "bp"
+            && target_status.kes_rotation_repair_ready
+            && target_status.kes_rotation_permissions.ready()
     } else {
         target_status.online
     };
@@ -786,6 +814,7 @@ pub fn run_fleet(args: &[String]) -> Result<()> {
             "target_role": role,
             "target_online": target_status.online,
             "target_kes_rotation_repair_ready": target_status.kes_rotation_repair_ready,
+            "target_kes_rotation_permissions": target_status.kes_rotation_permissions,
             "target_qualification": if operation == "kes-rotation/install-opcert" {
                 "kes_rotation_repair_ready"
             } else {
@@ -1111,6 +1140,51 @@ struct KesRotationEvidence {
     preexisting_kes_opcert_valid: bool,
     preexisting_forging_credentials_ready: bool,
     preexisting_kes_evidence_sha256: String,
+    permissions: KesRotationPermissionEvidence,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct KesRotationPermissionEvidence {
+    keys_directory_safe: bool,
+    kes_skey_private: bool,
+    vrf_skey_private: bool,
+    forging_key_owner_supported: bool,
+    kes_rotation_permissions_ready: bool,
+}
+
+impl KesRotationPermissionEvidence {
+    fn from_live(live: &ObsLive) -> Self {
+        Self {
+            keys_directory_safe: live.keys_directory_safe,
+            kes_skey_private: live.kes_skey_private,
+            vrf_skey_private: live.vrf_skey_private,
+            forging_key_owner_supported: live.forging_key_owner_supported,
+            kes_rotation_permissions_ready: live.kes_rotation_permissions_ready,
+        }
+    }
+
+    fn ready(&self) -> bool {
+        self.keys_directory_safe
+            && self.kes_skey_private
+            && self.vrf_skey_private
+            && self.forging_key_owner_supported
+            && self.kes_rotation_permissions_ready
+    }
+}
+
+fn require_kes_rotation_permissions(live: &ObsLive) -> Result<KesRotationPermissionEvidence> {
+    let evidence = KesRotationPermissionEvidence::from_live(live);
+    if !evidence.ready() {
+        let facts = serde_json::to_string(&evidence).map_err(|error| {
+            OuroError::Validation(format!(
+                "cannot serialize KES rotation permission evidence: {error}"
+            ))
+        })?;
+        return Err(OuroError::Validation(format!(
+            "KES rotation permission contract failed: {facts}"
+        )));
+    }
+    Ok(evidence)
 }
 
 fn current_kes_period(observation: &Observation) -> Result<u64> {
@@ -1948,6 +2022,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
 
     let kes_rotation = match op {
         "kes-rotation/stage-key" => {
+            let permissions = require_kes_rotation_permissions(&observation.live)?;
             let current_period = current_kes_period(&observation)?;
             require_kes_stage_base_availability(&observation)?;
             let cardano_cli_version = cardano_cli_version(&observation.live.container_id)?;
@@ -1976,9 +2051,11 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                 preexisting_kes_opcert_valid,
                 preexisting_forging_credentials_ready,
                 preexisting_kes_evidence_sha256,
+                permissions,
             })
         }
         "kes-rotation/install-opcert" => {
+            let permissions = require_kes_rotation_permissions(&observation.live)?;
             let current_period = current_kes_period(&observation)?;
             let cardano_cli_version = cardano_cli_version(&observation.live.container_id)?;
             let (
@@ -2002,6 +2079,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                 preexisting_kes_opcert_valid,
                 preexisting_forging_credentials_ready,
                 preexisting_kes_evidence_sha256,
+                permissions,
             })
         }
         "kes-rotation/discard-stage" => {
@@ -2030,6 +2108,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                 preexisting_kes_opcert_valid,
                 preexisting_forging_credentials_ready,
                 preexisting_kes_evidence_sha256,
+                permissions: KesRotationPermissionEvidence::from_live(&observation.live),
             })
         }
         _ => None,
@@ -2428,6 +2507,7 @@ fn stateless_kes_activation_readiness(
     observation: &Observation,
     validation: &KesCandidateValidation,
 ) -> Result<()> {
+    require_kes_rotation_permissions(&observation.live)?;
     if matches!(
         validation.node_state_counter,
         NodeStateCounterEvidence::Present(_)
@@ -2467,7 +2547,6 @@ fn stateless_kes_activation_readiness(
     if !validation.cold_identity_bound
         || !evidence.block_producer_configured
         || !observation.live.has_forging_keys
-        || !observation.live.forging_key_permissions_safe
     {
         return Err(OuroError::Validation(
             "KES activation no-blocks-minted postcondition lacks bound cold identity or safe forging credentials"
@@ -2556,6 +2635,11 @@ fn stateless_live_drift_components(
     changed_live!(kes_opcert_id);
     changed_live!(has_forging_keys);
     changed_live!(forging_key_permissions_safe);
+    changed_live!(keys_directory_safe);
+    changed_live!(kes_skey_private);
+    changed_live!(vrf_skey_private);
+    changed_live!(forging_key_owner_supported);
+    changed_live!(kes_rotation_permissions_ready);
     changed_live!(host_key_sha256);
     changed_live!(genesis_hash);
     changed_live!(network);
@@ -3506,7 +3590,7 @@ fn run_stateless_target_status(args: &[String]) -> Result<()> {
                 && evidence.tip_synced
                 && evidence.block_producer_configured
                 && observation.live.has_forging_keys
-                && observation.live.forging_key_permissions_safe
+                && KesRotationPermissionEvidence::from_live(&observation.live).ready()
                 && !observation.live.kes_opcert_id.is_empty()
         });
     let role_name = match role {
@@ -3522,6 +3606,11 @@ fn run_stateless_target_status(args: &[String]) -> Result<()> {
             "host_key_sha256": observation.live.host_key_sha256,
             "online": online,
             "kes_rotation_repair_ready": kes_rotation_repair_ready,
+            "keys_directory_safe": observation.live.keys_directory_safe,
+            "kes_skey_private": observation.live.kes_skey_private,
+            "vrf_skey_private": observation.live.vrf_skey_private,
+            "forging_key_owner_supported": observation.live.forging_key_owner_supported,
+            "kes_rotation_permissions_ready": observation.live.kes_rotation_permissions_ready,
             "image_config_digest": observation.live.image_config_digest,
             "state_generation": observation.live.container_creation_epoch,
             "assurance": "live_observation",
@@ -3780,6 +3869,16 @@ struct ObsLive {
     has_forging_keys: bool,
     #[serde(default)]
     forging_key_permissions_safe: bool,
+    #[serde(default)]
+    keys_directory_safe: bool,
+    #[serde(default)]
+    kes_skey_private: bool,
+    #[serde(default)]
+    vrf_skey_private: bool,
+    #[serde(default)]
+    forging_key_owner_supported: bool,
+    #[serde(default)]
+    kes_rotation_permissions_ready: bool,
     host_key_sha256: String,
     genesis_hash: String,
     network: String,
@@ -7033,6 +7132,11 @@ mod tests {
                 mounts: vec![mount],
                 topology_hash: "t".into(), config_hash: "c".into(), kes_opcert_id: "kes:5".into(),
                 has_forging_keys: true, forging_key_permissions_safe: true,
+                keys_directory_safe: true,
+                kes_skey_private: true,
+                vrf_skey_private: true,
+                forging_key_owner_supported: true,
+                kes_rotation_permissions_ready: true,
                 host_key_sha256: "a".repeat(64),
                 genesis_hash: "gh".into(), network: "mainnet".into(),
             },

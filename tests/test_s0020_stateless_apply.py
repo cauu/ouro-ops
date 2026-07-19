@@ -370,7 +370,11 @@ def main():
         "tip_synced",
         "block_producer_configured",
         "has_forging_keys",
-        "forging_key_permissions_safe",
+        "keys_directory_safe",
+        "kes_skey_private",
+        "vrf_skey_private",
+        "forging_key_owner_supported",
+        "kes_rotation_permissions_ready",
         "kes_opcert_id",
     ]:
         broken_bp = observation()
@@ -403,9 +407,8 @@ def main():
         assert status.returncode == 0, (broken, status, status_value)
         assert status_value["data"]["kes_rotation_repair_ready"] is False, broken
 
-    # Fleet collection must preserve an unready BP as typed offline evidence rather than refusing
-    # the whole snapshot. Its forging state is irrelevant to the relay quorum count; a BP selected
-    # for mutation remains protected by its own plan and post-write role-readiness gates.
+    # The legacy adoption/diag aggregate no longer participates in KES repair admission. It may be
+    # false for a 0755 directory even while the dedicated private-key predicate is fully satisfied.
     unready_bp = observation()
     unready_bp["live"]["forging_key_permissions_safe"] = False
     unready_bp["readiness"]["kes_opcert_valid"] = False
@@ -432,7 +435,7 @@ def main():
     assert status_value["tool"] == "ouro.fleet.status"
     assert status_value["data"]["role"] == "bp"
     assert status_value["data"]["online"] is False
-    assert status_value["data"]["kes_rotation_repair_ready"] is False
+    assert status_value["data"]["kes_rotation_repair_ready"] is True
     write_probe(probe, observation())
 
     # Image preparation is non-disruptive but never accepts a payload. A stray payload must be
@@ -534,6 +537,11 @@ upgrade:
             "host_key_sha256": "SHA256:" + "a" * 43,
             "online": True,
             "kes_rotation_repair_ready": True,
+            "keys_directory_safe": True,
+            "kes_skey_private": True,
+            "vrf_skey_private": True,
+            "forging_key_owner_supported": True,
+            "kes_rotation_permissions_ready": True,
             "image_config_digest": observation()["live"]["image_config_digest"],
             "state_generation": 1234,
             "management_state": "not_required",

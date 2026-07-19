@@ -27,6 +27,56 @@ ouro_probe_inspect() {
   docker inspect --format "$2" "$1" 2>/dev/null | tr -d '\r'
 }
 
+# Fixed-path, metadata-only KES rotation permission contract. Production evaluates this inside the
+# container namespace. Tests may supply a fixture root and service UID; neither is agent input in
+# production. Output is five closed booleans—never key bytes or raw owner identifiers.
+OURO_KES_ROTATION_PERMISSION_CHECK='
+root=$1
+service_uid=$2
+keys_dir="${root}/opt/cardano/config/keys"
+kes_key="${keys_dir}/kes.skey"
+vrf_key="${keys_dir}/vrf.skey"
+if test -z "$service_uid"; then
+  service_uid=$(stat -c %u "${root}/proc/1" 2>/dev/null || true)
+fi
+keys_directory_safe=false
+kes_skey_private=false
+vrf_skey_private=false
+forging_key_owner_supported=false
+if test -d "$keys_dir" && ! test -L "$keys_dir"; then
+  mode=$(stat -c %a "$keys_dir" 2>/dev/null || true)
+  case "$mode" in 700|750|755) keys_directory_safe=true ;; esac
+fi
+private_key_safe() {
+  path=$1
+  test -f "$path" && ! test -L "$path" || return 1
+  mode=$(stat -c %a "$path" 2>/dev/null || true)
+  case "$mode" in 400|600) return 0 ;; *) return 1 ;; esac
+}
+if private_key_safe "$kes_key"; then kes_skey_private=true; fi
+if private_key_safe "$vrf_key"; then vrf_skey_private=true; fi
+kes_owner=$(stat -c %u "$kes_key" 2>/dev/null || true)
+vrf_owner=$(stat -c %u "$vrf_key" 2>/dev/null || true)
+if test -n "$service_uid" && test "$kes_owner" = "$service_uid" && test "$vrf_owner" = "$service_uid"; then
+  forging_key_owner_supported=true
+fi
+kes_rotation_permissions_ready=false
+if "$keys_directory_safe" && "$kes_skey_private" && "$vrf_skey_private" && "$forging_key_owner_supported"; then
+  kes_rotation_permissions_ready=true
+fi
+printf "keys_directory_safe=%s\nkes_skey_private=%s\nvrf_skey_private=%s\nforging_key_owner_supported=%s\nkes_rotation_permissions_ready=%s\n" \
+  "$keys_directory_safe" "$kes_skey_private" "$vrf_skey_private" \
+  "$forging_key_owner_supported" "$kes_rotation_permissions_ready"
+'
+
+ouro_kes_rotation_permission_facts() {
+  docker exec "$1" sh -c "$OURO_KES_ROTATION_PERMISSION_CHECK" ouro-kes-permission-check "" "" 2>/dev/null
+}
+
+ouro_kes_rotation_permission_fixture_facts() {
+  sh -c "$OURO_KES_ROTATION_PERMISSION_CHECK" ouro-kes-permission-check "$1" "$2"
+}
+
 # Emit the observation JSON for the node. $1 = expected platform (e.g. linux/amd64).
 ouro_observe() {
   # Platform is derived from immutable image metadata below; the optional legacy argument is
@@ -41,7 +91,7 @@ ouro_observe() {
   restart="$(ouro_probe_inspect "$cid" '{{.HostConfig.RestartPolicy.Name}}')"
 
   # Node facts read INSIDE the container (paths from the layout contract); hashes only, no secrets.
-  local topo_hash cfg_hash opcert_id has_keys key_perms genesis_hash network tip1 tip2 creds_ok kes_info kes_genesis metrics peers
+  local topo_hash cfg_hash opcert_id has_keys key_perms kes_rotation_perms genesis_hash network tip1 tip2 creds_ok kes_info kes_genesis metrics peers
   topo_hash="$(docker exec "$cid" sh -c 'sha256sum /opt/cardano/config/mainnet/topology.json 2>/dev/null' 2>/dev/null | awk '{print $1}')"
   cfg_hash="$(docker exec "$cid" sh -c 'sha256sum /opt/cardano/config/mainnet/config.json 2>/dev/null' 2>/dev/null | awk '{print $1}')"
   opcert_id="$(docker exec "$cid" sh -c 'test -f /opt/cardano/config/keys/node.cert && sha256sum /opt/cardano/config/keys/node.cert' 2>/dev/null | awk '{print $1}')"
@@ -66,6 +116,7 @@ ouro_observe() {
     done
     if "$ok"; then echo true; else echo false; fi
   ' ouro-key-permission-check "$diag_uid" 2>/dev/null)"
+  kes_rotation_perms="$(ouro_kes_rotation_permission_facts "$cid" || true)"
   # Use Cardano's semantic genesis hash, not the byte-level sha256sum of one JSON serialization.
   # The pool spec and website carry this canonical network identity; whitespace/key-order changes
   # to an equivalent genesis file must not invalidate every operation plan.
@@ -119,6 +170,11 @@ ouro_observe() {
   OURO_OBS_ARGS="$args" OURO_OBS_RESTART="$restart" \
   OURO_OBS_TOPO="$topo_hash" OURO_OBS_CFG="$cfg_hash" OURO_OBS_OPCERT="$opcert_id" \
   OURO_OBS_HASKEYS="$has_keys" OURO_OBS_KEY_PERMS="$key_perms" \
+  OURO_OBS_KEYS_DIRECTORY_SAFE="$(printf '%s\n' "$kes_rotation_perms" | awk -F= '$1 == "keys_directory_safe" {print $2}')" \
+  OURO_OBS_KES_SKEY_PRIVATE="$(printf '%s\n' "$kes_rotation_perms" | awk -F= '$1 == "kes_skey_private" {print $2}')" \
+  OURO_OBS_VRF_SKEY_PRIVATE="$(printf '%s\n' "$kes_rotation_perms" | awk -F= '$1 == "vrf_skey_private" {print $2}')" \
+  OURO_OBS_FORGING_KEY_OWNER_SUPPORTED="$(printf '%s\n' "$kes_rotation_perms" | awk -F= '$1 == "forging_key_owner_supported" {print $2}')" \
+  OURO_OBS_KES_ROTATION_PERMISSIONS_READY="$(printf '%s\n' "$kes_rotation_perms" | awk -F= '$1 == "kes_rotation_permissions_ready" {print $2}')" \
   OURO_OBS_GENESIS="$genesis_hash" OURO_OBS_NET="$network" \
   OURO_OBS_HOSTKEY="$hostkey" OURO_OBS_FULL="$full_json" OURO_OBS_IMAGE_FULL="$image_json" \
   OURO_OBS_TIP1="$tip1" OURO_OBS_TIP2="$tip2" OURO_OBS_CREDS="$creds_ok" \
@@ -449,6 +505,11 @@ obs = {
     "topology_hash": env("OURO_OBS_TOPO"), "config_hash": env("OURO_OBS_CFG"),
     "kes_opcert_id": env("OURO_OBS_OPCERT"), "has_forging_keys": env("OURO_OBS_HASKEYS") == "true",
     "forging_key_permissions_safe": env("OURO_OBS_KEY_PERMS") == "true",
+    "keys_directory_safe": env("OURO_OBS_KEYS_DIRECTORY_SAFE") == "true",
+    "kes_skey_private": env("OURO_OBS_KES_SKEY_PRIVATE") == "true",
+    "vrf_skey_private": env("OURO_OBS_VRF_SKEY_PRIVATE") == "true",
+    "forging_key_owner_supported": env("OURO_OBS_FORGING_KEY_OWNER_SUPPORTED") == "true",
+    "kes_rotation_permissions_ready": env("OURO_OBS_KES_ROTATION_PERMISSIONS_READY") == "true",
     "host_key_sha256": env("OURO_OBS_HOSTKEY"), "genesis_hash": env("OURO_OBS_GENESIS"),
     "network": env("OURO_OBS_NET"),
   },
