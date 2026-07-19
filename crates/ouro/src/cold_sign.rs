@@ -129,6 +129,112 @@ echo "Bring ONLY $OUT back online; follow the current KES Rotation Skill for pre
     ))
 }
 
+/// Build the KES script used inside a verified platform-specific air-gap bundle. Unlike the legacy
+/// stdout-only script above, this form consumes the adjacent public vkey and fixed `cardano-cli`.
+/// It verifies the public manifest, vkey and executable before it reads or backs up the counter.
+pub fn kes_bundle_cold_sign_script(
+    kes_period: u64,
+    cardano_cli_version: &str,
+    cardano_cli_sha256: &str,
+    kes_vkey_sha256: &str,
+    manifest_sha256: &str,
+    generated_at: &str,
+) -> String {
+    format!(
+        r#"#!/usr/bin/env bash
+# ==============================================================================
+# ouro-ops KES air-gap bundle. RUN ON THE AIR-GAPPED MACHINE WITH NETWORKING OFF.
+#
+# This directory contains only public handoff data and the pinned signing tool. The script reads
+# cold.skey and opcert.counter in place. Bring back ONLY the public node.cert.
+# Generated: {generated_at}
+# Targets KES period: {kes_period}
+# ==============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${{BASH_SOURCE[0]}}")" && pwd)"
+CARDANO_CLI="$SCRIPT_DIR/cardano-cli"
+KES_VKEY="$SCRIPT_DIR/kes.vkey"
+MANIFEST="$SCRIPT_DIR/manifest.json"
+
+EXPECTED_CARDANO_CLI_VERSION='{cardano_cli_version}'
+EXPECTED_CARDANO_CLI_SHA256='{cardano_cli_sha256}'
+EXPECTED_KES_VKEY_SHA256='{kes_vkey_sha256}'
+EXPECTED_MANIFEST_SHA256='{manifest_sha256}'
+
+sha256_file() {{
+  local line
+  if command -v sha256sum >/dev/null 2>&1; then
+    line="$(sha256sum "$1")"
+  elif command -v shasum >/dev/null 2>&1; then
+    line="$(shasum -a 256 "$1")"
+  else
+    echo "Neither sha256sum nor shasum is available; cannot verify the bundle" >&2
+    return 1
+  fi
+  printf '%s\n' "${{line%% *}}"
+}}
+
+verify_digest() {{
+  local label="$1" path="$2" expected="$3" actual
+  [ -f "$path" ] || {{ echo "$label not found at $path" >&2; exit 1; }}
+  actual="$(sha256_file "$path")"
+  [ "$actual" = "$expected" ] || {{
+    echo "$label SHA256 mismatch: expected $expected, got $actual" >&2
+    exit 1
+  }}
+}}
+
+# All public bundle integrity/version checks happen before the counter is read or backed up.
+verify_digest "manifest.json" "$MANIFEST" "$EXPECTED_MANIFEST_SHA256"
+verify_digest "kes.vkey" "$KES_VKEY" "$EXPECTED_KES_VKEY_SHA256"
+verify_digest "cardano-cli" "$CARDANO_CLI" "$EXPECTED_CARDANO_CLI_SHA256"
+[ -x "$CARDANO_CLI" ] || {{ echo "Bundled cardano-cli is not executable" >&2; exit 1; }}
+CLI_VERSION="$("$CARDANO_CLI" --version)"
+CLI_VERSION="${{CLI_VERSION%%$'\n'*}}"
+case "$CLI_VERSION" in
+  "cardano-cli $EXPECTED_CARDANO_CLI_VERSION"|"cardano-cli $EXPECTED_CARDANO_CLI_VERSION "*) ;;
+  *) echo "Bundled cardano-cli version mismatch: $CLI_VERSION" >&2; exit 1 ;;
+esac
+
+# ---- EDIT to your cold machine's layout (or export these before running) -----
+COLD_SKEY="${{COLD_SKEY:-./cold.skey}}"
+COUNTER="${{COUNTER:-./opcert.counter}}"
+OUT="${{OUT:-./node.cert}}"
+# ------------------------------------------------------------------------------
+
+[ -f "$COLD_SKEY" ] || {{ echo "cold.skey not found at $COLD_SKEY (set COLD_SKEY=...)" >&2; exit 1; }}
+[ -f "$COUNTER" ]   || {{ echo "opcert counter not found at $COUNTER (set COUNTER=...)" >&2; exit 1; }}
+
+# Counter authority + recovery: back up before issuing, then prove it advanced.
+cp -f "$COUNTER" "$COUNTER.ouro-bak"
+BEFORE="$(cat "$COUNTER")"
+OUT_TMP="$OUT.ouro-partial"
+"$CARDANO_CLI" node issue-op-cert \
+  --kes-verification-key-file "$KES_VKEY" \
+  --cold-signing-key-file "$COLD_SKEY" \
+  --operational-certificate-issue-counter-file "$COUNTER" \
+  --kes-period '{kes_period}' \
+  --out-file "$OUT_TMP"
+
+if [ "$(cat "$COUNTER")" = "$BEFORE" ]; then
+  echo "counter did not advance; restoring backup and aborting" >&2
+  cp -f "$COUNTER.ouro-bak" "$COUNTER"; rm -f "$OUT_TMP"; exit 1
+fi
+mv -f "$OUT_TMP" "$OUT"
+
+echo "Wrote operational certificate: $OUT (counter advanced; backup at $COUNTER.ouro-bak)"
+echo "Bring ONLY $OUT back online; follow the current KES Rotation Skill for typed preflight and activation."
+"#,
+        generated_at = generated_at,
+        kes_period = kes_period,
+        cardano_cli_version = cardano_cli_version,
+        cardano_cli_sha256 = cardano_cli_sha256,
+        kes_vkey_sha256 = kes_vkey_sha256,
+        manifest_sha256 = manifest_sha256,
+    )
+}
+
 /// A cold key the tx must be witnessed by. `role` is a short kebab id (e.g. `cold`, `stake`);
 /// it names both the env var the operator points at their key (`<ROLE>_SKEY`) and the witness
 /// output file (`<ROLE>_WITNESS`). Each role produces ONE independent witness — the operator

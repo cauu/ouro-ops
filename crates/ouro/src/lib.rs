@@ -17,6 +17,7 @@ pub mod gate;
 pub mod inbox;
 pub mod intent;
 pub mod kes;
+pub mod kes_bundle;
 pub mod migration;
 pub mod onboard;
 pub mod output;

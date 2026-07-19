@@ -77,7 +77,16 @@ def main():
         "KES Skill must not infer KES lifetime from the fixed tip-only health read"
     for phrase in [
         "kes-rotation/stage-key",
-        "ouro-ops kes cold-sign-script",
+        "ouro-ops kes airgap-bundle",
+        "cardano_cli_version",
+        "M-series Mac",
+        "Intel/AMD Linux",
+        "uname -s",
+        "uname -m",
+        "mac-apple-silicon",
+        "linux-arm",
+        "five-file output list",
+        "never restage",
         "air-gapped machine",
         "Accept back ONLY the PUBLIC `node.cert`",
         "--artifact-preflight",
@@ -94,6 +103,7 @@ def main():
         "operator-named PUBLIC KES",
         "Require a current target KES period",
         "operator-named-cold-sign-script",
+        "ouro-ops kes cold-sign-script",
     ]:
         assert unnecessary_prompt not in kes, f"KES Skill still asks for unnecessary input {unnecessary_prompt!r}"
     assert "do not ask for another file-write go-ahead or output paths" in " ".join(kes.split())

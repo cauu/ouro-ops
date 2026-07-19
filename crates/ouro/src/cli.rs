@@ -1103,6 +1103,26 @@ fn run_kes(args: &[String]) -> Result<()> {
             output::print_json(&ToolOutput::ok("ouro.kes.push", true).with_data(json!(report)))?;
             Ok(())
         }
+        Some("airgap-bundle") => {
+            let vkey = PathBuf::from(flag_value(args, "--kes-vkey")?);
+            let kes_period: u64 = flag_value(args, "--kes-period")?.parse().map_err(|_| {
+                OuroError::InvalidArgs("--kes-period must be a non-negative integer".to_string())
+            })?;
+            let cardano_cli_version = flag_value(args, "--cardano-cli-version")?;
+            let platform = flag_value(args, "--platform")?;
+            let out = PathBuf::from(flag_value(args, "--out")?);
+            let report = crate::kes_bundle::create_airgap_bundle(
+                &vkey,
+                kes_period,
+                cardano_cli_version,
+                platform,
+                &out,
+            )?;
+            output::print_json(
+                &ToolOutput::ok("ouro.kes.airgap-bundle", true).with_data(json!(report)),
+            )?;
+            Ok(())
+        }
         // S0017 p4-1: emit a self-contained KES cold-signing script to stdout. It embeds ONLY the
         // public KES vkey + period; the operator runs it on the air-gapped machine to issue the
         // opcert (cold.skey read in place, never moved). --kes-vkey = the PUBLIC vkey file.
@@ -1130,7 +1150,7 @@ fn run_kes(args: &[String]) -> Result<()> {
             Ok(())
         }
         _ => Err(OuroError::InvalidArgs(
-            "expected kes generate|counter status|push|cold-sign-script".to_string(),
+            "expected kes airgap-bundle|cold-sign-script|counter status|generate|push".to_string(),
         )),
     }
 }
@@ -1167,7 +1187,7 @@ fn print_help() {
     println!("  fleet     permit create — authorize one disruptive fleet step");
     println!("  diag      exec --dispatch <machine> --spec <pool-spec> -- <cmd> — bounded operator-SSH diagnosis");
     println!("  confirm   create — mint an exact intent-bound one-time approval");
-    println!("  kes       cold-sign-script | counter status | generate | push");
+    println!("  kes       airgap-bundle | cold-sign-script | counter status | generate | push");
     println!("  deploy    cold-sign-script — offline tx witnessing");
     println!("  release   select — current signed deploy recommendation or next Upgrade hop");
     println!("  pool      overview | register-tx");
@@ -1227,9 +1247,15 @@ fn command_usage(command: &str) -> Option<&'static str> {
                       confirm adopt create --node <id> --candidate-hash <hash> --host-key <sha256>\n  \
                       Mints a one-time approval bound to the exact S0020 candidate/intent; the adopt \
                       form is legacy migration only.",
-        "kes" => "ouro-ops kes cold-sign-script --kes-vkey <pub> --kes-period <n>\n  \
-                  Rotation runs via `op run kes-rotation/stage-key`, the air-gapped public-key \
-                  handoff, then `op run kes-rotation/install-opcert`; see the Skill.",
+        "kes" => "ouro-ops kes airgap-bundle --kes-vkey <pub> --kes-period <n> \
+                  --cardano-cli-version <x.y.z.w> \
+                  --platform <mac-apple-silicon|mac-intel|linux-intel-amd|linux-arm> \
+                  --out <new-directory>\n  \
+                  Downloads and verifies the matching official Intersect cardano-cli release, then \
+                  atomically creates a directly executable public air-gap bundle. Rotation runs via \
+                  `op run kes-rotation/stage-key`, this handoff, then \
+                  `op run kes-rotation/install-opcert`; see the Skill. Legacy script-only output: \
+                  ouro-ops kes cold-sign-script --kes-vkey <pub> --kes-period <n>.",
         "deploy" => "ouro-ops deploy cold-sign-script --tx-body <path> --cold-key <role> [--cold-key <role>...] \
                      [--era conway] [--testnet-magic <n>|--mainnet]",
         "release" => "ouro-ops release select --platform <linux/amd64|linux/arm64> \

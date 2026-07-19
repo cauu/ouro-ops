@@ -1067,6 +1067,7 @@ struct StatelessTargetPlan {
 #[derive(Clone, serde::Serialize)]
 struct KesRotationEvidence {
     current_period: u64,
+    cardano_cli_version: String,
     active_vkey_sha256: String,
     staged_vkey_sha256: Option<String>,
     preexisting_kes_opcert_valid: bool,
@@ -1086,6 +1087,40 @@ fn current_kes_period(observation: &Observation) -> Result<u64> {
     u64::try_from(current).map_err(|_| {
         OuroError::Validation("BP observation returned a negative current KES period".into())
     })
+}
+
+fn cardano_cli_version(container: &str) -> Result<String> {
+    let raw = crate::executor::run_read_plan(&[vec![
+        "docker".into(),
+        "exec".into(),
+        container.into(),
+        "cardano-cli".into(),
+        "--version".into(),
+    ]])
+    .map_err(|error| {
+        OuroError::Validation(format!(
+            "cannot obtain the BP container cardano-cli version: {error}"
+        ))
+    })?;
+    let first = raw.lines().next().unwrap_or("").trim();
+    let mut words = first.split_whitespace();
+    if words.next() != Some("cardano-cli") {
+        return Err(OuroError::Validation(format!(
+            "BP container returned an invalid cardano-cli version line: {first:?}"
+        )));
+    }
+    let version = words.next().unwrap_or("");
+    let components = version.split('.').collect::<Vec<_>>();
+    if components.len() != 4
+        || components
+            .iter()
+            .any(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        return Err(OuroError::Validation(format!(
+            "BP container returned an unsupported cardano-cli version: {version:?}"
+        )));
+    }
+    Ok(version.to_string())
 }
 
 fn require_kes_stage_base_availability(observation: &Observation) -> Result<()> {
@@ -1858,8 +1893,12 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         "kes-rotation/stage-key" => {
             let current_period = current_kes_period(&observation)?;
             require_kes_stage_base_availability(&observation)?;
-            let (preexisting_kes_opcert_valid, preexisting_forging_credentials_ready,
-                preexisting_kes_evidence_sha256) = kes_preexisting_evidence(&observation)?;
+            let cardano_cli_version = cardano_cli_version(&observation.live.container_id)?;
+            let (
+                preexisting_kes_opcert_valid,
+                preexisting_forging_credentials_ready,
+                preexisting_kes_evidence_sha256,
+            ) = kes_preexisting_evidence(&observation)?;
             require_no_staged_kes_pair(&observation.live.container_id)?;
             let (_, active_vkey_sha256) = read_public_kes_vkey(
                 &observation.live.container_id,
@@ -1868,6 +1907,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             )?;
             Some(KesRotationEvidence {
                 current_period,
+                cardano_cli_version,
                 active_vkey_sha256,
                 staged_vkey_sha256: None,
                 preexisting_kes_opcert_valid,
@@ -1877,8 +1917,12 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         }
         "kes-rotation/install-opcert" => {
             let current_period = current_kes_period(&observation)?;
-            let (preexisting_kes_opcert_valid, preexisting_forging_credentials_ready,
-                preexisting_kes_evidence_sha256) = kes_preexisting_evidence(&observation)?;
+            let cardano_cli_version = cardano_cli_version(&observation.live.container_id)?;
+            let (
+                preexisting_kes_opcert_valid,
+                preexisting_forging_credentials_ready,
+                preexisting_kes_evidence_sha256,
+            ) = kes_preexisting_evidence(&observation)?;
             let (_, active_vkey_sha256) = read_public_kes_vkey(
                 &observation.live.container_id,
                 crate::executor::KES_VKEY_DEST,
@@ -1887,6 +1931,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             let (_, staged_vkey_sha256) = inspect_staged_kes_pair(&observation.live.container_id)?;
             Some(KesRotationEvidence {
                 current_period,
+                cardano_cli_version,
                 active_vkey_sha256,
                 staged_vkey_sha256: Some(staged_vkey_sha256),
                 preexisting_kes_opcert_valid,
@@ -2786,10 +2831,28 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 }
                 let current_period = final_plan.kes_rotation.as_ref()
                     .map(|evidence| evidence.current_period)
-                    .ok_or_else(|| OuroError::Validation("KES stage candidate lost its current period".into()))?;
+                    .ok_or_else(|| {
+                        OuroError::Validation("KES stage candidate lost its current period".into())
+                    })?;
+                let approved_cardano_cli_version = final_plan
+                    .kes_rotation
+                    .as_ref()
+                    .map(|evidence| evidence.cardano_cli_version.as_str())
+                    .ok_or_else(|| {
+                        OuroError::Validation(
+                            "KES stage candidate lost its cardano-cli version".into(),
+                        )
+                    })?;
+                let post_cardano_cli_version = cardano_cli_version(&current_container)?;
+                if post_cardano_cli_version != approved_cardano_cli_version {
+                    return Err(OuroError::Validation(
+                        "BP container cardano-cli version changed during KES staging".into(),
+                    ));
+                }
                 Ok(json!({
                     "verification": "new_kes_pair_staged_without_activation",
                     "kes_period": current_period,
+                    "cardano_cli_version": post_cardano_cli_version,
                     "kes_vkey_sha256": public_vkey_sha256,
                     "kes_vkey": public_vkey,
                     "kes_skey_location": "target_private_stage_only",

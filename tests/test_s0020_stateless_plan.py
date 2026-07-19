@@ -190,6 +190,7 @@ def main():
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         "case \"$*\" in\n"
+        "  *'exec cid-plan cardano-cli --version'*) printf 'cardano-cli 10.14.0.0 - linux-x86_64 - ghc-9.6\\n' ;;\n"
         "  *'head -c 65537 /opt/cardano/config/keys/.ouro-kes-stage/kes.vkey'*) "
         f"printf '%s\\n' '{json.dumps(STAGED_KES_VKEY, separators=(',', ':'))}' ;;\n"
         "  *'head -c 65537 /opt/cardano/config/keys/kes.vkey'*) "

@@ -781,3 +781,102 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
 - TC-13, TC-22 | stack: other | command: `make release-candidate` | result: pass | note: the fixed
   source rebuilt and verified the paired macOS control CLI, linux/x86_64 ephemeral runner, package,
   descriptor, candidate, version, release selection and checksums
+
+## 24. Fifth Follow-up Requirement And Design (append-only)
+
+Phase A currently hands the operator a public `kes.vkey` and a script that assumes `cardano-cli`
+is already installed on the air-gapped machine. A fresh air-gapped environment has no reason to
+meet that hidden dependency, so the handoff is not directly executable. Phase A must instead create
+one platform-specific public bundle containing the script, vkey, an official Intersect
+`cardano-cli` binary, a manifest and checksums. Ouro does not host or publish this dependency: the
+online control machine downloads the exact official release asset on demand and verifies the
+release checksum before writing the bundle.
+
+The operator chooses the air-gapped device using one plain-language option: Apple-silicon Mac,
+Intel Mac, Intel/AMD Linux, or ARM Linux. The Skill maps those choices to `aarch64-darwin`,
+`x86_64-darwin`, `x86_64-linux`, or `aarch64-linux`; if the operator is unsure it requests only
+`uname -s` and `uname -m`. The target `cardano-cli --version` is typed Phase-A evidence and selects
+the matching official CLI release. The generated script resolves the bundled binary relative to
+its own directory and verifies its recorded digest and version before reading or backing up the
+cold counter. Windows and multi-platform bundles are out of scope.
+
+## 25. Fifth Follow-up Execution Plan (append-only)
+
+- [~] p6-1-fix5 produce a checksum-verified, platform-specific KES air-gap bundle that requires no
+  preinstalled `cardano-cli`, and align the external Skill, website prompt and operating contract
+
+## 26. Fifth Follow-up Test And Acceptance Criteria (append-only)
+
+- TC-29 Platform-specific air-gap bundle: all four supported plain-language device choices map to
+  the exact official Intersect release asset; unknown platform/version, download failure, malformed
+  checksum, checksum mismatch, archive traversal, missing/multiple binaries or reported-version
+  mismatch fail without a completed output directory. A successful bundle contains only public
+  `kes.vkey`, `cold-sign.sh`, executable `cardano-cli`, `manifest.json` and `SHA256SUMS`, and uses an
+  atomic directory promotion.
+- TC-30 Offline direct execution: with networking unavailable and no system `cardano-cli`, the
+  generated script selects its adjacent verified binary, checks the manifest-bound digest and
+  version before reading the counter, invokes exactly one era-neutral `node issue-op-cert`, advances
+  the in-place counter and emits only public `node.cert`. A tampered binary or manifest fails before
+  the counter backup or signing command.
+- TC-31 Prompt parity: the canonical KES Skill and locally served website prompt use friendly device
+  names, accept natural device descriptions, fall back only to `uname -s` plus `uname -m`, invoke
+  the typed bundle generator, and no longer instruct the agent to assemble a two-file handoff that
+  assumes a preinstalled CLI.
+
+## 27. Fifth Follow-up Execution Log (append-only)
+
+- 2026-07-19 p6-1-fix5 started: operator accepted a single-platform bundle after real Phase-A use
+  exposed the hidden cold-machine `cardano-cli` prerequisite. Implementation will preserve Ouro's
+  two formal release artifacts and fetch the public signing dependency only while constructing the
+  operator-selected handoff.
+
+## 28. Fifth Follow-up Completion Status (append-only)
+
+- [x] p6-1-fix5 produce a checksum-verified, platform-specific KES air-gap bundle that requires no
+  preinstalled `cardano-cli`, and align the external Skill, website prompt and operating contract
+
+## 29. Fifth Follow-up Completion Log (append-only)
+
+- 2026-07-19 p6-1-fix5 completed: Phase A now binds the BP container's exact four-component
+  `cardano-cli_version` into the typed candidate and returns it as public evidence. The local
+  `kes airgap-bundle` command maps four plain-language device choices to official Intersect release
+  assets, verifies the asset against the release checksum list, extracts exactly one expected
+  executable and atomically emits the five-file public bundle. The cold script resolves only its
+  adjacent executable and verifies manifest, vkey, binary and reported version before touching the
+  cold counter. Skill v8 and all website locales request only a device description, with
+  `uname -s`/`uname -m` as the sole fallback; no Ouro release artifact or image-hosting path was
+  added.
+- Cross-platform version validation is intentionally split at the executable boundary: the online
+  controller executes `--version` before promotion when the selected binary matches its own host;
+  for a foreign platform, official release identity plus checksum is verified online and the cold
+  script executes and validates `--version` before counter backup or signing. This satisfies the
+  no-mutation failure contract without attempting to execute a foreign binary.
+
+## 30. Fifth Follow-up Validation Evidence (append-only)
+
+- TC-29 | stack: rust+python+network | command: `python3 tests/test_kes_airgap_bundle.py` plus a
+  real `cardano-cli-10.14.0.0-aarch64-darwin.tar.gz` bundle build from the official Intersect GitHub
+  release | result: pass | note: all four friendly device choices select the exact release asset;
+  closed platform/version, missing release, malformed/mismatched checksum, unsafe path,
+  missing/duplicate executable and same-host version mismatch refuse with no output or partial
+  directory. The real archive checksum was
+  `2564ebea25ce7466f08e6fa15b339768438bd35d7674dffce2ff748d80662bb5` and the extracted executable
+  checksum was `40d62fa37a2878a745702c24e29bd0319465afa6391ca412083ae4d9ceb1c6fa`.
+- TC-30 | stack: python+shell | command: `python3 tests/test_kes_airgap_bundle.py` plus real bundle
+  `cold-sign.sh` pre-key execution | result: pass | note: a mock cold machine with no PATH
+  `cardano-cli` and no network used only the adjacent executable, invoked one `node issue-op-cert`,
+  advanced the counter and emitted public `node.cert`; manifest or executable tampering stopped
+  before backup/signing. The real Apple-silicon binary passed integrity/version validation and then
+  stopped at the deliberately absent cold key before reading or backing up a counter.
+- TC-31 | stack: ui+python | command: `./web/onboarding/build.sh`, local website KES prompt browser
+  inspection, `python3 -m pytest -q tests/test_web_generator.py`, and `python3
+  tests/test_skill_docs.py` | result: pass | note: copied prompt embeds canonical Skill v8, all four
+  friendly device descriptions, the two-command uname fallback, typed version and bundle command;
+  the legacy script-only canonical path is absent and the browser reported no console errors.
+- TC-14, TC-22, TC-28, TC-29, TC-30, TC-31 | stack: rust+python+shell | command: `cargo test -q -p
+  ouro`, `cargo clippy -q -p ouro --lib --tests -- -D warnings`, `make python-test`, `python3 -m
+  pytest -q`, and `bash ci/l2-integration.sh` | result: pass | note: 172 Rust tests, all maintained
+  Python contract gates, 13 pytest cases, warnings-denied clippy and complete L2 regression pass.
+- TC-13, TC-22 | stack: other | command: `make release-candidate` | result: pass | note: the final
+  source rebuilt and verified the paired macOS control CLI, linux/x86_64 ephemeral runner, package,
+  descriptor, candidate, version, release selection and checksums without publishing.

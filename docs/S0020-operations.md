@@ -70,7 +70,15 @@ generates a fresh pair in a fixed BP-private staging directory; only the public 
 envelope/hash leaves the BP. The existing KES/opcert may already be invalid (a primary reason to
 rotate); Phase A requires an answering container/socket and proves that it preserved the complete
 pre-existing active KES/readiness state rather than requiring the old credentials to forge. After
-the offline cold-signing handoff, `install-opcert` requires the
+staging, the target's typed `cardano_cli_version` plus one operator-selected device class drives
+`ouro-ops kes airgap-bundle`. The local command downloads the matching official Intersect release,
+verifies its published archive checksum and atomically emits `kes.vkey`, `cold-sign.sh`, executable
+`cardano-cli`, `manifest.json` and `SHA256SUMS`; Ouro does not host that binary. The four user-facing
+choices are M-series Mac, Intel Mac, Intel/AMD Linux and ARM Linux, with `uname -s` plus `uname -m`
+as the only fallback when the operator does not recognize the device. The cold script verifies its
+adjacent public manifest, vkey, executable digest and reported version before it reads the counter,
+so no preinstalled CLI or network is needed on the air-gapped machine. After the offline
+cold-signing handoff, `install-opcert` requires the
 returned certificate to name that exact staged public key. Approved activation backs up and
 promotes `kes.skey`, `kes.vkey` and `node.cert` together, restarts once, verifies typed readiness,
 and restores the previous triple on failure.

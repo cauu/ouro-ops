@@ -75,6 +75,8 @@ def main() -> None:
         "open(log,'a').write(joined+'\\n')\n"
         "stage='/opt/cardano/config/keys/.ouro-kes-stage'\n"
         "if a[:2]==['exec','cid-plan']: a=a[2:]; joined=' '.join(a)\n"
+        "if a==['cardano-cli','--version']:\n"
+        "  print('cardano-cli 10.14.0.0 - linux-x86_64 - ghc-9.6'); sys.exit(0)\n"
         "if a[:2]==['test','!']:\n"
         "  target=a[-1]\n"
         "  exists=s['stage'] if target==stage else s['backups']\n"
@@ -127,6 +129,7 @@ def main() -> None:
     assert stage_value["data"]["kes_rotation"]["preexisting_kes_opcert_valid"] is False
     assert stage_value["data"]["kes_rotation"]["preexisting_forging_credentials_ready"] is False
     assert len(stage_value["data"]["kes_rotation"]["preexisting_kes_evidence_sha256"]) == 64
+    assert stage_value["data"]["kes_rotation"]["cardano_cli_version"] == "10.14.0.0"
     failed_stage, failed_stage_value = invoke(
         home,
         *apply_args("kes-rotation/stage-key", stage_candidate, "--param", "machine=bp1"),
@@ -163,6 +166,7 @@ def main() -> None:
     assert stage_post["active_opcert_unchanged"] is True
     assert stage_post["preexisting_kes_opcert_valid"] is False
     assert stage_post["preexisting_forging_credentials_ready"] is False
+    assert stage_post["cardano_cli_version"] == "10.14.0.0"
     assert "SigningKey" not in json.dumps(staged_value)
     assert json.loads(state.read_text())["active_vkey"] == ACTIVE_KES_VKEY
 

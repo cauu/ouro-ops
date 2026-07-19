@@ -140,6 +140,7 @@ def main():
         "set -euo pipefail\n"
         "printf '%s\\n' \"$*\" >>\"$OURO_TEST_DOCKER_LOG\"\n"
         "case \"$*\" in\n"
+        "  *'exec cid-plan cardano-cli --version'*) printf 'cardano-cli 10.14.0.0 - linux-x86_64 - ghc-9.6\\n' ;;\n"
         "  *'.ouro-kes-stage/kes.vkey'*) printf '%s\\n' \"$OURO_TEST_KES_VKEY\" ;;\n"
         "  *'head -c 65537 /opt/cardano/config/keys/kes.vkey'*) printf '%s\\n' \"$OURO_TEST_ACTIVE_KES_VKEY\" ;;\n"
         "  *'.ouro-kes-stage/kes.skey'*)\n"

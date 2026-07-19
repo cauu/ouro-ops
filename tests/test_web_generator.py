@@ -78,6 +78,10 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "do not ask again for their paths" in html
     assert "before any remote operational-state or chain write" in html
     assert "The Skill's mandatory first action is therefore exactly:" in html
+    assert "ouro-ops kes airgap-bundle" in html
+    assert "M-series Mac" in html and "Intel/AMD Linux" in html
+    assert "uname -s" in html and "uname -m" in html
+    assert "ouro-ops kes cold-sign-script" not in payload(html)["kes-rotation"]["content"]
     assert "ouro-ops skill show" not in html
     assert html.count('data-op="') == 6
 
