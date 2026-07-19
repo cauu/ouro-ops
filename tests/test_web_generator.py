@@ -90,6 +90,9 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "ouro-ops kes airgap-cleanup" in kes_prompt
     assert "<pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert" in kes_prompt
     assert "Never ask for a path, attachment, pasted certificate bytes" in kes_prompt
+    assert "This is the production workflow" in kes_prompt
+    assert "historical test that stopped after this preflight" in kes_prompt
+    assert "a real BP container restart" in kes_prompt
     assert "<operator-named-public-opcert>" not in kes_prompt
     assert "ouro-ops kes cold-sign-script" not in kes_prompt
     assert "ouro-ops skill show" not in html

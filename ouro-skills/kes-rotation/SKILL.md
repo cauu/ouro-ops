@@ -1,5 +1,5 @@
 ---
-skill_version: 11
+skill_version: 12
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -122,9 +122,16 @@ reads or prints it.
   candidate plus valid
   signature/key/counter/window evidence, `changed: false`, `executor_available: false`, and no
   confirmation or permit consumption.
+- This is the production workflow. The historical test that stopped after this preflight was only
+  an acceptance boundary; it is not a runtime stop condition. Once the real returned certificate
+  passes preflight, present the production commit below and continue after exact operator approval.
+  Do not stop merely because the next step performs a real replacement and restart, and never
+  substitute a mock certificate or guaranteed-failure path.
 - Show the exact public reference, staged-key hash, live target facts, validation evidence,
-  three-file backup/promotion/restart plan and unchanged final candidate hash. WAIT for exact
-  operator approval.
+  three-file backup/promotion/restart plan and unchanged final candidate hash. State explicitly
+  that approval authorizes backup of the current active triple, promotion of the staged KES pair,
+  installation of this public opcert, and a real BP container restart. WAIT for exact operator
+  approval.
 - After approval mint `ouro-ops confirm create --op kes-rotation/install-opcert --node <bp>
   --intent-hash <final-hash>`, then mint the live permit LAST with `ouro-ops fleet permit create
   --spec <pool-spec> --node <bp> --op kes-rotation/install-opcert --intent-hash <final-hash>
@@ -132,8 +139,8 @@ reads or prints it.
 - Immediately rerun the plan command without `--plan`, adding `--candidate-hash <final-hash>
   --artifact-file <pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert --confirm-token <token>
   --fleet-permit '<fleet_permit-json>'`. Never replan with either capability. Report the remote
-  operation only after the typed
-  postcondition confirms the staged KES pair and bound opcert were activated, readiness passed,
+  operation only after the typed postcondition confirms the staged KES pair and bound opcert were
+  actually activated, the BP container was restarted, readiness passed,
   the fixed staging directory is absent and all previous-key/opcert rollback files were removed.
   Then run `ouro-ops kes airgap-cleanup --spec <pool-spec> --node <bp>
   --expected-vkey-sha256 <activated-staged-vkey-hash>` and require `absent: true`. Do not retain the

@@ -101,6 +101,10 @@ def main():
         "executor_available: false",
         "signature/key/counter/window evidence",
         "three-file backup/promotion/restart plan",
+        "This is the production workflow",
+        "historical test that stopped after this preflight",
+        "a real BP container restart",
+        "actually activated",
         "takes no fleet permit",
         "already invalid/expired active",
         "not Phase-A success gates",
@@ -117,6 +121,7 @@ def main():
         assert unnecessary_prompt not in kes, f"KES Skill still asks for unnecessary input {unnecessary_prompt!r}"
     assert "do not ask for another file-write go-ahead or any output path" in " ".join(kes.split())
     assert "<operator-named-public-opcert>" not in kes
+    assert "substitute a mock certificate" in kes
     assert ".discarded-*` copy after success" in kes
     assert "ouro-ops kes push" not in kes, "KES Skill still directs the agent to legacy kes push"
     upgrade = (ROOT / "ouro-skills/upgrade/SKILL.md").read_text()

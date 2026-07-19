@@ -1070,3 +1070,49 @@ and refuses symlinks, nested directories or unknown files. No `.discarded-*` arc
 - TC-13, TC-22 | stack: other | command: `make release-candidate` | result: pass | note: the source
   rebuilt and verified the paired macOS control CLI, linux/x86_64 ephemeral runner, package,
   descriptors, release selection and checksums without publishing or contacting a real host.
+
+## 45. Eighth Follow-up Requirement And Design (append-only)
+
+The operator is now entering real production acceptance. Historical TC-19 deliberately stopped
+after KES Phase-B preflight to bound an earlier simulation, but that acceptance boundary must not be
+interpreted by a fresh agent as a runtime restriction. The canonical KES Skill must state plainly
+that, after a real returned certificate passes preflight and the operator gives exact approval, the
+next invocation performs the actual BP mutation: backup, staged KES key promotion, public opcert
+installation, container restart, readiness verification, rollback-residue cleanup and local public
+handoff cleanup. It must not stop merely because activation is consequential or because an older
+test used a mock certificate.
+
+No mechanism change is required: the typed `kes-rotation/install-opcert` executor already performs
+that production transaction and rolls back the prior active triple when commit or readiness fails.
+Artifact preflight, candidate-bound confirmation, a last-minted fleet permit, live-state recheck,
+rollback and typed postconditions remain mandatory production controls; they are not simulation
+restrictions and must not be removed.
+
+## 46. Eighth Follow-up Execution Plan And Acceptance (append-only)
+
+- [~] p6-1-fix8 remove the historical simulation ambiguity from the production KES Skill and site
+- TC-38 Production KES commit: the canonical website prompt explicitly says the historical
+  stop-before-activation boundary does not apply, identifies the real mutation/restart/rollback
+  behavior after exact approval, and still requires preflight, confirmation, last-minted fleet
+  permit and typed success proof. The production CLI continues to expose and execute
+  `kes-rotation/install-opcert`; no mock flag or test fixture is part of its runtime decision.
+
+## 47. Eighth Follow-up Completion And Evidence (append-only)
+
+- [x] p6-1-fix8 remove the historical simulation ambiguity from the production KES Skill and site
+- 2026-07-19 p6-1-fix8 completed: code inspection confirmed the stateless production executor
+  already backs up the active KES signing key, verification key and opcert, promotes the staged
+  pair plus candidate-bound public certificate, performs a real container restart, verifies the
+  active vkey/opcert and readiness, rolls back on failure, and removes transaction residue on
+  success. There is no runtime mock or stop-before-activation switch to remove.
+- TC-38 | stack: ui+python | command: `./web/onboarding/build.sh`, `python3
+  tests/test_skill_docs.py`, `python3 -m pytest -q tests/test_web_generator.py`, and `make
+  python-test` | result: pass | note: Skill v12 and the locally built site explicitly distinguish
+  the historical preflight-only acceptance boundary from the real production commit, disclose the
+  active-triple replacement and BP restart, forbid mock substitution, and retain every production
+  safety gate; nine website cases and all maintained Python contract gates pass.
+- TC-38 | stack: other | command: production executor inspection plus
+  `target/release-candidate-control/release/ouro-ops kes --help` | result: pass | note: the release
+  candidate exposes the real staged-key → deterministic handoff → install-opcert workflow; website
+  prompt contains confirmation, last-minted fleet permit and actual-activation postconditions and
+  contains no mock or stop-before-activation instruction.
