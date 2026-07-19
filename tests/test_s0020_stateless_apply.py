@@ -373,8 +373,6 @@ def main():
         "keys_directory_safe",
         "kes_skey_private",
         "vrf_skey_private",
-        "forging_key_owner_supported",
-        "kes_rotation_permissions_ready",
         "kes_opcert_id",
     ]:
         broken_bp = observation()
@@ -540,8 +538,6 @@ upgrade:
             "keys_directory_safe": True,
             "kes_skey_private": True,
             "vrf_skey_private": True,
-            "forging_key_owner_supported": True,
-            "kes_rotation_permissions_ready": True,
             "image_config_digest": observation()["live"]["image_config_digest"],
             "state_generation": 1234,
             "management_state": "not_required",

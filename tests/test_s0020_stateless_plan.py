@@ -85,8 +85,6 @@ def observation(container="cid-plan"):
             "keys_directory_safe": True,
             "kes_skey_private": True,
             "vrf_skey_private": True,
-            "forging_key_owner_supported": True,
-            "kes_rotation_permissions_ready": True,
             "host_key_sha256": "SHA256:" + "a" * 43,
             "genesis_hash": GENESIS,
             "network": "mainnet",
@@ -278,7 +276,11 @@ def main():
     assert staged_value["data"]["kes_rotation"]["current_period"] == 100
     assert staged_value["data"]["kes_rotation"]["staged_vkey_sha256"] is None
     assert staged_value["data"]["kes_rotation"]["pending_existing"] is False
-    assert all(staged_value["data"]["kes_rotation"]["permissions"].values())
+    assert staged_value["data"]["kes_rotation"]["permissions"] == {
+        "keys_directory_safe": True,
+        "kes_skey_private": True,
+        "vrf_skey_private": True,
+    }
     stage_plan = staged_value["data"]["executor_plan"]
     assert any("key-gen-KES" in argv for argv in stage_plan)
     assert any(".ouro-kes-stage/kes.skey.tmp" in arg for argv in stage_plan for arg in argv)
@@ -302,7 +304,9 @@ def main():
     )
     assert kes.returncode == 0, kes
     assert kes_value["data"]["kes_rotation"]["staged_vkey_sha256"]
-    assert all(kes_value["data"]["kes_rotation"]["permissions"].values())
+    assert kes_value["data"]["kes_rotation"]["permissions"] == (
+        staged_value["data"]["kes_rotation"]["permissions"]
+    )
     kes_plan = kes_value["data"]["executor_plan"]
     assert kes_plan[0] == [
         "docker",
@@ -322,14 +326,12 @@ def main():
     assert any(any(".ouro-kes-stage" in arg for arg in argv) and "rm" in argv for argv in kes_plan)
     assert all("ouro-run." not in arg for argv in kes_plan for arg in argv)
 
-    # Phase A and Phase B consume the exact same dedicated permission facts before constructing an
+    # Phase A and Phase B consume the exact same three path facts before constructing an
     # executor or asking for approval. The legacy adoption/diag aggregate is intentionally ignored.
     for broken_permission in [
         "keys_directory_safe",
         "kes_skey_private",
         "vrf_skey_private",
-        "forging_key_owner_supported",
-        "kes_rotation_permissions_ready",
     ]:
         unsafe = observation()
         unsafe["live"]["forging_key_permissions_safe"] = True
@@ -354,6 +356,19 @@ def main():
             assert broken_permission in refusal and "false" in refusal
     write_probe(probe, observation())
 
+    removed_repair, removed_repair_value = invoke(
+        home,
+        *target_args(
+            "credentials/normalize-forging-permissions",
+            "--param",
+            "machine=bp1",
+        ),
+        env_extra=probe_env,
+        path=fakebin,
+    )
+    assert removed_repair.returncode != 0
+    assert "not in the typed registry" in json.dumps(removed_repair_value)
+
     # Runtime and KES use the stable inspected layout, not membership in a changing release feed.
     # A future config digest therefore needs no CLI rebuild when the live layout still conforms.
     future = observation()
@@ -371,58 +386,6 @@ def main():
         )
         assert future_plan.returncode == 0, (future_plan, future_value)
         assert future_value["data"]["runtime_policy"]["release_feed_required"] is False
-    write_probe(probe, observation())
-
-    # A genuinely unsafe fixed-path layout has a dedicated, candidate-bound repair plan. It
-    # reveals only types/modes/judgments; numeric owners remain redacted and no path is selectable.
-    unsafe_permissions = observation()
-    for field in (
-        "forging_key_permissions_safe",
-        "keys_directory_safe",
-        "kes_skey_private",
-        "vrf_skey_private",
-        "forging_key_owner_supported",
-        "kes_rotation_permissions_ready",
-    ):
-        unsafe_permissions["live"][field] = False
-    write_probe(probe, unsafe_permissions)
-    repair, repair_value = invoke(
-        home,
-        *target_args(
-            "credentials/normalize-forging-permissions",
-            "--param",
-            "machine=bp1",
-        ),
-        env_extra=probe_env,
-        path=fakebin,
-    )
-    assert repair.returncode == 0, (repair, repair_value)
-    repair_data = repair_value["data"]
-    assert repair_data["confirmation_required"] is True
-    assert repair_data["fleet_permit_required"] is False
-    assert repair_data["executor_plan_secret_values_redacted"] is True
-    assert repair_data["permission_repair"]["before"]["keys_directory"]["mode"] == "0775"
-    assert repair_data["permission_repair"]["before"]["kes_skey"]["mode"] == "0644"
-    assert repair_data["permission_repair"]["after"]["keys_directory"]["owner"] == (
-        "preserved_candidate_bound"
-    )
-    assert repair_data["permission_repair"]["after"]["kes_skey"]["mode"] == "0600"
-    encoded_repair = json.dumps(repair_data)
-    assert "1000:1000" not in encoded_repair and '"0:0"' not in encoded_repair
-    assert "<container-node-service-uid:gid>" in encoded_repair
-    write_probe(probe, observation())
-    already_safe, already_safe_value = invoke(
-        home,
-        *target_args(
-            "credentials/normalize-forging-permissions",
-            "--param",
-            "machine=bp1",
-        ),
-        env_extra=probe_env,
-        path=fakebin,
-    )
-    assert already_safe.returncode != 0
-    assert "already satisfy" in json.dumps(already_safe_value)
     write_probe(probe, observation())
 
     # Candidate drift is explicit: a recreated container changes both live-state and final hashes.

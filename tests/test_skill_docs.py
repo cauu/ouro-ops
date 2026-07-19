@@ -103,12 +103,10 @@ def main():
         "three-file backup/promotion/restart plan",
         "This is the production workflow",
         "historical test that stopped after this preflight",
-        "credentials/normalize-forging-permissions",
-        "accepts no path, mode or owner parameter",
-        "needs confirmation but no fleet permit",
-        "preserves the candidate-bound keys-directory owner",
-        "normalizes only the two private-key owners",
-        "rollback availability",
+        "Require exactly three typed facts",
+        "mode 0770 is accepted",
+        "Owner identity is not a KES admission fact",
+        "provides no automatic owner/mode normalization",
         "a real BP container restart",
         "actually activated",
         "node_state_counter_status: no_blocks_minted_yet",
@@ -121,7 +119,6 @@ def main():
         "keys_directory_safe",
         "kes_skey_private",
         "vrf_skey_private",
-        "forging_key_owner_supported",
         "target_kes_rotation_permissions",
         "`forging_key_permissions_safe:false` alone is not a KES refusal",
         "takes no fleet permit",
@@ -144,6 +141,7 @@ def main():
     assert "Do not treat null as zero" in kes
     assert ".discarded-*` copy after success" in kes
     assert "ouro-ops kes push" not in kes, "KES Skill still directs the agent to legacy kes push"
+    assert "normalize-forging-permissions" not in kes
     upgrade = (ROOT / "ouro-skills/upgrade/SKILL.md").read_text()
     assert "ouro-ops inbox preview" not in " ".join(upgrade.split())
     assert "--artifact-file" not in " ".join(upgrade.split())

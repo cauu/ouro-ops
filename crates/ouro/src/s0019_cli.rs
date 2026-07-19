@@ -488,14 +488,6 @@ fn fetch_fleet_status(
                 .get("vrf_skey_private")
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false),
-            forging_key_owner_supported: result
-                .get("forging_key_owner_supported")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false),
-            kes_rotation_permissions_ready: result
-                .get("kes_rotation_permissions_ready")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false),
         },
         image_config_digest: image.into(),
         state_generation: result
@@ -1127,7 +1119,6 @@ struct StatelessTargetPlan {
     policy: convention::Allowlist,
     deploy_transaction: Option<serde_json::Value>,
     kes_rotation: Option<KesRotationEvidence>,
-    permission_repair: Option<ForgingPermissionRepair>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -1149,8 +1140,6 @@ struct KesRotationPermissionEvidence {
     keys_directory_safe: bool,
     kes_skey_private: bool,
     vrf_skey_private: bool,
-    forging_key_owner_supported: bool,
-    kes_rotation_permissions_ready: bool,
 }
 
 impl KesRotationPermissionEvidence {
@@ -1159,8 +1148,6 @@ impl KesRotationPermissionEvidence {
             keys_directory_safe: live.keys_directory_safe,
             kes_skey_private: live.kes_skey_private,
             vrf_skey_private: live.vrf_skey_private,
-            forging_key_owner_supported: live.forging_key_owner_supported,
-            kes_rotation_permissions_ready: live.kes_rotation_permissions_ready,
         }
     }
 
@@ -1168,8 +1155,6 @@ impl KesRotationPermissionEvidence {
         self.keys_directory_safe
             && self.kes_skey_private
             && self.vrf_skey_private
-            && self.forging_key_owner_supported
-            && self.kes_rotation_permissions_ready
     }
 }
 
@@ -1186,141 +1171,6 @@ fn require_kes_rotation_permissions(live: &ObsLive) -> Result<KesRotationPermiss
         )));
     }
     Ok(evidence)
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct FixedPermissionMetadata {
-    mode: String,
-    uid: u32,
-    gid: u32,
-}
-
-impl FixedPermissionMetadata {
-    fn owner(&self) -> String {
-        format!("{}:{}", self.uid, self.gid)
-    }
-}
-
-#[derive(Clone)]
-struct ForgingPermissionRepair {
-    service_owner: String,
-    keys: FixedPermissionMetadata,
-    kes_skey: FixedPermissionMetadata,
-    vrf_skey: FixedPermissionMetadata,
-    review: serde_json::Value,
-}
-
-fn fixed_container_metadata(
-    container: &str,
-    path: &str,
-    expected_type: u32,
-    label: &str,
-) -> Result<FixedPermissionMetadata> {
-    let stdout = crate::executor::run_read_plan(&[vec![
-        "docker".into(),
-        "exec".into(),
-        container.into(),
-        "stat".into(),
-        "-c".into(),
-        "%f:%u:%g".into(),
-        path.into(),
-    ]])?;
-    let fields = stdout.trim().split(':').collect::<Vec<_>>();
-    if fields.len() != 3 {
-        return Err(OuroError::Validation(format!(
-            "{label} metadata returned an incompatible stat schema"
-        )));
-    }
-    let raw_mode = u32::from_str_radix(fields[0], 16).map_err(|_| {
-        OuroError::Validation(format!("{label} metadata returned a malformed file mode"))
-    })?;
-    if raw_mode & 0xf000 != expected_type {
-        return Err(OuroError::Validation(format!(
-            "{label} is not the required real {} (symlinks are refused)",
-            if expected_type == 0x4000 {
-                "directory"
-            } else {
-                "regular file"
-            }
-        )));
-    }
-    let uid = fields[1]
-        .parse::<u32>()
-        .map_err(|_| OuroError::Validation(format!("{label} metadata returned a malformed uid")))?;
-    let gid = fields[2]
-        .parse::<u32>()
-        .map_err(|_| OuroError::Validation(format!("{label} metadata returned a malformed gid")))?;
-    Ok(FixedPermissionMetadata {
-        mode: format!("{:04o}", raw_mode & 0o7777),
-        uid,
-        gid,
-    })
-}
-
-fn capture_forging_permission_repair(observation: &Observation) -> Result<ForgingPermissionRepair> {
-    let container = &observation.live.container_id;
-    let service = fixed_container_metadata(container, "/proc/1", 0x4000, "container PID 1")?;
-    let keys = fixed_container_metadata(
-        container,
-        "/opt/cardano/config/keys",
-        0x4000,
-        "forging keys directory",
-    )?;
-    let kes_skey = fixed_container_metadata(
-        container,
-        crate::executor::KES_SKEY_DEST,
-        0x8000,
-        "KES signing key",
-    )?;
-    let vrf_skey = fixed_container_metadata(
-        container,
-        crate::executor::VRF_SKEY_DEST,
-        0x8000,
-        "VRF signing key",
-    )?;
-    let binding = serde_json::to_vec(&json!({
-        "service_owner": service.owner(),
-        "keys": {"mode": keys.mode, "owner": keys.owner()},
-        "kes_skey": {"mode": kes_skey.mode, "owner": kes_skey.owner()},
-        "vrf_skey": {"mode": vrf_skey.mode, "owner": vrf_skey.owner()},
-    }))
-    .map_err(|error| OuroError::Validation(format!("cannot bind permission metadata: {error}")))?;
-    let service_owner = service.owner();
-    let review = json!({
-        "metadata_binding_sha256": crate::intent::sha256_hex(&binding),
-        "before": {
-            "keys_directory": {"file_type": "directory", "mode": keys.mode},
-            "kes_skey": {"file_type": "regular_file", "mode": kes_skey.mode},
-            "vrf_skey": {"file_type": "regular_file", "mode": vrf_skey.mode},
-            "owner_supported": observation.live.forging_key_owner_supported,
-        },
-        "after": {
-            "keys_directory": {
-                "file_type": "directory",
-                "mode": "0700",
-                "owner": "preserved_candidate_bound",
-            },
-            "kes_skey": {
-                "file_type": "regular_file",
-                "mode": "0600",
-                "owner": "container_node_service_user",
-            },
-            "vrf_skey": {
-                "file_type": "regular_file",
-                "mode": "0600",
-                "owner": "container_node_service_user",
-            },
-        },
-        "reads_key_contents": false,
-        "fixed_paths_only": true,
-    });
-    Ok(ForgingPermissionRepair {
-        service_owner,
-        keys,
-        kes_skey,
-        vrf_skey,
-        review,
-    })
 }
 
 fn current_kes_period(observation: &Observation) -> Result<u64> {
@@ -2109,7 +1959,6 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         "kes-rotation/stage-key"
             | "kes-rotation/install-opcert"
             | "kes-rotation/discard-stage"
-            | "credentials/normalize-forging-permissions"
             | "deploy/register-submit"
     ) && role != Role::Bp
     {
@@ -2250,17 +2099,6 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         }
         _ => None,
     };
-    let permission_repair = if op == "credentials/normalize-forging-permissions" {
-        if KesRotationPermissionEvidence::from_live(&observation.live).ready() {
-            return Err(OuroError::Validation(
-                "forging credential permissions already satisfy the KES rotation contract".into(),
-            ));
-        }
-        Some(capture_forging_permission_repair(&observation)?)
-    } else {
-        None
-    };
-
     let payload_machine = payload
         .get("machine")
         .and_then(serde_json::Value::as_str)
@@ -2369,7 +2207,6 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         },
         "operation": op,
         "kes_rotation": kes_rotation,
-        "permission_repair": permission_repair.as_ref().map(|repair| &repair.review),
         "deploy_transaction": deploy_transaction_candidate,
         "recreate_binding": if op == "upgrade/step" { recreate_binding.as_deref() } else { None },
         "runtime_policy": {
@@ -2425,12 +2262,6 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             let mut plan = recovery.commit;
             plan.extend(recovery.finalize);
             plan
-        }
-        "credentials/normalize-forging-permissions" => {
-            crate::executor::stateless_forging_permission_normalize_plan(
-                &observation.live.container_id,
-                "<container-node-service-uid:gid>",
-            )
         }
         "deploy/register-submit" => {
             let mut argv = vec![
@@ -2503,19 +2334,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             }
         }
     });
-    let rollback_executor_plan = if op == "credentials/normalize-forging-permissions" {
-        let repair = permission_repair.as_ref().ok_or_else(|| {
-            OuroError::Validation("permission repair plan lost its metadata binding".into())
-        })?;
-        Some(crate::executor::stateless_forging_permission_rollback_plan(
-            &observation.live.container_id,
-            &repair.keys.mode,
-            "<candidate-bound-original-owner>",
-            &repair.kes_skey.mode,
-            "<candidate-bound-original-owner>",
-            &repair.vrf_skey.mode,
-        ))
-    } else if op == "upgrade/step"
+    let rollback_executor_plan = if op == "upgrade/step"
         && upgrade_transition
             .as_ref()
             .is_some_and(crate::upgrade::rollback_possible)
@@ -2553,13 +2372,12 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         "mutability": format!("{:?}", validated.mutability),
         "touched": validated.touched,
         "executor_plan": executor_plan,
-        "executor_plan_secret_values_redacted": matches!(op, "upgrade/step" | "credentials/normalize-forging-permissions"),
+        "executor_plan_secret_values_redacted": op == "upgrade/step",
         "upgrade_transition": upgrade_transition,
         "upgrade_failure_outcome": upgrade_failure_outcome,
         "rollback_executor_plan": rollback_executor_plan,
         "deploy_transaction": deploy_transaction,
         "kes_rotation": kes_rotation,
-        "permission_repair": permission_repair.as_ref().map(|repair| &repair.review),
         "runtime_policy": {
             "allowlist_version": allowlist.allowlist_version,
             "signed_allowlist_digest": signed_allowlist_digest,
@@ -2617,7 +2435,6 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         policy: allowlist,
         deploy_transaction,
         kes_rotation,
-        permission_repair,
     })
 }
 
@@ -2806,8 +2623,6 @@ fn stateless_live_drift_components(
     changed_live!(keys_directory_safe);
     changed_live!(kes_skey_private);
     changed_live!(vrf_skey_private);
-    changed_live!(forging_key_owner_supported);
-    changed_live!(kes_rotation_permissions_ready);
     changed_live!(host_key_sha256);
     changed_live!(genesis_hash);
     changed_live!(network);
@@ -2818,19 +2633,6 @@ fn stateless_live_drift_components(
         changed.push("upgrade_recreate_spec");
     }
     changed
-}
-
-fn permission_normalization_mounts_match(before: &[TypedMount], after: &[TypedMount]) -> bool {
-    let mut expected = before.to_vec();
-    for mount in &mut expected {
-        if mount.destination.trim_end_matches('/') == "/opt/cardano/config/keys" {
-            mount.mode = "0700".into();
-        }
-    }
-    let mut actual = after.to_vec();
-    canonicalize_typed_mounts(&mut expected);
-    canonicalize_typed_mounts(&mut actual);
-    expected == actual
 }
 
 fn require_stateless_post_contract(
@@ -3070,96 +2872,6 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
     let live_postcondition: Option<serde_json::Value>;
 
     match final_plan.op.as_str() {
-        "credentials/normalize-forging-permissions" => {
-            let repair = final_plan.permission_repair.as_ref().ok_or_else(|| {
-                OuroError::Validation("approved permission repair lost its metadata binding".into())
-            })?;
-            let commit = crate::executor::stateless_forging_permission_normalize_plan(
-                &current_container,
-                &repair.service_owner,
-            );
-            let rollback_plan = crate::executor::stateless_forging_permission_rollback_plan(
-                &current_container,
-                &repair.keys.mode,
-                &repair.kes_skey.owner(),
-                &repair.kes_skey.mode,
-                &repair.vrf_skey.owner(),
-                &repair.vrf_skey.mode,
-            );
-            let rollback = || {
-                crate::executor::run_plan(&rollback_plan)?;
-                let restored = capture_forging_permission_repair(&final_plan.observation)?;
-                if restored.service_owner != repair.service_owner
-                    || restored.keys != repair.keys
-                    || restored.kes_skey != repair.kes_skey
-                    || restored.vrf_skey != repair.vrf_skey
-                {
-                    return Err(OuroError::Validation(
-                        "permission rollback did not restore the candidate-bound metadata".into(),
-                    ));
-                }
-                Ok(())
-            };
-            if let Err(error) = crate::executor::run_plan(&commit) {
-                return Err(rollback_failure(&final_plan.op, error, rollback()));
-            }
-            let verify = (|| {
-                let mut post = read_observation(&[])?;
-                canonicalize_typed_mounts(&mut post.live.mounts);
-                require_stateless_post_contract(&final_plan, &post, &current_image)?;
-                let permissions = require_kes_rotation_permissions(&post.live)?;
-                let normalized = capture_forging_permission_repair(&post)?;
-                if normalized.service_owner != repair.service_owner
-                    || normalized.keys.mode != "0700"
-                    || normalized.kes_skey.mode != "0600"
-                    || normalized.kes_skey.owner() != repair.service_owner
-                    || normalized.vrf_skey.mode != "0600"
-                    || normalized.vrf_skey.owner() != repair.service_owner
-                {
-                    return Err(OuroError::Validation(
-                        "forging permission normalization did not reach the fixed target metadata"
-                            .into(),
-                    ));
-                }
-                let mut unexpected =
-                    stateless_live_drift_components(&final_plan.observation, &post, &final_plan.op);
-                let expected_mount_delta = permission_normalization_mounts_match(
-                    &final_plan.observation.live.mounts,
-                    &post.live.mounts,
-                );
-                unexpected.retain(|field| {
-                    !(matches!(
-                        *field,
-                        "forging_key_permissions_safe"
-                            | "keys_directory_safe"
-                            | "kes_skey_private"
-                            | "vrf_skey_private"
-                            | "forging_key_owner_supported"
-                            | "kes_rotation_permissions_ready"
-                    ) || *field == "mounts" && expected_mount_delta)
-                });
-                if !unexpected.is_empty() {
-                    return Err(OuroError::Validation(format!(
-                        "permission normalization changed unrelated live state: {}",
-                        unexpected.join(", ")
-                    )));
-                }
-                Ok(permissions)
-            })();
-            let permissions = match verify {
-                Ok(permissions) => permissions,
-                Err(error) => {
-                    return Err(rollback_failure(&final_plan.op, error, rollback()));
-                }
-            };
-            live_postcondition = Some(json!({
-                "verification": "fixed_forging_permissions_normalized",
-                "permissions": permissions,
-                "key_contents_read": false,
-                "container_restarted": false,
-                "rollback_available": true,
-            }));
-        }
         "deploy/register-submit" => {
             let (_, payload) = held_payload.as_ref().ok_or_else(|| {
                 OuroError::Validation("validated Deploy transaction payload was not retained".into())
@@ -3880,8 +3592,6 @@ fn run_stateless_target_status(args: &[String]) -> Result<()> {
             "keys_directory_safe": observation.live.keys_directory_safe,
             "kes_skey_private": observation.live.kes_skey_private,
             "vrf_skey_private": observation.live.vrf_skey_private,
-            "forging_key_owner_supported": observation.live.forging_key_owner_supported,
-            "kes_rotation_permissions_ready": observation.live.kes_rotation_permissions_ready,
             "image_config_digest": observation.live.image_config_digest,
             "state_generation": observation.live.container_creation_epoch,
             "assurance": "live_observation",
@@ -4146,10 +3856,6 @@ struct ObsLive {
     kes_skey_private: bool,
     #[serde(default)]
     vrf_skey_private: bool,
-    #[serde(default)]
-    forging_key_owner_supported: bool,
-    #[serde(default)]
-    kes_rotation_permissions_ready: bool,
     host_key_sha256: String,
     genesis_hash: String,
     network: String,
@@ -7277,48 +6983,6 @@ mod tests {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
     #[test]
-    fn permission_normalization_allows_only_the_bound_keys_mount_mode_delta() {
-        let keys = TypedMount {
-            kind: "bind".into(),
-            source_id: "8:4".into(),
-            destination: "/opt/cardano/config/keys".into(),
-            read_only: false,
-            owner: "0:0".into(),
-            mode: "0770".into(),
-            no_symlink: true,
-        };
-        let data = TypedMount {
-            kind: "bind".into(),
-            source_id: "8:1".into(),
-            destination: "/data/db".into(),
-            read_only: false,
-            owner: "1000:1000".into(),
-            mode: "0700".into(),
-            no_symlink: true,
-        };
-        let before = vec![keys.clone(), data.clone()];
-        let mut expected = vec![data.clone(), keys.clone()];
-        expected[1].mode = "0700".into();
-        assert!(super::permission_normalization_mounts_match(
-            &before, &expected
-        ));
-
-        let mut changed_keys_owner = expected.clone();
-        changed_keys_owner[1].owner = "1000:1000".into();
-        assert!(!super::permission_normalization_mounts_match(
-            &before,
-            &changed_keys_owner
-        ));
-
-        let mut changed_other_mount = expected;
-        changed_other_mount[0].source_id = "8:999".into();
-        assert!(!super::permission_normalization_mounts_match(
-            &before,
-            &changed_other_mount
-        ));
-    }
-
-    #[test]
     fn cardano_cli_kes_diagnostics_have_one_terminal_json_record() {
         let raw = b"\xe2\x9c\x93 Operational certificate's KES period is within the correct KES period interval\n\
                     \xe2\x9c\x93 The operational certificate counter agrees with the node protocol state\n\
@@ -7448,8 +7112,6 @@ mod tests {
                 keys_directory_safe: true,
                 kes_skey_private: true,
                 vrf_skey_private: true,
-                forging_key_owner_supported: true,
-                kes_rotation_permissions_ready: true,
                 host_key_sha256: "a".repeat(64),
                 genesis_hash: "gh".into(), network: "mainnet".into(),
             },

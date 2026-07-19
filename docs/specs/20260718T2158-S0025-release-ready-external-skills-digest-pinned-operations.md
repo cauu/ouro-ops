@@ -1495,3 +1495,53 @@ candidate, and activate only after every typed fact passes.
 - TC-47 | stack: release | command: `make release-candidate` | result: pass | note: the macOS control
   CLI, linux/x86_64 ephemeral runner and release descriptors/checksums were rebuilt and verified
   without publishing or contacting a production host.
+
+## 63. Fifteenth Follow-up Requirement And Design (append-only)
+
+- [~] p6-1-fix16 simplify KES permission admission and remove automatic metadata normalization
+- Operator decision: KES rotation prioritizes a reliable production flow over canonicalizing an
+  existing node's filesystem owner/layout. SSH custody, typed operations, exact confirmation and
+  disruptive fleet permits remain unchanged; only the KES file-metadata admission policy changes.
+- Root cause: the previous design duplicated an owner/mode contract across probe, planning,
+  executor, postcondition, fleet permit and Skill, mixed container and bind-source namespaces, and
+  then treated metadata deliberately changed by its own normalizer as immutable drift evidence.
+- Minimal contract: the fixed keys path must be a real non-symlink directory and not world-writable;
+  `kes.skey` and `vrf.skey` must be real non-symlink regular files at `0400` or `0600`. Owner identity
+  is not a KES admission fact. Directory mode `0770` is accepted under the explicit assumption that
+  the operator controls local group membership. Phase A continues to create only a staged `0600`
+  signing key; Phase B retains artifact validation, atomic activation, real restart readiness and
+  verified rollback.
+- Implementation: reduce typed permission evidence to the three direct path facts; remove
+  `forging_key_owner_supported`, the redundant aggregate fact, the registered
+  `credentials/normalize-forging-permissions` operation, its executor/rollback implementation, its
+  Skill branch and the operation-specific mount-delta exception. Do not add a replacement repair
+  command in this iteration.
+- TC-48 acceptance: a real directory at `0770` with non-symlink `0400` private keys passes Phase A
+  and Phase B planning regardless of owner; directory `0777`, private key `0640/0644`, symlink or
+  non-regular private path fails before approval or mutation. KES stage/install/rollback behavior,
+  confirmation and fleet-permit gates remain unchanged. Canonical Skill and local website contain
+  no normalization workflow, and complete release-candidate validation passes without contacting a
+  production host.
+
+## 64. Fifteenth Follow-up Completion And Evidence (append-only)
+
+- [x] p6-1-fix16 completed: KES admission now derives readiness from exactly three direct path facts.
+  The permission normalizer, owner evidence, redundant ready flag, executor/rollback code, registry
+  entry, stateful normalizer test and mount-delta special case were removed. Skill v18 and the local
+  website direct the agent to stop on a genuinely unsafe path without inventing a repair workflow.
+- TC-48 | stack: shell+python | command: `python3 tests/test_probe.py` | result: pass | note: `0770`
+  and owner-independent `0400/0400` pass; `0777`, `0640/0644`, symlink and non-regular inputs fail;
+  the probe no longer reads a UID for KES admission.
+- TC-48 | stack: rust+python | command: `cargo fmt --all -- --check`, `cargo test -q -p ouro`,
+  `cargo clippy -q -p ouro --lib --tests -- -D warnings`, `python3
+  tests/test_s0020_stateless_plan.py`, `python3 tests/test_s0020_stateless_apply.py`, `python3
+  tests/test_s0020_kes_airgap_preflight.py`, and `python3 tests/test_s0025_kes_rotation.py` | result:
+  pass | note: 173 Rust tests pass; Phase A and Phase B expose the same exact three facts, the removed
+  normalizer is absent from the typed registry, and mock production activation/readiness/rollback
+  remains intact.
+- TC-48 | stack: website | command: `python3 tests/test_skill_docs.py`, `./web/onboarding/build.sh`,
+  and `python3 -m pytest -q tests/test_web_generator.py` | result: pass | note: all nine website cases
+  pass, canonical Skill v18 is embedded, and neither surface contains the removed operation.
+- TC-48 | stack: release | command: `make release-candidate` | result: pass | note: the macOS control
+  CLI, linux/x86_64 ephemeral runner, package and descriptors/checksums were rebuilt and verified
+  without publishing or contacting a production host.

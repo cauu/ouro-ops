@@ -1,5 +1,5 @@
 ---
-skill_version: 17
+skill_version: 18
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -46,12 +46,12 @@ reads or prints it.
   credential layout/permissions intact, but the old KES/opcert may already be invalid. Ordinary
   fleet `online`, every other disruptive operation and relay quorum remain fully fail-closed.
 - KES permission readiness is its own container-namespace contract, not the legacy
-  `forging_key_permissions_safe` adoption/diagnostic aggregate. Require all five typed facts:
-  `keys_directory_safe`, `kes_skey_private`, `vrf_skey_private`,
-  `forging_key_owner_supported`, and `kes_rotation_permissions_ready`. A real non-symlink keys
-  directory may be 0700, 0750 or 0755; the two fixed private keys must be non-symlink regular files
-  at 0400 or 0600 and owned by the container node service user. Public `kes.vkey` and `node.cert`
-  are not private-key inputs. Never compare a host account UID to a container UID.
+  `forging_key_permissions_safe` adoption/diagnostic aggregate. Require exactly three typed facts:
+  `keys_directory_safe`, `kes_skey_private`, and `vrf_skey_private`. The fixed keys path must be a
+  real non-symlink directory that is not world-writable; mode 0770 is accepted because local group
+  membership remains under operator custody. The two fixed private keys must be non-symlink regular
+  files at 0400 or 0600. Owner identity is not a KES admission fact. Public `kes.vkey` and
+  `node.cert` are not private-key inputs.
 - `kes airgap-bundle` is a local public-artifact write, not a target operation. It downloads the
   exact Intersect release matching the typed BP `cardano_cli_version`, verifies the official archive
   checksum, extracts one platform-specific binary, and atomically promotes the completed directory.
@@ -67,22 +67,10 @@ reads or prints it.
   repeat them. Obtain the FINAL Phase-A plan with `ouro-ops op run --op kes-rotation/stage-key
   --spec <pool-spec> --dispatch <bp-host> --ssh-key creds://<name> --node <bp> --param machine=<bp>
   --plan`. The typed BP observation supplies the current KES period automatically.
-- Before any Phase-A generation or pending-stage decision, require the plan's five KES permission
-  facts above to all be true. If any is false, stop the rotation before approval/generation and
-  report the typed non-secret facts. Offer the fixed-path repair only through
-  `ouro-ops op run --op credentials/normalize-forging-permissions --spec <pool-spec> --dispatch
-  <bp-host> --ssh-key creds://<name> --node <bp> --param machine=<bp> --plan`. This separate
-  candidate accepts no path, mode or owner parameter, reads no key contents, needs confirmation but no fleet permit,
-  and shows only file types/modes plus redacted owner judgments. WAIT for exact
-  approval. If approved, mint `ouro-ops confirm create --op
-  credentials/normalize-forging-permissions --node <bp> --intent-hash <repair-hash>` and immediately
-  rerun the unchanged repair command without `--plan`, adding `--candidate-hash <repair-hash>
-  --confirm-token <token>`. The fixed target preserves the candidate-bound keys-directory owner,
-  changes its mode to 0700, and normalizes only the two private-key owners and modes to the
-  container node service user and 0600. Require all five facts true, those exact target semantics,
-  no restart and rollback availability before returning to a fresh normal Phase-A or Phase-B plan.
-  If it refuses a symlink/non-regular path or cannot verify/roll back, stop for operator recovery.
-  Never suggest raw chmod/chown.
+- Before any Phase-A generation or pending-stage decision, require the plan's three KES permission
+  facts above to all be true. If any is false, stop before approval or generation and report only
+  the typed non-secret facts. Ouro intentionally provides no automatic owner/mode normalization in
+  this workflow; never suggest raw chmod/chown or invent a repair operation.
 - If that plan reports `pending_existing: true`, require `executor_plan: []`,
   `confirmation_required: false`, no fleet permit, a complete PUBLIC `staged_vkey` plus its hash,
   typed period and `cardano_cli_version`. Show the pending public-key hash and ask the operator to
@@ -208,9 +196,8 @@ reads or prints it.
   availability/layout evidence is false. Do not substitute ordinary offline status, weaken another
   operation's permit or reinterpret an unhealthy relay as quorum.
 - Stop if any dedicated KES permission fact is false. The legacy
-  `forging_key_permissions_safe:false` alone is not a KES refusal when the five dedicated facts are
-  true. Do not use raw SSH, chmod or chown as a workaround; only a registered typed normalization
-  operation may repair a genuinely unsafe layout.
+  `forging_key_permissions_safe:false` alone is not a KES refusal when the three dedicated facts are
+  true. Do not use raw SSH, chmod or chown as a workaround and do not invent a normalization path.
 - Stop and require operator recovery if the live-verified inverse cannot establish a known state.
 
 ## Red Lines

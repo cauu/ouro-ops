@@ -28,24 +28,22 @@ ouro_probe_inspect() {
 }
 
 # Fixed-path, metadata-only KES rotation permission contract. Production evaluates this inside the
-# container namespace. Tests may supply a fixture root and service UID; neither is agent input in
-# production. Output is five closed booleans—never key bytes or raw owner identifiers.
+# container namespace. Tests may supply a fixture root. Output is three closed booleans—never key
+# bytes or raw owner identifiers.
 OURO_KES_ROTATION_PERMISSION_CHECK='
 root=$1
-service_uid=$2
 keys_dir="${root}/opt/cardano/config/keys"
 kes_key="${keys_dir}/kes.skey"
 vrf_key="${keys_dir}/vrf.skey"
-if test -z "$service_uid"; then
-  service_uid=$(stat -c %u "${root}/proc/1" 2>/dev/null || true)
-fi
 keys_directory_safe=false
 kes_skey_private=false
 vrf_skey_private=false
-forging_key_owner_supported=false
 if test -d "$keys_dir" && ! test -L "$keys_dir"; then
   mode=$(stat -c %a "$keys_dir" 2>/dev/null || true)
-  case "$mode" in 700|750|755) keys_directory_safe=true ;; esac
+  case "$mode" in
+    ""|*[!0-7]*) ;;
+    *) if test $((0$mode & 0002)) -eq 0; then keys_directory_safe=true; fi ;;
+  esac
 fi
 private_key_safe() {
   path=$1
@@ -55,18 +53,8 @@ private_key_safe() {
 }
 if private_key_safe "$kes_key"; then kes_skey_private=true; fi
 if private_key_safe "$vrf_key"; then vrf_skey_private=true; fi
-kes_owner=$(stat -c %u "$kes_key" 2>/dev/null || true)
-vrf_owner=$(stat -c %u "$vrf_key" 2>/dev/null || true)
-if test -n "$service_uid" && test "$kes_owner" = "$service_uid" && test "$vrf_owner" = "$service_uid"; then
-  forging_key_owner_supported=true
-fi
-kes_rotation_permissions_ready=false
-if "$keys_directory_safe" && "$kes_skey_private" && "$vrf_skey_private" && "$forging_key_owner_supported"; then
-  kes_rotation_permissions_ready=true
-fi
-printf "keys_directory_safe=%s\nkes_skey_private=%s\nvrf_skey_private=%s\nforging_key_owner_supported=%s\nkes_rotation_permissions_ready=%s\n" \
-  "$keys_directory_safe" "$kes_skey_private" "$vrf_skey_private" \
-  "$forging_key_owner_supported" "$kes_rotation_permissions_ready"
+printf "keys_directory_safe=%s\nkes_skey_private=%s\nvrf_skey_private=%s\n" \
+  "$keys_directory_safe" "$kes_skey_private" "$vrf_skey_private"
 '
 
 ouro_kes_rotation_permission_facts() {
@@ -74,7 +62,7 @@ ouro_kes_rotation_permission_facts() {
 }
 
 ouro_kes_rotation_permission_fixture_facts() {
-  sh -c "$OURO_KES_ROTATION_PERMISSION_CHECK" ouro-kes-permission-check "$1" "$2"
+  sh -c "$OURO_KES_ROTATION_PERMISSION_CHECK" ouro-kes-permission-check "$1"
 }
 
 # Emit the observation JSON for the node. $1 = expected platform (e.g. linux/amd64).
@@ -173,8 +161,6 @@ ouro_observe() {
   OURO_OBS_KEYS_DIRECTORY_SAFE="$(printf '%s\n' "$kes_rotation_perms" | awk -F= '$1 == "keys_directory_safe" {print $2}')" \
   OURO_OBS_KES_SKEY_PRIVATE="$(printf '%s\n' "$kes_rotation_perms" | awk -F= '$1 == "kes_skey_private" {print $2}')" \
   OURO_OBS_VRF_SKEY_PRIVATE="$(printf '%s\n' "$kes_rotation_perms" | awk -F= '$1 == "vrf_skey_private" {print $2}')" \
-  OURO_OBS_FORGING_KEY_OWNER_SUPPORTED="$(printf '%s\n' "$kes_rotation_perms" | awk -F= '$1 == "forging_key_owner_supported" {print $2}')" \
-  OURO_OBS_KES_ROTATION_PERMISSIONS_READY="$(printf '%s\n' "$kes_rotation_perms" | awk -F= '$1 == "kes_rotation_permissions_ready" {print $2}')" \
   OURO_OBS_GENESIS="$genesis_hash" OURO_OBS_NET="$network" \
   OURO_OBS_HOSTKEY="$hostkey" OURO_OBS_FULL="$full_json" OURO_OBS_IMAGE_FULL="$image_json" \
   OURO_OBS_TIP1="$tip1" OURO_OBS_TIP2="$tip2" OURO_OBS_CREDS="$creds_ok" \
@@ -508,8 +494,6 @@ obs = {
     "keys_directory_safe": env("OURO_OBS_KEYS_DIRECTORY_SAFE") == "true",
     "kes_skey_private": env("OURO_OBS_KES_SKEY_PRIVATE") == "true",
     "vrf_skey_private": env("OURO_OBS_VRF_SKEY_PRIVATE") == "true",
-    "forging_key_owner_supported": env("OURO_OBS_FORGING_KEY_OWNER_SUPPORTED") == "true",
-    "kes_rotation_permissions_ready": env("OURO_OBS_KES_ROTATION_PERMISSIONS_READY") == "true",
     "host_key_sha256": env("OURO_OBS_HOSTKEY"), "genesis_hash": env("OURO_OBS_GENESIS"),
     "network": env("OURO_OBS_NET"),
   },
