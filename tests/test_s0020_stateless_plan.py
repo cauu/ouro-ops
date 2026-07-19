@@ -108,6 +108,7 @@ def observation(container="cid-plan"):
                 "counter_consistent": True,
                 "valid": True,
             },
+            "block_producer_configured": True,
             "forging_credentials_ready": True,
             "established_peers": 2,
         },

@@ -1,5 +1,5 @@
 ---
-skill_version: 13
+skill_version: 14
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -41,6 +41,10 @@ reads or prints it.
   previous KES signing key, verification key and public opcert and verifies readiness.
 - Both writes need exact operator confirmation. Only activation is disruptive and therefore also
   needs a live fleet permit minted last.
+- The activation permit uses an operation-scoped `kes_rotation_repair_ready` target qualification:
+  the BP must be running, socket-responsive, synchronized, convention-conformant and have its BP
+  credential layout/permissions intact, but the old KES/opcert may already be invalid. Ordinary
+  fleet `online`, every other disruptive operation and relay quorum remain fully fail-closed.
 - `kes airgap-bundle` is a local public-artifact write, not a target operation. It downloads the
   exact Intersect release matching the typed BP `cardano_cli_version`, verifies the official archive
   checksum, extracts one platform-specific binary, and atomically promotes the completed directory.
@@ -142,7 +146,12 @@ reads or prints it.
 - After approval mint `ouro-ops confirm create --op kes-rotation/install-opcert --node <bp>
   --intent-hash <final-hash>`, then mint the live permit LAST with `ouro-ops fleet permit create
   --spec <pool-spec> --node <bp> --op kes-rotation/install-opcert --intent-hash <final-hash>
-  --holder <controller-id>`.
+  --holder <controller-id>`. Require its facts to report
+  `target_qualification: kes_rotation_repair_ready` and
+  `target_kes_rotation_repair_ready: true`. `target_online: false` is allowed only here when the
+  bound pre-existing KES/opcert readiness is the failed component; it is not permission to ignore
+  liveness, socket, sync, network/genesis, role/layout/host identity, relay quorum or permit
+  freshness.
 - Immediately rerun the plan command without `--plan`, adding `--candidate-hash <final-hash>
   --artifact-file <pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert --confirm-token <token>
   --fleet-permit '<fleet_permit-json>'`. Never replan with either capability. Report the remote
@@ -171,6 +180,9 @@ reads or prints it.
 - Stop on signed-policy, role/network/genesis/layout drift or a Phase-A regression relative to the
   bound readiness pre-state. An unchanged pre-existing invalid KES/opcert is not drift. Report a
   typed refusal; do not adopt, reconfigure, or work around it.
+- Stop if the KES activation permit lacks the typed repair qualification or if any non-KES
+  availability/layout evidence is false. Do not substitute ordinary offline status, weaken another
+  operation's permit or reinterpret an unhealthy relay as quorum.
 - Stop and require operator recovery if the live-verified inverse cannot establish a known state.
 
 ## Red Lines

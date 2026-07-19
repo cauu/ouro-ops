@@ -335,6 +335,73 @@ def main():
     assert status_value["tool"] == "ouro.fleet.status"
     assert status_value["data"]["management_state"] == "not_required"
     assert status_value["data"]["online"] is True
+    assert status_value["data"]["kes_rotation_repair_ready"] is True
+
+    # Expired/invalid old KES credentials are valid repair input: they make ordinary BP readiness
+    # false without erasing the narrower liveness/layout qualification used only by KES activation.
+    expired_kes_bp = observation()
+    expired_kes_bp["readiness"]["kes_opcert_valid"] = False
+    expired_kes_bp["readiness"]["forging_credentials_ready"] = False
+    write_probe(probe, expired_kes_bp)
+    status, status_value = invoke(
+        home,
+        "target",
+        "status",
+        "--node",
+        "bp1",
+        "--role",
+        "bp",
+        "--network",
+        "mainnet",
+        "--genesis",
+        GENESIS,
+        "--expect-allowlist",
+        allowlist_digest,
+        env_extra=env,
+        path=fakebin,
+    )
+    assert status.returncode == 0, (status, status_value)
+    assert status_value["data"]["online"] is False
+    assert status_value["data"]["kes_rotation_repair_ready"] is True
+
+    for broken in [
+        "node_running",
+        "socket_answers",
+        "tip_synced",
+        "block_producer_configured",
+        "has_forging_keys",
+        "forging_key_permissions_safe",
+        "kes_opcert_id",
+    ]:
+        broken_bp = observation()
+        broken_bp["readiness"]["kes_opcert_valid"] = False
+        broken_bp["readiness"]["forging_credentials_ready"] = False
+        if broken in broken_bp["readiness"]:
+            broken_bp["readiness"][broken] = False
+        elif broken == "kes_opcert_id":
+            broken_bp["live"][broken] = ""
+        else:
+            broken_bp["live"][broken] = False
+        write_probe(probe, broken_bp)
+        status, status_value = invoke(
+            home,
+            "target",
+            "status",
+            "--node",
+            "bp1",
+            "--role",
+            "bp",
+            "--network",
+            "mainnet",
+            "--genesis",
+            GENESIS,
+            "--expect-allowlist",
+            allowlist_digest,
+            env_extra=env,
+            path=fakebin,
+        )
+        assert status.returncode == 0, (broken, status, status_value)
+        assert status_value["data"]["kes_rotation_repair_ready"] is False, broken
 
     # Fleet collection must preserve an unready BP as typed offline evidence rather than refusing
     # the whole snapshot. Its forging state is irrelevant to the relay quorum count; a BP selected
@@ -365,6 +432,7 @@ def main():
     assert status_value["tool"] == "ouro.fleet.status"
     assert status_value["data"]["role"] == "bp"
     assert status_value["data"]["online"] is False
+    assert status_value["data"]["kes_rotation_repair_ready"] is False
     write_probe(probe, observation())
 
     # Image preparation is non-disruptive but never accepts a payload. A stray payload must be
@@ -465,6 +533,7 @@ upgrade:
             "genesis_hash": GENESIS,
             "host_key_sha256": "SHA256:" + "a" * 43,
             "online": True,
+            "kes_rotation_repair_ready": True,
             "image_config_digest": observation()["live"]["image_config_digest"],
             "state_generation": 1234,
             "management_state": "not_required",
@@ -524,6 +593,79 @@ upgrade:
     fleet_remote = fleet_ssh_log.read_text()
     assert fleet_remote.count("'target' 'status'") == 2
     assert "/usr/local/bin/ouro-ops" not in fleet_remote and "ouro-op-run" not in fleet_remote
+
+    # An expired-KES BP remains ineligible for generic disruption, but the exact KES install
+    # operation may mint a permit from the separate repair qualification. Relay quorum still uses
+    # only fully-online relays.
+    repair_home = Path(tempfile.mkdtemp(prefix="ouro-s0025-kes-repair-permit-"))
+    repair_credentials = repair_home / "credentials"
+    repair_credentials.mkdir()
+    (repair_credentials / "bp1").write_text("test-key")
+    (repair_credentials / "relay1").write_text("test-key")
+    (repair_home / "known_hosts").write_text(
+        "192.0.2.1 ssh-ed25519 test\n192.0.2.2 ssh-ed25519 test\n"
+    )
+    repair_bp_status = json.loads(json.dumps(bp_status))
+    repair_bp_status["data"]["online"] = False
+    repair_bp_status["data"]["kes_rotation_repair_ready"] = True
+    ssh.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -eu\n"
+        "dd of=/dev/null bs=65536 status=none\n"
+        "printf '%s\\n' \"$*\" >>\"$OURO_TEST_FLEET_SSH_LOG\"\n"
+        "case \"$*\" in\n"
+        f"  *cardano@192.0.2.1*) printf '%s\\n' '{json.dumps(repair_bp_status, separators=(',', ':'))}' ;;\n"
+        f"  *cardano@192.0.2.2*) printf '%s\\n' '{json.dumps(relay_status, separators=(',', ':'))}' ;;\n"
+        "  *) exit 90 ;;\n"
+        "esac\n"
+    )
+    ssh.chmod(0o700)
+    repair_env = {
+        "OURO_EPHEMERAL_RUNNER": str(runner),
+        "OURO_TEST_FLEET_SSH_LOG": str(fleet_ssh_log),
+    }
+    generic_refused, generic_refused_value = invoke(
+        repair_home,
+        "fleet",
+        "permit",
+        "create",
+        "--spec",
+        str(pool_spec),
+        "--node",
+        "bp1",
+        "--op",
+        "runtime/restart",
+        "--intent-hash",
+        restart_candidate,
+        "--holder",
+        "test-agent",
+        env_extra=repair_env,
+        path=fakebin,
+    )
+    assert generic_refused.returncode != 0, (generic_refused, generic_refused_value)
+    assert "full role readiness" in json.dumps(generic_refused_value)
+    kes_permit, kes_permit_value = invoke(
+        repair_home,
+        "fleet",
+        "permit",
+        "create",
+        "--spec",
+        str(pool_spec),
+        "--node",
+        "bp1",
+        "--op",
+        "kes-rotation/install-opcert",
+        "--intent-hash",
+        "f" * 64,
+        "--holder",
+        "test-agent",
+        env_extra=repair_env,
+        path=fakebin,
+    )
+    assert kes_permit.returncode == 0, (kes_permit, kes_permit_value)
+    assert kes_permit_value["data"]["facts"]["target_online"] is False
+    assert kes_permit_value["data"]["facts"]["target_kes_rotation_repair_ready"] is True
+    assert kes_permit_value["data"]["facts"]["target_qualification"] == "kes_rotation_repair_ready"
 
     stream = home / "stream.bin"
     ssh_count = home / "ssh.count"

@@ -312,6 +312,7 @@ struct FleetLiveStatus {
     genesis_hash: String,
     host_key_sha256: String,
     online: bool,
+    kes_rotation_repair_ready: bool,
     image_config_digest: String,
     state_generation: u64,
 }
@@ -458,9 +459,21 @@ fn fetch_fleet_status(
         network: network.into(),
         genesis_hash: genesis_hash.into(),
         host_key_sha256: host_key_sha256.into(),
-        online: result.get("online").and_then(serde_json::Value::as_bool).ok_or_else(|| {
-            OuroError::Validation(format!("fleet live-facts target {} omitted online", machine.id))
-        })?,
+        online: result
+            .get("online")
+            .and_then(serde_json::Value::as_bool)
+            .ok_or_else(|| {
+                OuroError::Validation(format!(
+                    "fleet live-facts target {} omitted online",
+                    machine.id
+                ))
+            })?,
+        // Only the operation-scoped KES permit consumes this additional qualification. Missing
+        // evidence is false so a mixed or malformed runner can never weaken ordinary admission.
+        kes_rotation_repair_ready: result
+            .get("kes_rotation_repair_ready")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
         image_config_digest: image.into(),
         state_generation: result
             .get("state_generation")
@@ -680,12 +693,25 @@ pub fn run_fleet(args: &[String]) -> Result<()> {
             )));
         }
     }
-    let target_status = statuses.iter().find(|status| status.node == node).ok_or_else(|| {
-        OuroError::Validation(format!("fleet live-facts snapshot omitted target {node}"))
-    })?;
-    if !target_status.online {
+    let target_status = statuses
+        .iter()
+        .find(|status| status.node == node)
+        .ok_or_else(|| {
+            OuroError::Validation(format!("fleet live-facts snapshot omitted target {node}"))
+        })?;
+    let target_qualified = if operation == "kes-rotation/install-opcert" {
+        role == "bp" && target_status.kes_rotation_repair_ready
+    } else {
+        target_status.online
+    };
+    if !target_qualified {
+        let qualification = if operation == "kes-rotation/install-opcert" {
+            "KES rotation repair readiness"
+        } else {
+            "full role readiness"
+        };
         return Err(OuroError::Validation(format!(
-            "fleet target {node} is not ready/online — permit refused"
+            "fleet target {node} does not satisfy {qualification} — permit refused"
         )));
     }
     let online_relays = u32::try_from(
@@ -759,6 +785,12 @@ pub fn run_fleet(args: &[String]) -> Result<()> {
             "relays_remaining": relays_remaining,
             "target_role": role,
             "target_online": target_status.online,
+            "target_kes_rotation_repair_ready": target_status.kes_rotation_repair_ready,
+            "target_qualification": if operation == "kes-rotation/install-opcert" {
+                "kes_rotation_repair_ready"
+            } else {
+                "full_role_readiness"
+            },
             "target_state_generation": target_status.state_generation,
             "target_host_key_sha256": target_status.host_key_sha256,
             "target_image": target_status.image_config_digest,
@@ -3461,19 +3493,41 @@ fn run_stateless_target_status(args: &[String]) -> Result<()> {
             established_peers: evidence.established_peers,
         }.evaluate().is_ok()
     });
-    let role_name = match role { Role::Bp => "bp", Role::Relay => "relay" };
-    output::print_json(&ToolOutput::ok("ouro.fleet.status", false).with_data(json!({
-        "node": node,
-        "role": role_name,
-        "network": observation.live.network,
-        "genesis_hash": observation.live.genesis_hash,
-        "host_key_sha256": observation.live.host_key_sha256,
-        "online": online,
-        "image_config_digest": observation.live.image_config_digest,
-        "state_generation": observation.live.container_creation_epoch,
-        "assurance": "live_observation",
-        "management_state": "not_required",
-    })))
+    // KES rotation is a repair operation: the old opcert may be expired/invalid, but the target
+    // must still be a live, synchronized, convention-conformant BP with its credential layout and
+    // permissions intact. Supervisor, typed mounts and runtime contract were already checked above.
+    let kes_rotation_repair_ready = role == Role::Bp
+        && observation.readiness.as_ref().is_some_and(|evidence| {
+            evidence.node_running
+                && !observation.live.container_id.is_empty()
+                && evidence.socket_answers
+                && observation.live.network == network
+                && observation.live.genesis_hash == genesis
+                && evidence.tip_synced
+                && evidence.block_producer_configured
+                && observation.live.has_forging_keys
+                && observation.live.forging_key_permissions_safe
+                && !observation.live.kes_opcert_id.is_empty()
+        });
+    let role_name = match role {
+        Role::Bp => "bp",
+        Role::Relay => "relay",
+    };
+    output::print_json(
+        &ToolOutput::ok("ouro.fleet.status", false).with_data(json!({
+            "node": node,
+            "role": role_name,
+            "network": observation.live.network,
+            "genesis_hash": observation.live.genesis_hash,
+            "host_key_sha256": observation.live.host_key_sha256,
+            "online": online,
+            "kes_rotation_repair_ready": kes_rotation_repair_ready,
+            "image_config_digest": observation.live.image_config_digest,
+            "state_generation": observation.live.container_creation_epoch,
+            "assurance": "live_observation",
+            "management_state": "not_required",
+        })),
+    )
 }
 
 fn stateless_observation_output(node: &str, observation: &Observation) -> ToolOutput {

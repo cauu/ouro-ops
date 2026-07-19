@@ -1201,3 +1201,82 @@ gives a fresh activation approval only after the complete preflight passes.
   note: production control CLI and linux/x86_64 runner rebuilt and all package, descriptor, release
   selection and checksum evidence verified without contacting the real BP or changing the retained
   staged pair, node.cert or counter.
+
+## 51. Tenth Follow-up Requirement And Design (append-only)
+
+Production Phase B reached live fleet-permit creation after successful artifact preflight, but the
+permit refused because fleet `online` includes BP KES/opcert and forging readiness. The existing
+active KES/opcert is invalid—the exact condition this rotation is authorized to repair—so requiring
+full pre-mutation forging readiness creates a circular prerequisite. Apply was not invoked; the old
+active key, staged pair, container epoch and live-state hash remain unchanged.
+
+Ouro must preserve the meaning of ordinary fleet `online` and must not globally weaken disruptive
+operation admission. The ephemeral target status record adds a separate closed boolean
+`kes_rotation_repair_ready`. It is true only for a declared BP whose conformant supervisor, typed
+mounts and signed runtime contract have already passed, whose container is running and identified,
+whose socket answers on the required network/genesis, whose tip is synchronized, and whose BP
+process/forging credential files and permissions are present and safe. It deliberately does not
+require the pre-existing `kes_opcert_valid` or `forging_credentials_ready` booleans to be true.
+
+Fleet permit creation may use that separate qualification only when the signed operation id is
+exactly `kes-rotation/install-opcert` and the target role is BP. Every other disruptive operation
+continues to require `target_status.online == true`. Relay quorum and last-BP ordering continue to
+count only fully online relays. The permit remains bound to target host identity, pool/spec,
+network/genesis, operation, candidate, role, live facts epoch and fencing token. Candidate-bound
+artifact validation and the install transaction's post-activation readiness remain unchanged; a
+new KES/opcert that does not pass the scoped activation postcondition still rolls back.
+
+Recovery constraints remain: do not contact the production BP during implementation, do not
+re-stage keys, re-sign the certificate, advance its counter or mutate the retained handoff. After a
+new acceptance build, the operator repeats Phase B planning/preflight with the same staged pair and
+`node.cert`, obtains a fresh confirmation and permit, and approves only the newly generated
+candidate.
+
+## 52. Tenth Follow-up Execution Plan And Acceptance (append-only)
+
+- [~] p6-1-fix10 allow an operation-scoped KES repair qualification during live permit creation
+- TC-41 KES repair permit: an otherwise healthy BP with only pre-existing KES/opcert and forging
+  readiness false reports `online:false` and `kes_rotation_repair_ready:true`; a live permit for
+  `kes-rotation/install-opcert` succeeds while preserving full relay quorum, identity, freshness and
+  candidate binding.
+- TC-42 Scope and refusal: the same BP remains ineligible for runtime restart, upgrade, deploy and
+  other disruptive permits; missing container/socket/sync, network/genesis mismatch, wrong role,
+  missing BP configuration/credential files, unsafe permissions or nonconforming layout refuses the
+  KES repair qualification. Post-activation readiness and rollback behavior remain covered without
+  weakening generic readiness.
+
+## 53. Tenth Follow-up Completion And Evidence (append-only)
+
+- [x] p6-1-fix10 allow an operation-scoped KES repair qualification during live permit creation
+- 2026-07-19 p6-1-fix10 completed: ephemeral fleet status now preserves full `online` and separately
+  emits `kes_rotation_repair_ready`. The latter is true only for a conformant, running,
+  socket-responsive, synchronized BP on the bound network/genesis with configured forging files,
+  safe permissions and an existing active public opcert; it deliberately ignores only the two old
+  KES/forging validity verdicts that rotation repairs.
+- Fleet permit creation selects the repair qualification only for the exact
+  `kes-rotation/install-opcert` operation and BP role, discloses the qualification in its typed facts,
+  and otherwise retains full target readiness. Relay quorum continues to count only `online:true`
+  relays. Candidate-bound preflight, confirmation, permit signature/freshness/fencing and scoped
+  post-activation readiness/rollback are unchanged.
+- Skill v14 and the locally built website prompt require the typed repair qualification, explain
+  that `target_online:false` is acceptable only for bound pre-existing KES failure, and retain every
+  non-KES liveness/layout/identity/quorum gate.
+- TC-41, TC-42 | stack: python | command: `python3 tests/test_s0020_stateless_apply.py` | result:
+  pass | note: a BP with only old KES/opcert and forging readiness false reports offline plus repair
+  ready; runtime permit refuses while exact KES install permit succeeds. Missing running/socket/sync,
+  BP configuration, forging files, safe permissions or active opcert makes repair readiness false.
+- TC-40, TC-41, TC-42 | stack: python+rust | command: `python3
+  tests/test_s0020_stateless_plan.py`, `python3 tests/test_s0020_kes_airgap_preflight.py`, `python3
+  tests/test_s0025_kes_rotation.py`, `cargo test -q -p ouro`, and `cargo clippy -q -p ouro --lib
+  --tests -- -D warnings` | result: pass | note: target plans, integer/null artifact preflight,
+  production activation simulation, deliberate post-mutation rollback, 173 Rust tests and
+  warnings-denied clippy all retain their prior behavior.
+- TC-41, TC-42 | stack: ui+python | command: `./web/onboarding/build.sh`, `python3
+  tests/test_skill_docs.py`, and `python3 -m pytest -q tests/test_web_generator.py` | result: pass |
+  note: the local site embeds exact canonical Skill v14 and all nine website source-fidelity and
+  service cases pass.
+- TC-13, TC-22, TC-40, TC-41, TC-42 | stack: other | command: `make python-test`, `python3 -m pytest
+  -q`, `bash ci/l2-integration.sh`, and `make release-candidate` | result: pass | note: all maintained
+  Python gates, 13 pytest cases, full L2, macOS control CLI, linux/x86_64 ephemeral runner, package,
+  descriptors, release selection and checksums pass without contacting the production BP or
+  changing its retained stage/certificate.
