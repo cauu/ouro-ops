@@ -14,6 +14,17 @@ from test_s0020_stateless_plan import ROOT, invoke, observation, target_args
 def permission_observation(*, safe, network="mainnet"):
     value = observation()
     value["live"]["network"] = network
+    value["live"]["mounts"].append(
+        {
+            "kind": "bind",
+            "source_id": "8:4",
+            "destination": "/opt/cardano/config/keys",
+            "read_only": False,
+            "owner": "0:0",
+            "mode": "0700" if safe else "0770",
+            "no_symlink": True,
+        }
+    )
     for field in (
         "forging_key_permissions_safe",
         "keys_directory_safe",
@@ -26,15 +37,12 @@ def permission_observation(*, safe, network="mainnet"):
     return value
 
 
-def write_stateful_probe(path, state, *, drift_after_commit=False):
+def write_stateful_probe(path, state, *, mount_drift_after_commit=False):
     unsafe = json.dumps(permission_observation(safe=False), separators=(",", ":"))
-    safe = json.dumps(
-        permission_observation(
-            safe=True,
-            network="preprod" if drift_after_commit else "mainnet",
-        ),
-        separators=(",", ":"),
-    )
+    safe_observation = permission_observation(safe=True)
+    if mount_drift_after_commit:
+        safe_observation["live"]["mounts"][0]["source_id"] = "8:999"
+    safe = json.dumps(safe_observation, separators=(",", ":"))
     path.write_text(
         "ouro_observe() {\n"
         f"  if test \"$(cat '{state}' 2>/dev/null || true)\" = safe; then\n"
@@ -135,7 +143,7 @@ def main():
     # modes/owners. It never leaves the partially-normalized state in place.
     state.write_text("unsafe")
     log.unlink()
-    write_stateful_probe(probe, state, drift_after_commit=True)
+    write_stateful_probe(probe, state, mount_drift_after_commit=True)
     planned, planned_value = invoke(
         home,
         *target_args("credentials/normalize-forging-permissions", *params),
@@ -153,6 +161,7 @@ def main():
     )
     assert failed.returncode != 0, (failed, failed_value)
     assert "rollback completed" in json.dumps(failed_value)
+    assert "unrelated live state: mounts" in json.dumps(failed_value)
     assert state.read_text() == "unsafe"
     rollback_commands = log.read_text()
     assert "chmod 0770 /opt/cardano/config/keys" in rollback_commands

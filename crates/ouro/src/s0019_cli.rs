@@ -2820,6 +2820,19 @@ fn stateless_live_drift_components(
     changed
 }
 
+fn permission_normalization_mounts_match(before: &[TypedMount], after: &[TypedMount]) -> bool {
+    let mut expected = before.to_vec();
+    for mount in &mut expected {
+        if mount.destination.trim_end_matches('/') == "/opt/cardano/config/keys" {
+            mount.mode = "0700".into();
+        }
+    }
+    let mut actual = after.to_vec();
+    canonicalize_typed_mounts(&mut expected);
+    canonicalize_typed_mounts(&mut actual);
+    expected == actual
+}
+
 fn require_stateless_post_contract(
     plan: &StatelessTargetPlan,
     observation: &Observation,
@@ -3110,8 +3123,12 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 }
                 let mut unexpected =
                     stateless_live_drift_components(&final_plan.observation, &post, &final_plan.op);
+                let expected_mount_delta = permission_normalization_mounts_match(
+                    &final_plan.observation.live.mounts,
+                    &post.live.mounts,
+                );
                 unexpected.retain(|field| {
-                    !matches!(
+                    !(matches!(
                         *field,
                         "forging_key_permissions_safe"
                             | "keys_directory_safe"
@@ -3119,7 +3136,7 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                             | "vrf_skey_private"
                             | "forging_key_owner_supported"
                             | "kes_rotation_permissions_ready"
-                    )
+                    ) || *field == "mounts" && expected_mount_delta)
                 });
                 if !unexpected.is_empty() {
                     return Err(OuroError::Validation(format!(
@@ -7258,6 +7275,48 @@ mod tests {
     use crate::config::ConfigPaths;
     use crate::supervisor::SupervisorObservation;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    #[test]
+    fn permission_normalization_allows_only_the_bound_keys_mount_mode_delta() {
+        let keys = TypedMount {
+            kind: "bind".into(),
+            source_id: "8:4".into(),
+            destination: "/opt/cardano/config/keys".into(),
+            read_only: false,
+            owner: "0:0".into(),
+            mode: "0770".into(),
+            no_symlink: true,
+        };
+        let data = TypedMount {
+            kind: "bind".into(),
+            source_id: "8:1".into(),
+            destination: "/data/db".into(),
+            read_only: false,
+            owner: "1000:1000".into(),
+            mode: "0700".into(),
+            no_symlink: true,
+        };
+        let before = vec![keys.clone(), data.clone()];
+        let mut expected = vec![data.clone(), keys.clone()];
+        expected[1].mode = "0700".into();
+        assert!(super::permission_normalization_mounts_match(
+            &before, &expected
+        ));
+
+        let mut changed_keys_owner = expected.clone();
+        changed_keys_owner[1].owner = "1000:1000".into();
+        assert!(!super::permission_normalization_mounts_match(
+            &before,
+            &changed_keys_owner
+        ));
+
+        let mut changed_other_mount = expected;
+        changed_other_mount[0].source_id = "8:999".into();
+        assert!(!super::permission_normalization_mounts_match(
+            &before,
+            &changed_other_mount
+        ));
+    }
 
     #[test]
     fn cardano_cli_kes_diagnostics_have_one_terminal_json_record() {

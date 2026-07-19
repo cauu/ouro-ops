@@ -1459,3 +1459,39 @@ candidate, and activate only after every typed fact passes.
 - TC-46 | stack: release | command: `make release-candidate` | result: pass | note: validation
   produced and checksum-verified `dist/release-candidate/v0.1.0-aarch64-apple-darwin` without
   publishing or contacting a production node.
+
+## 61. Fourteenth Follow-up Requirement And Design (append-only)
+
+- [~] p6-1-fix15 bind the expected keys-mount metadata delta during permission normalization
+- Concrete defect: typed mount evidence includes each bind source root's mode. When the fixed keys
+  directory is itself a bind mount root, the approved normalizer's intended `0770` to `0700` chmod
+  changes the observed mount mode. The coarse postcondition classifies its own expected mutation as
+  unrelated `mounts` drift and rolls back. A production BP reproduced this exact failure with no
+  restart or residual state change.
+- Contract: do not ignore mount drift. For this operation only, derive the expected post-mount set
+  from the candidate-bound set by changing only the exact `/opt/cardano/config/keys` destination's
+  mode to `0700`. Kind, source device/inode identity, destination, read-only state, owner and
+  no-symlink evidence must remain exact, and every other mount must remain exact. All other
+  operations retain full mount equality.
+- Implementation: add an operation-scoped typed-mount comparator and exercise the real bind-root
+  shape in the stateful permission fixture.
+- TC-47 acceptance: the exact production shape (`keys` bind root mode `0770`, preserved mount owner,
+  private keys `0400` with unsupported owner) completes normalization without a false `mounts`
+  drift. Changing any non-mode field on that mount or any field on another mount remains a failure
+  with verified rollback. Full Rust, stateful permission and release-candidate gates must pass
+  without contacting a production host.
+
+## 62. Fourteenth Follow-up Completion And Evidence (append-only)
+
+- [x] p6-1-fix15 completed: post-mutation permission verification now derives one exact expected
+  mount delta from the candidate instead of suppressing the whole mount component. Pre-mutation
+  plan/apply comparison and every other operation still require full mount equality.
+- TC-47 | stack: rust+python | command: `cargo fmt --all -- --check`, `cargo test -q -p ouro`,
+  `cargo clippy -q -p ouro --lib --tests -- -D warnings`, `python3
+  tests/test_s0025_permission_normalize.py`, `python3 tests/test_s0020_stateless_plan.py`, and
+  `python3 tests/test_skill_docs.py` | result: pass | note: 174 Rust tests pass; the stateful fixture
+  reproduces an exact keys bind root changing from `0770` to `0700`, while unit and rollback cases
+  reject a keys-mount owner change and an unrelated mount source-identity change.
+- TC-47 | stack: release | command: `make release-candidate` | result: pass | note: the macOS control
+  CLI, linux/x86_64 ephemeral runner and release descriptors/checksums were rebuilt and verified
+  without publishing or contacting a production host.
