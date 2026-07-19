@@ -363,7 +363,6 @@ pub fn stateless_forging_permission_normalize_plan(
             s("chown"),
             s("--no-dereference"),
             service_owner.to_string(),
-            s(KEYS_DIR),
             s(KES_SKEY_DEST),
             s(VRF_SKEY_DEST),
         ],
@@ -395,7 +394,6 @@ pub fn stateless_forging_permission_normalize_plan(
 /// same fixed paths during candidate construction; no key bytes are read or copied.
 pub fn stateless_forging_permission_rollback_plan(
     cid: &str,
-    keys_owner: &str,
     keys_mode: &str,
     kes_owner: &str,
     kes_mode: &str,
@@ -403,17 +401,6 @@ pub fn stateless_forging_permission_rollback_plan(
     vrf_mode: &str,
 ) -> ExecutionPlan {
     vec![
-        vec![
-            s("docker"),
-            s("exec"),
-            s("--user"),
-            s("0"),
-            cid.to_string(),
-            s("chown"),
-            s("--no-dereference"),
-            keys_owner.to_string(),
-            s(KEYS_DIR),
-        ],
         vec![
             s("docker"),
             s("exec"),

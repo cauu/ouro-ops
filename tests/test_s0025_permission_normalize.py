@@ -122,6 +122,10 @@ def main():
     commands = log.read_text()
     assert "restart" not in commands and "cat /opt/cardano/config/keys" not in commands
     assert "chown --no-dereference 1000:1000" in commands
+    chown_line = next(line for line in commands.splitlines() if "chown --no-dereference 1000:1000" in line)
+    assert chown_line.endswith(
+        "/opt/cardano/config/keys/kes.skey /opt/cardano/config/keys/vrf.skey"
+    )
 
     # A postcondition failure runs the exact candidate-bound inverse and restores the original
     # modes/owners. It never leaves the partially-normalized state in place.
@@ -150,7 +154,7 @@ def main():
     assert "chmod 0775 /opt/cardano/config/keys" in rollback_commands
     assert "chmod 0644 /opt/cardano/config/keys/kes.skey" in rollback_commands
     assert "chmod 0644 /opt/cardano/config/keys/vrf.skey" in rollback_commands
-    assert rollback_commands.count("chown --no-dereference 0:0") == 3
+    assert rollback_commands.count("chown --no-dereference 0:0") == 2
 
     print("S0025 typed forging-permission normalization passed")
 

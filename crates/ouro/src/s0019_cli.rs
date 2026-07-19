@@ -2498,7 +2498,6 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         })?;
         Some(crate::executor::stateless_forging_permission_rollback_plan(
             &observation.live.container_id,
-            "<candidate-bound-original-owner>",
             &repair.keys.mode,
             "<candidate-bound-original-owner>",
             &repair.kes_skey.mode,
@@ -3057,7 +3056,6 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
             );
             let rollback_plan = crate::executor::stateless_forging_permission_rollback_plan(
                 &current_container,
-                &repair.keys.owner(),
                 &repair.keys.mode,
                 &repair.kes_skey.owner(),
                 &repair.kes_skey.mode,

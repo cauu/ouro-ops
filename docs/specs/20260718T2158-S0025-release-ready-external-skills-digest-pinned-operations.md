@@ -1402,3 +1402,18 @@ candidate, and activate only after every typed fact passes.
 - TC-43, TC-44, TC-45 | stack: release | command: `make release-candidate` | result: pass | note:
   release validation produced the macOS control CLI, linux/x86_64 ephemeral runner, package,
   descriptors, selection document and verified checksums without publishing or contacting a node.
+
+## 58. Twelfth Follow-up Completion And Evidence (append-only)
+
+- [x] p6-1-fix13 preserve the supported keys-directory owner during typed normalization
+- 2026-07-19 p6-1-fix13 completed: final release review identified a concrete bind-mount case where
+  the typed normalizer would change a supported root-owned keys directory to the container service
+  owner even though the KES predicate intentionally imposes no directory-owner rule. The executor
+  now changes only the directory mode; ownership normalization and owner rollback are limited to the
+  two fixed private regular files. Original directory owner remains candidate-bound drift evidence
+  but is never mutated.
+- TC-45 | stack: rust+python | command: `cargo test -q -p ouro`, `cargo clippy -q -p ouro --lib
+  --tests -- -D warnings`, `python3 tests/test_s0025_permission_normalize.py`, `python3
+  tests/test_s0020_stateless_plan.py`, and `python3 tests/test_skill_docs.py` | result: pass | note:
+  success and rollback command logs prove the directory never appears in a chown argv while both
+  private files still reach and restore their bound owners.
