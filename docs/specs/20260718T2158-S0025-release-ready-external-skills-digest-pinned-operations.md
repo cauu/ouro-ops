@@ -732,3 +732,52 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
 - TC-13, TC-22 | stack: other | command: `make release-candidate` | result: pass | note: final
   source rebuilt the paired macOS control CLI and linux/x86_64 ephemeral runner; package, descriptor,
   candidate, version, release selection and checksums all verify
+
+## 20. Fourth Follow-up Execution Plan (append-only)
+
+- [x] p6-1-fix4 allow Phase A to stage a replacement KES pair when the unchanged existing
+  KES/opcert is already invalid, while still refusing any active-state or availability regression
+
+## 21. Fourth Follow-up Test And Acceptance Criteria (append-only)
+
+- TC-28 Expired-KES recovery staging: when the BP is running, its socket supplies a typed current
+  period, and its existing KES/opcert is already invalid, `kes-rotation/stage-key` may plan and stage
+  a replacement pair. Phase A succeeds only if container identity, active KES key, active opcert and
+  the complete pre-existing readiness evidence remain unchanged; it must not reinterpret an
+  unchanged pre-existing forging failure as a regression. A real Phase-A-caused drift still cleans
+  the staged pair and refuses. Phase B activation continues to require full BP forging readiness.
+
+## 22. Fourth Follow-up Execution Log (append-only)
+
+- 2026-07-19 p6-1-fix4 started: operator Phase A generated then cleaned the staged pair with
+  `KES/opcert invalid (bp cannot forge)`. The stage postcondition incorrectly called the generic BP
+  write-readiness evaluator, which requires the old certificate to be valid even though replacing
+  an expired/invalid KES certificate is the purpose of this workflow. The fix will compare Phase A
+  against its bound pre-state and reserve full forging readiness for activation.
+- 2026-07-19 p6-1-fix4 completed: Phase A now requires an answering BP container/socket and compares
+  post-stage availability plus KES validity/counter/period evidence against the candidate-bound
+  pre-state without requiring the old certificate to forge. It reports the pre-existing
+  KES/opcert/forging booleans as facts, preserves natural moving tip/peer evidence, and still cleans
+  the staged pair on any active-state or readiness regression. Phase B retains the generic full BP
+  forging-readiness gate after activation. Skill v7 explicitly directs agents to continue the
+  offline handoff when old credentials were already invalid rather than demanding circular recovery.
+
+## 23. Fourth Follow-up Validation Evidence (append-only)
+
+- TC-28 | stack: python | command: `python3 tests/test_s0025_kes_rotation.py` | result: pass | note:
+  the stateful target begins with `kes_opcert_valid=false`, `forging_credentials_ready=false` and
+  typed KES `valid=false`; Phase A stages successfully with those pre-state facts unchanged, a
+  deliberately induced Phase-A drift is still cleaned/refused, and Phase B succeeds only after the
+  mock activation restores all forging readiness
+- TC-27, TC-28 | stack: ui+python | command: local HTTP browser KES form plus `python3
+  tests/test_skill_docs.py` and `python3 -m pytest -q tests/test_web_generator.py` | result: pass |
+  note: copied prompt contains canonical Skill v7, explicitly permits already invalid/expired active
+  credentials, labels them non-gating Phase-A facts, forbids circular recovery and emits zero browser
+  console errors
+- TC-14, TC-22, TC-28 | stack: rust+python+shell | command: `cargo test -q -p ouro`, `make
+  python-test`, `cargo clippy -q -p ouro --lib --tests -- -D warnings`, `python3 -m pytest -q`, and
+  `bash ci/l2-integration.sh` | result: pass | note: 170 Rust tests, all maintained Python gates, 13
+  pytest cases, warnings-denied clippy and the complete L2 regression pass
+- TC-13, TC-22 | stack: other | command: `make release-candidate` | result: pass | note: the fixed
+  source rebuilt and verified the paired macOS control CLI, linux/x86_64 ephemeral runner, package,
+  descriptor, candidate, version, release selection and checksums

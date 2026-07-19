@@ -955,7 +955,7 @@ struct Observation {
     #[serde(default)]
     recreate: Option<crate::executor::RecreateSpec>,
 }
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, Clone, PartialEq)]
 struct ObsReadiness {
     node_running: bool,
     socket_answers: bool,
@@ -982,7 +982,7 @@ struct ObsReadiness {
     established_peers: u32,
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq)]
 struct ObsKes {
     #[serde(default)]
     source: Option<String>,
@@ -1069,6 +1069,9 @@ struct KesRotationEvidence {
     current_period: u64,
     active_vkey_sha256: String,
     staged_vkey_sha256: Option<String>,
+    preexisting_kes_opcert_valid: bool,
+    preexisting_forging_credentials_ready: bool,
+    preexisting_kes_evidence_sha256: String,
 }
 
 fn current_kes_period(observation: &Observation) -> Result<u64> {
@@ -1083,6 +1086,62 @@ fn current_kes_period(observation: &Observation) -> Result<u64> {
     u64::try_from(current).map_err(|_| {
         OuroError::Validation("BP observation returned a negative current KES period".into())
     })
+}
+
+fn require_kes_stage_base_availability(observation: &Observation) -> Result<()> {
+    let readiness = observation.readiness.as_ref().ok_or_else(|| {
+        OuroError::Validation("BP observation did not provide typed readiness evidence".into())
+    })?;
+    if !readiness.node_running || !readiness.socket_answers {
+        return Err(OuroError::Validation(
+            "KES staging requires the existing BP container and node socket to answer".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn kes_preexisting_evidence(observation: &Observation) -> Result<(bool, bool, String)> {
+    let readiness = observation.readiness.as_ref().ok_or_else(|| {
+        OuroError::Validation("BP observation did not provide typed readiness evidence".into())
+    })?;
+    let bytes = serde_json::to_vec(&readiness.kes).map_err(|error| {
+        OuroError::Validation(format!("cannot bind typed pre-existing KES evidence: {error}"))
+    })?;
+    Ok((
+        readiness.kes_opcert_valid,
+        readiness.forging_credentials_ready,
+        crate::intent::sha256_hex(&bytes),
+    ))
+}
+
+/// Phase A intentionally does not require the old KES/opcert to be valid: expiry is a primary
+/// reason to rotate it. It proves staging did not worsen or alter the bound active state. Moving
+/// tip/peer counters are excluded; KES period/counter/validity and availability must be identical.
+fn require_kes_stage_readiness_invariant(before: &Observation, after: &Observation) -> Result<()> {
+    let before = before.readiness.as_ref().ok_or_else(|| {
+        OuroError::Validation("KES stage candidate lost its pre-state readiness evidence".into())
+    })?;
+    let after = after.readiness.as_ref().ok_or_else(|| {
+        OuroError::Validation("KES stage postcondition omitted readiness evidence".into())
+    })?;
+    if !after.node_running || !after.socket_answers {
+        return Err(OuroError::Validation(
+            "KES staging changed BP container/socket availability".into(),
+        ));
+    }
+    if before.node_running != after.node_running
+        || before.socket_answers != after.socket_answers
+        || before.tip_synced != after.tip_synced
+        || before.kes_opcert_valid != after.kes_opcert_valid
+        || before.block_producer_configured != after.block_producer_configured
+        || before.forging_credentials_ready != after.forging_credentials_ready
+        || before.kes != after.kes
+    {
+        return Err(OuroError::Validation(
+            "KES staging changed active BP readiness/KES evidence".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn require_no_staged_kes_pair(container: &str) -> Result<()> {
@@ -1798,6 +1857,9 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
     let kes_rotation = match op {
         "kes-rotation/stage-key" => {
             let current_period = current_kes_period(&observation)?;
+            require_kes_stage_base_availability(&observation)?;
+            let (preexisting_kes_opcert_valid, preexisting_forging_credentials_ready,
+                preexisting_kes_evidence_sha256) = kes_preexisting_evidence(&observation)?;
             require_no_staged_kes_pair(&observation.live.container_id)?;
             let (_, active_vkey_sha256) = read_public_kes_vkey(
                 &observation.live.container_id,
@@ -1808,10 +1870,15 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                 current_period,
                 active_vkey_sha256,
                 staged_vkey_sha256: None,
+                preexisting_kes_opcert_valid,
+                preexisting_forging_credentials_ready,
+                preexisting_kes_evidence_sha256,
             })
         }
         "kes-rotation/install-opcert" => {
             let current_period = current_kes_period(&observation)?;
+            let (preexisting_kes_opcert_valid, preexisting_forging_credentials_ready,
+                preexisting_kes_evidence_sha256) = kes_preexisting_evidence(&observation)?;
             let (_, active_vkey_sha256) = read_public_kes_vkey(
                 &observation.live.container_id,
                 crate::executor::KES_VKEY_DEST,
@@ -1822,6 +1889,9 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                 current_period,
                 active_vkey_sha256,
                 staged_vkey_sha256: Some(staged_vkey_sha256),
+                preexisting_kes_opcert_valid,
+                preexisting_forging_credentials_ready,
+                preexisting_kes_evidence_sha256,
             })
         }
         _ => None,
@@ -2702,7 +2772,7 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 let mut post = read_observation(&[])?;
                 canonicalize_typed_mounts(&mut post.live.mounts);
                 require_stateless_post_contract(&final_plan, &post, &current_image)?;
-                stateless_readiness(&final_plan, &post, false)?;
+                require_kes_stage_readiness_invariant(&final_plan.observation, &post)?;
                 let changed = stateless_live_drift_components(
                     &final_plan.observation,
                     &post,
@@ -2727,6 +2797,10 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                     "active_container_unchanged": true,
                     "active_kes_key_unchanged": true,
                     "active_opcert_unchanged": true,
+                    "preexisting_kes_opcert_valid": post.readiness.as_ref()
+                        .map(|readiness| readiness.kes_opcert_valid),
+                    "preexisting_forging_credentials_ready": post.readiness.as_ref()
+                        .map(|readiness| readiness.forging_credentials_ready),
                     "restart_performed": false,
                 }))
             })();

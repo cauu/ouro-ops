@@ -86,6 +86,8 @@ def main():
         "signature/key/counter/window evidence",
         "three-file backup/promotion/restart plan",
         "takes no fleet permit",
+        "already invalid/expired active",
+        "not Phase-A success gates",
     ]:
         assert phrase in kes, f"KES Skill lacks Phase A/B contract {phrase!r}"
     for unnecessary_prompt in [

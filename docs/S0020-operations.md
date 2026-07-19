@@ -67,7 +67,10 @@ the old approval. No command writes a release cache or target policy file.
 
 KES rotation first runs `kes-rotation/stage-key`. The target derives the current KES period and
 generates a fresh pair in a fixed BP-private staging directory; only the public verification-key
-envelope/hash leaves the BP. After the offline cold-signing handoff, `install-opcert` requires the
+envelope/hash leaves the BP. The existing KES/opcert may already be invalid (a primary reason to
+rotate); Phase A requires an answering container/socket and proves that it preserved the complete
+pre-existing active KES/readiness state rather than requiring the old credentials to forge. After
+the offline cold-signing handoff, `install-opcert` requires the
 returned certificate to name that exact staged public key. Approved activation backs up and
 promotes `kes.skey`, `kes.vkey` and `node.cert` together, restarts once, verifies typed readiness,
 and restores the previous triple on failure.

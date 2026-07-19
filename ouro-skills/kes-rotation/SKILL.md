@@ -1,5 +1,5 @@
 ---
-skill_version: 6
+skill_version: 7
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -22,6 +22,9 @@ never leaves the BP and Ouro never reads or prints it.
 - `kes-rotation/stage-key` and `kes-rotation/install-opcert` are BP-only typed writes. Stage-key
   generates only in `/opt/cardano/config/keys/.ouro-kes-stage`, proves signing-key mode `0600`, and
   never changes the active pair, certificate, container or readiness.
+- Phase A requires the BP container and socket to answer, but an already invalid/expired active
+  KES/opcert is valid rotation input. It binds and preserves that pre-existing state instead of
+  requiring the old certificate to become valid before its replacement can be staged.
 - Local preview hashes and validates the file without copying it. Apply reopens the same named file,
   verifies it against the candidate, and streams it once with the ephemeral runner; no durable
   remote inbox or target Ouro installation exists.
@@ -45,6 +48,10 @@ never leaves the BP and Ouro never reads or prints it.
   <stage-hash> --confirm-token <token>`. Stage-key takes no fleet permit. Require a returned PUBLIC
   `kes_vkey`, its hash, the typed period, signing-key mode `0600`, and explicit evidence that the
   active container/key/certificate were unchanged.
+- Treat returned `preexisting_kes_opcert_valid` and `preexisting_forging_credentials_ready` as
+  pre-state facts, not Phase-A success gates. If either was already false, report that Phase A
+  safely staged the replacement while the old credentials remain unusable; proceed to the offline
+  handoff rather than demanding circular operator recovery.
 - The copied Skill prompt already authorizes the deterministic local PUBLIC handoff files; do not
   ask for another file-write go-ahead or output paths. Write the returned public envelope to
   `./ouro-kes-rotation/<bp>-period-<period>/kes.vkey`, then generate
@@ -81,8 +88,9 @@ never leaves the BP and Ouro never reads or prints it.
 - Stop if typed current-period evidence is missing, an earlier staged rotation exists, the offline
   ceremony is incomplete, the file is not a public opcert, its bytes change, deep preflight refuses
   it, the target is not the declared BP, or approval/permit is absent.
-- Stop on signed-policy, role/network/genesis/layout/readiness drift. Report the typed refusal; do
-  not adopt, reconfigure, or work around it.
+- Stop on signed-policy, role/network/genesis/layout drift or a Phase-A regression relative to the
+  bound readiness pre-state. An unchanged pre-existing invalid KES/opcert is not drift. Report a
+  typed refusal; do not adopt, reconfigure, or work around it.
 - Stop and require operator recovery if the live-verified inverse cannot establish a known state.
 
 ## Red Lines

@@ -17,7 +17,11 @@ from test_s0020_stateless_plan import BIN, ROOT, invoke, observation, target_arg
 
 
 def write_dynamic_probe(path: Path, state: Path) -> None:
-    base = json.dumps(observation(), separators=(",", ":"))
+    base_observation = observation()
+    base_observation["readiness"]["kes_opcert_valid"] = False
+    base_observation["readiness"]["forging_credentials_ready"] = False
+    base_observation["readiness"]["kes"]["valid"] = False
+    base = json.dumps(base_observation, separators=(",", ":"))
     path.write_text(
         "ouro_observe() {\n"
         f"python3 - '{state}' <<'PY'\n"
@@ -25,6 +29,10 @@ def write_dynamic_probe(path: Path, state: Path) -> None:
         f"obs=json.loads({base!r})\n"
         "state=json.load(open(sys.argv[1]))\n"
         "obs['live']['kes_opcert_id']=state['active_opcert']\n"
+        "if state['active_opcert'] != 'opcert-public-digest':\n"
+        "  obs['readiness']['kes_opcert_valid']=True\n"
+        "  obs['readiness']['forging_credentials_ready']=True\n"
+        "  obs['readiness']['kes']['valid']=True\n"
         "if state.get('drift_after_stage') and state['stage']: obs['live']['network']='preprod'\n"
         "print(json.dumps(obs,separators=(',',':')))\n"
         "PY\n"
@@ -116,6 +124,9 @@ def main() -> None:
     )
     assert stage_plan.returncode == 0, (stage_plan, stage_value)
     stage_candidate = stage_value["data"]["candidate_hash"]
+    assert stage_value["data"]["kes_rotation"]["preexisting_kes_opcert_valid"] is False
+    assert stage_value["data"]["kes_rotation"]["preexisting_forging_credentials_ready"] is False
+    assert len(stage_value["data"]["kes_rotation"]["preexisting_kes_evidence_sha256"]) == 64
     failed_stage, failed_stage_value = invoke(
         home,
         *apply_args("kes-rotation/stage-key", stage_candidate, "--param", "machine=bp1"),
@@ -150,6 +161,8 @@ def main() -> None:
     assert stage_post["active_container_unchanged"] is True
     assert stage_post["active_kes_key_unchanged"] is True
     assert stage_post["active_opcert_unchanged"] is True
+    assert stage_post["preexisting_kes_opcert_valid"] is False
+    assert stage_post["preexisting_forging_credentials_ready"] is False
     assert "SigningKey" not in json.dumps(staged_value)
     assert json.loads(state.read_text())["active_vkey"] == ACTIVE_KES_VKEY
 
