@@ -128,6 +128,19 @@ pub fn registry() -> &'static [OperationSpec] {
             may_expose_secret: false,
         },
         OperationSpec {
+            // Normalize only the fixed active forging-credential paths. The executor derives the
+            // target owner from the container's PID 1 and accepts no path/mode/owner parameters.
+            operation_id: "credentials/normalize-forging-permissions",
+            mutability: Mutability::Dangerous,
+            params: &[ParamSpec {
+                name: "machine",
+                kind: ParamKind::MachineId,
+                required: true,
+            }],
+            touched: &["file:forging-key-permissions"],
+            may_expose_secret: false,
+        },
+        OperationSpec {
             operation_id: "deploy/register-submit",
             mutability: Mutability::Dangerous,
             params: &[

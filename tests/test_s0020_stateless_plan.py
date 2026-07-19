@@ -202,6 +202,10 @@ def main():
         "  *'head -c 65537 /opt/cardano/config/keys/kes.vkey'*) "
         f"printf '%s\\n' '{json.dumps(ACTIVE_KES_VKEY, separators=(',', ':'))}' ;;\n"
         "  *'stat -c %a /opt/cardano/config/keys/.ouro-kes-stage/kes.skey'*) printf '600\\n' ;;\n"
+        "  *'stat -c %f:%u:%g /proc/1'*) printf '41ed:1000:1000\\n' ;;\n"
+        "  *'stat -c %f:%u:%g /opt/cardano/config/keys/kes.skey'*) printf '81a4:0:0\\n' ;;\n"
+        "  *'stat -c %f:%u:%g /opt/cardano/config/keys/vrf.skey'*) printf '81a4:0:0\\n' ;;\n"
+        "  *'stat -c %f:%u:%g /opt/cardano/config/keys'*) printf '41fd:0:0\\n' ;;\n"
         "  *'test -s /opt/cardano/config/keys/.ouro-kes-stage/kes.skey'*) exit 0 ;;\n"
         "  *'test ! -e /opt/cardano/config/keys/.ouro-kes-stage'*) exit 0 ;;\n"
         "  *) exit 90 ;;\n"
@@ -367,6 +371,55 @@ def main():
         )
         assert future_plan.returncode == 0, (future_plan, future_value)
         assert future_value["data"]["runtime_policy"]["release_feed_required"] is False
+    write_probe(probe, observation())
+
+    # A genuinely unsafe fixed-path layout has a dedicated, candidate-bound repair plan. It
+    # reveals only types/modes/judgments; numeric owners remain redacted and no path is selectable.
+    unsafe_permissions = observation()
+    for field in (
+        "forging_key_permissions_safe",
+        "keys_directory_safe",
+        "kes_skey_private",
+        "vrf_skey_private",
+        "forging_key_owner_supported",
+        "kes_rotation_permissions_ready",
+    ):
+        unsafe_permissions["live"][field] = False
+    write_probe(probe, unsafe_permissions)
+    repair, repair_value = invoke(
+        home,
+        *target_args(
+            "credentials/normalize-forging-permissions",
+            "--param",
+            "machine=bp1",
+        ),
+        env_extra=probe_env,
+        path=fakebin,
+    )
+    assert repair.returncode == 0, (repair, repair_value)
+    repair_data = repair_value["data"]
+    assert repair_data["confirmation_required"] is True
+    assert repair_data["fleet_permit_required"] is False
+    assert repair_data["executor_plan_secret_values_redacted"] is True
+    assert repair_data["permission_repair"]["before"]["keys_directory"]["mode"] == "0775"
+    assert repair_data["permission_repair"]["before"]["kes_skey"]["mode"] == "0644"
+    assert repair_data["permission_repair"]["after"]["kes_skey"]["mode"] == "0600"
+    encoded_repair = json.dumps(repair_data)
+    assert "1000:1000" not in encoded_repair and '"0:0"' not in encoded_repair
+    assert "<container-node-service-uid:gid>" in encoded_repair
+    write_probe(probe, observation())
+    already_safe, already_safe_value = invoke(
+        home,
+        *target_args(
+            "credentials/normalize-forging-permissions",
+            "--param",
+            "machine=bp1",
+        ),
+        env_extra=probe_env,
+        path=fakebin,
+    )
+    assert already_safe.returncode != 0
+    assert "already satisfy" in json.dumps(already_safe_value)
     write_probe(probe, observation())
 
     # Candidate drift is explicit: a recreated container changes both live-state and final hashes.

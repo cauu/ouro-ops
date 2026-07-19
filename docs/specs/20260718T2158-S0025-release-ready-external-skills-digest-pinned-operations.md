@@ -1364,3 +1364,41 @@ candidate, and activate only after every typed fact passes.
 - TC-44 | stack: ui+python | command: `./web/onboarding/build.sh`, `python3
   tests/test_skill_docs.py`, and `python3 -m pytest -q tests/test_web_generator.py` | result: pass |
   note: canonical Skill v15 is embedded byte-for-byte and all nine local site cases pass.
+
+## 57. Eleventh Follow-up Final Completion And Evidence (append-only)
+
+- [x] p6-1-fix12 add a separately approved, fixed-path forging-permission normalizer with exact
+  metadata rollback
+- 2026-07-19 p6-1-fix12 completed: `credentials/normalize-forging-permissions` is a dangerous typed
+  operation with only the declared machine selector. It fixes exactly the active keys directory,
+  `kes.skey` and `vrf.skey`; agent-supplied paths, modes and owners are absent from its schema. It
+  reads fixed-path metadata only, validates directory/regular-file types with symlinks refused, and
+  derives the target identity from container PID 1 without exposing numeric UID/GID in plan output.
+- The approved candidate binds a SHA-256 digest of the original modes/owners. Apply captures the
+  same facts twice before mutation, performs fixed root-in-container `chown`/`chmod` argvs, then
+  requires the shared five-fact KES predicate and exact 0700/0600/service-owner target metadata.
+  Unrelated live drift fails verification. Any executor or postcondition failure restores each
+  fixed path's exact candidate-bound original mode/owner and verifies the inverse; no node restart,
+  fleet permit, key-content read, secret copy or persistent Ouro state is involved.
+- Blink Labs' official image source uses Debian bookworm-slim for the runtime image, whose standard
+  coreutils command surface supports the fixed `stat`, `chown --no-dereference` and `chmod` argvs:
+  <https://github.com/blinklabs-io/docker-cardano-node/blob/main/Dockerfile>.
+- Skill v16 and the locally built website prompt stop the rotation before unsafe permissions,
+  offer only the typed plan/confirmation/apply flow, require no fleet permit or restart, and resume
+  Phase A or the retained Phase B only after the shared predicate passes.
+- TC-45 | stack: rust+python | command: `cargo test -q -p ouro`, `cargo clippy -q -p ouro --lib
+  --tests -- -D warnings`, `python3 tests/test_s0020_stateless_plan.py`, and `python3
+  tests/test_s0025_permission_normalize.py` | result: pass | note: the plan is fixed and owner-redacted;
+  safe no-op refuses; symlink/type input refuses before mutation; successful normalization reaches
+  the five-fact contract; deliberate postcondition drift restores three exact owners/modes.
+- TC-43, TC-44, TC-45 | stack: regression | command: `python3 tests/test_probe.py`, `python3
+  tests/test_s0020_stateless_apply.py`, `python3 tests/test_s0020_kes_airgap_preflight.py`, `python3
+  tests/test_s0025_kes_rotation.py`, and `python3 tests/test_skill_docs.py` | result: pass | note: the
+  dedicated permission fixtures, KES repair permit, artifact validation, production activation,
+  rollback and canonical prompt contract retain their expected behavior.
+- TC-45 | stack: ui+python | command: `./web/onboarding/build.sh` and `python3 -m pytest -q
+  tests/test_web_generator.py` | result: pass | note: the local website embeds canonical Skill v16
+  byte-for-byte and all nine website cases pass.
+- TC-43, TC-44, TC-45 | stack: release | command: `make release-candidate` | result: pass | note:
+  release validation produced the macOS control CLI, linux/x86_64 ephemeral runner, package,
+  descriptors, selection document and verified checksums without publishing or contacting a node.

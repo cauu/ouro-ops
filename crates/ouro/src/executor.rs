@@ -66,6 +66,7 @@ pub struct Port {
 const KEYS_DIR: &str = "/opt/cardano/config/keys";
 pub const KES_SKEY_DEST: &str = "/opt/cardano/config/keys/kes.skey";
 pub const KES_VKEY_DEST: &str = "/opt/cardano/config/keys/kes.vkey";
+pub const VRF_SKEY_DEST: &str = "/opt/cardano/config/keys/vrf.skey";
 pub const KES_STAGE_DIR: &str = "/opt/cardano/config/keys/.ouro-kes-stage";
 pub const KES_STAGE_SKEY: &str = "/opt/cardano/config/keys/.ouro-kes-stage/kes.skey";
 pub const KES_STAGE_VKEY: &str = "/opt/cardano/config/keys/.ouro-kes-stage/kes.vkey";
@@ -345,6 +346,129 @@ pub fn stateless_kes_stage_plan(cid: &str) -> ExecutionPlan {
 pub fn stateless_kes_stage_cleanup_plan(cid: &str) -> ExecutionPlan {
     vec![vec![s("docker"), s("exec"), cid.to_string(), s("rm"), s("-rf"), s(KES_STAGE_DIR)]]
 }
+/// Normalize the fixed active forging paths to the container node service identity. No caller can
+/// select a path, mode, owner, or executable; the owner was read from `/proc/1` inside this same
+/// container and shape-validated before this plan is constructed.
+pub fn stateless_forging_permission_normalize_plan(
+    cid: &str,
+    service_owner: &str,
+) -> ExecutionPlan {
+    vec![
+        vec![
+            s("docker"),
+            s("exec"),
+            s("--user"),
+            s("0"),
+            cid.to_string(),
+            s("chown"),
+            s("--no-dereference"),
+            service_owner.to_string(),
+            s(KEYS_DIR),
+            s(KES_SKEY_DEST),
+            s(VRF_SKEY_DEST),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            s("--user"),
+            s("0"),
+            cid.to_string(),
+            s("chmod"),
+            s("700"),
+            s(KEYS_DIR),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            s("--user"),
+            s("0"),
+            cid.to_string(),
+            s("chmod"),
+            s("600"),
+            s(KES_SKEY_DEST),
+            s(VRF_SKEY_DEST),
+        ],
+    ]
+}
+
+/// Exact inverse for permission normalization. Every value is numeric metadata captured from the
+/// same fixed paths during candidate construction; no key bytes are read or copied.
+pub fn stateless_forging_permission_rollback_plan(
+    cid: &str,
+    keys_owner: &str,
+    keys_mode: &str,
+    kes_owner: &str,
+    kes_mode: &str,
+    vrf_owner: &str,
+    vrf_mode: &str,
+) -> ExecutionPlan {
+    vec![
+        vec![
+            s("docker"),
+            s("exec"),
+            s("--user"),
+            s("0"),
+            cid.to_string(),
+            s("chown"),
+            s("--no-dereference"),
+            keys_owner.to_string(),
+            s(KEYS_DIR),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            s("--user"),
+            s("0"),
+            cid.to_string(),
+            s("chmod"),
+            keys_mode.to_string(),
+            s(KEYS_DIR),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            s("--user"),
+            s("0"),
+            cid.to_string(),
+            s("chown"),
+            s("--no-dereference"),
+            kes_owner.to_string(),
+            s(KES_SKEY_DEST),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            s("--user"),
+            s("0"),
+            cid.to_string(),
+            s("chmod"),
+            kes_mode.to_string(),
+            s(KES_SKEY_DEST),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            s("--user"),
+            s("0"),
+            cid.to_string(),
+            s("chown"),
+            s("--no-dereference"),
+            vrf_owner.to_string(),
+            s(VRF_SKEY_DEST),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            s("--user"),
+            s("0"),
+            cid.to_string(),
+            s("chmod"),
+            vrf_mode.to_string(),
+            s(VRF_SKEY_DEST),
+        ],
+    ]
+}
+
 
 /// Preserve the previous active KES pair and public opcert until the new matched triple is live.
 pub fn stateless_kes_recovery_plan(cid: &str, payload: &str) -> StatelessRecoveryPlan {

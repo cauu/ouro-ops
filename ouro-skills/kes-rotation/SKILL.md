@@ -1,5 +1,5 @@
 ---
-skill_version: 15
+skill_version: 16
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -68,8 +68,19 @@ reads or prints it.
   --spec <pool-spec> --dispatch <bp-host> --ssh-key creds://<name> --node <bp> --param machine=<bp>
   --plan`. The typed BP observation supplies the current KES period automatically.
 - Before any Phase-A generation or pending-stage decision, require the plan's five KES permission
-  facts above to all be true. If any is false, stop before approval/generation and report the typed
-  non-secret facts; do not proceed to offline signing or suggest raw chmod/chown.
+  facts above to all be true. If any is false, stop the rotation before approval/generation and
+  report the typed non-secret facts. Offer the fixed-path repair only through
+  `ouro-ops op run --op credentials/normalize-forging-permissions --spec <pool-spec> --dispatch
+  <bp-host> --ssh-key creds://<name> --node <bp> --param machine=<bp> --plan`. This separate
+  candidate accepts no path, mode or owner parameter, reads no key contents, needs confirmation but no fleet permit,
+  and shows only file types/modes plus redacted owner judgments. WAIT for exact
+  approval. If approved, mint `ouro-ops confirm create --op
+  credentials/normalize-forging-permissions --node <bp> --intent-hash <repair-hash>` and immediately
+  rerun the unchanged repair command without `--plan`, adding `--candidate-hash <repair-hash>
+  --confirm-token <token>`. Require all five facts true, exact fixed target metadata, no restart and
+  rollback availability before returning to a fresh normal Phase-A or Phase-B plan. If it refuses
+  a symlink/non-regular path or cannot verify/roll back, stop for operator recovery. Never suggest
+  raw chmod/chown.
 - If that plan reports `pending_existing: true`, require `executor_plan: []`,
   `confirmation_required: false`, no fleet permit, a complete PUBLIC `staged_vkey` plus its hash,
   typed period and `cardano_cli_version`. Show the pending public-key hash and ask the operator to
