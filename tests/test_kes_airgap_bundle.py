@@ -103,6 +103,35 @@ def invoke(release: Path, vkey: Path, choice: str, out: Path, version: str = VER
     )
 
 
+def invoke_canonical(release: Path, vkey: Path, choice: str, spec: Path, version: str = VERSION):
+    env = os.environ.copy()
+    env["OURO_CARDANO_CLI_RELEASE_DIR"] = str(release)
+    return subprocess.run(
+        [
+            str(BIN), "kes", "airgap-bundle",
+            "--kes-vkey", str(vkey),
+            "--kes-period", "100",
+            "--cardano-cli-version", version,
+            "--platform", choice,
+            "--spec", str(spec),
+            "--node", "bp1",
+        ],
+        text=True, capture_output=True, env=env,
+    )
+
+
+def cleanup(spec: Path, expected: str):
+    return subprocess.run(
+        [
+            str(BIN), "kes", "airgap-cleanup",
+            "--spec", str(spec),
+            "--node", "bp1",
+            "--expected-vkey-sha256", expected,
+        ],
+        text=True, capture_output=True,
+    )
+
+
 def assert_no_partial(parent: Path, name: str) -> None:
     assert not any(parent.glob(f".{name}.ouro-partial-*"))
 
@@ -119,6 +148,27 @@ def main() -> None:
     rewrite_sums(release)
     vkey = home / "source-kes.vkey"
     vkey.write_text(json.dumps(KES_VKEY, separators=(",", ":")))
+
+    spec = home / "control" / "pool-spec.yaml"
+    spec.parent.mkdir()
+    spec.write_text("""spec_version: 1
+pool:
+  network: mainnet
+  network_magic: 764824073
+  genesis_hashes:
+    shelley: "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81"
+topology_mode: p2p
+machines:
+  - id: bp1
+    role: bp
+    ssh: { host: bp1, port: 22, user: cardano, key_ref: "creds://bp1" }
+  - id: relay1
+    role: relay
+    public_endpoint: { host: relay1, port: 3001 }
+    ssh: { host: relay1, port: 22, user: cardano, key_ref: "creds://relay1" }
+upgrade:
+  min_online_relays: 0
+""")
 
     # Every friendly device choice selects exactly one official platform asset.
     bundles = {}
@@ -145,6 +195,60 @@ def main() -> None:
             expected, name = line.split()
             assert digest(out / name) == expected
         bundles[choice] = out
+
+    # The canonical control-machine handoff has one derived path and is safely resumable.
+    canonical = invoke_canonical(release, vkey, host_choice(), spec)
+    assert canonical.returncode == 0, canonical.stderr
+    canonical_value = json.loads(canonical.stdout)
+    pending = spec.parent / "ouro-kes-rotation" / "bp1" / "pending"
+    assert canonical_value["changed"] is True
+    assert canonical_value["data"]["bundle_dir"] == str(pending.resolve())
+    assert canonical_value["data"]["node_cert_path"] == str((pending / "node.cert").resolve())
+    assert canonical_value["data"]["node_cert_present"] is False
+
+    resumed = invoke_canonical(release, vkey, host_choice(), spec)
+    assert resumed.returncode == 0, resumed.stderr
+    resumed_value = json.loads(resumed.stdout)
+    assert resumed_value["changed"] is False
+    assert resumed_value["data"]["reused"] is True
+
+    # Every structural or content deviation refuses reuse without changing the directory.
+    for anomaly in ("missing", "unknown", "nested", "symlink", "content"):
+        bad = home / f"resume-{anomaly}"
+        shutil.copytree(pending, bad)
+        if anomaly == "missing":
+            (bad / "SHA256SUMS").unlink()
+        elif anomaly == "unknown":
+            (bad / "notes.txt").write_text("unexpected")
+        elif anomaly == "nested":
+            (bad / "extra").mkdir()
+        elif anomaly == "symlink":
+            (bad / "SHA256SUMS").unlink()
+            (bad / "SHA256SUMS").symlink_to(bad / "manifest.json")
+        else:
+            with (bad / "cold-sign.sh").open("a") as changed:
+                changed.write("# modified\n")
+        refused = invoke(release, vkey, host_choice(), bad)
+        assert refused.returncode != 0
+        assert bad.exists()
+
+    # Cleanup is bound to the public staged key and permits only the fixed returned node.cert.
+    (pending / "node.cert").write_text("public mock returned certificate")
+    (pending / "notes.txt").write_text("must not be deleted")
+    unsafe_cleanup = cleanup(spec, digest(vkey))
+    assert unsafe_cleanup.returncode != 0 and pending.exists()
+    (pending / "notes.txt").unlink()
+    wrong_cleanup = cleanup(spec, "0" * 64)
+    assert wrong_cleanup.returncode != 0 and pending.exists()
+    completed_cleanup = cleanup(spec, digest(vkey))
+    assert completed_cleanup.returncode == 0, completed_cleanup.stderr
+    cleanup_value = json.loads(completed_cleanup.stdout)
+    assert cleanup_value["changed"] is True and cleanup_value["data"]["absent"] is True
+    assert not pending.exists()
+    assert not (spec.parent / "ouro-kes-rotation").exists()
+    repeated_cleanup = cleanup(spec, digest(vkey))
+    assert repeated_cleanup.returncode == 0
+    assert json.loads(repeated_cleanup.stdout)["changed"] is False
 
     # With no PATH cardano-cli and no network, the adjacent binary signs once and advances counter.
     bundle = bundles[host_choice()]

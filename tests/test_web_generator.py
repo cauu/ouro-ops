@@ -87,6 +87,10 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "kes-rotation/discard-stage" in kes_prompt
     assert "Do not silently choose" in kes_prompt
     assert "staging directory is absent" in kes_prompt
+    assert "ouro-ops kes airgap-cleanup" in kes_prompt
+    assert "<pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert" in kes_prompt
+    assert "Never ask for a path, attachment, pasted certificate bytes" in kes_prompt
+    assert "<operator-named-public-opcert>" not in kes_prompt
     assert "ouro-ops kes cold-sign-script" not in kes_prompt
     assert "ouro-ops skill show" not in html
     assert html.count('data-op="') == 6

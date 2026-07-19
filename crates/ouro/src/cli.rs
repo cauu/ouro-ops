@@ -1110,7 +1110,22 @@ fn run_kes(args: &[String]) -> Result<()> {
             })?;
             let cardano_cli_version = flag_value(args, "--cardano-cli-version")?;
             let platform = flag_value(args, "--platform")?;
-            let out = PathBuf::from(flag_value(args, "--out")?);
+            let out = match (
+                optional_flag_value(args, "--spec"),
+                optional_flag_value(args, "--node"),
+                optional_flag_value(args, "--out"),
+            ) {
+                (Some(spec), Some(node), None) => {
+                    crate::kes_bundle::pending_dir(&PathBuf::from(spec), node)?
+                }
+                (None, None, Some(out)) => PathBuf::from(out),
+                _ => {
+                    return Err(OuroError::InvalidArgs(
+                        "use --spec <pool-spec> --node <bp>; legacy --out cannot be combined with them"
+                            .into(),
+                    ));
+                }
+            };
             let report = crate::kes_bundle::create_airgap_bundle(
                 &vkey,
                 kes_period,
@@ -1119,7 +1134,24 @@ fn run_kes(args: &[String]) -> Result<()> {
                 &out,
             )?;
             output::print_json(
-                &ToolOutput::ok("ouro.kes.airgap-bundle", true).with_data(json!(report)),
+                &ToolOutput::ok("ouro.kes.airgap-bundle", report.changed)
+                    .with_data(json!(report)),
+            )?;
+            Ok(())
+        }
+        Some("airgap-cleanup") => {
+            let spec = PathBuf::from(flag_value(args, "--spec")?);
+            let node = flag_value(args, "--node")?;
+            let expected = flag_value(args, "--expected-vkey-sha256")?;
+            let changed = crate::kes_bundle::cleanup_pending_bundle(&spec, node, expected)?;
+            let pending = crate::kes_bundle::pending_dir(&spec, node)?;
+            output::print_json(
+                &ToolOutput::ok("ouro.kes.airgap-cleanup", changed).with_data(json!({
+                    "node": node,
+                    "pending_dir": pending,
+                    "expected_vkey_sha256": expected,
+                    "absent": true
+                })),
             )?;
             Ok(())
         }
@@ -1150,7 +1182,8 @@ fn run_kes(args: &[String]) -> Result<()> {
             Ok(())
         }
         _ => Err(OuroError::InvalidArgs(
-            "expected kes airgap-bundle|cold-sign-script|counter status|generate|push".to_string(),
+            "expected kes airgap-bundle|airgap-cleanup|cold-sign-script|counter status|generate|push"
+                .to_string(),
         )),
     }
 }
@@ -1187,7 +1220,9 @@ fn print_help() {
     println!("  fleet     permit create — authorize one disruptive fleet step");
     println!("  diag      exec --dispatch <machine> --spec <pool-spec> -- <cmd> — bounded operator-SSH diagnosis");
     println!("  confirm   create — mint an exact intent-bound one-time approval");
-    println!("  kes       airgap-bundle | cold-sign-script | counter status | generate | push");
+    println!(
+        "  kes       airgap-bundle | airgap-cleanup | cold-sign-script | counter status | generate | push"
+    );
     println!("  deploy    cold-sign-script — offline tx witnessing");
     println!("  release   select — current signed deploy recommendation or next Upgrade hop");
     println!("  pool      overview | register-tx");
@@ -1250,9 +1285,11 @@ fn command_usage(command: &str) -> Option<&'static str> {
         "kes" => "ouro-ops kes airgap-bundle --kes-vkey <pub> --kes-period <n> \
                   --cardano-cli-version <x.y.z.w> \
                   --platform <mac-apple-silicon|mac-intel|linux-intel-amd|linux-arm> \
-                  --out <new-directory>\n  \
+                  --spec <pool-spec> --node <bp>\n  \
                   Downloads and verifies the matching official Intersect cardano-cli release, then \
-                  atomically creates a directly executable public air-gap bundle. Rotation runs via \
+                  creates or validates the deterministic pending public bundle. Cleanup after typed \
+                  discard/success: ouro-ops kes airgap-cleanup --spec <pool-spec> --node <bp> \
+                  --expected-vkey-sha256 <sha256>. Rotation runs via \
                   `op run kes-rotation/stage-key`, this handoff, then \
                   `op run kes-rotation/install-opcert`; see the Skill. Legacy script-only output: \
                   ouro-ops kes cold-sign-script --kes-vkey <pub> --kes-period <n>.",

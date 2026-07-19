@@ -1,5 +1,5 @@
 ---
-skill_version: 10
+skill_version: 11
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -40,6 +40,11 @@ reads or prints it.
   exact Intersect release matching the typed BP `cardano_cli_version`, verifies the official archive
   checksum, extracts one platform-specific binary, and atomically promotes the completed directory.
   Ouro neither hosts this dependency nor adds it to Ouro's formal release artifacts.
+- The local public handoff is one resumable transaction at
+  `<pool-spec-dir>/ouro-kes-rotation/<bp>/pending`. Its returned certificate is always
+  `<pending>/node.cert`; the operator never invents or discloses a path. Ouro validates an existing
+  matching bundle instead of replacing it. Bound cleanup accepts only the five fixed files plus
+  optional `node.cert` and never creates a discarded archive.
 
 ## Decision guidance (use your judgment; this is not a rigid script)
 - Discover the BP, host and credential reference from `pool-spec.yaml`; do not ask the operator to
@@ -58,8 +63,12 @@ reads or prints it.
   hash, remove only the fixed stage, require confirmation and require no fleet permit. Show it and
   WAIT for exact approval. Mint `ouro-ops confirm create --op kes-rotation/discard-stage --node <bp>
   --intent-hash <discard-hash>`, immediately apply the unchanged candidate, and require typed proof
-  that the stage is absent while active container/key/opcert are unchanged. Only then rerun the
-  normal `stage-key --plan`; generation is a separate candidate and requires a separate approval.
+  that the stage is absent while active container/key/opcert are unchanged. Only then run
+  `ouro-ops kes airgap-cleanup --spec <pool-spec> --node <bp> --expected-vkey-sha256
+  <discarded-staged-vkey-hash>` and require `absent: true`; do not rename or preserve a
+  `.discarded-*` copy. Then rerun the normal `stage-key --plan`; generation is a separate candidate
+  and requires a separate approval. If cleanup refuses, report that remote discard succeeded but
+  local cleanup failed; do not undo or repeat the target write.
 - Otherwise require `pending_existing: false` and no staged vkey, show the exact candidate, period,
   active public-key hash and fixed generation plan, then WAIT for exact approval. After approval
   mint `ouro-ops confirm create --op kes-rotation/stage-key --node <bp> --intent-hash <stage-hash>`,
@@ -80,29 +89,37 @@ reads or prints it.
   Linux+aarch64/arm64 respectively. Do not infer the air-gapped platform from the online controller
   or BP.
 - The copied Skill prompt already authorizes this deterministic local PUBLIC bundle and its
-  temporary public-vkey input; do not ask for another file-write go-ahead or output paths. Write the
-  returned public envelope to a temporary sibling, then run `ouro-ops kes airgap-bundle --kes-vkey
-  <temporary-public-vkey> --kes-period <typed-period> --cardano-cli-version <typed-version>
-  --platform <mapped-device> --out ./ouro-kes-rotation/<bp>-period-<period>`. Remove the temporary
-  public file only after success. Require the five-file output list, selected platform, official
-  release asset, archive/executable/vkey/manifest hashes and no partial directory. Do not improvise
-  a downloader, signing script, checksum or fallback bundle. A download/bundle failure does not
-  invalidate the staged target pair: fix the local dependency/platform problem and retry only this
-  command, never restage.
-- WAIT while the operator transfers the complete directory, reviews `manifest.json` and
+  temporary public-vkey input; do not ask for another file-write go-ahead or any output path. The
+  bundle and certificate paths derive from the directory containing the selected pool spec. Write
+  the returned public envelope to a temporary sibling of the derived BP directory, then run
+  `ouro-ops kes airgap-bundle --kes-vkey <temporary-public-vkey> --kes-period <typed-period>
+  --cardano-cli-version <typed-version> --platform <mapped-device> --spec <pool-spec> --node <bp>`.
+  Remove the temporary public file only after success. Require `bundle_dir` to be exactly
+  `<pool-spec-dir>/ouro-kes-rotation/<bp>/pending`, `node_cert_path` to be its `node.cert`, the five
+  fixed files, selected platform, official release asset, archive/executable/vkey/manifest hashes
+  and no partial directory. `changed: false` with `reused: true` succeeds only when all bound values
+  match; never rename, archive, overwrite or regenerate a conflicting pending directory. Do not
+  improvise a downloader, signing script, checksum or fallback bundle. A download/bundle failure
+  does not invalidate the staged target pair: fix the local dependency/platform problem and retry
+  only this command, never restage.
+- WAIT while the operator transfers the complete `pending` directory, reviews `manifest.json` and
   `SHA256SUMS`, and executes its `cold-sign.sh` on the air-gapped machine against the cold key and
   counter kept there. The script uses only the adjacent verified `cardano-cli`, validates the
   manifest/vkey/binary and version before reading the counter, then backs up and advances it.
-  Accept back ONLY the PUBLIC `node.cert`; never request the cold key, KES signing key, counter or
-  backup.
+  The script writes `node.cert` beside itself. Tell the operator to copy only that PUBLIC file back
+  to the original control-machine `<pending>/node.cert` and reply that it has been returned. Never ask for a path, attachment, pasted certificate bytes, cold key, KES signing key, counter or backup.
+  If that fixed local `node.cert` already exists, continue from it.
 - Phase B previews the returned certificate locally with `ouro-ops inbox preview --type opcert
-  --file <operator-named-public-opcert>`. Show `artifact_ref`, type and size; no bytes were staged.
+  --file <pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert`. Show only `artifact_ref`, type
+  and size; do not print or read the certificate contents into the conversation. No bytes were
+  staged by preview.
 - Optionally show `ouro-ops fleet spec identity --spec <pool-spec>`, then obtain the FINAL BP plan:
   `ouro-ops op run --op kes-rotation/install-opcert --spec <pool-spec> --dispatch <bp-host>
   --ssh-key creds://<name> --node <bp> --param machine=<bp> --param opcert=<artifact-ref> --plan`.
 - Before requesting approval, run the no-write deep check by repeating that command without
   `--plan` and adding `--candidate-hash <final-hash> --artifact-file
-  <operator-named-public-opcert> --artifact-preflight`. Require the same candidate plus valid
+  <pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert --artifact-preflight`. Require the same
+  candidate plus valid
   signature/key/counter/window evidence, `changed: false`, `executor_available: false`, and no
   confirmation or permit consumption.
 - Show the exact public reference, staged-key hash, live target facts, validation evidence,
@@ -113,13 +130,15 @@ reads or prints it.
   --spec <pool-spec> --node <bp> --op kes-rotation/install-opcert --intent-hash <final-hash>
   --holder <controller-id>`.
 - Immediately rerun the plan command without `--plan`, adding `--candidate-hash <final-hash>
-  --artifact-file <operator-named-public-opcert> --confirm-token <token> --fleet-permit
-  '<fleet_permit-json>'`. Never replan with either capability. Report only after the typed
+  --artifact-file <pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert --confirm-token <token>
+  --fleet-permit '<fleet_permit-json>'`. Never replan with either capability. Report the remote
+  operation only after the typed
   postcondition confirms the staged KES pair and bound opcert were activated, readiness passed,
   the fixed staging directory is absent and all previous-key/opcert rollback files were removed.
-  Remove the deterministic temporary public-vkey input if it still exists. Preserve the
-  operator-owned air-gap bundle and returned public certificate unless the operator asks to remove
-  them; they are explicit outputs, not hidden remote transaction state.
+  Then run `ouro-ops kes airgap-cleanup --spec <pool-spec> --node <bp>
+  --expected-vkey-sha256 <activated-staged-vkey-hash>` and require `absent: true`. Do not retain the
+  bundle, certificate or a `.discarded-*` copy after success. If local cleanup refuses, accurately
+  report that activation succeeded but local public residue remains; never repeat activation.
 
 ## Stop Conditions
 - Stop if typed current-period evidence is missing, the offline ceremony is incomplete, typed
@@ -129,6 +148,9 @@ reads or prints it.
   BP, or approval/permit is absent. A complete existing staged pair requires an explicit operator
   continue/discard decision; an incomplete, unreadable or incorrectly permissioned staged pair is a
   stop and must not enter the complete-stage discard flow.
+- Stop if the deterministic pending directory is incomplete, tampered, contains a symlink, nested
+  or unknown entry, or is bound to a different staged key/period/platform/version. Do not rename it
+  or create a second handoff directory as a workaround.
 - Stop on signed-policy, role/network/genesis/layout drift or a Phase-A regression relative to the
   bound readiness pre-state. An unchanged pre-existing invalid KES/opcert is not drift. Report a
   typed refusal; do not adopt, reconfigure, or work around it.

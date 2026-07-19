@@ -991,3 +991,82 @@ out of scope for this repair and requires a separately approved typed operation 
   rebuilt and verified the paired macOS control CLI, linux/x86_64 ephemeral runner, package,
   descriptor, candidate, version, release selection and checksums without publishing. No real host
   was contacted and the operator's current pending staged pair was intentionally left untouched.
+
+## 40. Seventh Follow-up Requirement And Design (append-only)
+
+The air-gap return handoff must be one deterministic local transaction instead of an
+operator-invented path. For BP `<bp>`, Ouro derives the public handoff directory from the directory
+containing the selected pool spec as `ouro-kes-rotation/<bp>/pending`; its returned certificate is
+always `<pending>/node.cert`. The operator copies the complete pending directory to the air-gapped
+device, runs the adjacent `cold-sign.sh`, and copies only the resulting public `node.cert` back to
+that exact pending directory. The operator therefore only needs to say that the certificate has
+been returned; neither its bytes nor an arbitrary path are pasted into the model conversation.
+
+The local bundle command must be safely resumable. Repeating it for the same staged public key,
+period, platform and CLI version validates and reuses the complete existing bundle instead of
+renaming it or producing a second directory. A mismatched, incomplete, tampered or unexpected
+pending directory is refused and never overwritten. The returned public certificate is read by the
+local Ouro process and streamed through the typed operation; agent-visible output remains limited
+to its reference, hash and size.
+
+The pending directory is transaction residue, not an operator archive. After a confirmed typed
+discard proves the remote stage absent, or after activation proves the new key/certificate ready
+and remote rollback residue absent, Ouro removes only the bound deterministic public directory.
+Failed bundle generation, cold signing, preflight or activation preserves it for retry. Cleanup is
+bound to the staged public-key hash, accepts only the fixed bundle files plus optional `node.cert`,
+and refuses symlinks, nested directories or unknown files. No `.discarded-*` archive is created.
+
+## 41. Seventh Follow-up Execution Plan (append-only)
+
+- [~] p6-1-fix7 implement deterministic, resumable and lifecycle-clean KES public handoff; align
+  the external Skill and locally generated website prompt
+
+## 42. Seventh Follow-up Test And Acceptance Criteria (append-only)
+
+- TC-35 Deterministic return: the canonical Skill derives exactly
+  `<pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert`, never asks the operator to name a path
+  or paste/attach certificate bytes, and Phase B previews and applies that same file through Ouro.
+- TC-36 Resumable bundle: a repeated bundle command with identical public inputs reports reuse and
+  validates every fixed bundle file; conflicting inputs, modification, missing files, symlinks,
+  nested entries and unknown entries refuse without overwrite or deletion.
+- TC-37 Bound local cleanup: after typed discard success or verified activation success, local
+  cleanup removes only a pending bundle whose manifest public-key hash matches the operation. A
+  failure before those postconditions preserves it, and cleanup never creates or preserves a
+  `.discarded-*` directory.
+
+## 43. Seventh Follow-up Completion Status And Log (append-only)
+
+- [x] p6-1-fix7 implement deterministic, resumable and lifecycle-clean KES public handoff; align
+  the external Skill and locally generated website prompt
+- 2026-07-19 p6-1-fix7 completed: `kes airgap-bundle --spec <pool-spec> --node <bp>` now derives the
+  single absolute `<pool-spec-dir>/ouro-kes-rotation/<bp>/pending` path, reports its fixed
+  `node.cert` return path, and validates/reuses a matching complete bundle. Manifest schema 2 binds
+  the generation time needed to reconstruct and byte-check the signing script; reuse additionally
+  checks all fixed entries, the exact public vkey, executable provenance/digest and checksum file.
+- The new local `kes airgap-cleanup` command loads and validates the same spec/BP path, requires the
+  exact staged public-key hash and refuses symlinks, nested or unknown entries before removing the
+  public transaction directory. Skill v11 invokes it only after typed remote discard proof or
+  verified activation success. Failures retain the handoff for retry and no discarded archive is
+  created.
+- Skill v11 and the locally built site now tell the operator to return only public `node.cert` to
+  the fixed local path and reply that it is ready. The agent never requests a path, attachment or
+  certificate bytes; local preview/preflight/apply use that same path and expose only metadata.
+
+## 44. Seventh Follow-up Validation Evidence (append-only)
+
+- TC-35, TC-36, TC-37 | stack: rust+python | command: `python3
+  tests/test_kes_airgap_bundle.py`, `cargo test -q -p ouro`, and `cargo clippy -q -p ouro --lib
+  --tests -- -D warnings` | result: pass | note: four platform bundles, canonical path creation,
+  byte-validated idempotent reuse, fixed certificate return, missing/unknown/nested/symlink/content
+  refusal, wrong-hash cleanup refusal, permitted public-cert cleanup and absent-idempotence all pass;
+  173 Rust tests and warnings-denied clippy pass.
+- TC-35 | stack: ui+python | command: `./web/onboarding/build.sh`, `python3
+  tests/test_skill_docs.py`, and `python3 -m pytest -q tests/test_web_generator.py` | result: pass |
+  note: locally built website embeds exact canonical Skill v11, deterministic return and cleanup
+  commands, and contains no operator-named opcert path; all nine generator/local-service cases pass.
+- TC-14, TC-22, TC-35, TC-36, TC-37 | stack: rust+python+shell | command: `make python-test`,
+  `python3 -m pytest -q`, and `bash ci/l2-integration.sh` | result: pass | note: all maintained
+  contract, operation, site and release-boundary gates plus 13 pytest cases and full L2 pass.
+- TC-13, TC-22 | stack: other | command: `make release-candidate` | result: pass | note: the source
+  rebuilt and verified the paired macOS control CLI, linux/x86_64 ephemeral runner, package,
+  descriptors, release selection and checksums without publishing or contacting a real host.

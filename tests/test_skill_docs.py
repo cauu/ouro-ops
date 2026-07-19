@@ -89,10 +89,13 @@ def main():
         "uname -m",
         "mac-apple-silicon",
         "linux-arm",
-        "five-file output list",
+        "the five fixed files",
         "never restage",
         "air-gapped machine",
-        "Accept back ONLY the PUBLIC `node.cert`",
+        "copy only that PUBLIC file back",
+        "ouro-ops kes airgap-cleanup",
+        "<pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert",
+        "Never ask for a path, attachment, pasted certificate bytes",
         "--artifact-preflight",
         "changed: false",
         "executor_available: false",
@@ -112,7 +115,9 @@ def main():
         "ouro-ops kes cold-sign-script",
     ]:
         assert unnecessary_prompt not in kes, f"KES Skill still asks for unnecessary input {unnecessary_prompt!r}"
-    assert "do not ask for another file-write go-ahead or output paths" in " ".join(kes.split())
+    assert "do not ask for another file-write go-ahead or any output path" in " ".join(kes.split())
+    assert "<operator-named-public-opcert>" not in kes
+    assert ".discarded-*` copy after success" in kes
     assert "ouro-ops kes push" not in kes, "KES Skill still directs the agent to legacy kes push"
     upgrade = (ROOT / "ouro-skills/upgrade/SKILL.md").read_text()
     assert "ouro-ops inbox preview" not in " ".join(upgrade.split())

@@ -11,14 +11,15 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use flate2::read::GzDecoder;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::domain::{MachineRole, PoolSpec};
 use crate::{OuroError, Result};
 
 const RELEASE_BASE: &str = "https://github.com/IntersectMBO/cardano-cli/releases/download";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum AirgapPlatform {
     #[serde(rename = "aarch64-darwin")]
     MacAppleSilicon,
@@ -68,7 +69,11 @@ impl AirgapPlatform {
 
 #[derive(Debug, Serialize)]
 pub struct KesAirgapBundleReport {
+    pub changed: bool,
+    pub reused: bool,
     pub bundle_dir: String,
+    pub node_cert_path: String,
+    pub node_cert_present: bool,
     pub platform: AirgapPlatform,
     pub cardano_cli_version: String,
     pub cardano_cli_asset: String,
@@ -79,23 +84,59 @@ pub struct KesAirgapBundleReport {
     pub files: Vec<&'static str>,
 }
 
-#[derive(Serialize)]
-struct BundleManifest<'a> {
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct BundleManifest {
     schema_version: u8,
-    kind: &'static str,
+    kind: String,
     platform: AirgapPlatform,
     kes_period: u64,
-    kes_vkey_sha256: &'a str,
-    cardano_cli: CardanoCliManifest<'a>,
+    generated_at: String,
+    kes_vkey_sha256: String,
+    cardano_cli: CardanoCliManifest,
 }
 
-#[derive(Serialize)]
-struct CardanoCliManifest<'a> {
-    version: &'a str,
-    asset: &'a str,
-    release_url: &'a str,
-    archive_sha256: &'a str,
-    executable_sha256: &'a str,
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct CardanoCliManifest {
+    version: String,
+    asset: String,
+    release_url: String,
+    archive_sha256: String,
+    executable_sha256: String,
+}
+
+const BUNDLE_FILES: [&str; 5] = [
+    "kes.vkey",
+    "cold-sign.sh",
+    "cardano-cli",
+    "manifest.json",
+    "SHA256SUMS",
+];
+
+pub fn pending_dir(spec_path: &Path, node: &str) -> Result<PathBuf> {
+    crate::intent::validate_machine_id(node)?;
+    let spec = PoolSpec::from_file(spec_path)?;
+    let machine = spec
+        .machines
+        .iter()
+        .find(|machine| machine.id == node)
+        .ok_or_else(|| OuroError::Validation(format!("node {node:?} is not in the pool spec")))?;
+    if machine.role != MachineRole::Bp {
+        return Err(OuroError::Validation(format!(
+            "KES air-gap handoff requires a BP, but {node:?} is a relay"
+        )));
+    }
+    let canonical_spec = fs::canonicalize(spec_path).map_err(|error| {
+        OuroError::Validation(format!(
+            "cannot resolve pool spec {}: {error}",
+            spec_path.display()
+        ))
+    })?;
+    let parent = canonical_spec.parent().ok_or_else(|| {
+        OuroError::Validation("pool spec must have a containing directory".into())
+    })?;
+    Ok(parent.join("ouro-kes-rotation").join(node).join("pending"))
 }
 
 pub fn create_airgap_bundle(
@@ -108,10 +149,13 @@ pub fn create_airgap_bundle(
     validate_version(cardano_cli_version)?;
     let platform = AirgapPlatform::parse(platform_value)?;
     if out.exists() {
-        return Err(OuroError::Validation(format!(
-            "refusing to replace existing air-gap bundle {}",
-            out.display()
-        )));
+        return validate_existing_bundle(
+            kes_vkey_path,
+            kes_period,
+            cardano_cli_version,
+            platform,
+            out,
+        );
     }
     let parent = out
         .parent()
@@ -189,18 +233,20 @@ fn build_bundle(
     }
 
     fs::write(partial.join("kes.vkey"), &vkey)?;
+    let generated_at = chrono::Utc::now().to_rfc3339();
     let manifest = BundleManifest {
-        schema_version: 1,
-        kind: "ouro-kes-airgap-bundle",
+        schema_version: 2,
+        kind: "ouro-kes-airgap-bundle".into(),
         platform,
         kes_period,
-        kes_vkey_sha256: &kes_vkey_sha256,
+        generated_at: generated_at.clone(),
+        kes_vkey_sha256: kes_vkey_sha256.clone(),
         cardano_cli: CardanoCliManifest {
-            version,
-            asset: &asset,
-            release_url: &release_url,
-            archive_sha256: &archive_sha256,
-            executable_sha256: &cardano_cli_sha256,
+            version: version.into(),
+            asset: asset.clone(),
+            release_url,
+            archive_sha256: archive_sha256.clone(),
+            executable_sha256: cardano_cli_sha256.clone(),
         },
     };
     let mut manifest_bytes = serde_json::to_vec_pretty(&manifest)?;
@@ -208,7 +254,6 @@ fn build_bundle(
     fs::write(partial.join("manifest.json"), &manifest_bytes)?;
     let manifest_sha256 = sha256(&manifest_bytes);
 
-    let generated_at = chrono::Utc::now().to_rfc3339();
     let script = crate::cold_sign::kes_bundle_cold_sign_script(
         kes_period,
         version,
@@ -243,7 +288,11 @@ fn build_bundle(
         ))
     })?;
     Ok(KesAirgapBundleReport {
+        changed: true,
+        reused: false,
         bundle_dir: out.display().to_string(),
+        node_cert_path: out.join("node.cert").display().to_string(),
+        node_cert_present: false,
         platform,
         cardano_cli_version: version.to_string(),
         cardano_cli_asset: asset,
@@ -259,6 +308,183 @@ fn build_bundle(
             "SHA256SUMS",
         ],
     })
+}
+
+fn validate_existing_bundle(
+    kes_vkey_path: &Path,
+    kes_period: u64,
+    version: &str,
+    platform: AirgapPlatform,
+    out: &Path,
+) -> Result<KesAirgapBundleReport> {
+    validate_bundle_directory(out)?;
+    let source_vkey = fs::read(kes_vkey_path).map_err(|error| {
+        OuroError::Validation(format!(
+            "cannot read public KES verification key {}: {error}",
+            kes_vkey_path.display()
+        ))
+    })?;
+    crate::kes::parse_kes_verification_key(&source_vkey)?;
+    let expected_vkey_sha256 = sha256(&source_vkey);
+
+    let manifest_bytes = fs::read(out.join("manifest.json"))?;
+    let manifest: BundleManifest = serde_json::from_slice(&manifest_bytes).map_err(|error| {
+        OuroError::Validation(format!("existing KES bundle manifest is invalid: {error}"))
+    })?;
+    if manifest.schema_version != 2
+        || manifest.kind != "ouro-kes-airgap-bundle"
+        || manifest.platform != platform
+        || manifest.kes_period != kes_period
+        || manifest.kes_vkey_sha256 != expected_vkey_sha256
+        || manifest.cardano_cli.version != version
+    {
+        return Err(OuroError::Validation(
+            "existing KES pending bundle does not match the staged key, period, platform and CLI version"
+                .into(),
+        ));
+    }
+    let expected_asset = format!("cardano-cli-{version}-{}.tar.gz", platform.release_name());
+    let expected_url = format!("{RELEASE_BASE}/cardano-cli-{version}/{expected_asset}");
+    if manifest.cardano_cli.asset != expected_asset
+        || manifest.cardano_cli.release_url != expected_url
+        || !valid_sha256(&manifest.cardano_cli.archive_sha256)
+        || !valid_sha256(&manifest.cardano_cli.executable_sha256)
+    {
+        return Err(OuroError::Validation(
+            "existing KES pending bundle has invalid cardano-cli provenance".into(),
+        ));
+    }
+    let manifest_sha256 = sha256(&manifest_bytes);
+    let cardano_cli_sha256 = sha256_file(&out.join("cardano-cli"))?;
+    if cardano_cli_sha256 != manifest.cardano_cli.executable_sha256
+        || sha256_file(&out.join("kes.vkey"))? != expected_vkey_sha256
+        || fs::read(out.join("kes.vkey"))? != source_vkey
+    {
+        return Err(OuroError::Validation(
+            "existing KES pending bundle file digest mismatch".into(),
+        ));
+    }
+    let expected_script = crate::cold_sign::kes_bundle_cold_sign_script(
+        kes_period,
+        version,
+        &cardano_cli_sha256,
+        &expected_vkey_sha256,
+        &manifest_sha256,
+        &manifest.generated_at,
+    );
+    if fs::read(out.join("cold-sign.sh"))? != expected_script.as_bytes() {
+        return Err(OuroError::Validation(
+            "existing KES pending bundle signing script mismatch".into(),
+        ));
+    }
+    let script_sha256 = sha256(expected_script.as_bytes());
+    let expected_sums = format!(
+        "{cardano_cli_sha256}  cardano-cli\n{script_sha256}  cold-sign.sh\n\
+         {expected_vkey_sha256}  kes.vkey\n{manifest_sha256}  manifest.json\n"
+    );
+    if fs::read(out.join("SHA256SUMS"))? != expected_sums.as_bytes() {
+        return Err(OuroError::Validation(
+            "existing KES pending bundle checksum manifest mismatch".into(),
+        ));
+    }
+    if platform.is_current_host() {
+        verify_reported_version(&out.join("cardano-cli"), version)?;
+    }
+    Ok(KesAirgapBundleReport {
+        changed: false,
+        reused: true,
+        bundle_dir: out.display().to_string(),
+        node_cert_path: out.join("node.cert").display().to_string(),
+        node_cert_present: out.join("node.cert").is_file(),
+        platform,
+        cardano_cli_version: version.to_string(),
+        cardano_cli_asset: manifest.cardano_cli.asset,
+        cardano_cli_archive_sha256: manifest.cardano_cli.archive_sha256,
+        cardano_cli_sha256,
+        kes_vkey_sha256: expected_vkey_sha256,
+        manifest_sha256,
+        files: BUNDLE_FILES.to_vec(),
+    })
+}
+
+pub fn cleanup_pending_bundle(
+    spec_path: &Path,
+    node: &str,
+    expected_vkey_sha256: &str,
+) -> Result<bool> {
+    if !valid_sha256(expected_vkey_sha256) {
+        return Err(OuroError::InvalidArgs(
+            "--expected-vkey-sha256 must be exactly 64 hexadecimal characters".into(),
+        ));
+    }
+    let pending = pending_dir(spec_path, node)?;
+    if !pending.exists() {
+        return Ok(false);
+    }
+    validate_bundle_directory(&pending)?;
+    let manifest: BundleManifest =
+        serde_json::from_slice(&fs::read(pending.join("manifest.json"))?).map_err(|error| {
+            OuroError::Validation(format!("KES pending bundle manifest is invalid: {error}"))
+        })?;
+    if manifest.schema_version != 2
+        || manifest.kind != "ouro-kes-airgap-bundle"
+        || manifest.kes_vkey_sha256 != expected_vkey_sha256
+        || sha256_file(&pending.join("kes.vkey"))? != expected_vkey_sha256
+    {
+        return Err(OuroError::Validation(
+            "refusing to clean a KES pending bundle not bound to the expected staged key".into(),
+        ));
+    }
+    fs::remove_dir_all(&pending)?;
+    remove_empty_parent(pending.parent())?;
+    remove_empty_parent(pending.parent().and_then(Path::parent))?;
+    Ok(true)
+}
+
+fn validate_bundle_directory(path: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(OuroError::Validation(format!(
+            "KES pending bundle {} must be a real directory",
+            path.display()
+        )));
+    }
+    let mut names = Vec::new();
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let name = entry.file_name().into_string().map_err(|_| {
+            OuroError::Validation("KES pending bundle contains a non-UTF-8 entry".into())
+        })?;
+        if !file_type.is_file() || (!BUNDLE_FILES.contains(&name.as_str()) && name != "node.cert") {
+            return Err(OuroError::Validation(format!(
+                "KES pending bundle contains unexpected entry {name:?}"
+            )));
+        }
+        names.push(name);
+    }
+    if BUNDLE_FILES
+        .iter()
+        .any(|required| !names.iter().any(|name| name == required))
+    {
+        return Err(OuroError::Validation(
+            "KES pending bundle is incomplete".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn remove_empty_parent(path: Option<&Path>) -> Result<()> {
+    if let Some(path) = path {
+        if path.read_dir()?.next().is_none() {
+            fs::remove_dir(path)?;
+        }
+    }
+    Ok(())
+}
+
+fn valid_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn validate_version(version: &str) -> Result<()> {
