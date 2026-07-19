@@ -70,10 +70,10 @@ pub const VRF_SKEY_DEST: &str = "/opt/cardano/config/keys/vrf.skey";
 pub const KES_STAGE_DIR: &str = "/opt/cardano/config/keys/.ouro-kes-stage";
 pub const KES_STAGE_SKEY: &str = "/opt/cardano/config/keys/.ouro-kes-stage/kes.skey";
 pub const KES_STAGE_VKEY: &str = "/opt/cardano/config/keys/.ouro-kes-stage/kes.vkey";
-const OPCERT_DEST: &str = "/opt/cardano/config/keys/node.cert";
-const KES_SKEY_PREVIOUS: &str = "/opt/cardano/config/keys/kes.skey.ouro-prev";
-const KES_VKEY_PREVIOUS: &str = "/opt/cardano/config/keys/kes.vkey.ouro-prev";
-const OPCERT_PREVIOUS: &str = "/opt/cardano/config/keys/node.cert.ouro-prev";
+pub const OPCERT_DEST: &str = "/opt/cardano/config/keys/node.cert";
+pub const KES_SKEY_PREVIOUS: &str = "/opt/cardano/config/keys/kes.skey.ouro-prev";
+pub const KES_VKEY_PREVIOUS: &str = "/opt/cardano/config/keys/kes.vkey.ouro-prev";
+pub const OPCERT_PREVIOUS: &str = "/opt/cardano/config/keys/node.cert.ouro-prev";
 const SOCKET: &str = "/ipc/node.socket";
 /// Where a signed tx artifact is staged INSIDE the container before submit (ephemeral, public tx).
 const TX_STAGE: &str = "/tmp/ouro-tx.signed";
@@ -346,7 +346,9 @@ pub fn stateless_kes_stage_plan(cid: &str) -> ExecutionPlan {
 pub fn stateless_kes_stage_cleanup_plan(cid: &str) -> ExecutionPlan {
     vec![vec![s("docker"), s("exec"), cid.to_string(), s("rm"), s("-rf"), s(KES_STAGE_DIR)]]
 }
-/// Preserve the previous active KES pair and public opcert until the new matched triple is live.
+
+/// Preserve the previous active KES pair and public opcert as operator recovery evidence until the
+/// new matched triple is live. KES activation is forward-only; Ouro never executes an inverse.
 pub fn stateless_kes_recovery_plan(cid: &str, payload: &str) -> StatelessRecoveryPlan {
     StatelessRecoveryPlan {
         commit: vec![
@@ -361,12 +363,7 @@ pub fn stateless_kes_recovery_plan(cid: &str, payload: &str) -> StatelessRecover
             vec![s("docker"), s("cp"), payload.to_string(), format!("{cid}:{OPCERT_DEST}")],
             vec![s("docker"), s("restart"), cid.to_string()],
         ],
-        rollback: vec![
-            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(KES_SKEY_PREVIOUS), s(KES_SKEY_DEST)],
-            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(KES_VKEY_PREVIOUS), s(KES_VKEY_DEST)],
-            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(OPCERT_PREVIOUS), s(OPCERT_DEST)],
-            vec![s("docker"), s("restart"), cid.to_string()],
-        ],
+        rollback: Vec::new(),
         finalize: vec![
             vec![s("docker"), s("exec"), cid.to_string(), s("rm"), s("-f"), s(KES_SKEY_PREVIOUS), s(KES_VKEY_PREVIOUS), s(OPCERT_PREVIOUS)],
             vec![s("docker"), s("exec"), cid.to_string(), s("rm"), s("-rf"), s(KES_STAGE_DIR)],
@@ -974,11 +971,11 @@ mod tests {
     }
 
     #[test]
-    fn stateless_kes_keeps_previous_pair_and_cert_outside_ephemeral_payload_dir() {
+    fn stateless_kes_keeps_operator_recovery_evidence_but_has_no_automatic_inverse() {
         let plan = stateless_kes_recovery_plan("cid", "/tmp/ouro-run.123/public-payload");
+        assert!(plan.rollback.is_empty());
         for previous in [KES_SKEY_PREVIOUS, KES_VKEY_PREVIOUS, OPCERT_PREVIOUS] {
             assert!(plan.commit.iter().flatten().any(|arg| arg == previous));
-            assert!(plan.rollback.iter().flatten().any(|arg| arg == previous));
             assert!(plan.finalize.iter().flatten().any(|arg| arg == previous));
         }
         assert!(plan.commit.iter().skip(6).flatten()

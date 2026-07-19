@@ -1133,6 +1133,10 @@ struct KesRotationEvidence {
     preexisting_forging_credentials_ready: bool,
     preexisting_kes_evidence_sha256: String,
     permissions: KesRotationPermissionEvidence,
+    activation_pending: bool,
+    activation_promoted: bool,
+    previous_vkey_sha256: Option<String>,
+    previous_opcert_sha256: Option<String>,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -1296,6 +1300,38 @@ fn pending_staged_kes_pair(container: &str) -> Result<Option<(serde_json::Value,
             "an existing staged KES rotation is incomplete or unsafe to resume; it was not changed ({error})"
         ))
     })
+}
+
+fn pending_kes_activation(container: &str) -> Result<Option<(String, String)>> {
+    let paths = [
+        crate::executor::KES_SKEY_PREVIOUS,
+        crate::executor::KES_VKEY_PREVIOUS,
+        crate::executor::OPCERT_PREVIOUS,
+    ];
+    let present = paths.map(|path| {
+        crate::executor::run_argv(&[
+            "docker".into(), "exec".into(), container.into(), "test".into(), "-s".into(), path.into(),
+        ]).is_ok()
+    });
+    if present.iter().all(|value| !value) {
+        return Ok(None);
+    }
+    if !present.iter().all(|value| *value) {
+        return Err(OuroError::Validation(
+            "incomplete KES activation recovery material exists; automatic activation/resume refused".into(),
+        ));
+    }
+    let (_, previous_vkey_sha256) = read_public_kes_vkey(
+        container,
+        crate::executor::KES_VKEY_PREVIOUS,
+        "previous public KES verification key retained by KES activation",
+    )?;
+    let (_, previous_opcert_sha256) = read_public_opcert(
+        container,
+        crate::executor::OPCERT_PREVIOUS,
+        "previous public node.cert retained by KES activation",
+    )?;
+    Ok(Some((previous_vkey_sha256, previous_opcert_sha256)))
 }
 
 fn read_public_kes_vkey(container: &str, path: &str, context: &str) -> Result<(serde_json::Value, String)> {
@@ -2038,6 +2074,10 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                 preexisting_forging_credentials_ready,
                 preexisting_kes_evidence_sha256,
                 permissions,
+                activation_pending: false,
+                activation_promoted: false,
+                previous_vkey_sha256: None,
+                previous_opcert_sha256: None,
             })
         }
         "kes-rotation/install-opcert" => {
@@ -2055,6 +2095,31 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                 "active public KES verification key",
             )?;
             let (_, staged_vkey_sha256) = inspect_staged_kes_pair(&observation.live.container_id)?;
+            let pending_activation = pending_kes_activation(&observation.live.container_id)?;
+            let activation_pending = pending_activation.is_some();
+            let (previous_vkey_sha256, previous_opcert_sha256) = pending_activation
+                .map(|(vkey, opcert)| (Some(vkey), Some(opcert)))
+                .unwrap_or((None, None));
+            let activation_promoted = if activation_pending {
+                let expected = payload
+                    .get("opcert")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(artifact_ref_digest)
+                    .ok_or_else(|| OuroError::Validation("KES resume lost its artifact digest".into()))?;
+                let opcert_is_transaction_member = observation.live.kes_opcert_id == expected
+                    || previous_opcert_sha256.as_deref() == Some(observation.live.kes_opcert_id.as_str());
+                let vkey_is_transaction_member = active_vkey_sha256 == staged_vkey_sha256
+                    || previous_vkey_sha256.as_deref() == Some(active_vkey_sha256.as_str());
+                if !opcert_is_transaction_member || !vkey_is_transaction_member {
+                    return Err(OuroError::Validation(
+                        "retained KES activation contains files outside the previous/staged candidate set; automatic resume refused".into(),
+                    ));
+                }
+                observation.live.kes_opcert_id == expected
+                    && active_vkey_sha256 == staged_vkey_sha256
+            } else {
+                false
+            };
             Some(KesRotationEvidence {
                 current_period,
                 cardano_cli_version,
@@ -2066,6 +2131,10 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                 preexisting_forging_credentials_ready,
                 preexisting_kes_evidence_sha256,
                 permissions,
+                activation_pending,
+                activation_promoted,
+                previous_vkey_sha256,
+                previous_opcert_sha256,
             })
         }
         "kes-rotation/discard-stage" => {
@@ -2095,6 +2164,10 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                 preexisting_forging_credentials_ready,
                 preexisting_kes_evidence_sha256,
                 permissions: KesRotationPermissionEvidence::from_live(&observation.live),
+                activation_pending: false,
+                activation_promoted: false,
+                previous_vkey_sha256: None,
+                previous_opcert_sha256: None,
             })
         }
         _ => None,
@@ -2259,9 +2332,23 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
                 &observation.live.container_id,
                 &format!("<ephemeral-inbox:{reference}>"),
             );
-            let mut plan = recovery.commit;
-            plan.extend(recovery.finalize);
-            plan
+            let pending = kes_rotation.as_ref().is_some_and(|evidence| {
+                evidence.activation_pending && evidence.activation_promoted
+            });
+            if pending {
+                recovery.finalize
+            } else {
+                let mut plan = if kes_rotation
+                    .as_ref()
+                    .is_some_and(|evidence| evidence.activation_pending)
+                {
+                    recovery.commit[6..].to_vec()
+                } else {
+                    recovery.commit
+                };
+                plan.extend(recovery.finalize);
+                plan
+            }
         }
         "deploy/register-submit" => {
             let mut argv = vec![
@@ -2580,6 +2667,55 @@ fn wait_runtime_restart_readiness(
             return Err(OuroError::Validation(format!(
                 "node did not return ready within {RUNTIME_RESTART_READINESS_TIMEOUT_SECONDS} \
                  seconds after restart: {last_readiness_error}"
+            )));
+        }
+        std::thread::sleep(std::time::Duration::from_secs(
+            RUNTIME_RESTART_READINESS_POLL_SECONDS,
+        ));
+    }
+}
+
+fn readiness_timeout_seconds() -> u64 {
+    #[cfg(debug_assertions)]
+    if let Ok(raw) = std::env::var("OURO_TEST_READINESS_TIMEOUT_SECONDS") {
+        if let Ok(seconds) = raw.parse::<u64>() {
+            return seconds.min(RUNTIME_RESTART_READINESS_TIMEOUT_SECONDS);
+        }
+    }
+    RUNTIME_RESTART_READINESS_TIMEOUT_SECONDS
+}
+
+fn wait_kes_activation_readiness(
+    plan: &StatelessTargetPlan,
+    expected_image: &str,
+    validation: &KesCandidateValidation,
+) -> Result<Observation> {
+    let timeout_seconds = readiness_timeout_seconds();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_seconds);
+    loop {
+        let last_readiness_error = match read_observation(&[]) {
+            Ok(post) => {
+                // Identity, policy and layout drift are never a startup transient.
+                require_stateless_post_contract(plan, &post, expected_image)?;
+                let expected_opcert = plan.intent.payload.get("opcert")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(artifact_ref_digest)
+                    .ok_or_else(|| OuroError::Validation("KES artifact digest was lost".into()))?;
+                if post.live.kes_opcert_id != expected_opcert {
+                    return Err(OuroError::Validation(
+                        "installed opcert digest differs from the approved artifact".into(),
+                    ));
+                }
+                match stateless_kes_activation_readiness(plan, &post, validation) {
+                    Ok(()) => return Ok(post),
+                    Err(error) => error.to_string(),
+                }
+            }
+            Err(error) => error.to_string(),
+        };
+        if std::time::Instant::now() >= deadline {
+            return Err(OuroError::Validation(format!(
+                "KES activation did not return candidate-bound readiness within {timeout_seconds} seconds after restart: {last_readiness_error}"
             )));
         }
         std::thread::sleep(std::time::Duration::from_secs(
@@ -3218,62 +3354,68 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 &current_container,
                 &payload.display().to_string(),
             );
-            crate::executor::run_plan(&recovery.commit[..3])?;
-            if let Err(error) = crate::executor::run_plan(&recovery.commit[3..6]) {
-                let cleanup = crate::executor::run_plan(
-                    &crate::executor::stateless_kes_prepare_cleanup_plan(&current_container),
-                );
-                return Err(OuroError::Validation(format!(
-                    "KES recovery material could not be prepared; live key/certificate was not changed ({error}); cleanup={}",
-                    if cleanup.is_ok() { "completed" } else { "failed; backup residue retained" }
-                )));
+            let activation_pending = final_plan.kes_rotation.as_ref()
+                .is_some_and(|evidence| evidence.activation_pending);
+            let activation_promoted = final_plan.kes_rotation.as_ref()
+                .is_some_and(|evidence| evidence.activation_promoted);
+            if !activation_pending {
+                crate::executor::run_plan(&recovery.commit[..3])?;
+                if let Err(error) = crate::executor::run_plan(&recovery.commit[3..6]) {
+                    let cleanup = crate::executor::run_plan(
+                        &crate::executor::stateless_kes_prepare_cleanup_plan(&current_container),
+                    );
+                    return Err(OuroError::Validation(format!(
+                        "KES recovery material could not be prepared; live key/certificate was not changed ({error}); cleanup={}",
+                        if cleanup.is_ok() { "completed" } else { "failed; backup residue retained" }
+                    )));
+                }
             }
-            let rollback = || {
-                crate::executor::run_plan(&recovery.rollback)?;
-                let restored = read_observation(&[])?;
-                require_stateless_post_contract(&final_plan, &restored, &current_image)?;
-                require_kes_stage_base_availability(&restored)?;
-                require_kes_stage_readiness_invariant(&final_plan.observation, &restored)?;
-                if restored.live.kes_opcert_id != final_plan.observation.live.kes_opcert_id {
-                    return Err(OuroError::Validation(
-                        "KES rollback did not restore the prior opcert digest".into(),
-                    ));
+            if !activation_promoted {
+                if let Err(error) = crate::executor::run_plan(&recovery.commit[6..9]) {
+                    let mut failure = ToolOutput::failure(
+                        "ouro.op.apply", "activation_unverified",
+                        format!("KES forward activation did not complete: {error}; automatic restoration/restart of the previous credentials is forbidden"),
+                    ).with_data(json!({
+                        "op": &final_plan.op,
+                        "node": &final_plan.node,
+                        "candidate_hash": &final_plan.candidate_hash,
+                        "mutation_executed": true,
+                        "restart_count_max": 1,
+                        "automatic_rollback_performed": false,
+                        "recovery_material_retained": true,
+                        "outcome": "activation_unverified",
+                        "recovery": "rerun the same KES workflow with the same public artifact; do not restage, cold-sign, or advance the counter",
+                        "persistent_target_state_written": true,
+                    }));
+                    failure.changed = true;
+                    failure.machine = Some(final_plan.node.clone());
+                    output::print_json(&failure)?;
+                    return Err(OuroError::Reported(10));
                 }
-                let (_, restored_vkey_sha256) = read_public_kes_vkey(
-                    &current_container,
-                    crate::executor::KES_VKEY_DEST,
-                    "restored active public KES verification key",
-                )?;
-                let expected_vkey_sha256 = final_plan.kes_rotation.as_ref()
-                    .map(|evidence| evidence.active_vkey_sha256.as_str())
-                    .ok_or_else(|| OuroError::Validation("KES rollback lost prior-key binding".into()))?;
-                if restored_vkey_sha256 != expected_vkey_sha256 {
-                    return Err(OuroError::Validation(
-                        "KES rollback did not restore the prior active verification key".into(),
-                    ));
+                if let Err(error) = crate::executor::run_argv(&recovery.commit[9]) {
+                    let mut failure = ToolOutput::failure(
+                        "ouro.op.apply", "activation_unverified",
+                        format!("KES candidate files were promoted but the single BP restart did not complete: {error}; automatic restoration/restart of the previous credentials is forbidden"),
+                    ).with_data(json!({
+                        "op": &final_plan.op,
+                        "node": &final_plan.node,
+                        "candidate_hash": &final_plan.candidate_hash,
+                        "mutation_executed": true,
+                        "restart_performed": false,
+                        "automatic_rollback_performed": false,
+                        "recovery_material_retained": true,
+                        "outcome": "activation_unverified",
+                        "recovery": "rerun the same KES workflow with the same public artifact; do not restage, cold-sign, or advance the counter",
+                        "persistent_target_state_written": true,
+                    }));
+                    failure.changed = true;
+                    failure.machine = Some(final_plan.node.clone());
+                    output::print_json(&failure)?;
+                    return Err(OuroError::Reported(10));
                 }
-                crate::executor::run_plan(&recovery.finalize)?;
-                Ok(())
-            };
-            if let Err(error) = crate::executor::run_plan(&recovery.commit[6..]) {
-                return Err(rollback_failure(&final_plan.op, error, rollback()));
             }
-            let verify = (|| {
-                let post = read_observation(&[])?;
-                require_stateless_post_contract(&final_plan, &post, &current_image)?;
-                stateless_kes_activation_readiness(&final_plan, &post, candidate_validation)?;
-                let expected = final_plan
-                    .intent
-                    .payload
-                    .get("opcert")
-                    .and_then(serde_json::Value::as_str)
-                    .and_then(artifact_ref_digest)
-                    .ok_or_else(|| OuroError::Validation("KES artifact digest was lost".into()))?;
-                if post.live.kes_opcert_id != expected {
-                    return Err(OuroError::Validation(
-                        "installed opcert digest differs from the approved artifact".into(),
-                    ));
-                }
+            let verify = (|| -> Result<Observation> {
+                let post = wait_kes_activation_readiness(&final_plan, &current_image, candidate_validation)?;
                 let (_, active_vkey_sha256) = read_public_kes_vkey(
                     &current_container,
                     crate::executor::KES_VKEY_DEST,
@@ -3292,11 +3434,37 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                             .into(),
                     ));
                 }
-                Ok(())
+                Ok(post)
             })();
-            if let Err(error) = verify {
-                return Err(rollback_failure(&final_plan.op, error, rollback()));
-            }
+            let _post = match verify {
+                Ok(post) => post,
+                Err(error) => {
+                    let detail = if activation_promoted {
+                        format!("retained KES activation is still not candidate-bound ready: {error}; no reinstall, restart or rollback was performed")
+                    } else {
+                        format!("KES credentials were promoted and the BP was restarted, but candidate-bound readiness was not verified: {error}; automatic restoration/restart of the previous credentials is forbidden")
+                    };
+                    let mut failure = ToolOutput::failure(
+                        "ouro.op.apply", "activation_unverified", detail,
+                    ).with_data(json!({
+                        "op": &final_plan.op,
+                        "node": &final_plan.node,
+                        "candidate_hash": &final_plan.candidate_hash,
+                        "mutation_executed": !activation_promoted,
+                        "restart_performed": !activation_promoted,
+                        "activation_resumed": activation_pending,
+                        "automatic_rollback_performed": false,
+                        "recovery_material_retained": true,
+                        "outcome": "activation_unverified",
+                        "recovery": "rerun the same KES workflow with the same public artifact; do not restage, cold-sign, or advance the counter",
+                        "persistent_target_state_written": true,
+                    }));
+                    failure.changed = !activation_promoted;
+                    failure.machine = Some(final_plan.node.clone());
+                    output::print_json(&failure)?;
+                    return Err(OuroError::Reported(10));
+                }
+            };
             crate::executor::run_plan(&recovery.finalize).map_err(|error| {
                 OuroError::Validation(format!(
                     "KES apply verified but previous-key/certificate cleanup failed; recovery residue retained: {error}"
@@ -3320,7 +3488,8 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 "typed_role_readiness": "passed",
                 "node_state_counter_status": candidate_validation.node_state_counter.status(),
                 "cold_identity_bound": candidate_validation.cold_identity_bound,
-                "restart_performed": true,
+                "restart_performed": !activation_promoted,
+                "activation_resumed": activation_pending,
                 "rollback_residue_removed": true,
                 "staging_residue_removed": true,
             }));
@@ -3474,6 +3643,8 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
         "assurance": "approved_candidate_revalidated",
         "recovery_model": if final_plan.op == "deploy/register-submit" {
             "irreversible submit; never auto-retry, and reconcile ledger/pool state independently"
+        } else if final_plan.op == "kes-rotation/install-opcert" {
+            "forward-only activation; never automatically restore/restart previous credentials"
         } else {
             "live postcondition verification with in-invocation rollback where an inverse exists"
         },
@@ -6519,8 +6690,10 @@ fn node_state_counter(value: &serde_json::Value) -> Result<NodeStateCounterEvide
     }
 }
 
-fn read_active_public_opcert(
+fn read_public_opcert(
     container: &str,
+    path: &str,
+    context: &str,
 ) -> Result<(crate::kes::ParsedOperationalCertificate, String)> {
     let raw = crate::executor::run_read_plan(&[vec![
         "docker".into(),
@@ -6529,22 +6702,14 @@ fn read_active_public_opcert(
         "head".into(),
         "-c".into(),
         "65537".into(),
-        "/opt/cardano/config/keys/node.cert".into(),
+        path.into(),
     ]])
-    .map_err(|error| {
-        OuroError::Validation(format!(
-            "cannot read fixed public active node.cert for cold identity binding: {error}"
-        ))
-    })?;
+    .map_err(|error| OuroError::Validation(format!("cannot read {context}: {error}")))?;
     if raw.len() > 65_536 {
-        return Err(OuroError::Validation(
-            "fixed public active node.cert exceeds 64 KiB".into(),
-        ));
+        return Err(OuroError::Validation(format!("{context} exceeds 64 KiB")));
     }
     let parsed = crate::kes::parse_operational_certificate(raw.as_bytes()).map_err(|error| {
-        OuroError::Validation(format!(
-            "fixed public active node.cert cannot establish cold identity: {error}"
-        ))
+        OuroError::Validation(format!("{context} cannot establish cold identity: {error}"))
     })?;
     Ok((parsed, crate::intent::sha256_hex(raw.as_bytes())))
 }
@@ -6553,7 +6718,8 @@ fn validate_kes_protocol_facts(
     facts: &serde_json::Value,
     parsed: crate::kes::ParsedOperationalCertificate,
     container: &str,
-    expected_active_opcert_digest: &str,
+    identity_opcert_path: &str,
+    expected_identity_opcert_digest: &str,
 ) -> Result<KesCandidateValidation> {
     let current = json_u64(facts, "qKesCurrentKesPeriod")?;
     let start = json_u64(facts, "qKesStartKesInterval")?;
@@ -6585,10 +6751,14 @@ fn validate_kes_protocol_facts(
             cold_identity_bound: true,
         }),
         NodeStateCounterEvidence::NoBlocksMintedYet => {
-            let (active, active_digest) = read_active_public_opcert(container)?;
-            if active_digest != expected_active_opcert_digest {
+            let (active, active_digest) = read_public_opcert(
+                container,
+                identity_opcert_path,
+                "fixed public identity node.cert",
+            )?;
+            if active_digest != expected_identity_opcert_digest {
                 return Err(OuroError::Validation(
-                    "fixed public active node.cert changed after the candidate-bound observation"
+                    "fixed public identity node.cert changed after the candidate-bound observation"
                         .into(),
                 ));
             }
@@ -6642,7 +6812,9 @@ fn validate_ephemeral_kes_candidate(
     let digest = artifact_ref_digest(reference).ok_or_else(|| {
         OuroError::Validation("KES intent has a malformed artifact reference".into())
     })?;
-    if digest == plan.observation.live.kes_opcert_id {
+    let activation_pending = plan.kes_rotation.as_ref()
+        .is_some_and(|evidence| evidence.activation_pending);
+    if digest == plan.observation.live.kes_opcert_id && !activation_pending {
         return Err(OuroError::Validation(
             "KES artifact is identical to the currently running opcert — replay refused".into(),
         ));
@@ -6698,12 +6870,22 @@ fn validate_ephemeral_kes_candidate(
         )));
     }
     let facts = parse_cardano_cli_json(&output.stdout, "cardano-cli KES result")?;
-    validate_kes_protocol_facts(
-        &facts,
-        parsed,
-        container,
-        &plan.observation.live.kes_opcert_id,
-    )
+    let (identity_path, identity_digest) = if activation_pending {
+        (
+            crate::executor::OPCERT_PREVIOUS,
+            plan.kes_rotation.as_ref()
+                .and_then(|evidence| evidence.previous_opcert_sha256.as_deref())
+                .ok_or_else(|| OuroError::Validation(
+                    "KES activation resume lost its previous cold-identity binding".into(),
+                ))?,
+        )
+    } else {
+        (
+            crate::executor::OPCERT_DEST,
+            plan.observation.live.kes_opcert_id.as_str(),
+        )
+    };
+    validate_kes_protocol_facts(&facts, parsed, container, identity_path, identity_digest)
 }
 
 /// Validate a staged PUBLIC opcert against the target's PUBLIC KES vkey and live protocol state.
@@ -6784,6 +6966,7 @@ fn validate_kes_candidate(
         &facts,
         parsed,
         &att.state.container_id,
+        crate::executor::OPCERT_DEST,
         &att.state.kes_opcert_id,
     )?
     .parsed)

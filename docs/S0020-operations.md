@@ -87,8 +87,12 @@ or unsafe staging residue remains a typed refusal. After the offline cold-signin
 `install-opcert` requires the returned certificate to name that exact staged public key. Approved
 activation backs up and
 promotes `kes.skey`, `kes.vkey` and `node.cert` together, restarts once, verifies typed readiness,
-and restores the previous triple on failure. Success verifies the fixed stage and all rollback
-backups are absent before reporting completion.
+and polls candidate-bound KES evidence for a bounded interval. It never automatically restores or
+restarts the previous triple because a running process does not prove that old disk credentials are
+restart-safe. An unverified activation retains the promoted candidate, stage and previous-file
+recovery material; the same Phase-B workflow can later verify and clean that state without another
+install or restart. Success verifies the fixed stage and all recovery backups are absent before
+reporting completion.
 
 Use `ouro-ops inbox preview --type opcert|tx --file <operator-named-file>` on control. It validates
 the public artifact and returns a content-addressed reference without writing an inbox. Put that ref

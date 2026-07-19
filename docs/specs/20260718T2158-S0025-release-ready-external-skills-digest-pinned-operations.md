@@ -1545,3 +1545,68 @@ candidate, and activate only after every typed fact passes.
 - TC-48 | stack: release | command: `make release-candidate` | result: pass | note: the macOS control
   CLI, linux/x86_64 ephemeral runner, package and descriptors/checksums were rebuilt and verified
   without publishing or contacting a production host.
+
+## 65. Sixteenth Follow-up Requirement And Design (append-only)
+
+- [~] p6-1-fix17 make KES Phase B a forward-only, single-restart activation
+- Concrete defect: `kes-rotation/install-opcert` restarts the BP and immediately samples readiness
+  once. A normal startup interval in which the socket or `cardano-cli query kes-period-info` is not
+  ready is misclassified as a final activation failure. The executor then unconditionally restores
+  and restarts the previous disk triple even though Phase A and the permit explicitly admit an
+  already invalid/expired pre-existing KES/opcert. A running process may still hold usable
+  credentials in memory while that old disk triple is mismatched, so the second restart can turn a
+  latent disk defect into a crash loop.
+- Operator decision: Phase B is a forward-only credential repair after strong preflight. Ouro must
+  validate the returned certificate's signature, cold identity, counter/window and exact staged hot
+  key; prepare and verify the replacement files; promote them; restart exactly once; and poll the
+  candidate-bound activation evidence for a bounded interval. It must not infer that the previous
+  credentials are restart-safe and must never automatically restore/restart them after activation.
+- Failure semantics: a failure before active promotion may clean only unpromoted preparation
+  residue. Once promotion begins, any executor failure or bounded readiness timeout reports a typed
+  `activation_unverified` result, retains the new active files plus fixed stage/previous-file
+  recovery material, performs no second restart and accurately reports `changed: true`. A later
+  execution of the same KES workflow must recognize candidate-bound retained activation state and
+  verify/finalize it without generating another pair, repeating cold signing, advancing the counter
+  or reinstalling the same artifact.
+- Scope restraint: current target identity, network/genesis, runtime policy, fixed layout, staged
+  pair, cold-pool identity, protocol counter/window, permissions and relay quorum remain mandatory.
+  Do not add a general offline permit, weaken ordinary readiness, treat a null counter as zero, add
+  a permanent target service/state store, or expose an automatic old-credential rollback command.
+- TC-49 acceptance: delayed post-restart evidence (including initially absent typed KES evidence)
+  eventually succeeds within the bound, performs exactly one restart and removes stage/backups.
+  Exact artifact/vkey/cold-identity mismatches still refuse. A bounded unverified activation keeps
+  the promoted candidate and recovery material, performs no rollback/second restart and reports the
+  changed state truthfully. Re-entry with the same public artifact verifies and cleans the retained
+  transaction without Phase A, cold signing, counter advancement or another installation. Skill
+  and local website describe this forward-only contract, and the complete release-candidate gate
+  passes without contacting a production host.
+
+## 66. Sixteenth Follow-up Completion And Evidence (append-only)
+
+- [x] p6-1-fix17 completed: Phase B now separates preparation, forward promotion, the single restart
+  and bounded candidate-bound readiness polling. The stateless KES recovery plan has no executable
+  inverse. Once promotion starts, executor or readiness failure emits typed
+  `activation_unverified`, `changed: true`, `automatic_rollback_performed: false` and retains the
+  fixed stage/previous-file set without a second restart.
+- The same `kes-rotation/install-opcert` operation detects a complete retained transaction. It binds
+  the previous public vkey/opcert and current active files to the previous-or-staged set, revalidates
+  the same public certificate against the previous cold identity, and either completes an
+  interrupted promotion plus its not-yet-run restart or verifies an already promoted candidate and
+  performs cleanup only. A foreign or incomplete residue refuses without mutation.
+- Skill v19, the local generated website prompt and the operations reference now state the
+  forward-only/single-restart contract, truthful unverified result and same-Phase-B resume path.
+- TC-49 | stack: rust | command: `cargo fmt --all -- --check`, `cargo test -q -p ouro`, and `cargo
+  clippy -q -p ouro --lib --tests -- -D warnings` | result: pass | note: 173 Rust tests pass and the
+  executor regression proves KES has no automatic rollback argv.
+- TC-49 | stack: python | command: `python3 tests/test_probe.py`, `python3
+  tests/test_s0020_stateless_plan.py`, `python3 tests/test_s0020_stateless_apply.py`, `python3
+  tests/test_s0020_kes_airgap_preflight.py`, and `python3 tests/test_s0025_kes_rotation.py` | result:
+  pass | note: delayed KES evidence succeeds after one restart; zero-bound timeout retains the
+  promoted candidate; same-operation verification removes residue without reinstall/restart; an
+  interrupted promotion resumes forward and performs its first and only restart.
+- TC-49 | stack: website | command: `python3 tests/test_skill_docs.py`, `./web/onboarding/build.sh`,
+  and `python3 -m pytest -q tests/test_web_generator.py` | result: pass | note: all nine website
+  cases pass and the generated local site embeds canonical KES Skill v19 byte-for-byte.
+- TC-49 | stack: release | command: `make release-candidate` | result: pass | note: the macOS control
+  CLI, linux/x86_64 ephemeral runner, package and release descriptors/checksums were rebuilt and
+  verified without publishing, contacting a production host, or reading local KES artifacts.

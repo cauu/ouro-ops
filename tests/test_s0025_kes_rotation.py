@@ -31,6 +31,13 @@ def write_dynamic_probe(path: Path, state: Path) -> None:
         "state=json.load(open(sys.argv[1]))\n"
         "obs['live']['kes_opcert_id']=state['active_opcert']\n"
         "if state['active_opcert'] != state['initial_opcert']:\n"
+        "  if state.get('readiness_delay_remaining',0)>0:\n"
+        "    state['readiness_delay_remaining']-=1\n"
+        "    json.dump(state,open(sys.argv[1],'w'))\n"
+        "    obs['readiness']['kes']=None\n"
+        "    obs['readiness']['socket_answers']=False\n"
+        "    print(json.dumps(obs,separators=(',',':')))\n"
+        "    raise SystemExit\n"
         "  obs['readiness']['kes']={\n"
         "    'source':'cardano_cli','current_period':100,'start_period':100,\n"
         "    'end_period':162,'remaining_periods':62,'opcert_counter_on_disk':7,\n"
@@ -71,6 +78,8 @@ def main() -> None:
         "restart_count": 0,
         "drift_after_stage": True,
         "fail_post": False,
+        "readiness_delay_remaining": 0,
+        "fail_promotion_once": False,
     }))
     probe = home / "probe.sh"
     write_dynamic_probe(probe, state)
@@ -93,11 +102,15 @@ def main() -> None:
         "  exists=s['stage'] if target==stage else s['backups']\n"
         "  sys.exit(1 if exists else 0)\n"
         "if a[:2]==['test','-s']:\n"
+        "  target=a[-1]\n"
+        "  if target.endswith('.ouro-prev'): sys.exit(0 if s['backups'] else 1)\n"
         "  sys.exit(0 if s['stage'] and s['stage_complete'] else 1)\n"
         "if a[:3]==['stat','-c','%a']:\n"
         "  print('600'); sys.exit(0)\n"
         "if a[:3]==['head','-c','65537']:\n"
-        "  if a[-1].endswith('node.cert'): value=s['active_opcert_envelope']\n"
+        "  if a[-1].endswith('node.cert.ouro-prev'): value=s['previous_opcert_envelope']\n"
+        "  elif a[-1].endswith('node.cert'): value=s['active_opcert_envelope']\n"
+        "  elif a[-1].endswith('kes.vkey.ouro-prev'): value=s['previous_vkey']\n"
         "  else: value=s['staged_vkey'] if stage in a[-1] else s['active_vkey']\n"
         "  sys.stdout.write(json.dumps(value,separators=(',',':'))); sys.exit(0)\n"
         "if a and a[0]=='mkdir': s['stage']=True\n"
@@ -105,6 +118,8 @@ def main() -> None:
         "elif a and a[0] in ('chmod','mv'): pass\n"
         "elif a[:2]==['cp','-p']:\n"
         "  src,dst=a[-2:]\n"
+        "  if src.endswith('.ouro-kes-stage/kes.vkey') and s.get('fail_promotion_once'):\n"
+        "    s['fail_promotion_once']=False; json.dump(s,open(p,'w')); sys.exit(1)\n"
         "  if dst.endswith('.ouro-prev'):\n"
         "    s['backups']=True\n"
         "    if src.endswith('kes.vkey'): s['previous_vkey']=s['active_vkey']\n"
@@ -327,7 +342,7 @@ def main() -> None:
     install_candidate = install_value["data"]["candidate_hash"]
     assert install_value["data"]["kes_rotation"]["staged_vkey_sha256"] == stage_post["kes_vkey_sha256"]
 
-    def fresh_permit() -> str:
+    def fresh_permit(candidate: str = install_candidate) -> str:
         listener = socket.socket()
         listener.bind(("127.0.0.1", 0))
         listener.listen(1)
@@ -339,12 +354,62 @@ def main() -> None:
             listener.close()
 
         threading.Thread(target=accept_probe, daemon=True).start()
-        return permit_for(install_candidate, relay_port)
+        return permit_for(candidate, relay_port)
 
-    # A null-path readiness mismatch occurs only after mutation and therefore must restore the
-    # original active triple and remove rollback residue. Resetting the fake fixture afterwards
-    # creates an independent success case; no production key/counter is regenerated here.
+    # If promotion is interrupted before restart, the retained previous/staged transaction set is
+    # recognized by the same operation. Re-entry finishes forward promotion and performs the one
+    # restart; it never regenerates or cold-signs a key.
     pre_apply_state = json.loads(state.read_text())
+    partial_state = dict(pre_apply_state)
+    partial_state["fail_promotion_once"] = True
+    state.write_text(json.dumps(partial_state))
+    partial_apply, partial_value = invoke(
+        home,
+        *apply_args("kes-rotation/install-opcert", install_candidate, *install_params),
+        "--verified-fleet-permit",
+        fresh_permit(),
+        env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(opcert)},
+        path=fakebin,
+    )
+    assert partial_apply.returncode != 0
+    assert partial_value["error"]["code"] == "activation_unverified"
+    partial = json.loads(state.read_text())
+    assert partial["active_vkey"] == ACTIVE_KES_VKEY
+    assert partial["active_opcert"] == active_opcert_digest
+    assert partial["backups"] is True and partial["stage"] is True
+    assert partial["restart_count"] == 0
+    partial_plan, partial_plan_value = invoke(
+        home,
+        *target_args("kes-rotation/install-opcert", *install_params),
+        env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(opcert)},
+        path=fakebin,
+    )
+    assert partial_plan.returncode == 0, (partial_plan, partial_plan_value)
+    partial_kes = partial_plan_value["data"]["kes_rotation"]
+    assert partial_kes["activation_pending"] is True
+    assert partial_kes["activation_promoted"] is False
+    assert ["docker", "restart", "cid-plan"] in partial_plan_value["data"]["executor_plan"]
+    completed_partial, completed_partial_value = invoke(
+        home,
+        *apply_args("kes-rotation/install-opcert",
+                    partial_plan_value["data"]["candidate_hash"], *install_params),
+        "--verified-fleet-permit",
+        fresh_permit(partial_plan_value["data"]["candidate_hash"]),
+        env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(opcert)},
+        path=fakebin,
+    )
+    assert completed_partial.returncode == 0, (completed_partial, completed_partial_value)
+    completed_partial_state = json.loads(state.read_text())
+    assert completed_partial_state["restart_count"] == 1
+    assert completed_partial_state["stage"] is False
+    assert completed_partial_state["backups"] is False
+
+    state.write_text(json.dumps(pre_apply_state))
+
+    # Once Phase B begins promotion it is forward-only. A bounded readiness failure retains the
+    # promoted candidate and recovery material, performs no rollback/second restart, and reports
+    # the mutation truthfully. Resetting this fake fixture afterwards creates an independent
+    # delayed-success case; no production key/counter is regenerated here.
     failing_state = dict(pre_apply_state)
     failing_state["fail_post"] = True
     state.write_text(json.dumps(failing_state))
@@ -353,18 +418,65 @@ def main() -> None:
         *apply_args("kes-rotation/install-opcert", install_candidate, *install_params),
         "--verified-fleet-permit",
         fresh_permit(),
-        env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(opcert)},
+        env_extra={
+            **env,
+            "OURO_EPHEMERAL_PAYLOAD": str(opcert),
+            "OURO_TEST_READINESS_TIMEOUT_SECONDS": "0",
+        },
         path=fakebin,
     )
     assert failed_apply.returncode != 0
-    assert "live-state rollback completed" in json.dumps(failed_apply_value)
-    rolled_back = json.loads(state.read_text())
-    assert rolled_back["active_vkey"] == ACTIVE_KES_VKEY
-    assert rolled_back["active_opcert"] == active_opcert_digest
-    assert rolled_back["backups"] is False and rolled_back["stage"] is False
-    assert rolled_back["restart_count"] == 2
+    assert failed_apply_value["error"]["code"] == "activation_unverified"
+    assert failed_apply_value["changed"] is True
+    unverified = json.loads(state.read_text())
+    assert unverified["active_vkey"] == KES_VKEY
+    assert unverified["active_opcert"] == opcert_digest
+    assert unverified["backups"] is True and unverified["stage"] is True
+    assert unverified["restart_count"] == 1
+    assert failed_apply_value["data"]["automatic_rollback_performed"] is False
+    assert failed_apply_value["data"]["recovery_material_retained"] is True
+
+    # Once the retained candidate becomes ready, the same install workflow recognizes it and only
+    # verifies/finalizes. It neither promotes files nor restarts again.
+    resumable = json.loads(state.read_text())
+    resumable["fail_post"] = False
+    state.write_text(json.dumps(resumable))
+    resume_plan, resume_value = invoke(
+        home,
+        *target_args("kes-rotation/install-opcert", *install_params),
+        env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(opcert)},
+        path=fakebin,
+    )
+    assert resume_plan.returncode == 0, (resume_plan, resume_value)
+    assert resume_value["data"]["kes_rotation"]["activation_pending"] is True
+    assert resume_value["data"]["executor_plan"] == [
+        ["docker", "exec", "cid-plan", "rm", "-f",
+         "/opt/cardano/config/keys/kes.skey.ouro-prev",
+         "/opt/cardano/config/keys/kes.vkey.ouro-prev",
+         "/opt/cardano/config/keys/node.cert.ouro-prev"],
+        ["docker", "exec", "cid-plan", "rm", "-rf",
+         "/opt/cardano/config/keys/.ouro-kes-stage"],
+    ]
+    resumed, resumed_value = invoke(
+        home,
+        *apply_args("kes-rotation/install-opcert", resume_value["data"]["candidate_hash"],
+                    *install_params),
+        "--verified-fleet-permit",
+        fresh_permit(resume_value["data"]["candidate_hash"]),
+        env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(opcert)},
+        path=fakebin,
+    )
+    assert resumed.returncode == 0, (resumed, resumed_value)
+    resumed_state = json.loads(state.read_text())
+    assert resumed_state["restart_count"] == 1
+    assert resumed_state["stage"] is False and resumed_state["backups"] is False
+    assert resumed_value["data"]["live_postcondition"]["activation_resumed"] is True
+    assert resumed_value["data"]["live_postcondition"]["restart_performed"] is False
 
     state.write_text(json.dumps(pre_apply_state))
+    delayed = json.loads(state.read_text())
+    delayed["readiness_delay_remaining"] = 2
+    state.write_text(json.dumps(delayed))
     applied, applied_value = invoke(
         home,
         *apply_args("kes-rotation/install-opcert", install_candidate, *install_params),
@@ -379,6 +491,7 @@ def main() -> None:
     assert final["active_opcert"] == opcert_digest
     assert final["stage"] is False and final["backups"] is False
     assert final["restart_count"] == 1
+    assert final["readiness_delay_remaining"] == 0
     assert applied_value["data"]["live_postcondition"]["verification"] == \
         "staged_kes_pair_and_bound_opcert_activated"
     assert applied_value["data"]["live_postcondition"]["node_state_counter_status"] == \

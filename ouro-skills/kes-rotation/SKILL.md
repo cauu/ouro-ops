@@ -1,5 +1,5 @@
 ---
-skill_version: 18
+skill_version: 19
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -37,8 +37,15 @@ reads or prints it.
   This exception is scoped to the reviewed install transaction; ordinary BP readiness remains
   fail-closed until protocol state exposes a counter.
 - Activation rechecks signed runtime policy, BP role, network/genesis, current container, active
-  pair, staged pair and opcert immediately before backup/promotion/restart. Failure restores the
-  previous KES signing key, verification key and public opcert and verifies readiness.
+  pair, staged pair and opcert immediately before backup/promotion/restart. It promotes the strongly
+  validated replacement, restarts exactly once and polls candidate-bound readiness for a bounded
+  interval. It never automatically restores or restarts the previous credentials: an invalid old
+  disk triple may only appear healthy because the running process still holds credentials in memory.
+- If bounded activation evidence remains unavailable, Ouro reports `activation_unverified` with
+  `changed: true` and retains the promoted candidate, fixed stage and previous-file recovery
+  material. Re-running this same workflow with the same public certificate after the node becomes
+  ready performs verification and cleanup only; it does not restage, cold-sign, advance the counter,
+  reinstall the artifact or restart again.
 - Both writes need exact operator confirmation. Only activation is disruptive and therefore also
   needs a live fleet permit minted last.
 - The activation permit uses an operation-scoped `kes_rotation_repair_ready` target qualification:
@@ -150,10 +157,11 @@ reads or prints it.
   Do not stop merely because the next step performs a real replacement and restart, and never
   substitute a mock certificate or guaranteed-failure path.
 - Show the exact public reference, staged-key hash, live target facts, validation evidence,
-  three-file backup/promotion/restart plan and unchanged final candidate hash. State explicitly
+  three-file backup/promotion/single-restart plan and unchanged final candidate hash. State explicitly
   that approval authorizes backup of the current active triple, promotion of the staged KES pair,
-  installation of this public opcert, and a real BP container restart. WAIT for exact operator
-  approval.
+  installation of this public opcert, and exactly one real BP container restart. Also disclose that
+  the previous triple is retained only as operator recovery material and is never automatically
+  restored or restarted. WAIT for exact operator approval.
 - After approval mint `ouro-ops confirm create --op kes-rotation/install-opcert --node <bp>
   --intent-hash <final-hash>`, then mint the live permit LAST with `ouro-ops fleet permit create
   --spec <pool-spec> --node <bp> --op kes-rotation/install-opcert --intent-hash <final-hash>
@@ -169,11 +177,19 @@ reads or prints it.
   --fleet-permit '<fleet_permit-json>'`. Never replan with either capability. Report the remote
   operation only after the typed postcondition confirms the staged KES pair and bound opcert were
   actually activated, the BP container was restarted, readiness passed,
-  the fixed staging directory is absent and all previous-key/opcert rollback files were removed.
+  the fixed staging directory is absent and all previous-key/opcert recovery files were removed.
   Then run `ouro-ops kes airgap-cleanup --spec <pool-spec> --node <bp>
   --expected-vkey-sha256 <activated-staged-vkey-hash>` and require `absent: true`. Do not retain the
   bundle, certificate or a `.discarded-*` copy after success. If local cleanup refuses, accurately
   report that activation succeeded but local public residue remains; never repeat activation.
+- If apply returns `activation_unverified`, report that the replacement was promoted and the single
+  restart occurred but readiness is not yet proven. Require `changed: true`,
+  `automatic_rollback_performed: false` and `recovery_material_retained: true`. Do not run Phase A,
+  cold signing, counter advancement, another install or another restart. Once the node is observable,
+  rerun this same Phase-B plan/preflight/approval flow with the same fixed `pending/node.cert`.
+  Require `activation_pending: true`; its executor plan may contain cleanup only. Successful apply
+  must report `activation_resumed: true`, `restart_performed: false`, candidate-bound readiness and
+  removal of the retained stage/recovery files before local airgap cleanup.
 
 ## Stop Conditions
 - Stop if typed current-period evidence is missing, the offline ceremony is incomplete, typed
@@ -198,7 +214,8 @@ reads or prints it.
 - Stop if any dedicated KES permission fact is false. The legacy
   `forging_key_permissions_safe:false` alone is not a KES refusal when the three dedicated facts are
   true. Do not use raw SSH, chmod or chown as a workaround and do not invent a normalization path.
-- Stop and require operator recovery if the live-verified inverse cannot establish a known state.
+- Stop and preserve the forward activation state if readiness remains unverified. Never interpret
+  absent startup evidence as authority to restore and restart the previous credentials.
 
 ## Red Lines
 - No cold, KES secret, or VRF material is requested, printed, copied off the BP, or handled as
