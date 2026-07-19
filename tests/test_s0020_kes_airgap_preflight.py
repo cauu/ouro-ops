@@ -17,6 +17,11 @@ KES_VKEY = {
     "description": "S0020 disposable mock KES vkey",
     "cborHex": "582065666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f8081828384",
 }
+ACTIVE_KES_VKEY = {
+    "type": "KesVerificationKey_ed25519_kes_2^6",
+    "description": "S0020 current active KES vkey",
+    "cborHex": "5820" + "11" * 32,
+}
 OPCERT = {
     "type": "NodeOperationalCertificate",
     "description": "S0020 disposable mock opcert",
@@ -135,7 +140,10 @@ def main():
         "set -euo pipefail\n"
         "printf '%s\\n' \"$*\" >>\"$OURO_TEST_DOCKER_LOG\"\n"
         "case \"$*\" in\n"
-        "  *kes.vkey*) printf '%s\\n' \"$OURO_TEST_KES_VKEY\" ;;\n"
+        "  *'.ouro-kes-stage/kes.vkey'*) printf '%s\\n' \"$OURO_TEST_KES_VKEY\" ;;\n"
+        "  *'head -c 65537 /opt/cardano/config/keys/kes.vkey'*) printf '%s\\n' \"$OURO_TEST_ACTIVE_KES_VKEY\" ;;\n"
+        "  *'.ouro-kes-stage/kes.skey'*)\n"
+        "    if [[ \"$*\" == *'stat -c %a'* ]]; then printf '600\\n'; else exit 0; fi ;;\n"
         "  *kes-period-info*)\n"
         "    cat >\"$OURO_TEST_CAPTURED_OPCERT\"\n"
         "    printf '%s\\n' \"$OURO_TEST_KES_INFO\" ;;\n"
@@ -149,6 +157,7 @@ def main():
         "OURO_TEST_DOCKER_LOG": str(docker_log),
         "OURO_TEST_CAPTURED_OPCERT": str(captured),
         "OURO_TEST_KES_VKEY": json.dumps(KES_VKEY, separators=(",", ":")),
+        "OURO_TEST_ACTIVE_KES_VKEY": json.dumps(ACTIVE_KES_VKEY, separators=(",", ":")),
         "OURO_TEST_KES_INFO": json.dumps(
             {
                 "qKesCurrentKesPeriod": 100,
@@ -213,7 +222,7 @@ def main():
         path=fakebin,
     )
     assert wrong_key.returncode != 0
-    assert "does not match the target's public kes.vkey" in json.dumps(wrong_key_value)
+    assert "preflight candidate does not match current live state" in json.dumps(wrong_key_value)
 
     stale_info = json.loads(env["OURO_TEST_KES_INFO"])
     stale_info["qKesCurrentKesPeriod"] = 163

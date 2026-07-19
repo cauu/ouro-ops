@@ -74,6 +74,9 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "./target/release-candidate-control/release/ouro-ops" in html
     assert "Replace the leading bare command name ouro-ops" in html
     assert "inspect, invoke, install, overwrite, or fall back" in html
+    assert "already authorizes writing the enclosed local pool-spec.yaml" in html
+    assert "do not ask again for their paths" in html
+    assert "before any remote operational-state or chain write" in html
     assert "The Skill's mandatory first action is therefore exactly:" in html
     assert "ouro-ops skill show" not in html
     assert html.count('data-op="') == 6

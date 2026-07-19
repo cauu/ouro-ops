@@ -9,7 +9,8 @@ manual commands.
 | operation_id | mutability | confirm-token | notes |
 |---|---|---|---|
 | runtime/restart | dangerous | yes | BP restart interrupts forging (§2.6a) |
-| kes-rotation/install-opcert | dangerous | yes | installs only the public opcert via inbox (§2.7); no KES private-key work |
+| kes-rotation/stage-key | dangerous | yes | S0025 stateless path generates a fresh pair in the fixed BP-private stage; no restart or fleet permit |
+| kes-rotation/install-opcert | dangerous | yes | S0025 stateless path activates the staged pair plus matching public opcert with verified rollback |
 | deploy/register-submit | dangerous | yes | irreversible on-chain; tx via inbox |
 | observability/health | read | no | managed read; no mutation, no confirm |
 | troubleshooting/snapshot | read | no | stateless role-readiness baseline; BP output requires KES/opcert evidence before reporting block-production readiness |
@@ -32,8 +33,10 @@ enter the permit-last disruptive flow.
 ## Retired (S0017 tools NOT carried into S0019; disabled by §2.8)
 - config/render — retired until a closed config artifact and real sealed renderer exist; a restart is not rendering.
 - runtime/topology-apply — retired until topology bytes are delivered and verified by a typed intent; a restart is not apply.
-- kes-rotation/rotate — renamed to kes-rotation/install-opcert because ouro installs only the public opcert and never rotates the KES signing key.
-- kes-rotation/generate-offline, kes-rotation/push-offline — the private-key ceremony remains operator-owned and offline.
+- kes-rotation/rotate — ambiguous legacy identity remains retired; S0025 uses explicit
+  `stage-key` then `install-opcert` operations.
+- kes-rotation/generate-offline, kes-rotation/push-offline — legacy resident scripts remain retired;
+  the current stateless typed operations provide the same two boundaries without a target Ouro install.
 - deploy/register-build, deploy/provision, deploy/sync, deploy/start, deploy/takeover — greenfield deploy is a non-goal; the operator stands up a conforming node, ouro adopts.
 - observability/install-gateway — the BP never gets a public endpoint; health is read via the unprivileged diag/read path.
 - upgrade/rollout, upgrade/upgrade-one — replaced by the node-runtime upgrade protocol (§2.10).

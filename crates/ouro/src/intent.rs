@@ -95,15 +95,23 @@ pub fn registry() -> &'static [OperationSpec] {
             may_expose_secret: false,
         },
         OperationSpec {
-            // ouro does not create or rotate the KES signing key. The operator performs that
-            // ceremony offline; this operation installs only the resulting PUBLIC opcert.
+            // Generate the next KES pair inside the BP's fixed private staging directory. Only the
+            // public verification key may leave the target; the signing key remains on the BP.
+            operation_id: "kes-rotation/stage-key",
+            mutability: Mutability::Dangerous,
+            params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
+            touched: &["file:kes-staged-key"],
+            may_expose_secret: false,
+        },
+        OperationSpec {
+            // Activate the staged KES pair together with the matching PUBLIC cold-signed opcert.
             operation_id: "kes-rotation/install-opcert",
             mutability: Mutability::Dangerous,
             params: &[
                 ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true },
                 ParamSpec { name: "opcert", kind: ParamKind::ArtifactRef, required: true },
             ],
-            touched: &["file:opcert", "container:restart"],
+            touched: &["file:kes-key", "file:opcert", "container:restart"],
             may_expose_secret: false,
         },
         OperationSpec {
@@ -414,6 +422,7 @@ mod tests {
 
     #[test]
     fn dangerous_ops_flagged_confirm_required() {
+        assert_eq!(lookup("kes-rotation/stage-key").unwrap().mutability, Mutability::Dangerous);
         assert_eq!(lookup("kes-rotation/install-opcert").unwrap().mutability, Mutability::Dangerous);
         assert_eq!(lookup("runtime/restart").unwrap().mutability, Mutability::Dangerous);
         assert_eq!(lookup("upgrade/preload-image").unwrap().mutability, Mutability::Dangerous);

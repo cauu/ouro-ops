@@ -72,10 +72,11 @@ def main():
             assert "UNPRIVILEGED" not in text
 
     kes = (ROOT / "ouro-skills/kes-rotation/SKILL.md").read_text()
-    assert "does NOT expose remaining KES periods" in kes
+    assert "typed BP observation supplies the current KES period automatically" in " ".join(kes.split())
     assert "Use managed health to determine" not in kes, \
         "KES Skill must not infer KES lifetime from the fixed tip-only health read"
     for phrase in [
+        "kes-rotation/stage-key",
         "ouro-ops kes cold-sign-script",
         "air-gapped machine",
         "Accept back ONLY the PUBLIC `node.cert`",
@@ -83,8 +84,17 @@ def main():
         "changed: false",
         "executor_available: false",
         "signature/key/counter/window evidence",
+        "three-file backup/promotion/restart plan",
+        "takes no fleet permit",
     ]:
         assert phrase in kes, f"KES Skill lacks Phase A/B contract {phrase!r}"
+    for unnecessary_prompt in [
+        "operator-named PUBLIC KES",
+        "Require a current target KES period",
+        "operator-named-cold-sign-script",
+    ]:
+        assert unnecessary_prompt not in kes, f"KES Skill still asks for unnecessary input {unnecessary_prompt!r}"
+    assert "do not ask for another file-write go-ahead or output paths" in " ".join(kes.split())
     assert "ouro-ops kes push" not in kes, "KES Skill still directs the agent to legacy kes push"
     upgrade = (ROOT / "ouro-skills/upgrade/SKILL.md").read_text()
     assert "ouro-ops inbox preview" not in " ".join(upgrade.split())

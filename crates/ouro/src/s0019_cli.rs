@@ -1061,6 +1061,72 @@ struct StatelessTargetPlan {
     observation: Observation,
     policy: convention::Allowlist,
     deploy_transaction: Option<serde_json::Value>,
+    kes_rotation: Option<KesRotationEvidence>,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct KesRotationEvidence {
+    current_period: u64,
+    active_vkey_sha256: String,
+    staged_vkey_sha256: Option<String>,
+}
+
+fn current_kes_period(observation: &Observation) -> Result<u64> {
+    let current = observation
+        .readiness
+        .as_ref()
+        .and_then(|readiness| readiness.kes.as_ref())
+        .map(|kes| kes.current_period)
+        .ok_or_else(|| OuroError::Validation(
+            "BP observation did not provide a typed current KES period".into(),
+        ))?;
+    u64::try_from(current).map_err(|_| {
+        OuroError::Validation("BP observation returned a negative current KES period".into())
+    })
+}
+
+fn require_no_staged_kes_pair(container: &str) -> Result<()> {
+    crate::executor::run_argv(&[
+        "docker".into(), "exec".into(), container.into(), "test".into(), "!".into(),
+        "-e".into(), crate::executor::KES_STAGE_DIR.into(),
+    ]).map_err(|_| OuroError::Validation(
+        "a staged KES rotation already exists on the BP; finish or explicitly recover it before generating another pair".into(),
+    ))
+}
+
+fn read_public_kes_vkey(container: &str, path: &str, context: &str) -> Result<(serde_json::Value, String)> {
+    let raw = crate::executor::run_read_plan(&[vec![
+        "docker".into(), "exec".into(), container.into(), "head".into(), "-c".into(),
+        "65537".into(), path.into(),
+    ]]).map_err(|error| OuroError::Validation(format!("cannot read {context}: {error}")))?;
+    if raw.len() > 65_536 {
+        return Err(OuroError::Validation(format!("{context} exceeds 64 KiB")));
+    }
+    let public_key = crate::kes::parse_kes_verification_key(raw.as_bytes())?;
+    let value: serde_json::Value = serde_json::from_str(&raw).map_err(|error| {
+        OuroError::Validation(format!("{context} is not a JSON text envelope: {error}"))
+    })?;
+    let digest = crate::intent::sha256_hex(&public_key);
+    Ok((value, digest))
+}
+
+fn inspect_staged_kes_pair(container: &str) -> Result<(serde_json::Value, String)> {
+    crate::executor::run_argv(&[
+        "docker".into(), "exec".into(), container.into(), "test".into(), "-s".into(),
+        crate::executor::KES_STAGE_SKEY.into(),
+    ]).map_err(|_| OuroError::Validation(
+        "no complete staged KES signing key exists on the BP; run kes-rotation/stage-key first".into(),
+    ))?;
+    let mode = crate::executor::run_read_plan(&[vec![
+        "docker".into(), "exec".into(), container.into(), "stat".into(), "-c".into(),
+        "%a".into(), crate::executor::KES_STAGE_SKEY.into(),
+    ]]).map_err(|error| OuroError::Validation(format!("cannot inspect staged KES signing-key permissions: {error}")))?;
+    if mode.trim() != "600" {
+        return Err(OuroError::Validation(format!(
+            "staged KES signing key must have mode 600, got {:?}", mode.trim()
+        )));
+    }
+    read_public_kes_vkey(container, crate::executor::KES_STAGE_VKEY, "staged public KES verification key")
 }
 
 fn run_stateless_target_plan(args: &[String]) -> Result<()> {
@@ -1680,7 +1746,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         .touched
         .iter()
         .any(|resource| matches!(*resource, "container:restart" | "container:recreate"));
-    if matches!(op, "kes-rotation/install-opcert" | "deploy/register-submit")
+    if matches!(op, "kes-rotation/stage-key" | "kes-rotation/install-opcert" | "deploy/register-submit")
         && role != Role::Bp
     {
         return Err(OuroError::Validation(
@@ -1728,6 +1794,38 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         }
         _ => {}
     }
+
+    let kes_rotation = match op {
+        "kes-rotation/stage-key" => {
+            let current_period = current_kes_period(&observation)?;
+            require_no_staged_kes_pair(&observation.live.container_id)?;
+            let (_, active_vkey_sha256) = read_public_kes_vkey(
+                &observation.live.container_id,
+                crate::executor::KES_VKEY_DEST,
+                "active public KES verification key",
+            )?;
+            Some(KesRotationEvidence {
+                current_period,
+                active_vkey_sha256,
+                staged_vkey_sha256: None,
+            })
+        }
+        "kes-rotation/install-opcert" => {
+            let current_period = current_kes_period(&observation)?;
+            let (_, active_vkey_sha256) = read_public_kes_vkey(
+                &observation.live.container_id,
+                crate::executor::KES_VKEY_DEST,
+                "active public KES verification key",
+            )?;
+            let (_, staged_vkey_sha256) = inspect_staged_kes_pair(&observation.live.container_id)?;
+            Some(KesRotationEvidence {
+                current_period,
+                active_vkey_sha256,
+                staged_vkey_sha256: Some(staged_vkey_sha256),
+            })
+        }
+        _ => None,
+    };
 
     let payload_machine = payload
         .get("machine")
@@ -1836,6 +1934,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             "min_online_relays": min_online_relays,
         },
         "operation": op,
+        "kes_rotation": kes_rotation,
         "deploy_transaction": deploy_transaction_candidate,
         "recreate_binding": if op == "upgrade/step" { recreate_binding.as_deref() } else { None },
         "runtime_policy": {
@@ -1865,6 +1964,9 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             "restart".into(),
             observation.live.container_id.clone(),
         ]],
+        "kes-rotation/stage-key" => crate::executor::stateless_kes_stage_plan(
+            &observation.live.container_id,
+        ),
         "kes-rotation/install-opcert" => {
             let reference = intent
                 .payload
@@ -1993,6 +2095,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         "upgrade_failure_outcome": upgrade_failure_outcome,
         "rollback_executor_plan": rollback_executor_plan,
         "deploy_transaction": deploy_transaction,
+        "kes_rotation": kes_rotation,
         "runtime_policy": {
             "allowlist_version": allowlist.allowlist_version,
             "signed_allowlist_digest": signed_allowlist_digest,
@@ -2047,6 +2150,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         observation,
         policy: allowlist,
         deploy_transaction,
+        kes_rotation,
     })
 }
 
@@ -2402,7 +2506,7 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
     let current_container = final_plan.observation.live.container_id.clone();
     let current_image = final_plan.observation.live.image_config_digest.clone();
     require_stateless_target_fleet_gate(&final_plan, args)?;
-    let mut live_postcondition: Option<serde_json::Value> = None;
+    let live_postcondition: Option<serde_json::Value>;
 
     match final_plan.op.as_str() {
         "deploy/register-submit" => {
@@ -2569,6 +2673,76 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 "tip_synced": readiness.tip_synced,
             }));
         }
+        "kes-rotation/stage-key" => {
+            let stage = crate::executor::stateless_kes_stage_plan(&current_container);
+            if let Err(error) = crate::executor::run_plan(&stage) {
+                let cleanup = crate::executor::run_plan(
+                    &crate::executor::stateless_kes_stage_cleanup_plan(&current_container),
+                );
+                return Err(OuroError::Validation(format!(
+                    "KES key staging failed before any live key/certificate change ({error}); cleanup={}",
+                    if cleanup.is_ok() { "completed" } else { "failed; fixed staging residue may remain" }
+                )));
+            }
+            let verified_stage = (|| -> Result<serde_json::Value> {
+                let (public_vkey, public_vkey_sha256) = inspect_staged_kes_pair(&current_container)?;
+                let (_, active_vkey_sha256) = read_public_kes_vkey(
+                    &current_container,
+                    crate::executor::KES_VKEY_DEST,
+                    "active public KES verification key",
+                )?;
+                let approved_active_vkey_sha256 = final_plan.kes_rotation.as_ref()
+                    .map(|evidence| evidence.active_vkey_sha256.as_str())
+                    .ok_or_else(|| OuroError::Validation("KES stage candidate lost its active-key binding".into()))?;
+                if active_vkey_sha256 != approved_active_vkey_sha256 {
+                    return Err(OuroError::Validation(
+                        "active KES verification key changed during staging".into(),
+                    ));
+                }
+                let mut post = read_observation(&[])?;
+                canonicalize_typed_mounts(&mut post.live.mounts);
+                require_stateless_post_contract(&final_plan, &post, &current_image)?;
+                stateless_readiness(&final_plan, &post, false)?;
+                let changed = stateless_live_drift_components(
+                    &final_plan.observation,
+                    &post,
+                    &final_plan.op,
+                );
+                if !changed.is_empty() {
+                    return Err(OuroError::Validation(format!(
+                        "KES staging unexpectedly changed active node state: {}",
+                        changed.join(", ")
+                    )));
+                }
+                let current_period = final_plan.kes_rotation.as_ref()
+                    .map(|evidence| evidence.current_period)
+                    .ok_or_else(|| OuroError::Validation("KES stage candidate lost its current period".into()))?;
+                Ok(json!({
+                    "verification": "new_kes_pair_staged_without_activation",
+                    "kes_period": current_period,
+                    "kes_vkey_sha256": public_vkey_sha256,
+                    "kes_vkey": public_vkey,
+                    "kes_skey_location": "target_private_stage_only",
+                    "kes_skey_mode": "0600",
+                    "active_container_unchanged": true,
+                    "active_kes_key_unchanged": true,
+                    "active_opcert_unchanged": true,
+                    "restart_performed": false,
+                }))
+            })();
+            live_postcondition = match verified_stage {
+                Ok(postcondition) => Some(postcondition),
+                Err(error) => {
+                    let cleanup = crate::executor::run_plan(
+                        &crate::executor::stateless_kes_stage_cleanup_plan(&current_container),
+                    );
+                    return Err(OuroError::Validation(format!(
+                        "KES pair was generated but its non-activation postcondition failed ({error}); cleanup={}",
+                        if cleanup.is_ok() { "completed" } else { "failed; fixed staging residue may remain" }
+                    )));
+                }
+            };
+        }
         "kes-rotation/install-opcert" => {
             let (_, payload) = held_payload.as_ref().ok_or_else(|| {
                 OuroError::Validation("validated KES payload was not retained".into())
@@ -2577,12 +2751,16 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 &current_container,
                 &payload.display().to_string(),
             );
-            crate::executor::run_argv(&recovery.commit[0])?;
-            crate::executor::run_argv(&recovery.commit[1]).map_err(|error| {
-                OuroError::Validation(format!(
-                    "KES recovery material could not be prepared; live certificate was not changed: {error}"
-                ))
-            })?;
+            crate::executor::run_plan(&recovery.commit[..3])?;
+            if let Err(error) = crate::executor::run_plan(&recovery.commit[3..6]) {
+                let cleanup = crate::executor::run_plan(
+                    &crate::executor::stateless_kes_prepare_cleanup_plan(&current_container),
+                );
+                return Err(OuroError::Validation(format!(
+                    "KES recovery material could not be prepared; live key/certificate was not changed ({error}); cleanup={}",
+                    if cleanup.is_ok() { "completed" } else { "failed; backup residue retained" }
+                )));
+            }
             let rollback = || {
                 crate::executor::run_plan(&recovery.rollback)?;
                 let restored = read_observation(&[])?;
@@ -2595,10 +2773,23 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                         "KES rollback did not restore the prior opcert digest".into(),
                     ));
                 }
+                let (_, restored_vkey_sha256) = read_public_kes_vkey(
+                    &current_container,
+                    crate::executor::KES_VKEY_DEST,
+                    "restored active public KES verification key",
+                )?;
+                let expected_vkey_sha256 = final_plan.kes_rotation.as_ref()
+                    .map(|evidence| evidence.active_vkey_sha256.as_str())
+                    .ok_or_else(|| OuroError::Validation("KES rollback lost prior-key binding".into()))?;
+                if restored_vkey_sha256 != expected_vkey_sha256 {
+                    return Err(OuroError::Validation(
+                        "KES rollback did not restore the prior active verification key".into(),
+                    ));
+                }
                 crate::executor::run_plan(&recovery.finalize)?;
                 Ok(())
             };
-            if let Err(error) = crate::executor::run_plan(&recovery.commit[2..]) {
+            if let Err(error) = crate::executor::run_plan(&recovery.commit[6..]) {
                 return Err(rollback_failure(&final_plan.op, error, rollback()));
             }
             let verify = (|| {
@@ -2613,6 +2804,19 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                         "installed opcert digest differs from the approved artifact".into(),
                     ));
                 }
+                let (_, active_vkey_sha256) = read_public_kes_vkey(
+                    &current_container,
+                    crate::executor::KES_VKEY_DEST,
+                    "active public KES verification key",
+                )?;
+                let approved_vkey_sha256 = final_plan.kes_rotation.as_ref()
+                    .and_then(|evidence| evidence.staged_vkey_sha256.as_deref())
+                    .ok_or_else(|| OuroError::Validation("KES activation lost staged-key binding".into()))?;
+                if active_vkey_sha256 != approved_vkey_sha256 {
+                    return Err(OuroError::Validation(
+                        "activated KES verification key differs from the approved staged key".into(),
+                    ));
+                }
                 Ok(())
             })();
             if let Err(error) = verify {
@@ -2620,9 +2824,20 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
             }
             crate::executor::run_plan(&recovery.finalize).map_err(|error| {
                 OuroError::Validation(format!(
-                    "KES apply verified but previous-certificate cleanup failed; recovery residue retained: {error}"
+                    "KES apply verified but previous-key/certificate cleanup failed; recovery residue retained: {error}"
                 ))
             })?;
+            live_postcondition = Some(json!({
+                "verification": "staged_kes_pair_and_bound_opcert_activated",
+                "kes_vkey_sha256": final_plan.kes_rotation.as_ref()
+                    .and_then(|evidence| evidence.staged_vkey_sha256.as_deref()),
+                "opcert_sha256": final_plan.intent.payload.get("opcert")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(artifact_ref_digest),
+                "typed_role_readiness": "passed",
+                "restart_performed": true,
+                "rollback_residue_removed": true,
+            }));
         }
         "upgrade/preload-image" => {
             let target = final_plan.intent.payload.get("image").and_then(serde_json::Value::as_str)
@@ -2771,6 +2986,7 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
         },
         "live_postcondition": live_postcondition,
         "persistent_target_state_written": false,
+        "operational_kes_stage_written": final_plan.op == "kes-rotation/stage-key",
         "ephemeral_artifact_removed_by_transport": held_payload.is_some(),
     }));
     result.machine = Some(final_plan.node);
@@ -5741,7 +5957,7 @@ fn parse_cardano_cli_json(raw: &[u8], context: &str) -> Result<serde_json::Value
 }
 
 /// Deep validation for the public opcert carried only by the current ephemeral invocation. It
-/// binds the candidate bytes to the live BP's public KES verification key and protocol window;
+/// binds the candidate bytes to the BP's exact staged public KES verification key and protocol window;
 /// neither the KES signing key nor cold key is opened or transported.
 fn validate_ephemeral_kes_candidate(
     plan: &StatelessTargetPlan,
@@ -5759,22 +5975,22 @@ fn validate_ephemeral_kes_candidate(
     let bytes = std::fs::read(path)?;
     let parsed = crate::kes::parse_operational_certificate(&bytes)?;
     let container = plan.observation.live.container_id.as_str();
-    let vkey_output = std::process::Command::new("docker")
-        .args([
-            "exec", container, "sh", "-c",
-            "test -f /opt/cardano/config/keys/kes.vkey && head -c 65537 /opt/cardano/config/keys/kes.vkey",
-        ])
-        .output()
-        .map_err(|error| OuroError::Validation(format!("cannot read public KES vkey: {error}")))?;
-    if !vkey_output.status.success() || vkey_output.stdout.len() > 65_536 {
+    let (public_envelope, staged_digest) = inspect_staged_kes_pair(container)?;
+    let public_bytes = serde_json::to_vec(&public_envelope).map_err(|error| {
+        OuroError::Validation(format!("cannot canonicalize staged public KES vkey: {error}"))
+    })?;
+    let public_vkey = crate::kes::parse_kes_verification_key(&public_bytes)?;
+    let approved_staged_digest = plan.kes_rotation.as_ref()
+        .and_then(|evidence| evidence.staged_vkey_sha256.as_deref())
+        .ok_or_else(|| OuroError::Validation("KES candidate lost its staged public-key binding".into()))?;
+    if staged_digest != approved_staged_digest {
         return Err(OuroError::Validation(
-            "matching public /opt/cardano/config/keys/kes.vkey is required before KES apply".into(),
+            "staged public KES verification key changed after planning — refused".into(),
         ));
     }
-    let public_vkey = crate::kes::parse_kes_verification_key(&vkey_output.stdout)?;
     if public_vkey != parsed.hot_kes_verification_key {
         return Err(OuroError::Validation(
-            "opcert hot KES key does not match the target's public kes.vkey — refused".into(),
+            "opcert hot KES key does not match the target's staged public KES vkey — refused".into(),
         ));
     }
     let mut command = std::process::Command::new("docker");

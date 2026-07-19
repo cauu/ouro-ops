@@ -12,8 +12,9 @@
 //! against the ref). The resolved path is a target-side, digest-verified fact — never the agent's
 //! string. If a required artifact is not staged, the op is REFUSED (it never silently degrades to a
 //! bare restart). The artifacts these ops install are PUBLIC (the opcert `node.cert` is a public
-//! certificate; a signed tx is public) — the KES signing key and the air-gapped cold key are NEVER
-//! touched, requested, or transported by this executor (§ category-3 stays sealed).
+//! certificate; a signed tx is public). The current stateless KES executor generates the signing
+//! key only inside its fixed BP-private stage and never reads or transports its contents; the
+//! air-gapped cold key is NEVER touched, requested, or transported.
 //!
 //! `build_plan` returns what the executor WOULD run; the actual `std::process` invocation happens
 //! target-side (as the confined principal). This module is the sealed argv builder + its proof.
@@ -63,7 +64,14 @@ pub struct Port {
 
 /// The converged container layout (§2.2): fixed destinations the sealed executor writes to.
 const KEYS_DIR: &str = "/opt/cardano/config/keys";
+pub const KES_SKEY_DEST: &str = "/opt/cardano/config/keys/kes.skey";
+pub const KES_VKEY_DEST: &str = "/opt/cardano/config/keys/kes.vkey";
+pub const KES_STAGE_DIR: &str = "/opt/cardano/config/keys/.ouro-kes-stage";
+pub const KES_STAGE_SKEY: &str = "/opt/cardano/config/keys/.ouro-kes-stage/kes.skey";
+pub const KES_STAGE_VKEY: &str = "/opt/cardano/config/keys/.ouro-kes-stage/kes.vkey";
 const OPCERT_DEST: &str = "/opt/cardano/config/keys/node.cert";
+const KES_SKEY_PREVIOUS: &str = "/opt/cardano/config/keys/kes.skey.ouro-prev";
+const KES_VKEY_PREVIOUS: &str = "/opt/cardano/config/keys/kes.vkey.ouro-prev";
 const OPCERT_PREVIOUS: &str = "/opt/cardano/config/keys/node.cert.ouro-prev";
 const SOCKET: &str = "/ipc/node.socket";
 /// Where a signed tx artifact is staged INSIDE the container before submit (ephemeral, public tx).
@@ -150,9 +158,8 @@ pub fn build_plan(
             argv.extend(net_flags(&att.immutable.network)?);
             Ok(vec![argv])
         }
-        // Install the digest-resolved opcert (public `node.cert`) into the keys mount,
-        // then restart. NEVER touches the KES signing key or the air-gapped cold key — the operator
-        // builds the opcert air-gapped and stages it; this executor only installs the public cert.
+        // Legacy resident-path projection. Current public KES flow uses the stateless staged-pair
+        // executor below; this older transaction shape remains only for migration tests.
         "kes-rotation/install-opcert" => {
             let opcert = resolve_artifact(
                 intent,
@@ -317,21 +324,61 @@ pub fn recreate_argv(spec: &RecreateSpec, cid: &str, image_digest: &str) -> Resu
     Ok(vec![vec![s("docker"), s("rm"), s("-f"), cid.to_string()], run])
 }
 
-/// Keep the previous public opcert beside the live file, outside ephemeral transport cleanup.
+/// Generate a new pair only inside the fixed BP-private stage; no active file is changed.
+pub fn stateless_kes_stage_plan(cid: &str) -> ExecutionPlan {
+    vec![
+        vec![s("docker"), s("exec"), cid.to_string(), s("mkdir"), s("-m"), s("700"), s(KES_STAGE_DIR)],
+        vec![
+            s("docker"), s("exec"), cid.to_string(), s("cardano-cli"), s("node"),
+            s("key-gen-KES"), s("--verification-key-file"), format!("{KES_STAGE_VKEY}.tmp"),
+            s("--signing-key-file"), format!("{KES_STAGE_SKEY}.tmp"),
+        ],
+        vec![s("docker"), s("exec"), cid.to_string(), s("test"), s("-s"), format!("{KES_STAGE_VKEY}.tmp")],
+        vec![s("docker"), s("exec"), cid.to_string(), s("test"), s("-s"), format!("{KES_STAGE_SKEY}.tmp")],
+        vec![s("docker"), s("exec"), cid.to_string(), s("chmod"), s("600"), format!("{KES_STAGE_SKEY}.tmp")],
+        vec![s("docker"), s("exec"), cid.to_string(), s("chmod"), s("644"), format!("{KES_STAGE_VKEY}.tmp")],
+        vec![s("docker"), s("exec"), cid.to_string(), s("mv"), format!("{KES_STAGE_SKEY}.tmp"), s(KES_STAGE_SKEY)],
+        vec![s("docker"), s("exec"), cid.to_string(), s("mv"), format!("{KES_STAGE_VKEY}.tmp"), s(KES_STAGE_VKEY)],
+    ]
+}
+
+pub fn stateless_kes_stage_cleanup_plan(cid: &str) -> ExecutionPlan {
+    vec![vec![s("docker"), s("exec"), cid.to_string(), s("rm"), s("-rf"), s(KES_STAGE_DIR)]]
+}
+
+/// Preserve the previous active KES pair and public opcert until the new matched triple is live.
 pub fn stateless_kes_recovery_plan(cid: &str, payload: &str) -> StatelessRecoveryPlan {
     StatelessRecoveryPlan {
         commit: vec![
+            vec![s("docker"), s("exec"), cid.to_string(), s("test"), s("!"), s("-e"), s(KES_SKEY_PREVIOUS)],
+            vec![s("docker"), s("exec"), cid.to_string(), s("test"), s("!"), s("-e"), s(KES_VKEY_PREVIOUS)],
             vec![s("docker"), s("exec"), cid.to_string(), s("test"), s("!"), s("-e"), s(OPCERT_PREVIOUS)],
+            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(KES_SKEY_DEST), s(KES_SKEY_PREVIOUS)],
+            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(KES_VKEY_DEST), s(KES_VKEY_PREVIOUS)],
             vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(OPCERT_DEST), s(OPCERT_PREVIOUS)],
+            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(KES_STAGE_SKEY), s(KES_SKEY_DEST)],
+            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(KES_STAGE_VKEY), s(KES_VKEY_DEST)],
             vec![s("docker"), s("cp"), payload.to_string(), format!("{cid}:{OPCERT_DEST}")],
             vec![s("docker"), s("restart"), cid.to_string()],
         ],
         rollback: vec![
+            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(KES_SKEY_PREVIOUS), s(KES_SKEY_DEST)],
+            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(KES_VKEY_PREVIOUS), s(KES_VKEY_DEST)],
             vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(OPCERT_PREVIOUS), s(OPCERT_DEST)],
             vec![s("docker"), s("restart"), cid.to_string()],
         ],
-        finalize: vec![vec![s("docker"), s("exec"), cid.to_string(), s("rm"), s("-f"), s(OPCERT_PREVIOUS)]],
+        finalize: vec![
+            vec![s("docker"), s("exec"), cid.to_string(), s("rm"), s("-f"), s(KES_SKEY_PREVIOUS), s(KES_VKEY_PREVIOUS), s(OPCERT_PREVIOUS)],
+            vec![s("docker"), s("exec"), cid.to_string(), s("rm"), s("-rf"), s(KES_STAGE_DIR)],
+        ],
     }
+}
+
+pub fn stateless_kes_prepare_cleanup_plan(cid: &str) -> ExecutionPlan {
+    vec![vec![
+        s("docker"), s("exec"), cid.to_string(), s("rm"), s("-f"),
+        s(KES_SKEY_PREVIOUS), s(KES_VKEY_PREVIOUS), s(OPCERT_PREVIOUS),
+    ]]
 }
 
 /// Preserve the prior container as `<name>.ouro-prev` until the replacement is live-verified.
@@ -904,19 +951,32 @@ mod tests {
     }
 
     #[test]
-    fn stateless_kes_keeps_previous_cert_outside_ephemeral_payload_dir() {
+    fn stateless_kes_keeps_previous_pair_and_cert_outside_ephemeral_payload_dir() {
         let plan = stateless_kes_recovery_plan("cid", "/tmp/ouro-run.123/public-payload");
-        assert_eq!(plan.commit[0], vec![
-            "docker", "exec", "cid", "test", "!", "-e", OPCERT_PREVIOUS,
-        ]);
-        assert!(plan.commit[1].iter().any(|arg| arg == OPCERT_PREVIOUS));
-        assert!(plan.rollback[0].iter().any(|arg| arg == OPCERT_PREVIOUS));
-        assert!(plan.finalize[0].iter().any(|arg| arg == OPCERT_PREVIOUS));
-        assert!(plan.commit.iter().skip(2).flatten()
+        for previous in [KES_SKEY_PREVIOUS, KES_VKEY_PREVIOUS, OPCERT_PREVIOUS] {
+            assert!(plan.commit.iter().flatten().any(|arg| arg == previous));
+            assert!(plan.rollback.iter().flatten().any(|arg| arg == previous));
+            assert!(plan.finalize.iter().flatten().any(|arg| arg == previous));
+        }
+        assert!(plan.commit.iter().skip(6).flatten()
             .any(|arg| arg == "/tmp/ouro-run.123/public-payload"));
+        assert!(plan.commit.iter().flatten().any(|arg| arg == KES_STAGE_SKEY));
+        assert!(plan.commit.iter().flatten().any(|arg| arg == KES_STAGE_VKEY));
         assert!(plan.commit.iter().chain(&plan.rollback).chain(&plan.finalize).flatten()
             .filter(|arg| arg.contains("ouro-run.123"))
             .all(|arg| arg.ends_with("public-payload")));
+    }
+
+    #[test]
+    fn stateless_kes_stage_generates_only_in_the_fixed_private_stage() {
+        let plan = stateless_kes_stage_plan("cid");
+        let encoded = serde_json::to_string(&plan).unwrap();
+        assert!(encoded.contains("key-gen-KES"));
+        assert!(encoded.contains(KES_STAGE_SKEY));
+        assert!(encoded.contains(KES_STAGE_VKEY));
+        assert!(encoded.contains("600"));
+        assert!(!encoded.contains("cold.skey"));
+        assert!(!encoded.contains("/tmp/ouro-run"));
     }
 
     #[test]

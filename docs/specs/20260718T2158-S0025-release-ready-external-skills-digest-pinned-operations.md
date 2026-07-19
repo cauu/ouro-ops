@@ -667,3 +667,68 @@ explicitly deferred to the next spec and are not hidden alternatives for a faile
 - TC-14, TC-22, TC-24 | stack: python+shell | command: `make python-test` | result: pass | note: all
   maintained contract, release-candidate, site, schema, policy, stateless operation, KES, Upgrade and
   Deploy gates pass after the candidate-selection repair
+
+## 16. Third Follow-up Execution Plan (append-only)
+
+- [x] p6-1-fix3 replace opcert-only renewal with a genuine staged KES key rotation whose Phase A
+  derives live period and paths without operator-supplied metadata, keeps the new signing key on the
+  BP, and binds Phase B activation to that exact staged public key
+
+## 17. Third Follow-up Test And Acceptance Criteria (append-only)
+
+- TC-25 Genuine staged KES rotation: a read-only BP plan derives current KES period, active key/cert
+  identity and a fixed private staging destination. Only an exact approved candidate may generate a
+  new KES pair through a closed target command. Apply returns only the public verification-key
+  envelope/hash and period; the staged signing key is mode `0600`, remains on the BP, and no active
+  key, certificate, container identity or readiness state changes.
+- TC-26 Bound activation: Phase B accepts only a cold-signed public `node.cert` whose hot KES key
+  equals the exact staged key and whose counter/window/signature pass current live checks. The final
+  candidate binds both staged-key and certificate identities. Approved activation backs up and
+  atomically promotes the staged signing key plus certificate, restarts once and either verifies
+  readiness or restores the prior pair; no key bytes enter control output, audit, model context or
+  persistent target Ouro state.
+- TC-27 Minimal operator input: the copied KES Prompt asks for no vkey path, period, output path or
+  separate permission to write the inlined pool spec/script. The operator approves only the staged
+  key candidate, executes the generated script on the air-gapped machine and returns public
+  `node.cert`, then separately approves activation. Deterministic local paths and current period are
+  mechanism-derived; incompatible layouts stop rather than falling back to manual secret handling.
+
+## 18. Third Follow-up Execution Log (append-only)
+
+- 2026-07-19 p6-1-fix3 started: operator acceptance exposed that the existing `KES Rotate` Skill
+  requested vkey/period/path metadata and only installed an opcert for an externally supplied key.
+  Cardano's KES lifetime requires a fresh key pair at rotation, so reusing the hot key embedded in
+  the current opcert would optimize the wrong operation. The repair keeps cold signing offline while
+  adding candidate-bound BP staging and paired key/certificate activation.
+- 2026-07-19 p6-1-fix3 completed: the typed registry now separates non-disruptive
+  `kes-rotation/stage-key` from disruptive `kes-rotation/install-opcert`. The first candidate derives
+  the live KES period, generates a fresh pair only in the fixed BP-private stage and returns only
+  public evidence. The second binds the cold-signed certificate to that staged key, backs up and
+  promotes the active signing key, verification key and certificate as one recoverable operation,
+  restarts once and verifies readiness. Skill v6 and the website prompt derive all paths/periods and
+  pre-authorize only the deterministic local public handoff files; remote writes retain separate
+  exact approvals.
+
+## 19. Third Follow-up Validation Evidence (append-only)
+
+- TC-25 | stack: rust+python | command: `cargo test -p ouro` and `python3
+  tests/test_s0025_kes_rotation.py` | result: pass | note: 170 Rust tests plus a stateful fake-target
+  flow prove fixed-path key generation, mode 0600, public-only output and active
+  container/key/certificate invariance during Phase A
+- TC-26 | stack: python | command: `python3 tests/test_s0020_kes_airgap_preflight.py` and `python3
+  tests/test_s0025_kes_rotation.py` | result: pass | note: mock cold-signed node.cert is bound to the
+  exact staged hot key; signature/counter/window preflight passes without mutation, then the fake
+  target backs up/promotes the three-file set, restarts once, verifies the exact active key/cert and
+  removes stage/rollback residue without exposing signing-key bytes
+- TC-27 | stack: ui+python | command: local HTTP browser KES form plus `python3
+  tests/test_skill_docs.py` and `python3 -m pytest -q tests/test_web_generator.py` | result: pass |
+  note: copied prompt contains canonical Skill v6, stage-key and paired candidate CLI; it derives
+  the current period and deterministic paths, explicitly authorizes local public files, contains no
+  old vkey/period/output-path questions and produced zero browser console errors
+- TC-14, TC-22, TC-25, TC-26, TC-27 | stack: rust+python+shell | command: `make python-test`,
+  `cargo clippy -q -p ouro --lib --tests -- -D warnings`, `python3 -m pytest -q`, and `bash
+  ci/l2-integration.sh` | result: pass | note: every maintained contract/stateless-operation/site
+  gate, 13 pytest cases, clippy with warnings denied and complete L2 regression pass
+- TC-13, TC-22 | stack: other | command: `make release-candidate` | result: pass | note: final
+  source rebuilt the paired macOS control CLI and linux/x86_64 ephemeral runner; package, descriptor,
+  candidate, version, release selection and checksums all verify

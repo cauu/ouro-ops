@@ -12,6 +12,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BIN = ROOT / "target/debug/ouro-ops"
 GENESIS = "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81"
+ACTIVE_KES_VKEY = {
+    "type": "KesVerificationKey_ed25519_kes_2^6",
+    "description": "active public KES key",
+    "cborHex": "5820" + "11" * 32,
+}
+STAGED_KES_VKEY = {
+    "type": "KesVerificationKey_ed25519_kes_2^6",
+    "description": "staged public KES key",
+    "cborHex": "5820" + "22" * 32,
+}
 
 
 def observation(container="cid-plan"):
@@ -87,6 +97,17 @@ def observation(container="cid-plan"):
             "sync_progress": "100.00",
             "tip_synced": True,
             "kes_opcert_valid": True,
+            "kes": {
+                "source": "cardano-cli query kes-period-info",
+                "current_period": 100,
+                "start_period": 90,
+                "end_period": 152,
+                "remaining_periods": 52,
+                "opcert_counter_on_disk": 7,
+                "opcert_counter_node_state": 7,
+                "counter_consistent": True,
+                "valid": True,
+            },
             "forging_credentials_ready": True,
             "established_peers": 2,
         },
@@ -162,6 +183,25 @@ def main():
     write_probe(probe, observation())
     probe_env = {"OURO_PROBE_LIB": str(probe)}
 
+    fakebin = home / "fakebin"
+    fakebin.mkdir()
+    docker = fakebin / "docker"
+    docker.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "case \"$*\" in\n"
+        "  *'head -c 65537 /opt/cardano/config/keys/.ouro-kes-stage/kes.vkey'*) "
+        f"printf '%s\\n' '{json.dumps(STAGED_KES_VKEY, separators=(',', ':'))}' ;;\n"
+        "  *'head -c 65537 /opt/cardano/config/keys/kes.vkey'*) "
+        f"printf '%s\\n' '{json.dumps(ACTIVE_KES_VKEY, separators=(',', ':'))}' ;;\n"
+        "  *'stat -c %a /opt/cardano/config/keys/.ouro-kes-stage/kes.skey'*) printf '600\\n' ;;\n"
+        "  *'test -s /opt/cardano/config/keys/.ouro-kes-stage/kes.skey'*) exit 0 ;;\n"
+        "  *'test ! -e /opt/cardano/config/keys/.ouro-kes-stage'*) exit 0 ;;\n"
+        "  *) exit 90 ;;\n"
+        "esac\n"
+    )
+    docker.chmod(0o700)
+
     first, first_value = invoke(
         home,
         *target_args("runtime/restart", "--param", "machine=bp1"),
@@ -216,9 +256,24 @@ def main():
     assert reordered_value["data"]["candidate_hash"] == data["candidate_hash"]
     write_probe(probe, observation())
 
-    # KES planning accepts only the public content reference and shows the fixed durable previous-
-    # certificate guard/backup, install/restart and post-verify cleanup. No signing key, ephemeral
-    # rollback path or arbitrary target path enters the candidate.
+    # Phase A derives the live period and proposes generation only in the fixed private stage.
+    staged, staged_value = invoke(
+        home,
+        *target_args("kes-rotation/stage-key", "--param", "machine=bp1"),
+        env_extra=probe_env,
+        path=fakebin,
+    )
+    assert staged.returncode == 0, (staged, staged_value)
+    assert staged_value["data"]["kes_rotation"]["current_period"] == 100
+    assert staged_value["data"]["kes_rotation"]["staged_vkey_sha256"] is None
+    stage_plan = staged_value["data"]["executor_plan"]
+    assert any("key-gen-KES" in argv for argv in stage_plan)
+    assert any(".ouro-kes-stage/kes.skey.tmp" in arg for argv in stage_plan for arg in argv)
+    assert all("cold.skey" not in arg for argv in stage_plan for arg in argv)
+    assert staged_value["data"]["fleet_permit_required"] is False
+
+    # Phase B binds the exact staged public key and shows backup/promotion/restart/cleanup for the
+    # active KES pair plus public opcert. No key bytes or arbitrary target path enter the plan.
     opcert = "opcert@sha256:" + "c" * 64
     kes, kes_value = invoke(
         home,
@@ -230,8 +285,10 @@ def main():
             f"opcert={opcert}",
         ),
         env_extra=probe_env,
+        path=fakebin,
     )
     assert kes.returncode == 0, kes
+    assert kes_value["data"]["kes_rotation"]["staged_vkey_sha256"]
     kes_plan = kes_value["data"]["executor_plan"]
     assert kes_plan[0] == [
         "docker",
@@ -240,19 +297,15 @@ def main():
         "test",
         "!",
         "-e",
-        "/opt/cardano/config/keys/node.cert.ouro-prev",
+        "/opt/cardano/config/keys/kes.skey.ouro-prev",
     ]
-    assert kes_plan[1][0:6] == ["docker", "exec", "cid-plan", "cp", "-p", "/opt/cardano/config/keys/node.cert"]
-    assert kes_plan[2][0:2] == ["docker", "cp"] and opcert in kes_plan[2][2]
-    assert kes_plan[3] == ["docker", "restart", "cid-plan"]
-    assert kes_plan[4] == [
-        "docker",
-        "exec",
-        "cid-plan",
-        "rm",
-        "-f",
-        "/opt/cardano/config/keys/node.cert.ouro-prev",
-    ]
+    assert any("kes.skey.ouro-prev" in arg for argv in kes_plan for arg in argv)
+    assert any("kes.vkey.ouro-prev" in arg for argv in kes_plan for arg in argv)
+    assert any("node.cert.ouro-prev" in arg for argv in kes_plan for arg in argv)
+    assert any(".ouro-kes-stage/kes.skey" in arg for argv in kes_plan for arg in argv)
+    assert any(argv[0:2] == ["docker", "cp"] and opcert in argv[2] for argv in kes_plan)
+    assert ["docker", "restart", "cid-plan"] in kes_plan
+    assert any(any(".ouro-kes-stage" in arg for arg in argv) and "rm" in argv for argv in kes_plan)
     assert all("ouro-run." not in arg for argv in kes_plan for arg in argv)
 
     # Runtime and KES use the stable inspected layout, not membership in a changing release feed.
@@ -268,7 +321,7 @@ def main():
         ),
     ):
         future_plan, future_value = invoke(
-            home, *target_args(operation, *params), env_extra=probe_env
+            home, *target_args(operation, *params), env_extra=probe_env, path=fakebin
         )
         assert future_plan.returncode == 0, (future_plan, future_value)
         assert future_value["data"]["runtime_policy"]["release_feed_required"] is False
@@ -339,8 +392,6 @@ upgrade:
     runner = home / "runner"
     runner_bytes = b"linux-runner-for-stateless-plan"
     runner.write_bytes(runner_bytes)
-    fakebin = home / "fakebin"
-    fakebin.mkdir()
     transport_log = home / "transport.log"
     ssh = fakebin / "ssh"
     ssh.write_text(

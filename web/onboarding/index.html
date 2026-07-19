@@ -454,7 +454,7 @@
       <span class="go" aria-hidden="true">→</span></button>
     <button type="button" class="op-card" data-op="kes-rotation">
       <span class="tile t-lavender" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9"/><path d="m17 6 3 3"/></svg></span>
-      <span><b>kes-rotation</b><small data-i18n="op.kes-rotation.small">Install a public opcert on the BP</small></span>
+      <span><b>kes-rotation</b><small data-i18n="op.kes-rotation.small">Rotate the BP KES key with an air-gapped cold signature</small></span>
       <span class="go" aria-hidden="true">→</span></button>
     <button type="button" class="op-card" data-op="runtime">
       <span class="tile t-mint" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m10 9 5 3-5 3z"/></svg></span>
@@ -608,7 +608,7 @@ const NET = {
 const OP = {
   upgrade:         { need:[], registration:false, hint:"Select the current signed next release, then upgrade relays first and BP last." },
   deploy:          { need:[], registration:true, hint:"Review and submit one already signed pool-registration transaction through the BP." },
-  "kes-rotation":  { need:[], registration:false, hint:"Install and activate a PUBLIC cold-signed opcert; never handle the KES signing key." },
+  "kes-rotation":  { need:[], registration:false, hint:"Stage a fresh KES pair on the BP, cold-sign only its public key offline, then activate the bound pair and opcert." },
   runtime:         { need:[], registration:false, hint:"Restart one declared node through a live-state-bound typed operation." },
   observability:   { need:[], registration:false, hint:"Read bounded live tip, socket, sync and runtime-policy evidence on every node; no public gateway and no mutation." },
   troubleshooting: { need:[], registration:false, hint:"Start with a role-aware snapshot, then use operator SSH only for remaining evidence gaps." },
@@ -706,7 +706,7 @@ function yaml(d) {
       `  pledge_lovelace: ${d.pledge}`, `  margin: ${d.margin}`, `  cost_lovelace: ${d.cost}`);
   }
   L.push("topology_mode: p2p");
-  const isDisruptive = d.op === "upgrade" || d.op === "runtime";
+  const isDisruptive = d.op === "upgrade" || d.op === "runtime" || d.op === "kes-rotation";
   L.push("machines:");
   for (const m of d.machines) {
     L.push(`  - id: ${m.id}`,`    role: ${m.role}`);
@@ -714,8 +714,8 @@ function yaml(d) {
     L.push(`    ssh: { host: ${m.host}, port: 22, user: cardano, key_ref: "creds://${m.id}" }`);
   }
   // Both upgrade and runtime/restart consume the fleet availability policy. Omitting it from a
-  // Runtime prompt silently selects the schema default (1), which makes a single-relay restart
-  // impossible even after the operator approves its explicit downtime.
+  // Runtime/KES prompts silently selecting the schema default can make a single-relay disruptive
+  // action impossible even after the operator approves its explicit downtime.
   if (isDisruptive) L.push("upgrade:",`  min_online_relays: ${d.quorum}`);
   return L.join("\n")+"\n";
 }
@@ -733,7 +733,10 @@ function prompt(d) {
   return [
 `I am the operator of a Cardano stake pool, asking you to run ONE operation for me with the`,
 `ouro-ops CLI on this machine (my control machine). I stay in the loop: present plans to me and`,
-`wait for my go-ahead in chat before any write.`,
+`wait for my go-ahead in chat before any remote operational-state or chain write. This prompt`,
+`already authorizes writing the enclosed local pool-spec.yaml and any deterministic PUBLIC local`,
+`handoff files explicitly required by the included Skill; do not ask again for their paths or a`,
+`separate local file-write go-ahead.`,
 `Operation: ${opLabel}. Network: ${d.network}. BP=${bp}, relays=${relays}.`,
 ``,
 `This is an unreleased local-acceptance build. For EVERY Ouro command in this prompt, use the exact`,
@@ -745,7 +748,8 @@ function prompt(d) {
 ``,
 `The complete canonical Ouro Skill for this operation follows. Treat it as the procedure and follow`,
 `its compatibility preflight and stop conditions exactly. Do not look for an embedded Skill in the`,
-`CLI. Summarize which steps can write, then WAIT for my go-ahead before any write.`,
+`CLI. Summarize which steps can change remote operational state or the chain, then WAIT for my`,
+`go-ahead before each candidate-bound write required by the Skill.`,
 `BEGIN OURO-SKILL.MD (marker only — do not include)`,
 skill.content.trimEnd(),
 `END OURO-SKILL.MD (marker only — do not include)`,
@@ -793,11 +797,11 @@ const I18N = {
     "s2.title":"Pick an operation","s2.sub":"The form asks only for what that operation needs, generates everything locally, and gives you one prompt to paste into your agent.",
     "op.upgrade.small":"Signed exact-digest N→N+1 upgrade",
     "op.deploy.small":"Submit a signed pool-registration tx",
-    "op.kes-rotation.small":"Install a public opcert on the BP","op.runtime.small":"Restart a declared node",
+    "op.kes-rotation.small":"Rotate the BP KES key with an air-gapped cold signature","op.runtime.small":"Restart a declared node",
     "op.observability.small":"Fleet-wide bounded health read","op.troubleshooting.small":"Snapshot-first diagnosis",
     "op.upgrade.hint":"Select the current signed next release, then upgrade relays first and BP last.",
     "op.deploy.hint":"Review and submit one already signed pool-registration transaction through the BP.",
-    "op.kes-rotation.hint":"Install and activate a PUBLIC cold-signed opcert; never handle the KES signing key.",
+    "op.kes-rotation.hint":"Stage a fresh KES pair on the BP, cold-sign only its public key offline, then activate the bound pair and opcert; the signing key never leaves the BP.",
     "op.runtime.hint":"Restart one declared node through a live-state-bound typed operation.",
     "op.observability.hint":"Read bounded live tip, socket, sync and runtime-policy evidence on every node; no public gateway and no mutation.",
     "op.troubleshooting.hint":"Start with a role-aware snapshot, then use operator SSH only for remaining evidence gaps.",
@@ -837,11 +841,11 @@ const I18N = {
     "s2.title":"选择操作","s2.sub":"表单只问这个操作用得到的字段,全部本地生成,最后给你一段直接粘给 agent 的 prompt。",
     "op.upgrade.small":"按签名精确摘要 N→N+1 升级",
     "op.deploy.small":"提交已签名的矿池注册交易",
-    "op.kes-rotation.small":"在 BP 安装公开 opcert","op.runtime.small":"重启声明的节点",
+    "op.kes-rotation.small":"通过隔离冷签名轮换 BP 的 KES 密钥","op.runtime.small":"重启声明的节点",
     "op.observability.small":"全池有界健康读取","op.troubleshooting.small":"先快照再排障",
     "op.upgrade.hint":"先选择当前签名的下一可靠版本,再依次升级 relay,最后升级 BP。",
     "op.deploy.hint":"通过 BP 审阅并提交一笔已经签名的矿池注册交易。",
-    "op.kes-rotation.hint":"只安装并激活冷签名后的公开 opcert;绝不处理 KES 签名私钥。",
+    "op.kes-rotation.hint":"在 BP 暂存新的 KES 密钥对，仅离线冷签公开密钥，再激活绑定的密钥对与 opcert；签名私钥不会离开 BP。",
     "op.runtime.hint":"通过绑定实时状态的类型化操作重启一个声明的节点。",
     "op.observability.hint":"读取每个节点有界的实时 tip、socket、同步和运行时策略证据;不安装公网网关,不做变更。",
     "op.troubleshooting.hint":"先运行按角色解释的快照,再仅针对剩余证据缺口使用运维 SSH;修复只能走类型化操作。",
@@ -881,11 +885,11 @@ const I18N = {
     "s2.title":"選擇操作","s2.sub":"表單只問這個操作用得到的欄位,全部本地產生,最後給你一段直接貼給 agent 的 prompt。",
     "op.upgrade.small":"依白名單摘要 N→N+1 升級",
     "op.deploy.small":"提交已簽署的礦池註冊交易",
-    "op.kes-rotation.small":"在 BP 安裝公開 opcert","op.runtime.small":"重新啟動已宣告節點",
+    "op.kes-rotation.small":"透過隔離冷簽署輪換 BP 的 KES 金鑰","op.runtime.small":"重新啟動已宣告節點",
     "op.observability.small":"全池有界健康讀取","op.troubleshooting.small":"先快照再排障",
     "op.upgrade.hint":"先選擇目前簽署的下一可靠版本,再依序升級 relay,最後升級 BP。",
     "op.deploy.hint":"透過 BP 審閱並提交一筆已簽署的礦池註冊交易。",
-    "op.kes-rotation.hint":"只安裝並啟用冷簽署後的公開 opcert;絕不處理 KES 簽署私鑰。",
+    "op.kes-rotation.hint":"在 BP 暫存新的 KES 金鑰對，僅離線冷簽公開金鑰，再啟用綁定的金鑰對與 opcert；簽署私鑰不會離開 BP。",
     "op.runtime.hint":"透過綁定即時狀態的型別化操作重新啟動一個已宣告節點。",
     "op.observability.hint":"讀取每個節點有界的即時 tip、socket、同步與執行期策略證據;不安裝公開閘道,不做變更。",
     "op.troubleshooting.hint":"先執行依角色解讀的快照,再只針對剩餘證據缺口使用運維 SSH;修復只能走型別化操作。",
@@ -925,11 +929,11 @@ const I18N = {
     "s2.title":"操作を選ぶ","s2.sub":"フォームで聞くのはその操作に必要な項目だけ。すべてローカルで生成し、エージェントに貼る prompt をひとつ出力します。",
     "op.upgrade.small":"許可済み N→N+1 アップグレード",
     "op.deploy.small":"署名済みプール登録 Tx を送信",
-    "op.kes-rotation.small":"BP に公開 opcert を導入","op.runtime.small":"宣言済みノードを再起動",
+    "op.kes-rotation.small":"エアギャップ冷署名で BP の KES 鍵をローテーション","op.runtime.small":"宣言済みノードを再起動",
     "op.observability.small":"全ノードの限定ヘルス読取","op.troubleshooting.small":"スナップショット優先診断",
     "op.upgrade.hint":"現在署名されている次の信頼済みリリースを選択し、relay、最後に BP の順で更新します。",
     "op.deploy.hint":"BP を通じて署名済みのプール登録トランザクションを確認し、送信します。",
-    "op.kes-rotation.hint":"コールド署名済みの公開 opcert だけを導入して有効化し、KES 署名秘密鍵は扱いません。",
+    "op.kes-rotation.hint":"BP 上で新しい KES 鍵ペアをステージし、公開鍵だけをオフライン署名してから、対応する鍵ペアと opcert を有効化します。署名秘密鍵は BP から出ません。",
     "op.runtime.hint":"ライブ状態に束縛された型付き操作で宣言済みノードを一台再起動します。",
     "op.observability.hint":"全ノードのライブ tip、socket、同期、ランタイムポリシーを限定的に読み取ります。公開ゲートウェイの追加や変更はありません。",
     "op.troubleshooting.hint":"ロール対応スナップショットを先に実行し、残る証拠不足だけを運用 SSH で調査します。修復は型付き操作だけを使用します。",

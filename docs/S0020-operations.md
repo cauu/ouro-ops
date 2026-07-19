@@ -24,7 +24,8 @@ compatibility preflight. The CLI carries execution mechanisms and no decision Sk
 | `observability/health` | read | none | real BP + relay live read |
 | `troubleshooting/snapshot` | read | none | real role-aware baseline; no overall-health claim |
 | `runtime/restart` | disruptive write | exact confirmation + fleet permit | stop after `--plan` |
-| `kes-rotation/install-opcert` | disruptive public-artifact write | exact confirmation + fleet permit | local preview + target `--plan` only |
+| `kes-rotation/stage-key` | non-disruptive private-key staging | exact confirmation; no fleet permit | target `--plan` only |
+| `kes-rotation/install-opcert` | disruptive matched KES-pair + public-opcert activation | exact confirmation + fleet permit | local preview + target preflight/`--plan` only |
 | `upgrade/preload-image` | non-disruptive exact GHCR pull | exact confirmation | target `--plan` only |
 | `upgrade/step` | disruptive recreate | exact confirmation + fleet permit + signed N→N+1 transition | typed safe refusal / `--plan` only |
 | `deploy/register-submit` | irreversible transaction submission | exact confirmation; no fleet permit | signed transaction preview + target `--plan` only |
@@ -40,8 +41,8 @@ For runtime, KES, upgrade and Deploy, the public sequence is:
 1. Run the operation with `--spec <pool-spec> ... --plan`, without confirmation or permit.
 2. Show the exact returned plan and final `candidate_hash`/`intent_hash`; wait for operator approval.
 3. Mint `ouro-ops confirm create --op <op> --node <id> --intent-hash <final-hash>`.
-4. For a disruptive runtime/KES/upgrade operation, mint `ouro-ops fleet permit create ...` last.
-   Deploy takes no fleet permit.
+4. For a disruptive runtime/KES-activation/upgrade operation, mint `ouro-ops fleet permit create
+   ...` last. KES staging and Deploy take no fleet permit.
 5. Immediately rerun the same operation without `--plan`, adding `--candidate-hash`, the exact
    confirmation and (when required) fleet permit. KES and Deploy artifact operations also add
    `--artifact-file`; Upgrade never accepts an image artifact.
@@ -63,6 +64,13 @@ fetch and verify the document again; a changed release policy changes the candid
 the old approval. No command writes a release cache or target policy file.
 
 ## Public artifacts
+
+KES rotation first runs `kes-rotation/stage-key`. The target derives the current KES period and
+generates a fresh pair in a fixed BP-private staging directory; only the public verification-key
+envelope/hash leaves the BP. After the offline cold-signing handoff, `install-opcert` requires the
+returned certificate to name that exact staged public key. Approved activation backs up and
+promotes `kes.skey`, `kes.vkey` and `node.cert` together, restarts once, verifies typed readiness,
+and restores the previous triple on failure.
 
 Use `ouro-ops inbox preview --type opcert|tx --file <operator-named-file>` on control. It validates
 the public artifact and returns a content-addressed reference without writing an inbox. Put that ref

@@ -1227,8 +1227,9 @@ fn command_usage(command: &str) -> Option<&'static str> {
                       confirm adopt create --node <id> --candidate-hash <hash> --host-key <sha256>\n  \
                       Mints a one-time approval bound to the exact S0020 candidate/intent; the adopt \
                       form is legacy migration only.",
-        "kes" => "ouro-ops kes cold-sign-script --kes-vkey <pub> --kes-period <n> | counter status --state <json> \
-                  | generate | push\n  Public opcert install runs via `op run kes-rotation/install-opcert`; see the Skill.",
+        "kes" => "ouro-ops kes cold-sign-script --kes-vkey <pub> --kes-period <n>\n  \
+                  Rotation runs via `op run kes-rotation/stage-key`, the air-gapped public-key \
+                  handoff, then `op run kes-rotation/install-opcert`; see the Skill.",
         "deploy" => "ouro-ops deploy cold-sign-script --tx-body <path> --cold-key <role> [--cold-key <role>...] \
                      [--era conway] [--testnet-magic <n>|--mainnet]",
         "release" => "ouro-ops release select --platform <linux/amd64|linux/arm64> \
