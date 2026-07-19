@@ -105,6 +105,9 @@ def main():
         "historical test that stopped after this preflight",
         "a real BP container restart",
         "actually activated",
+        "node_state_counter_status: no_blocks_minted_yet",
+        "cold_identity_bound: true",
+        "ordinary BP readiness remains",
         "takes no fleet permit",
         "already invalid/expired active",
         "not Phase-A success gates",
@@ -122,6 +125,7 @@ def main():
     assert "do not ask for another file-write go-ahead or any output path" in " ".join(kes.split())
     assert "<operator-named-public-opcert>" not in kes
     assert "substitute a mock certificate" in kes
+    assert "Do not treat null as zero" in kes
     assert ".discarded-*` copy after success" in kes
     assert "ouro-ops kes push" not in kes, "KES Skill still directs the agent to legacy kes push"
     upgrade = (ROOT / "ouro-skills/upgrade/SKILL.md").read_text()

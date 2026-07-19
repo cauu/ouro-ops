@@ -1,5 +1,5 @@
 ---
-skill_version: 12
+skill_version: 13
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -31,6 +31,11 @@ reads or prints it.
 - Artifact preflight streams the exact public opcert to a one-shot runner, checks its cold-key
   signature, exact staged hot KES key, counter and live KES window, then returns `changed: false`
   with no confirmation, permit or executor. It cannot install, back up or restart anything.
+- A `null` live node-state opcert counter means `no_blocks_minted_yet`, not missing evidence. Ouro
+  accepts it only when a bounded read of the fixed public active `node.cert` proves the same cold
+  key, a strictly lower active counter and an unchanged candidate-bound active artifact digest.
+  This exception is scoped to the reviewed install transaction; ordinary BP readiness remains
+  fail-closed until protocol state exposes a counter.
 - Activation rechecks signed runtime policy, BP role, network/genesis, current container, active
   pair, staged pair and opcert immediately before backup/promotion/restart. Failure restores the
   previous KES signing key, verification key and public opcert and verifies readiness.
@@ -121,7 +126,9 @@ reads or prints it.
   <pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert --artifact-preflight`. Require the same
   candidate plus valid
   signature/key/counter/window evidence, `changed: false`, `executor_available: false`, and no
-  confirmation or permit consumption.
+  confirmation or permit consumption. Accept `node_state_counter_status: no_blocks_minted_yet`
+  only together with `cold_identity_bound: true`, the verified `active_opcert_counter`, and a
+  strictly greater candidate counter. A null status by itself is never sufficient.
 - This is the production workflow. The historical test that stopped after this preflight was only
   an acceptance boundary; it is not a runtime stop condition. Once the real returned certificate
   passes preflight, present the production commit below and continue after exact operator approval.
@@ -155,6 +162,9 @@ reads or prints it.
   BP, or approval/permit is absent. A complete existing staged pair requires an explicit operator
   continue/discard decision; an incomplete, unreadable or incorrectly permissioned staged pair is a
   stop and must not enter the complete-stage discard flow.
+- Stop if the cardano-cli node-state counter field is absent/malformed, or if a null value lacks a
+  verified active-opcert cold identity and strictly increasing counter. Do not treat null as zero,
+  skip the counter check or use Ouro's fleet `pool_id` as a Cardano cold-key identity.
 - Stop if the deterministic pending directory is incomplete, tampered, contains a symlink, nested
   or unknown entry, or is bound to a different staged key/period/platform/version. Do not rename it
   or create a second handoff directory as a workaround.

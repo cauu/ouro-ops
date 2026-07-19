@@ -1116,3 +1116,88 @@ restrictions and must not be removed.
   candidate exposes the real staged-key → deterministic handoff → install-opcert workflow; website
   prompt contains confirmation, last-minted fleet permit and actual-activation postconditions and
   contains no mock or stop-before-activation instruction.
+
+## 48. Ninth Follow-up Requirement And Design (append-only)
+
+Production KES artifact preflight against `cardano-cli 10.14.0.0` returned a valid, parseable
+`kes-period-info` record whose `qKesNodeStateOperationalCertificateNumber` was JSON `null`. Ouro
+currently collapses absent, null and malformed values into `omitted`, refusing a valid
+`OpCertNoBlocksMintedYet` protocol state. The probe independently calls `int(null)`, discards the
+entire KES evidence object and would make post-activation generic readiness fail and roll back even
+after a corrected preflight.
+
+Ouro must parse the node-state counter as a closed evidence type: unsigned integer `Present(n)`, or
+JSON null `NoBlocksMintedYet`. An absent key is a cardano-cli schema incompatibility; any other type,
+negative number or out-of-range number is malformed output. Present-counter validation retains the
+existing candidate/on-disk/window and `node_state <= on_disk <= node_state + 1` contract.
+
+The null path must remain fail-closed through an independent public pool identity binding. The typed
+operation reads only the fixed, public active `/opt/cardano/config/keys/node.cert` through a bounded
+container read, parses and verifies its cold signature, and requires the candidate and active
+certificates to have the same cold verification key, candidate counter strictly greater than the
+active certificate counter, candidate counter equal to the on-disk counter, valid KES window and
+candidate hot key equal to the staged KES key. `pool_binding.pool_id` is not a Cardano pool ID and
+must not be used for this check. Missing, malformed or signature-invalid active opcert remains a
+refusal.
+
+The probe must preserve null as `opcert_counter_node_state: null` and
+`counter_status: no_blocks_minted_yet`, while keeping ordinary `kes_opcert_valid` and
+`forging_credentials_ready` fail-closed. Only `install-opcert` postcondition may combine its
+retained candidate-bound null-path preflight evidence with the installed artifact digest, activated
+staged vkey, fixed credential files, container/socket/network/genesis/tip evidence and period/on-disk
+facts to satisfy activation readiness. Any mismatch must execute the existing rollback.
+
+Recovery constraints: do not contact the production BP during implementation; do not re-run cold
+signing, advance the counter, regenerate/stage keys or alter the operator's current `node.cert`.
+After rebuilding, the operator re-plans and preflights that same returned file and staged pair, then
+gives a fresh activation approval only after the complete preflight passes.
+
+## 49. Ninth Follow-up Execution Plan And Acceptance (append-only)
+
+- [~] p6-1-fix9 model no-blocks-minted KES counter evidence with cold-identity binding and scoped
+  activation readiness
+- TC-39 KES counter parsing and preflight: integer node-state retains current behavior; absent is a
+  schema-incompatible refusal; null plus matching verified active cold key and strictly advanced
+  counter passes; wrong cold key, non-advanced counter, invalid active signature and malformed
+  values refuse. Every preflight remains `changed:false`, executor-free and consumes neither
+  confirmation nor permit.
+- TC-40 Probe and activation: probe preserves `no_blocks_minted_yet` and the remaining KES facts
+  without globally declaring the BP ready. Candidate-bound install can verify and accept a post-state
+  that remains null when artifact/vkey/cold identity/counter/window and ordinary BP readiness all
+  match. Artifact, key, digest, credential or readiness mismatch still invokes rollback.
+
+## 50. Ninth Follow-up Completion And Evidence (append-only)
+
+- [x] p6-1-fix9 model no-blocks-minted KES counter evidence with cold-identity binding and scoped
+  activation readiness
+- 2026-07-19 p6-1-fix9 completed: the typed KES validator now distinguishes integer, null, absent
+  and malformed node-state counter records. Null reads and verifies only the fixed public active
+  opcert, binds its exact observed digest and cold key, and requires candidate counter monotonicity;
+  present integers retain the original protocol-state range checks. The synthetic Ouro fleet
+  `pool_id` is not consulted.
+- The probe now emits `counter_status`, `period_valid` and preserved null counter evidence. It keeps
+  ordinary KES/forging readiness false for no-blocks-minted. Only the candidate-bound install
+  postcondition may combine its retained preflight evidence with exact installed digest/vkey,
+  credential/layout and live node facts. Failed scoped readiness restores the original active
+  triple and verifies rollback against the bound pre-state rather than requiring it to become newly
+  ready.
+- Skill v13 and the locally built website prompt explicitly accept the null status only with the
+  typed cold-identity/active-counter evidence and forbid null-as-zero or fleet-ID substitution.
+- TC-39 | stack: rust+python | command: `python3
+  tests/test_s0020_kes_airgap_preflight.py`, `cargo test -q -p ouro`, and `cargo clippy -q -p ouro
+  --lib --tests -- -D warnings` | result: pass | note: integer path, valid matching null, absent,
+  malformed, wrong cold key, equal counter, invalid active signature, digest binding and
+  capability-free preflight assertions pass; 173 Rust tests and warnings-denied clippy pass.
+- TC-40 | stack: python+shell | command: `python3 tests/test_probe.py`, `python3
+  tests/test_s0020_stateless_apply.py`, and `python3 tests/test_s0025_kes_rotation.py` | result: pass |
+  note: probe preserves no-blocks-minted without global readiness, null-path production activation
+  succeeds when fully bound, and a deliberate post-mutation readiness mismatch performs and proves
+  live-state rollback before an independent success case.
+- TC-39, TC-40 | stack: ui+python | command: `./web/onboarding/build.sh`, `python3
+  tests/test_skill_docs.py`, `python3 -m pytest -q tests/test_web_generator.py`, `make python-test`,
+  `python3 -m pytest -q`, and `bash ci/l2-integration.sh` | result: pass | note: canonical Skill v13,
+  all maintained operation/site gates, nine website cases, 13 pytest cases and full L2 pass.
+- TC-13, TC-22, TC-39, TC-40 | stack: other | command: `make release-candidate` | result: pass |
+  note: production control CLI and linux/x86_64 runner rebuilt and all package, descriptor, release
+  selection and checksum evidence verified without contacting the real BP or changing the retained
+  staged pair, node.cert or counter.

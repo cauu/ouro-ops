@@ -182,9 +182,21 @@ def kes_facts(s):
         start = int(value["qKesStartKesInterval"])
         end = int(value["qKesEndKesInterval"])
         on_disk = int(value["qKesOnDiskOperationalCertificateNumber"])
-        node_state = int(value["qKesNodeStateOperationalCertificateNumber"])
-        counter_consistent = node_state <= on_disk <= node_state + 1
-        valid = start <= current < end and counter_consistent
+        node_state_raw = value["qKesNodeStateOperationalCertificateNumber"]
+        period_valid = start <= current < end
+        if node_state_raw is None:
+            node_state = None
+            counter_consistent = None
+            counter_status = "no_blocks_minted_yet"
+            # A null node-state counter is meaningful evidence but does not independently bind the
+            # cold pool identity. Only the typed install-opcert transaction may combine it with its
+            # candidate-bound active-opcert check; ordinary readiness remains fail-closed.
+            valid = False
+        else:
+            node_state = int(node_state_raw)
+            counter_consistent = node_state <= on_disk <= node_state + 1
+            counter_status = "present"
+            valid = period_valid and counter_consistent
         return {
             "source": "cardano_cli",
             "current_period": current,
@@ -194,6 +206,8 @@ def kes_facts(s):
             "opcert_counter_on_disk": on_disk,
             "opcert_counter_node_state": node_state,
             "counter_consistent": counter_consistent,
+            "counter_status": counter_status,
+            "period_valid": period_valid,
             "valid": valid,
         }
     except Exception:
@@ -229,6 +243,8 @@ def kes_metric_facts(metrics, tip, genesis):
             "opcert_counter_on_disk": None,
             "opcert_counter_node_state": None,
             "counter_consistent": None,
+            "counter_status": "unavailable",
+            "period_valid": start <= current < end,
             "valid": start <= current < end,
         }
     except Exception:

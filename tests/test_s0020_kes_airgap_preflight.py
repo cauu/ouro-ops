@@ -27,9 +27,29 @@ OPCERT = {
     "description": "S0020 disposable mock opcert",
     "cborHex": (
         "8284582065666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f8081828384"
-        "07186458401ffe2cd67931570cc03b9805fcbe0360e5e14829f3ac2e7b523e7f6f1d3fc5b1"
-        "ef3b6bbc7039235cf8a2f80a06104837eb4a3687fff774d92dd1cf304e0b9e0f582079b556"
-        "2e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664"
+        "07186458404a518ec54511b1cb23bcff75e3100383e1c88fd479773df7b7759b278e4f1e2b"
+        "b960cabb31e72103625072d4e6ebbc8316a84e8fa6445c6a0eaac0c822a942095820ea4a6c"
+        "63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
+    ),
+}
+ACTIVE_OPCERT = {
+    "type": "NodeOperationalCertificate",
+    "description": "S0025 current active opcert",
+    "cborHex": (
+        "82845820111111111111111111111111111111111111111111111111111111111111111106185a"
+        "5840fd2e75c8a0b121ced1de2cd58f4272e90a79b082cc970afd968e3c47d3e93bed192571dd"
+        "6b925eb2b7292dc0aab6f296aa3aab003755ab2a9cdfb079cf0ae20b5820ea4a6c63e29c520a"
+        "bef5507b132ec5f9954776aebebe7b92421eea691446d22c"
+    ),
+}
+WRONG_COLD_ACTIVE_OPCERT = {
+    "type": "NodeOperationalCertificate",
+    "description": "S0025 wrong cold identity fixture",
+    "cborHex": (
+        "82845820111111111111111111111111111111111111111111111111111111111111111106185a"
+        "584020e33d310d381dc9b8064503c00d9bdb2b188e0871339409f63c6fb83e8c1263f6a220ad"
+        "2cc4f146f4d0e282aa18787126e56f9a4391af895939150a98bd230d58201398f62c6d1a457c"
+        "51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca"
     ),
 }
 
@@ -129,7 +149,10 @@ def main():
     assert json.loads(preview.stdout)["data"]["artifact_ref"] == artifact_ref
 
     probe = home / "probe.sh"
-    write_probe(probe, observation())
+    active_opcert_bytes = json.dumps(ACTIVE_OPCERT, separators=(",", ":")).encode()
+    base_observation = observation()
+    base_observation["live"]["kes_opcert_id"] = hashlib.sha256(active_opcert_bytes).hexdigest()
+    write_probe(probe, base_observation)
     fakebin = home / "fakebin"
     fakebin.mkdir()
     docker_log = home / "docker.log"
@@ -143,6 +166,7 @@ def main():
         "  *'exec cid-plan cardano-cli --version'*) printf 'cardano-cli 10.14.0.0 - linux-x86_64 - ghc-9.6\\n' ;;\n"
         "  *'.ouro-kes-stage/kes.vkey'*) printf '%s\\n' \"$OURO_TEST_KES_VKEY\" ;;\n"
         "  *'head -c 65537 /opt/cardano/config/keys/kes.vkey'*) printf '%s\\n' \"$OURO_TEST_ACTIVE_KES_VKEY\" ;;\n"
+        "  *'head -c 65537 /opt/cardano/config/keys/node.cert'*) printf '%s' \"$OURO_TEST_ACTIVE_OPCERT\" ;;\n"
         "  *'.ouro-kes-stage/kes.skey'*)\n"
         "    if [[ \"$*\" == *'stat -c %a'* ]]; then printf '600\\n'; else exit 0; fi ;;\n"
         "  *kes-period-info*)\n"
@@ -159,6 +183,7 @@ def main():
         "OURO_TEST_CAPTURED_OPCERT": str(captured),
         "OURO_TEST_KES_VKEY": json.dumps(KES_VKEY, separators=(",", ":")),
         "OURO_TEST_ACTIVE_KES_VKEY": json.dumps(ACTIVE_KES_VKEY, separators=(",", ":")),
+        "OURO_TEST_ACTIVE_OPCERT": active_opcert_bytes.decode(),
         "OURO_TEST_KES_INFO": json.dumps(
             {
                 "qKesCurrentKesPeriod": 100,
@@ -204,6 +229,9 @@ def main():
     assert value["data"]["validation"]["hot_kes_key_matches_target"] is True
     assert value["data"]["validation"]["counter"] == 7
     assert value["data"]["validation"]["kes_period"] == 100
+    assert value["data"]["validation"]["node_state_counter"] == 7
+    assert value["data"]["validation"]["node_state_counter_status"] == "present"
+    assert value["data"]["validation"]["active_opcert_counter"] is None
     assert value["data"]["executor_available"] is False
     assert value["data"]["confirmation_consumed"] is False
     assert value["data"]["fleet_permit_consumed"] is False
@@ -280,6 +308,81 @@ def main():
     )
     assert bad_signature.returncode != 0
     assert "cold-key signature is invalid" in json.dumps(bad_signature_value)
+
+    def run_node_state_case(kes_info, active_opcert):
+        active_bytes = json.dumps(active_opcert, separators=(",", ":")).encode()
+        observed = observation()
+        observed["live"]["kes_opcert_id"] = hashlib.sha256(active_bytes).hexdigest()
+        write_probe(probe, observed)
+        case_env = {
+            **env,
+            "OURO_TEST_KES_INFO": json.dumps(kes_info, separators=(",", ":")),
+            "OURO_TEST_ACTIVE_OPCERT": active_bytes.decode(),
+        }
+        case_plan, case_plan_value = invoke(
+            home,
+            *target_args(
+                "kes-rotation/install-opcert",
+                "--param", "machine=bp1",
+                "--param", f"opcert={artifact_ref}",
+            ),
+            env_extra=case_env,
+            path=fakebin,
+        )
+        assert case_plan.returncode == 0, (case_plan, case_plan_value)
+        case_args = list(preflight_args)
+        case_args[-1] = case_plan_value["data"]["candidate_hash"]
+        return invoke(home, *case_args, env_extra=case_env, path=fakebin)
+
+    null_info = json.loads(env["OURO_TEST_KES_INFO"])
+    null_info["qKesNodeStateOperationalCertificateNumber"] = None
+    no_blocks, no_blocks_value = run_node_state_case(null_info, ACTIVE_OPCERT)
+    assert no_blocks.returncode == 0, (no_blocks, no_blocks_value)
+    null_validation = no_blocks_value["data"]["validation"]
+    assert null_validation["node_state_counter"] is None
+    assert null_validation["node_state_counter_status"] == "no_blocks_minted_yet"
+    assert null_validation["active_opcert_counter"] == 6
+    assert null_validation["cold_identity_bound"] is True
+    assert no_blocks_value["changed"] is False
+    assert no_blocks_value["data"]["executor_available"] is False
+    assert no_blocks_value["data"]["confirmation_consumed"] is False
+    assert no_blocks_value["data"]["fleet_permit_consumed"] is False
+
+    absent_info = dict(null_info)
+    absent_info.pop("qKesNodeStateOperationalCertificateNumber")
+    absent, absent_value = run_node_state_case(absent_info, ACTIVE_OPCERT)
+    assert absent.returncode != 0
+    assert "schema incompatible" in json.dumps(absent_value)
+
+    malformed_info = dict(null_info)
+    malformed_info["qKesNodeStateOperationalCertificateNumber"] = "none"
+    malformed, malformed_value = run_node_state_case(malformed_info, ACTIVE_OPCERT)
+    assert malformed.returncode != 0
+    assert "must be an unsigned integer or null" in json.dumps(malformed_value)
+
+    wrong_cold, wrong_cold_value = run_node_state_case(null_info, WRONG_COLD_ACTIVE_OPCERT)
+    assert wrong_cold.returncode != 0
+    assert "cold key does not match" in json.dumps(wrong_cold_value)
+
+    equal_counter_active = {**OPCERT, "description": "active equal-counter fixture"}
+    replay, replay_value = run_node_state_case(null_info, equal_counter_active)
+    assert replay.returncode != 0
+    assert "must be greater than verified active opcert counter" in json.dumps(replay_value)
+
+    invalid_active = json.loads(json.dumps(ACTIVE_OPCERT))
+    invalid_cbor = invalid_active["cborHex"]
+    signature_offset = len("8284") + len("5820") + 64 + len("06") + len("185a") + len("5840")
+    invalid_active["cborHex"] = (
+        invalid_cbor[:signature_offset]
+        + ("0" if invalid_cbor[signature_offset] != "0" else "1")
+        + invalid_cbor[signature_offset + 1:]
+    )
+    invalid, invalid_value = run_node_state_case(null_info, invalid_active)
+    assert invalid.returncode != 0
+    assert "cannot establish cold identity" in json.dumps(invalid_value)
+
+    # Subsequent transport checks use the original integer-counter plan and observation.
+    write_probe(probe, base_observation)
 
     # The public control command also remains capability-free: it derives the BP binding from the
     # spec, sends exactly runner || public opcert, and exposes only the closed target preflight argv.

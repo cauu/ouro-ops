@@ -996,6 +996,10 @@ struct ObsKes {
     opcert_counter_node_state: Option<i64>,
     #[serde(default)]
     counter_consistent: Option<bool>,
+    #[serde(default)]
+    counter_status: Option<String>,
+    #[serde(default)]
+    period_valid: Option<bool>,
     valid: bool,
 }
 
@@ -1749,7 +1753,7 @@ fn run_stateless_target_artifact_preflight(args: &[String]) -> Result<()> {
             "ephemeral opcert bytes do not match the candidate-bound artifact reference".into(),
         ));
     }
-    let parsed = validate_ephemeral_kes_candidate(&initial, &path, reference)?;
+    let validation = validate_ephemeral_kes_candidate(&initial, &path, reference)?;
 
     // Deep validation invokes the live protocol query. Re-probe once more and require the exact
     // same capability-free candidate before returning a positive preflight report.
@@ -1776,10 +1780,14 @@ fn run_stateless_target_artifact_preflight(args: &[String]) -> Result<()> {
             "cold_key_signature": "valid",
             "hot_kes_key_matches_target": true,
             "counter_and_live_kes_window": "valid",
-            "counter": parsed.counter,
-            "kes_period": parsed.kes_period,
+            "counter": validation.parsed.counter,
+            "kes_period": validation.parsed.kes_period,
+            "node_state_counter": validation.node_state_counter.value(),
+            "node_state_counter_status": validation.node_state_counter.status(),
+            "active_opcert_counter": validation.active_opcert_counter,
+            "cold_identity_bound": validation.cold_identity_bound,
             "hot_kes_key_sha256": crate::intent::sha256_hex(
-                &parsed.hot_kes_verification_key,
+                &validation.parsed.hot_kes_verification_key,
             ),
         },
         "confirmation_consumed": false,
@@ -2383,6 +2391,77 @@ fn stateless_readiness(
     .evaluate()
 }
 
+fn stateless_kes_activation_readiness(
+    plan: &StatelessTargetPlan,
+    observation: &Observation,
+    validation: &KesCandidateValidation,
+) -> Result<()> {
+    if matches!(
+        validation.node_state_counter,
+        NodeStateCounterEvidence::Present(_)
+    ) {
+        return stateless_readiness(plan, observation, false);
+    }
+    let evidence = observation.readiness.as_ref().ok_or_else(|| {
+        OuroError::Validation(
+            "KES activation postcondition omitted typed readiness evidence".into(),
+        )
+    })?;
+    let kes = evidence.kes.as_ref().ok_or_else(|| {
+        OuroError::Validation(
+            "KES activation postcondition omitted no-blocks-minted KES evidence".into(),
+        )
+    })?;
+    let candidate_counter = i64::try_from(validation.parsed.counter).map_err(|_| {
+        OuroError::Validation("KES candidate counter exceeds probe evidence range".into())
+    })?;
+    let candidate_period = i64::try_from(validation.parsed.kes_period).map_err(|_| {
+        OuroError::Validation("KES candidate period exceeds probe evidence range".into())
+    })?;
+    if kes.source.as_deref() != Some("cardano_cli")
+        || kes.counter_status.as_deref() != Some("no_blocks_minted_yet")
+        || kes.opcert_counter_node_state.is_some()
+        || kes.opcert_counter_on_disk != Some(candidate_counter)
+        || kes.start_period != candidate_period
+        || kes.current_period < kes.start_period
+        || kes.current_period >= kes.end_period
+        || kes.period_valid != Some(true)
+    {
+        return Err(OuroError::Validation(
+            "KES activation no-blocks-minted postcondition does not match the candidate-bound preflight"
+                .into(),
+        ));
+    }
+    if !validation.cold_identity_bound
+        || !evidence.block_producer_configured
+        || !observation.live.has_forging_keys
+        || !observation.live.forging_key_permissions_safe
+    {
+        return Err(OuroError::Validation(
+            "KES activation no-blocks-minted postcondition lacks bound cold identity or safe forging credentials"
+                .into(),
+        ));
+    }
+    crate::readiness::Readiness {
+        role: plan.role,
+        node_running: evidence.node_running,
+        container_id_matches: observation.live.container_id == plan.observation.live.container_id,
+        socket_answers: evidence.socket_answers,
+        network_ok: observation.live.network == plan.network,
+        genesis_ok: observation.live.genesis_hash == plan.genesis,
+        tip_block: evidence.tip_block,
+        tip_block_next: evidence.tip_block_next,
+        tip_synced: evidence.tip_synced,
+        // Candidate-bound null-path evidence satisfies only this activation verification. The
+        // probe deliberately keeps its global readiness booleans false until protocol state has a
+        // counter for this cold key.
+        kes_opcert_valid: true,
+        forging_credentials_ready: true,
+        established_peers: evidence.established_peers,
+    }
+    .evaluate()
+}
+
 fn wait_runtime_restart_readiness(
     plan: &StatelessTargetPlan,
     expected_image: &str,
@@ -2634,6 +2713,7 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
         _ => None,
     };
     let mut held_payload = None;
+    let mut kes_candidate_validation = None;
     if let Some((kind, expected_ref)) = expected_artifact {
         let path = payload_path.as_deref().ok_or_else(|| {
             OuroError::Validation(format!(
@@ -2648,7 +2728,11 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
             ));
         }
         if initial.op == "kes-rotation/install-opcert" {
-            validate_ephemeral_kes_candidate(&initial, path, expected_ref)?;
+            kes_candidate_validation = Some(validate_ephemeral_kes_candidate(
+                &initial,
+                path,
+                expected_ref,
+            )?);
         } else {
             let policy: serde_json::Value = serde_json::from_str(flag(args, "--registration-policy")?)
                 .map_err(|error| OuroError::Validation(format!(
@@ -3026,6 +3110,11 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
             let (_, payload) = held_payload.as_ref().ok_or_else(|| {
                 OuroError::Validation("validated KES payload was not retained".into())
             })?;
+            let candidate_validation = kes_candidate_validation.as_ref().ok_or_else(|| {
+                OuroError::Validation(
+                    "candidate-bound KES preflight evidence was not retained".into(),
+                )
+            })?;
             let recovery = crate::executor::stateless_kes_recovery_plan(
                 &current_container,
                 &payload.display().to_string(),
@@ -3044,10 +3133,9 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 crate::executor::run_plan(&recovery.rollback)?;
                 let restored = read_observation(&[])?;
                 require_stateless_post_contract(&final_plan, &restored, &current_image)?;
-                stateless_readiness(&final_plan, &restored, false)?;
-                if restored.live.kes_opcert_id
-                    != final_plan.observation.live.kes_opcert_id
-                {
+                require_kes_stage_base_availability(&restored)?;
+                require_kes_stage_readiness_invariant(&final_plan.observation, &restored)?;
+                if restored.live.kes_opcert_id != final_plan.observation.live.kes_opcert_id {
                     return Err(OuroError::Validation(
                         "KES rollback did not restore the prior opcert digest".into(),
                     ));
@@ -3074,9 +3162,13 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
             let verify = (|| {
                 let post = read_observation(&[])?;
                 require_stateless_post_contract(&final_plan, &post, &current_image)?;
-                stateless_readiness(&final_plan, &post, false)?;
-                let expected = final_plan.intent.payload.get("opcert")
-                    .and_then(serde_json::Value::as_str).and_then(artifact_ref_digest)
+                stateless_kes_activation_readiness(&final_plan, &post, candidate_validation)?;
+                let expected = final_plan
+                    .intent
+                    .payload
+                    .get("opcert")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(artifact_ref_digest)
                     .ok_or_else(|| OuroError::Validation("KES artifact digest was lost".into()))?;
                 if post.live.kes_opcert_id != expected {
                     return Err(OuroError::Validation(
@@ -3088,12 +3180,17 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                     crate::executor::KES_VKEY_DEST,
                     "active public KES verification key",
                 )?;
-                let approved_vkey_sha256 = final_plan.kes_rotation.as_ref()
+                let approved_vkey_sha256 = final_plan
+                    .kes_rotation
+                    .as_ref()
                     .and_then(|evidence| evidence.staged_vkey_sha256.as_deref())
-                    .ok_or_else(|| OuroError::Validation("KES activation lost staged-key binding".into()))?;
+                    .ok_or_else(|| {
+                        OuroError::Validation("KES activation lost staged-key binding".into())
+                    })?;
                 if active_vkey_sha256 != approved_vkey_sha256 {
                     return Err(OuroError::Validation(
-                        "activated KES verification key differs from the approved staged key".into(),
+                        "activated KES verification key differs from the approved staged key"
+                            .into(),
                     ));
                 }
                 Ok(())
@@ -3122,6 +3219,8 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                     .and_then(serde_json::Value::as_str)
                     .and_then(artifact_ref_digest),
                 "typed_role_readiness": "passed",
+                "node_state_counter_status": candidate_validation.node_state_counter.status(),
+                "cold_identity_bound": candidate_validation.cold_identity_bound,
                 "restart_performed": true,
                 "rollback_residue_removed": true,
                 "staging_residue_removed": true,
@@ -6229,10 +6328,160 @@ fn artifact_ref_digest(reference: &str) -> Option<&str> {
     reference.split_once("@sha256:").map(|(_, digest)| digest)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NodeStateCounterEvidence {
+    Present(u64),
+    NoBlocksMintedYet,
+}
+
+impl NodeStateCounterEvidence {
+    fn status(self) -> &'static str {
+        match self {
+            Self::Present(_) => "present",
+            Self::NoBlocksMintedYet => "no_blocks_minted_yet",
+        }
+    }
+
+    fn value(self) -> Option<u64> {
+        match self {
+            Self::Present(value) => Some(value),
+            Self::NoBlocksMintedYet => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct KesCandidateValidation {
+    parsed: crate::kes::ParsedOperationalCertificate,
+    node_state_counter: NodeStateCounterEvidence,
+    active_opcert_counter: Option<u64>,
+    cold_identity_bound: bool,
+}
+
 fn json_u64(value: &serde_json::Value, key: &str) -> Result<u64> {
-    value.get(key).and_then(serde_json::Value::as_u64).ok_or_else(|| {
-        OuroError::Validation(format!("cardano-cli KES validation omitted {key}"))
-    })
+    match value.get(key) {
+        None => Err(OuroError::Validation(format!(
+            "cardano-cli KES schema incompatible: omitted {key}"
+        ))),
+        Some(raw) => raw.as_u64().ok_or_else(|| {
+            OuroError::Validation(format!(
+                "cardano-cli KES output malformed: {key} must be an unsigned integer"
+            ))
+        }),
+    }
+}
+
+fn node_state_counter(value: &serde_json::Value) -> Result<NodeStateCounterEvidence> {
+    const KEY: &str = "qKesNodeStateOperationalCertificateNumber";
+    match value.get(KEY) {
+        None => Err(OuroError::Validation(format!(
+            "cardano-cli KES schema incompatible: omitted {KEY}"
+        ))),
+        Some(serde_json::Value::Null) => Ok(NodeStateCounterEvidence::NoBlocksMintedYet),
+        Some(raw) => raw
+            .as_u64()
+            .map(NodeStateCounterEvidence::Present)
+            .ok_or_else(|| {
+                OuroError::Validation(format!(
+                    "cardano-cli KES output malformed: {KEY} must be an unsigned integer or null"
+                ))
+            }),
+    }
+}
+
+fn read_active_public_opcert(
+    container: &str,
+) -> Result<(crate::kes::ParsedOperationalCertificate, String)> {
+    let raw = crate::executor::run_read_plan(&[vec![
+        "docker".into(),
+        "exec".into(),
+        container.into(),
+        "head".into(),
+        "-c".into(),
+        "65537".into(),
+        "/opt/cardano/config/keys/node.cert".into(),
+    ]])
+    .map_err(|error| {
+        OuroError::Validation(format!(
+            "cannot read fixed public active node.cert for cold identity binding: {error}"
+        ))
+    })?;
+    if raw.len() > 65_536 {
+        return Err(OuroError::Validation(
+            "fixed public active node.cert exceeds 64 KiB".into(),
+        ));
+    }
+    let parsed = crate::kes::parse_operational_certificate(raw.as_bytes()).map_err(|error| {
+        OuroError::Validation(format!(
+            "fixed public active node.cert cannot establish cold identity: {error}"
+        ))
+    })?;
+    Ok((parsed, crate::intent::sha256_hex(raw.as_bytes())))
+}
+
+fn validate_kes_protocol_facts(
+    facts: &serde_json::Value,
+    parsed: crate::kes::ParsedOperationalCertificate,
+    container: &str,
+    expected_active_opcert_digest: &str,
+) -> Result<KesCandidateValidation> {
+    let current = json_u64(facts, "qKesCurrentKesPeriod")?;
+    let start = json_u64(facts, "qKesStartKesInterval")?;
+    let end = json_u64(facts, "qKesEndKesInterval")?;
+    let on_disk = json_u64(facts, "qKesOnDiskOperationalCertificateNumber")?;
+    let node_state = node_state_counter(facts)?;
+    if parsed.counter != on_disk || parsed.kes_period != start || current < start || current >= end
+    {
+        return Err(OuroError::Validation(format!(
+            "prospective opcert is stale/out-of-period/inconsistent: counter={on_disk}, node_state={}, period={start}..{end}, current={current}",
+            node_state
+                .value()
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "null".into())
+        )));
+    }
+    match node_state {
+        NodeStateCounterEvidence::Present(value)
+            if on_disk < value || on_disk > value.saturating_add(1) =>
+        {
+            Err(OuroError::Validation(format!(
+                "prospective opcert is stale/out-of-period/inconsistent: counter={on_disk}, node_state={value}, period={start}..{end}, current={current}"
+            )))
+        }
+        NodeStateCounterEvidence::Present(_) => Ok(KesCandidateValidation {
+            parsed,
+            node_state_counter: node_state,
+            active_opcert_counter: None,
+            cold_identity_bound: true,
+        }),
+        NodeStateCounterEvidence::NoBlocksMintedYet => {
+            let (active, active_digest) = read_active_public_opcert(container)?;
+            if active_digest != expected_active_opcert_digest {
+                return Err(OuroError::Validation(
+                    "fixed public active node.cert changed after the candidate-bound observation"
+                        .into(),
+                ));
+            }
+            if active.cold_verification_key != parsed.cold_verification_key {
+                return Err(OuroError::Validation(
+                    "prospective opcert cold key does not match the verified active opcert while protocol state has no counter"
+                        .into(),
+                ));
+            }
+            if parsed.counter <= active.counter {
+                return Err(OuroError::Validation(format!(
+                    "prospective opcert counter {} must be greater than verified active opcert counter {} while protocol state has no counter",
+                    parsed.counter, active.counter
+                )));
+            }
+            Ok(KesCandidateValidation {
+                parsed,
+                node_state_counter: node_state,
+                active_opcert_counter: Some(active.counter),
+                cold_identity_bound: true,
+            })
+        }
+    }
 }
 
 /// `cardano-cli query kes-period-info --output-json` writes human ✓/✗ diagnostics before its JSON
@@ -6259,7 +6508,7 @@ fn validate_ephemeral_kes_candidate(
     plan: &StatelessTargetPlan,
     path: &Path,
     reference: &str,
-) -> Result<crate::kes::ParsedOperationalCertificate> {
+) -> Result<KesCandidateValidation> {
     let digest = artifact_ref_digest(reference).ok_or_else(|| {
         OuroError::Validation("KES intent has a malformed artifact reference".into())
     })?;
@@ -6319,23 +6568,12 @@ fn validate_ephemeral_kes_candidate(
         )));
     }
     let facts = parse_cardano_cli_json(&output.stdout, "cardano-cli KES result")?;
-    let current = json_u64(&facts, "qKesCurrentKesPeriod")?;
-    let start = json_u64(&facts, "qKesStartKesInterval")?;
-    let end = json_u64(&facts, "qKesEndKesInterval")?;
-    let on_disk = json_u64(&facts, "qKesOnDiskOperationalCertificateNumber")?;
-    let node_state = json_u64(&facts, "qKesNodeStateOperationalCertificateNumber")?;
-    if parsed.counter != on_disk
-        || parsed.kes_period != start
-        || current < start
-        || current >= end
-        || on_disk < node_state
-        || on_disk > node_state.saturating_add(1)
-    {
-        return Err(OuroError::Validation(format!(
-            "prospective opcert is stale/out-of-period/inconsistent: counter={on_disk}, node_state={node_state}, period={start}..{end}, current={current}"
-        )));
-    }
-    Ok(parsed)
+    validate_kes_protocol_facts(
+        &facts,
+        parsed,
+        container,
+        &plan.observation.live.kes_opcert_id,
+    )
 }
 
 /// Validate a staged PUBLIC opcert against the target's PUBLIC KES vkey and live protocol state.
@@ -6412,23 +6650,13 @@ fn validate_kes_candidate(
         )));
     }
     let facts = parse_cardano_cli_json(&output.stdout, "cardano-cli KES result")?;
-    let current = json_u64(&facts, "qKesCurrentKesPeriod")?;
-    let start = json_u64(&facts, "qKesStartKesInterval")?;
-    let end = json_u64(&facts, "qKesEndKesInterval")?;
-    let on_disk = json_u64(&facts, "qKesOnDiskOperationalCertificateNumber")?;
-    let node_state = json_u64(&facts, "qKesNodeStateOperationalCertificateNumber")?;
-    if parsed.counter != on_disk
-        || parsed.kes_period != start
-        || current < start
-        || current >= end
-        || on_disk < node_state
-        || on_disk > node_state.saturating_add(1)
-    {
-        return Err(OuroError::Validation(format!(
-            "prospective opcert is stale/out-of-period/inconsistent: counter={on_disk}, node_state={node_state}, period={start}..{end}, current={current}"
-        )));
-    }
-    Ok(parsed)
+    Ok(validate_kes_protocol_facts(
+        &facts,
+        parsed,
+        &att.state.container_id,
+        &att.state.kes_opcert_id,
+    )?
+    .parsed)
 }
 
 fn load_attestation(paths: &ConfigPaths, node: &str, local: bool) -> Result<AdoptionAttestation> {

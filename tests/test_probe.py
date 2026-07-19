@@ -47,7 +47,7 @@ def main():
         '  "exec cid-xyz") shift 2; # sh -c ...\n'
         '     if echo "$*" | grep -q "cardano-cli query tip"; then echo "{\\"block\\":9,\\"slot\\":10,\\"era\\":\\"Conway\\",\\"syncProgress\\":\\"100.00\\"}";\n'
         '     elif echo "$*" | grep -q "hash genesis-file"; then echo "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81";\n'
-        '     elif echo "$*" | grep -q "kes-period-info"; then if test -z "$OURO_TEST_KES_EMPTY"; then printf "✓ period is valid\\n✓ counter agrees\\n{\\"qKesCurrentKesPeriod\\":10,\\"qKesStartKesInterval\\":9,\\"qKesEndKesInterval\\":20,\\"qKesOnDiskOperationalCertificateNumber\\":5,\\"qKesNodeStateOperationalCertificateNumber\\":5}\\n"; fi;\n'
+        '     elif echo "$*" | grep -q "kes-period-info"; then if test -z "$OURO_TEST_KES_EMPTY"; then if test -n "$OURO_TEST_KES_NULL"; then node_state=null; else node_state=5; fi; printf "✓ period is valid\\n✓ counter agrees\\n{\\"qKesCurrentKesPeriod\\":10,\\"qKesStartKesInterval\\":9,\\"qKesEndKesInterval\\":20,\\"qKesOnDiskOperationalCertificateNumber\\":5,\\"qKesNodeStateOperationalCertificateNumber\\":%s}\\n" "$node_state"; fi;\n'
         '     elif echo "$*" | grep -q "cat /opt/cardano/config/mainnet/shelley-genesis.json"; then echo \'{"slotsPerKESPeriod":2}\';\n'
         '     elif echo "$*" | grep -q "ss -Htn state established"; then echo 2;\n'
         '     elif echo "$*" | grep -q netstat; then echo 0;\n'
@@ -113,7 +113,8 @@ def main():
     assert readiness["kes"] == {
         "source": "cardano_cli", "current_period": 10, "start_period": 9, "end_period": 20,
         "remaining_periods": 10, "opcert_counter_on_disk": 5,
-        "opcert_counter_node_state": 5, "counter_consistent": True, "valid": True,
+        "opcert_counter_node_state": 5, "counter_consistent": True,
+        "counter_status": "present", "period_valid": True, "valid": True,
     }
     assert readiness["established_peers"] == 2, "ss-only Blink Labs image peers must be detected"
     assert obs["recreate"] is not None, "inherited nonempty OCI labels remain a valid baseline"
@@ -130,6 +131,24 @@ def main():
     assert fallback_kes["current_period"] == 5 and fallback_kes["end_period"] == 4, fallback_kes
     assert fallback_kes["remaining_periods"] == -1 and fallback_kes["valid"] is False, fallback_kes
     assert fallback_kes["counter_consistent"] is None, fallback_kes
+    assert fallback_kes["counter_status"] == "unavailable", fallback_kes
+
+    # cardano-cli represents OpCertNoBlocksMintedYet as a null node-state counter. Preserve the
+    # typed evidence, but do not globally declare the BP ready without a candidate-bound cold key.
+    no_blocks = subprocess.run(
+        ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
+        env=dict(env, OURO_TEST_KES_NULL="1"), text=True, capture_output=True,
+    )
+    assert no_blocks.returncode == 0, no_blocks.stderr
+    no_blocks_readiness = json.loads(no_blocks.stdout)["readiness"]
+    assert no_blocks_readiness["kes"] == {
+        "source": "cardano_cli", "current_period": 10, "start_period": 9, "end_period": 20,
+        "remaining_periods": 10, "opcert_counter_on_disk": 5,
+        "opcert_counter_node_state": None, "counter_consistent": None,
+        "counter_status": "no_blocks_minted_yet", "period_valid": True, "valid": False,
+    }
+    assert no_blocks_readiness["kes_opcert_valid"] is False
+    assert no_blocks_readiness["forging_credentials_ready"] is False
 
     # An explicit container user is not modeled by the sealed recreate argv. The probe must return
     # recreate:null instead of silently upgrading it as root.
