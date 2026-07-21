@@ -90,6 +90,10 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "Agent 不得执行 raw docker/compose 写操作" in upgrade_prompt
     assert "Do not create or request a transaction" in upgrade_prompt
     assert "quote `orchestration_reason`" in upgrade_prompt
+    assert "Upgrade does not walk an intermediate version chain" in upgrade_prompt
+    assert "Exact transition metadata is optional and never blocks an upgrade" in upgrade_prompt
+    assert "N→N+1 transition must be present" not in upgrade_prompt
+    assert "Upgrade to signed recommended release" in html
     assert "pending_existing: true" in kes_prompt
     assert "choose: continue this pending rotation, or discard it" in kes_prompt
     assert "kes-rotation/discard-stage" in kes_prompt

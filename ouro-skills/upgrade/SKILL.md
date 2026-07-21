@@ -1,5 +1,5 @@
 ---
-skill_version: 7
+skill_version: 8
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -20,12 +20,13 @@ Treat the direct-run path as ONE Upgrade workflow: preload and step are internal
 boundaries with separate candidates and operator approvals.
 
 ## Invariants (the mechanism enforces these; you respect them)
-- Both the running and target IMAGE CONFIG DIGESTS must be in signed immutable policy, and the exact
-  N→N+1 transition must be present. Recent tags or allowlist membership alone never authorize an
-  upgrade step.
+- The running IMAGE CONFIG DIGEST must be trusted by signed immutable policy, and the target must be
+  the current platform's signed `recommended` IMAGE CONFIG DIGEST. Tags and agent- or
+  operator-selected digests never authorize an upgrade step.
 - `ouro-ops release select` fetches and verifies the current signed release catalog without caching
-  it. Deployment selection returns the signed recommendation; Upgrade selection with `--from`
-  returns the unique next signed hop. The operator never has to maintain a local allowlist file.
+  it. Deployment selection and Upgrade selection with `--from` return the signed recommended
+  release; Upgrade does not walk an intermediate version chain. The operator never has to maintain
+  a local allowlist file.
 - Ouro never hosts or transports node image bytes. Approved preparation makes the target runtime
   pull `ghcr.io/blinklabs-io/cardano-node@sha256:<platform-manifest>` directly from GHCR, then
   verifies the signed repository, `linux/amd64` platform and exact image config digest.
@@ -37,14 +38,16 @@ boundaries with separate candidates and operator approvals.
   target; each phase gets its own final candidate and exact approval.
 - Every disruptive step is exact-candidate confirmed and fleet-permitted. Relay quorum and BP-last
   are derived from current target facts and the spec.
-- Rollback is claimed only when transition metadata and live state support a verified inverse;
-  otherwise the honest failure outcome is a re-sync.
+- Exact transition metadata is optional and never blocks an upgrade to the signed recommendation.
+  Rollback is claimed only when an exact transition and live state support a verified inverse;
+  otherwise the honest failure outcome is forward recovery or a re-sync.
 
 ## Route from live facts
 1. Run `ouro-ops op run --op observability/health ...` and read
    `result.container.orchestration`, `orchestration_reason`, and `compose`.
 2. Run `ouro-ops release select --platform linux/amd64 --from
-   sha256:<current-config-digest>` to obtain the signed next hop. Never invent a version or digest.
+   sha256:<current-config-digest>` to obtain the signed recommended release. Never invent a version
+   or digest, and never substitute an intermediate release.
 3. Follow exactly one branch:
    - `run`: use the sealed preload/step workflow below.
    - `compose`: show the manual handoff below. Do not plan or apply `upgrade/step`.
@@ -76,7 +79,9 @@ boundaries with separate candidates and operator approvals.
 - Treat this as ONE Upgrade workflow with two explicit gates. Obtain the current running image
   config digest from typed live evidence, then run `ouro-ops release select --platform linux/amd64
   --from sha256:<current-config-digest>`. Show the signed source, policy version/digest, selected
-  release label, complete OCI tuple, transition DB compatibility and recovery expectation.
+  recommended release label, complete OCI tuple, optional exact transition metadata, and recovery
+  expectation. If `transition` is null, state that the direct upgrade remains valid but automatic
+  rollback is unavailable.
 - For a canary relay, plan preload with no capability:
   `ouro-ops op run --op upgrade/preload-image --spec <pool-spec> --dispatch <host> --ssh-key
   creds://<name> --node <id> --param machine=<id> --param image=sha256:<64hex> --plan`.
@@ -91,7 +96,8 @@ boundaries with separate candidates and operator approvals.
 - Plan the actual step with no capability:
   `ouro-ops op run --op upgrade/step --spec <pool-spec> --dispatch <host> --ssh-key creds://<name>
   --node <id> --param machine=<id> --param image=sha256:<64hex> --plan`. Show the full redacted
-  recreate plan, exact transition, final candidate, quorum/order policy and rollback/re-sync truth.
+  recreate plan, optional transition (including its absence), final candidate, quorum/order policy
+  and rollback/re-sync truth.
 - WAIT for exact approval. Mint `ouro-ops confirm create --op upgrade/step --node <id> --intent-hash
   <final-hash>`, then mint the permit LAST with `ouro-ops fleet permit create --spec <pool-spec>
   --node <id> --op upgrade/step --intent-hash <final-hash> --target-image sha256:<64hex> --holder
@@ -102,8 +108,8 @@ boundaries with separate candidates and operator approvals.
   candidate/approval gates separately for each target.
 
 ## Stop Conditions
-- Stop if the signed N→N+1 transition is absent, exact repository/manifest/platform/config
-  verification fails, the live
+- Stop if the current image is not trusted, the target is not the signed recommendation, exact
+  repository/manifest/platform/config verification fails, the live
   recreate shape is unsupported, or a step would violate quorum/BP order.
 - Stop automatic activation for `compose` or `unsupported`; use the routing branch above.
 - Stop when live state changes after approval; obtain a new plan and new operator decision.

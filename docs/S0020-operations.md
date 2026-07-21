@@ -28,7 +28,7 @@ compatibility preflight. The CLI carries execution mechanisms and no decision Sk
 | `kes-rotation/discard-stage` | destructive pending-key cleanup | exact confirmation; no fleet permit | target `--plan` only |
 | `kes-rotation/install-opcert` | disruptive matched KES-pair + public-opcert activation | exact confirmation + fleet permit | local preview + target preflight/`--plan` only |
 | `upgrade/preload-image` | non-disruptive exact GHCR pull | exact confirmation | target `--plan` only |
-| `upgrade/step` | direct Docker-run disruptive recreate | exact confirmation + fleet permit + signed N→N+1 transition | Compose/unsupported refuse before mutation; run uses typed safe refusal / `--plan` only |
+| `upgrade/step` | direct Docker-run disruptive recreate | exact confirmation + fleet permit + signed recommended target | Compose/unsupported refuse before mutation; run uses typed safe refusal / `--plan` only |
 | `deploy/register-submit` | irreversible transaction submission | exact confirmation; no fleet permit | signed transaction preview + target `--plan` only |
 | `diag exec` | diagnostic command through existing operator SSH | no write capability minted | real diagnostic-only commands |
 
@@ -51,13 +51,18 @@ For runtime, KES, upgrade and Deploy, the public sequence is:
 Apply re-probes and refuses candidate drift before mutation. Capabilities must never be included in
 plan mode or interpreted from target output.
 
-Before Upgrade, select the signed next hop from the current live image config digest:
+Before Upgrade, select the current platform's signed recommended release from the live image config
+digest:
 
 ```text
 ouro-ops release select --platform linux/amd64 --from sha256:<current-config-digest>
 ```
 
-The command returns the release label, fixed Blink Labs repository and exact OCI tuple. Upgrade
+The command returns the recommended release label, fixed Blink Labs repository and exact OCI tuple.
+It does not walk intermediate releases. The current image must be trusted and the target must equal
+the signed recommendation. Exact source-to-target transition metadata is optional: when it is absent
+the upgrade remains valid, but automatic rollback is unavailable and failure recovery is forward or
+re-sync. Upgrade
 preparation pulls the signed `repository@platform-manifest-digest` directly on the target only after
 candidate approval, then verifies repository/platform/config while proving the active container is
 unchanged. Upgrade plan/apply and its fleet permit

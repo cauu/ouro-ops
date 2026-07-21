@@ -159,6 +159,19 @@ def main():
     assert "active-container invariance" in " ".join(upgrade.split())
     normalized_upgrade = " ".join(upgrade.split())
     for phrase in [
+        "current platform's signed `recommended` IMAGE CONFIG DIGEST",
+        "Upgrade does not walk an intermediate version chain",
+        "Exact transition metadata is optional and never blocks an upgrade",
+        "If `transition` is null, state that the direct upgrade remains valid",
+    ]:
+        assert phrase in normalized_upgrade, f"Upgrade Skill lacks direct-latest rule {phrase!r}"
+    for obsolete in [
+        "N→N+1 transition must be present",
+        "unique next signed hop",
+        "Stop if the signed N→N+1 transition is absent",
+    ]:
+        assert obsolete not in normalized_upgrade, f"Upgrade Skill retains hop gate {obsolete!r}"
+    for phrase in [
         "result.container.orchestration",
         "project, service, or config files are missing, ask the operator",
         "docker compose -p <project> -f <config-file> config",
@@ -174,6 +187,11 @@ def main():
     assert "Do not plan or apply `upgrade/step`" in normalized_upgrade
     assert "quote `orchestration_reason`" in normalized_upgrade
     operations = (ROOT / "docs/S0020-operations.md").read_text()
+    assert "signed recommended target" in operations
+    assert "It does not walk intermediate releases" in operations
+    assert "its absence does not block the forward upgrade" in (
+        ROOT / "docs/allowlist-release-signing.md"
+    ).read_text()
     for phrase in [
         "`orchestration: run`",
         "`orchestration: compose`",

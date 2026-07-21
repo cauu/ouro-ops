@@ -446,7 +446,7 @@
     <div class="ops reveal" id="ops">
     <button type="button" class="op-card" data-op="upgrade">
       <span class="tile t-sky" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11a9 9 0 1 0-1.2 5.6"/><path d="M21 5v6h-6"/></svg></span>
-      <span><b>upgrade</b><small data-i18n="op.upgrade.small">Allowlisted N→N+1 upgrade</small></span>
+      <span><b>upgrade</b><small data-i18n="op.upgrade.small">Upgrade to signed recommended release</small></span>
       <span class="go" aria-hidden="true">→</span></button>
     <button type="button" class="op-card" data-op="deploy">
       <span class="tile t-coral" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg></span>
@@ -533,7 +533,7 @@
               <option value="10.2.1">10.2.1</option>
             </select>
             <p class="hint"><span class="live" id="ver-live" hidden><i></i></span><span id="ver-status">Checking latest…</span>
-              <a id="relnotes" target="_blank" rel="noopener noreferrer" data-i18n="ver.relnotes">Release notes ↗</a><span data-i18n="ver.tail"> — descriptive only; the signed config digest and transition authorize an upgrade.</span></p>
+              <a id="relnotes" target="_blank" rel="noopener noreferrer" data-i18n="ver.relnotes">Release notes ↗</a><span data-i18n="ver.tail"> — descriptive only; the signed recommended config digest authorizes the target, while an exact transition only controls rollback.</span></p>
           </div>
           <div id="f-sync" data-need hidden><label id="sync-label" data-i18n="lbl.sync">Sync mode</label>
             <div class="seg" role="radiogroup" aria-labelledby="sync-label">
@@ -795,11 +795,11 @@ const I18N = {
     "trust3.t":"Gated writes","trust3.b":"Every change is a validated intent through <code>ouro-ops op run</code>, with human confirmation for dangerous ops.",
     "s1.title":"Validate the CLI","s1.sub":"Validate a local paired CLI candidate; formal signed publication is deferred.",
     "s2.title":"Pick an operation","s2.sub":"The form asks only for what that operation needs, generates everything locally, and gives you one prompt to paste into your agent.",
-    "op.upgrade.small":"Signed exact-digest N→N+1 upgrade",
+    "op.upgrade.small":"Upgrade to signed recommended release",
     "op.deploy.small":"Submit a signed pool-registration tx",
     "op.kes-rotation.small":"Rotate the BP KES key with an air-gapped cold signature","op.runtime.small":"Restart a declared node",
     "op.observability.small":"Fleet-wide bounded health read","op.troubleshooting.small":"Snapshot-first diagnosis",
-    "op.upgrade.hint":"Select the current signed next release, then upgrade relays first and BP last.",
+    "op.upgrade.hint":"Select the signed recommended release directly, then upgrade relays first and BP last.",
     "op.deploy.hint":"Review and submit one already signed pool-registration transaction through the BP.",
     "op.kes-rotation.hint":"Stage a fresh KES pair on the BP, build a device-specific offline bundle with cardano-cli, then cold-sign and activate the bound pair and opcert; the signing key never leaves the BP.",
     "op.runtime.hint":"Restart one declared node through a live-state-bound typed operation.",
@@ -813,7 +813,7 @@ const I18N = {
     "machHint":"SSH user is the existing cardano account and the port is 22. Only the host is yours to fill.",
     "lbl.nodever":"Desired node release label (descriptive)","ver.checking":"Checking latest upstream release…","ver.latest":"Latest upstream release (not image authorization):",
     "ver.fail":"Couldn't reach GitHub — using the versions baked into this page.",
-    "ver.relnotes":"Release notes ↗","ver.tail":" — descriptive only; the signed config digest and transition authorize an upgrade.",
+    "ver.relnotes":"Release notes ↗","ver.tail":" — descriptive only; the signed recommended config digest authorizes the target, while an exact transition only controls rollback.",
     "lbl.sync":"Sync mode","sync.hint":"genesis replays from chain start; mithril bootstraps from a certified snapshot.",
     "reg.title":"Pool parameters (your pool's real on-chain values)",
     "lbl.meta":"Metadata URL (http/https)","lbl.pledge":"Pledge (₳)","lbl.margin":"Margin (%)","lbl.cost":"Fixed cost (₳)",
@@ -839,11 +839,11 @@ const I18N = {
     "trust3.t":"写操作有闸门","trust3.b":"所有变更都要走 <code>ouro-ops op run</code>:白名单、留审计,关键步骤必须人工确认。",
     "s1.title":"验收 CLI","s1.sub":"先验收本地配对 CLI 候选;正式签名发布留到下一个 spec。",
     "s2.title":"选择操作","s2.sub":"表单只问这个操作用得到的字段,全部本地生成,最后给你一段直接粘给 agent 的 prompt。",
-    "op.upgrade.small":"按签名精确摘要 N→N+1 升级",
+    "op.upgrade.small":"直升签名推荐版本",
     "op.deploy.small":"提交已签名的矿池注册交易",
     "op.kes-rotation.small":"通过隔离冷签名轮换 BP 的 KES 密钥","op.runtime.small":"重启声明的节点",
     "op.observability.small":"全池有界健康读取","op.troubleshooting.small":"先快照再排障",
-    "op.upgrade.hint":"先选择当前签名的下一可靠版本,再依次升级 relay,最后升级 BP。",
+    "op.upgrade.hint":"直接选择签名推荐版本,再依次升级 relay,最后升级 BP。",
     "op.deploy.hint":"通过 BP 审阅并提交一笔已经签名的矿池注册交易。",
     "op.kes-rotation.hint":"在 BP 暂存新的 KES 密钥对，生成包含 cardano-cli 的设备专用离线包，再完成冷签并激活绑定的密钥对与 opcert；签名私钥不会离开 BP。",
     "op.runtime.hint":"通过绑定实时状态的类型化操作重启一个声明的节点。",
@@ -857,7 +857,7 @@ const I18N = {
     "machHint":"SSH 用户使用现有 cardano 账号,端口固定为 22,这里只需要填 host。",
     "lbl.nodever":"期望的 Node 发布标签（仅描述）","ver.checking":"正在获取上游最新版本…","ver.latest":"上游最新版本（不代表镜像授权）:",
     "ver.fail":"连不上 GitHub,先用页面内置的版本列表。",
-    "ver.relnotes":"更新说明 ↗","ver.tail":"——仅作描述；升级授权以签名配置摘要和转换为准。",
+    "ver.relnotes":"更新说明 ↗","ver.tail":"——仅作描述；签名推荐配置摘要决定升级目标，精确转换仅决定能否回滚。",
     "lbl.sync":"同步模式","sync.hint":"genesis 从创世块完整同步;mithril 走认证快照,快得多。",
     "reg.title":"池参数(链上真实数值)",
     "lbl.meta":"Metadata URL(http/https)","lbl.pledge":"Pledge(₳)","lbl.margin":"Margin(%)","lbl.cost":"固定成本(₳)",
@@ -883,11 +883,11 @@ const I18N = {
     "trust3.t":"寫入有閘門","trust3.b":"所有變更都得走 <code>ouro-ops op run</code>:白名單、留稽核,關鍵步驟一定要人工確認。",
     "s1.title":"驗收 CLI","s1.sub":"先驗收本機配對 CLI 候選;正式簽章發布留到下一個 spec。",
     "s2.title":"選擇操作","s2.sub":"表單只問這個操作用得到的欄位,全部本地產生,最後給你一段直接貼給 agent 的 prompt。",
-    "op.upgrade.small":"依白名單摘要 N→N+1 升級",
+    "op.upgrade.small":"直升簽署推薦版本",
     "op.deploy.small":"提交已簽署的礦池註冊交易",
     "op.kes-rotation.small":"透過隔離冷簽署輪換 BP 的 KES 金鑰","op.runtime.small":"重新啟動已宣告節點",
     "op.observability.small":"全池有界健康讀取","op.troubleshooting.small":"先快照再排障",
-    "op.upgrade.hint":"先選擇目前簽署的下一可靠版本,再依序升級 relay,最後升級 BP。",
+    "op.upgrade.hint":"直接選擇簽署推薦版本,再依序升級 relay,最後升級 BP。",
     "op.deploy.hint":"透過 BP 審閱並提交一筆已簽署的礦池註冊交易。",
     "op.kes-rotation.hint":"在 BP 暫存新的 KES 金鑰對，產生包含 cardano-cli 的裝置專用離線套件，再完成冷簽署並啟用綁定的金鑰對與 opcert；簽署私鑰不會離開 BP。",
     "op.runtime.hint":"透過綁定即時狀態的型別化操作重新啟動一個已宣告節點。",
@@ -901,7 +901,7 @@ const I18N = {
     "machHint":"SSH 使用者沿用現有 cardano 帳號,連接埠固定為 22,這裡只要填 host。",
     "lbl.nodever":"期望的 Node 發布標籤（僅描述）","ver.checking":"正在取得上游最新版本…","ver.latest":"上游最新版本（不代表映像授權）:",
     "ver.fail":"連不上 GitHub,先用頁面內建的版本清單。",
-    "ver.relnotes":"更新說明 ↗","ver.tail":"——僅作描述；升級授權以簽署設定摘要與轉換為準。",
+    "ver.relnotes":"更新說明 ↗","ver.tail":"——僅作描述；簽署推薦設定摘要決定升級目標，精確轉換只決定能否回滾。",
     "lbl.sync":"同步模式","sync.hint":"genesis 從創世區塊完整同步;mithril 走認證快照,快很多。",
     "reg.title":"池參數(鏈上真實數值)",
     "lbl.meta":"Metadata URL(http/https)","lbl.pledge":"Pledge(₳)","lbl.margin":"Margin(%)","lbl.cost":"固定成本(₳)",
@@ -927,11 +927,11 @@ const I18N = {
     "trust3.t":"書き込みにはゲート","trust3.b":"変更はすべて <code>ouro-ops op run</code> 経由。許可リストと監査ログ付きで、危険な操作には人間の確認が必須です。",
     "s1.title":"CLI を検証","s1.sub":"ローカルのペア済み CLI 候補を検証します。正式な署名付き公開は次の spec で行います。",
     "s2.title":"操作を選ぶ","s2.sub":"フォームで聞くのはその操作に必要な項目だけ。すべてローカルで生成し、エージェントに貼る prompt をひとつ出力します。",
-    "op.upgrade.small":"許可済み N→N+1 アップグレード",
+    "op.upgrade.small":"署名済み推奨版へ直接アップグレード",
     "op.deploy.small":"署名済みプール登録 Tx を送信",
     "op.kes-rotation.small":"エアギャップ冷署名で BP の KES 鍵をローテーション","op.runtime.small":"宣言済みノードを再起動",
     "op.observability.small":"全ノードの限定ヘルス読取","op.troubleshooting.small":"スナップショット優先診断",
-    "op.upgrade.hint":"現在署名されている次の信頼済みリリースを選択し、relay、最後に BP の順で更新します。",
+    "op.upgrade.hint":"署名済み推奨リリースを直接選択し、relay、最後に BP の順で更新します。",
     "op.deploy.hint":"BP を通じて署名済みのプール登録トランザクションを確認し、送信します。",
     "op.kes-rotation.hint":"BP 上で新しい KES 鍵ペアをステージし、cardano-cli を含むデバイス別オフラインバンドルを作成してから、コールド署名と対応する鍵ペアおよび opcert の有効化を行います。署名秘密鍵は BP から出ません。",
     "op.runtime.hint":"ライブ状態に束縛された型付き操作で宣言済みノードを一台再起動します。",
@@ -945,7 +945,7 @@ const I18N = {
     "machHint":"SSH ユーザーは既存の cardano、ポートは 22 です。入力するのは host だけです。",
     "lbl.nodever":"希望ノードリリース（説明用）","ver.checking":"最新の上流リリースを確認中…","ver.latest":"最新の上流リリース（イメージ許可ではありません）:",
     "ver.fail":"GitHub に届かないため、ページ内蔵の一覧を使います。",
-    "ver.relnotes":"リリースノート ↗","ver.tail":"——説明用です。アップグレード許可は署名済み設定ダイジェストと遷移に従います。",
+    "ver.relnotes":"リリースノート ↗","ver.tail":"——説明用です。署名済み推奨設定ダイジェストが対象を決め、正確な遷移はロールバック可否だけを決めます。",
     "lbl.sync":"同期モード","sync.hint":"genesis はジェネシスから完全同期。mithril は認証済みスナップショットで、ずっと速く立ち上がります。",
     "reg.title":"プールのパラメータ(オンチェーンの実値)",
     "lbl.meta":"Metadata URL(http/https)","lbl.pledge":"Pledge(₳)","lbl.margin":"Margin(%)","lbl.cost":"固定費(₳)",

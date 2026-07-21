@@ -353,8 +353,8 @@ OCI 身份与平台，`transitions` 仅作为可选的精确回滚能力声明�
 
 - [x] p5-1 [CLI] 将 release selection、stateless/legacy Upgrade 准入改为直接推荐最新版，
   transition 降级为可选回滚声明，并补 TC-11/TC-12。
-- [~] p5-2 [Skill/Docs] 同步 Upgrade Skill、operations 和站点提示，并补 TC-13。
-- [ ] p5-3 [Tests/Artifacts] 执行完整回归并重建本地 release candidate/网站验收产物，
+- [x] p5-2 [Skill/Docs] 同步 Upgrade Skill、operations 和站点提示，并补 TC-13。
+- [~] p5-3 [Tests/Artifacts] 执行完整回归并重建本地 release candidate/网站验收产物，
   证明 TC-14。
 
 | Item | Acceptance |
@@ -382,6 +382,9 @@ OCI 身份与平台，`transitions` 仅作为可选的精确回滚能力声明�
 - 2026-07-21T16:48:52+08:00 p5-1 完成：release selection、stateless 与 legacy Upgrade
   均以当前平台 `recommended` 为唯一目标；精确 transition 缺失时仍可 plan，但不生成
   rollback plan，并明确 forward recovery/re-sync。TC-11、TC-12 通过；p5-2 开始。
+- 2026-07-21T16:58:31+08:00 p5-2 完成：Upgrade Skill v8、operations、release signing
+  指南和网站多语言提示统一为直升签名推荐版；删除相邻 hop 准入语义，保留 transition
+  仅描述自动回滚。TC-13 通过；p5-3 开始。
 
 ### 8.6 Validation Evidence Amendment (append-only)
 
@@ -394,6 +397,11 @@ OCI 身份与平台，`transitions` 仅作为可选的精确回滚能力声明�
   tests/test_s0020_upgrade_workflow.py` | result: pass | note: 非推荐/逆向目标拒绝；10.5/10.6
   直升时 transition/rollback plan 为空且报告 forward recovery/re-sync，10.7 直升保留已签名
   backward-compatible 自动回滚。
+- TC-13 | stack: python | command: `python3 tests/test_skill_docs.py && python3 -m pytest -q
+  tests/test_web_generator.py` | result: pass | note: canonical Upgrade Skill、operations、签名
+  指南、站点 UI 与内嵌 prompt 均明确直升签名推荐最新版；站点 9 项测试通过，本地 HTTP
+  用例在获准的非沙箱环境执行。skill-creator 通用 quick_validate 不适用于本仓库带产品
+  contract frontmatter 的外部 Skill，使用仓库专用校验。
 
 ### 8.7 Change Requests Amendment (append-only)
 

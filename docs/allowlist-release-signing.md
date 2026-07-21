@@ -4,7 +4,8 @@
 selection. Production binaries accept it only when its canonical payload verifies under the
 Ed25519 public key pinned in `crates/ouro/src/convention.rs`.
 An allowlisted image is an exact OCI index/platform-manifest/image-config tuple; a mutable tag is
-never sufficient, and adding a baseline does not authorize an upgrade transition.
+never sufficient. The platform's `recommended` image is the sole automatic Upgrade target.
+Transitions are optional exact-pair rollback declarations, not an intermediate-hop upgrade graph.
 
 ## Key custody
 
@@ -67,8 +68,9 @@ changes `data/releases.json`, not the CLI binary or embedded fixture.
    self-verifies the signature and replaces the output atomically; it does not print the signature
    or private material.
 4. Run `cargo test -p ouro`, the Python suite, Clippy, manifest regeneration/verification and the
-   non-mutating target adoption previews required by the active spec. Never add an upgrade
-   `transition` unless that exact path has its own compatibility evidence and authorization.
+   non-mutating target adoption previews required by the active spec. Add a `transition` only when
+   that exact source-to-recommended pair has compatibility evidence; its backward-compatible flag
+   controls automatic rollback and its absence does not block the forward upgrade.
 
 ## Trust-root rotation
 

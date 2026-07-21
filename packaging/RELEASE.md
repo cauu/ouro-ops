@@ -53,7 +53,8 @@ the candidate but intentionally neither installs it nor replaces an older `ouro-
 
 The signed node-image release catalog is a different public artifact. It is served at the fixed
 `data/releases.json` HTTPS source, signed by Ouro's pinned Ed25519 catalog key, and authorizes only
-exact `ghcr.io/blinklabs-io/cardano-node` OCI tuples and transitions. It never hosts image layers.
+exact `ghcr.io/blinklabs-io/cardano-node` OCI tuples, one recommended target per platform, and
+optional exact-pair rollback declarations. It never hosts image layers.
 
 ## Formal release process (next spec)
 

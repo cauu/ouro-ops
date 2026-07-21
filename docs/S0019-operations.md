@@ -17,7 +17,7 @@ manual commands.
 | troubleshooting/snapshot | read | no | stateless role-readiness baseline; BP output requires KES/opcert evidence before reporting block-production readiness |
 | fleet/status | read | no | internal closed role/network/genesis/host-key/readiness/image/generation projection; no agent-supplied counts |
 | upgrade/preload-image | dangerous | yes | stateless target pulls one signed exact Blink Labs GHCR manifest and proves the running node is untouched |
-| upgrade/step | dangerous | yes | one N→N+1 step to an exact preloaded image config digest |
+| upgrade/step | dangerous | yes | direct step to the current platform's signed recommended image config digest |
 
 Disruptive operations bind the final plan to the stable pool id, exact pool-spec revision and
 minimum-online-relay policy. After exact approval, confirmation is minted; a target/host-key/fleet
