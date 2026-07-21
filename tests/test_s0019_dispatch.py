@@ -370,7 +370,7 @@ machines:
     ssh:
       host: 10.0.0.9
       port: 22
-      user: cardano
+      user: bp-admin
       key_ref: creds://bp1
   - id: relay1
     role: relay
@@ -380,7 +380,7 @@ machines:
     ssh:
       host: 10.0.0.10
       port: 22
-      user: cardano
+      user: relay-ops
       key_ref: creds://relay1
 upgrade:
   min_online_relays: 0
@@ -392,10 +392,10 @@ upgrade:
                "--ssh-key", "creds://bp1", "--spec", str(transport_spec),
                "--candidate-hash", "a" * 64, "--transport-plan",
                env_extra={"OURO_EPHEMERAL_RUNNER": str(runner)})
-    assert d["status"] == "ok" and d["data"]["principal"] == "cardano", d
+    assert d["status"] == "ok" and d["data"]["principal"] == "bp-admin", d
     assert d["tool"] == "ouro.op.apply.dispatch.transport_plan" and d["data"]["target_validated"] is False
     j = " ".join(d["data"]["ssh_argv"])
-    assert "cardano@10.0.0.9" in j and "ouro-op@" not in j and "StrictHostKeyChecking=yes" in j, j
+    assert "bp-admin@10.0.0.9" in j and "ouro-op@" not in j and "StrictHostKeyChecking=yes" in j, j
     assert "mktemp -d /tmp/ouro-run.XXXXXXXXXX" in j and "'target' 'apply'" in j, j
     assert "/usr/local/sbin/ouro-op-run" not in j and "/usr/local/bin/ouro-ops" not in j, j
     assert "-F /dev/null" in j and "IdentityAgent=none" in j and "IdentitiesOnly=yes" in j, j

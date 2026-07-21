@@ -517,7 +517,7 @@ machines:
     ssh:
       host: 192.0.2.1
       port: 22
-      user: cardano
+      user: bp-admin
       key_ref: creds://bp1
   - id: relay1
     role: relay
@@ -527,7 +527,7 @@ machines:
     ssh:
       host: 192.0.2.2
       port: 22
-      user: cardano
+      user: relay-ops
       key_ref: creds://relay1
 upgrade:
   min_online_relays: 1
@@ -586,8 +586,8 @@ upgrade:
         "dd of=/dev/null bs=65536 status=none\n"
         "printf '%s\\n' \"$*\" >>\"$OURO_TEST_FLEET_SSH_LOG\"\n"
         "case \"$*\" in\n"
-        f"  *cardano@192.0.2.1*) printf '%s\\n' '{json.dumps(bp_status, separators=(',', ':'))}' ;;\n"
-        f"  *cardano@192.0.2.2*) printf '%s\\n' '{json.dumps(relay_status, separators=(',', ':'))}' ;;\n"
+        f"  *bp-admin@192.0.2.1*) printf '%s\\n' '{json.dumps(bp_status, separators=(',', ':'))}' ;;\n"
+        f"  *relay-ops@192.0.2.2*) printf '%s\\n' '{json.dumps(relay_status, separators=(',', ':'))}' ;;\n"
         "  *) exit 90 ;;\n"
         "esac\n"
     )
@@ -645,8 +645,8 @@ upgrade:
         "dd of=/dev/null bs=65536 status=none\n"
         "printf '%s\\n' \"$*\" >>\"$OURO_TEST_FLEET_SSH_LOG\"\n"
         "case \"$*\" in\n"
-        f"  *cardano@192.0.2.1*) printf '%s\\n' '{json.dumps(repair_bp_status, separators=(',', ':'))}' ;;\n"
-        f"  *cardano@192.0.2.2*) printf '%s\\n' '{json.dumps(relay_status, separators=(',', ':'))}' ;;\n"
+        f"  *bp-admin@192.0.2.1*) printf '%s\\n' '{json.dumps(repair_bp_status, separators=(',', ':'))}' ;;\n"
+        f"  *relay-ops@192.0.2.2*) printf '%s\\n' '{json.dumps(relay_status, separators=(',', ':'))}' ;;\n"
         "  *) exit 90 ;;\n"
         "esac\n"
     )
@@ -688,9 +688,9 @@ upgrade:
         "dd of=/dev/null bs=65536 status=none\n"
         "printf '%s\\n' \"$*\" >>\"$OURO_TEST_FLEET_SSH_LOG\"\n"
         "case \"$*\" in\n"
-        f"  *cardano@192.0.2.2*kes-protocol*) printf '%s\\n' '{json.dumps(protocol_output, separators=(',', ':'))}' ;;\n"
-        f"  *cardano@192.0.2.1*) printf '%s\\n' '{json.dumps(repair_bp_status, separators=(',', ':'))}' ;;\n"
-        f"  *cardano@192.0.2.2*) printf '%s\\n' '{json.dumps(relay_status, separators=(',', ':'))}' ;;\n"
+        f"  *relay-ops@192.0.2.2*kes-protocol*) printf '%s\\n' '{json.dumps(protocol_output, separators=(',', ':'))}' ;;\n"
+        f"  *bp-admin@192.0.2.1*) printf '%s\\n' '{json.dumps(repair_bp_status, separators=(',', ':'))}' ;;\n"
+        f"  *relay-ops@192.0.2.2*) printf '%s\\n' '{json.dumps(relay_status, separators=(',', ':'))}' ;;\n"
         "  *) exit 90 ;;\n"
         "esac\n"
     )

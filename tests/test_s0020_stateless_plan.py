@@ -448,7 +448,7 @@ machines:
     ssh:
       host: 192.0.2.1
       port: 22
-      user: cardano
+      user: bp-admin
       key_ref: creds://bp1
   - id: relay1
     role: relay
@@ -458,7 +458,7 @@ machines:
     ssh:
       host: 192.0.2.2
       port: 22
-      user: cardano
+      user: relay-ops
       key_ref: creds://relay1
 upgrade:
   min_online_relays: 1
@@ -507,7 +507,7 @@ upgrade:
     assert dispatched.returncode == 0 and dispatched_value["tool"] == "ouro.op.plan"
     remote = transport_log.read_text()
     for expected in [
-        "cardano@192.0.2.1",
+        "bp-admin@192.0.2.1",
         "mktemp -d /tmp/ouro-run.XXXXXXXXXX",
         "'target' 'plan'",
         "'--role' 'bp'",

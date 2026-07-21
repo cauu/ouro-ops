@@ -381,7 +381,7 @@ fn fetch_fleet_status(
     let argv = crate::dispatch::ephemeral_runner_dispatch_argv(
         &machine.ssh.host,
         machine.ssh.port,
-        "cardano",
+        &machine.ssh.user,
         &key,
         &paths.known_hosts,
         &runner.sha256,
@@ -604,7 +604,7 @@ fn fetch_kes_protocol_evidence(
     let argv = crate::dispatch::ephemeral_runner_payload_dispatch_argv(
         &machine.ssh.host,
         machine.ssh.port,
-        "cardano",
+        &machine.ssh.user,
         &key,
         &paths.known_hosts,
         crate::dispatch::EphemeralPayloadInput {
@@ -6992,12 +6992,6 @@ fn dispatch_stateless_observe(
             machine.ssh.host
         )));
     }
-    if machine.ssh.user != "cardano" {
-        return Err(OuroError::Validation(format!(
-            "S0020 stateless reads use cardano; pool spec declares {:?} for {node}",
-            machine.ssh.user
-        )));
-    }
     let supplied_key = optional(args, "--ssh-key")
         .map(crate::secrets::CredentialRef::parse)
         .transpose()?;
@@ -7031,7 +7025,7 @@ fn dispatch_stateless_observe(
     let argv = crate::dispatch::ephemeral_runner_dispatch_argv(
         host,
         machine.ssh.port,
-        "cardano",
+        &machine.ssh.user,
         &key,
         &paths.known_hosts,
         &runner.sha256,
@@ -7047,7 +7041,7 @@ fn dispatch_stateless_observe(
             "op": op,
             "node": node,
             "target": host,
-            "principal": "cardano",
+            "principal": machine.ssh.user,
             "runner": {
                 "platform": runner.platform,
                 "sha256": runner.sha256,
@@ -7112,12 +7106,6 @@ fn stateless_dispatch_context(
         return Err(OuroError::Validation(format!(
             "dispatch host {host:?} does not match pool-spec host {:?} for {node}",
             machine.ssh.host
-        )));
-    }
-    if machine.ssh.user != "cardano" {
-        return Err(OuroError::Validation(format!(
-            "S0020 target user must be cardano; pool spec declares {:?} for {node}",
-            machine.ssh.user
         )));
     }
     let supplied_key = optional(args, "--ssh-key")
@@ -7264,7 +7252,7 @@ fn dispatch_stateless_plan(
         crate::dispatch::ephemeral_runner_payload_dispatch_argv(
             host,
             context.machine.ssh.port,
-            "cardano",
+            &context.machine.ssh.user,
             &context.key,
             &paths.known_hosts,
             crate::dispatch::EphemeralPayloadInput {
@@ -7279,7 +7267,7 @@ fn dispatch_stateless_plan(
         crate::dispatch::ephemeral_runner_dispatch_argv(
             host,
             context.machine.ssh.port,
-            "cardano",
+            &context.machine.ssh.user,
             &context.key,
             &paths.known_hosts,
             &runner.sha256,
@@ -7405,7 +7393,7 @@ fn dispatch_stateless_artifact_preflight(
     let argv = crate::dispatch::ephemeral_runner_payload_dispatch_argv(
         host,
         context.machine.ssh.port,
-        "cardano",
+        &context.machine.ssh.user,
         &context.key,
         &paths.known_hosts,
         crate::dispatch::EphemeralPayloadInput {
@@ -7506,7 +7494,7 @@ fn dispatch_stateless_apply(
             crate::dispatch::ephemeral_runner_payload_dispatch_argv(
                 host,
                 context.machine.ssh.port,
-                "cardano",
+                &context.machine.ssh.user,
                 &context.key,
                 &paths.known_hosts,
                 crate::dispatch::EphemeralPayloadInput {
@@ -7521,7 +7509,7 @@ fn dispatch_stateless_apply(
             crate::dispatch::ephemeral_runner_dispatch_argv(
                 host,
                 context.machine.ssh.port,
-                "cardano",
+                &context.machine.ssh.user,
                 &context.key,
                 &paths.known_hosts,
                 &runner.sha256,
@@ -7536,7 +7524,7 @@ fn dispatch_stateless_apply(
                 "op": op,
                 "node": node,
                 "target": host,
-                "principal": "cardano",
+                "principal": context.machine.ssh.user,
                 "candidate_hash": candidate,
                 "runner": {
                     "platform": runner.platform,

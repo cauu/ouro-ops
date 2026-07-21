@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""S0020 p3-1 product seams: local artifact preview and existing-cardano diagnostics."""
+"""S0020 p3-1 product seams: local artifact preview and declared-account diagnostics."""
 
 import json
 import os
@@ -41,11 +41,11 @@ topology_mode: p2p
 machines:
   - id: bp1
     role: bp
-    ssh: {{ host: 10.0.0.1, port: 22, user: cardano, key_ref: "creds://bp1" }}
+    ssh: {{ host: 10.0.0.1, port: 22, user: bp-admin, key_ref: "creds://bp1" }}
   - id: relay1
     role: relay
     public_endpoint: {{ host: relay.example, port: 3001 }}
-    ssh: {{ host: 10.0.0.2, port: 22, user: cardano, key_ref: "creds://relay1" }}
+    ssh: {{ host: 10.0.0.2, port: 22, user: relay-ops, key_ref: "creds://relay1" }}
 upgrade:
   min_online_relays: 0
 """)
@@ -66,12 +66,12 @@ printf 'diagnostic-evidence\\n'
                           "--", "printf", "diagnostic-evidence")
         assert code == 0 and value["status"] == "ok", value
         data = value["data"]
-        assert data["principal"] == "cardano"
+        assert data["principal"] == "bp-admin"
         assert data["assurance"] == "operator_ssh_diagnostic"
         assert data["read_only_enforced"] is False
         assert data["stdout"] == "diagnostic-evidence\n"
         argv = args_log.read_text()
-        assert "cardano@10.0.0.1" in argv and "ouro-diag" not in argv
+        assert "bp-admin@10.0.0.1" in argv and "ouro-diag" not in argv
         assert "StrictHostKeyChecking=yes" in argv and "UserKnownHostsFile=" in argv
         assert "ouro-ops" not in argv and "/usr/local/" not in argv
         code, audit_value = run(env, "audit", "log", "--limit", "10")
@@ -94,15 +94,12 @@ printf 'diagnostic-evidence\\n'
             assert code != 0 and value["status"] == "error", value
             assert not args_log.exists(), "invalid diagnostic flags must refuse before SSH"
 
-        # A legacy principal cannot silently revive the resident diagnostic channel.
-        legacy = base / "legacy-spec.yaml"
-        legacy.write_text(spec.read_text().replace("user: cardano", "user: ouro-op"))
+        # Each machine uses its own declared account; no fixed principal is inferred.
         args_log.unlink(missing_ok=True)
-        code, value = run(env, "diag", "exec", "--dispatch", "bp1", "--spec", str(legacy),
+        code, value = run(env, "diag", "exec", "--dispatch", "relay1", "--spec", str(spec),
                           "--", "uname", "-s")
-        assert code != 0 and value["status"] == "error", value
-        assert "existing cardano account" in value["error"]["detail"]
-        assert not args_log.exists(), "wrong principal must refuse before the SSH boundary"
+        assert code == 0 and value["data"]["principal"] == "relay-ops", value
+        assert "relay-ops@10.0.0.2" in args_log.read_text()
 
         # A real SSH transport failure gets a crash terminal event instead of a false finish or a
         # permanently dangling start.

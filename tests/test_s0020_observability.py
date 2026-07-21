@@ -225,7 +225,7 @@ machines:
     ssh:
       host: 192.0.2.1
       port: 2222
-      user: cardano
+      user: bp-admin
       key_ref: creds://bp1
   - id: relay1
     role: relay
@@ -235,7 +235,7 @@ machines:
     ssh:
       host: 192.0.2.2
       port: 22
-      user: cardano
+      user: relay-ops
       key_ref: creds://relay1
 upgrade:
   min_online_relays: 0
@@ -267,11 +267,11 @@ upgrade:
     assert preview.returncode == 0, preview
     data = preview_value["data"]
     assert preview_value["tool"] == "ouro.observe.dispatch.transport_plan", preview_value
-    assert data["principal"] == "cardano" and data["persistent_target_install"] is False
+    assert data["principal"] == "bp-admin" and data["persistent_target_install"] is False
     assert data["runner"]["sha256"] == runner_sha
     remote = " ".join(data["ssh_argv"])
     for expected in [
-        "cardano@192.0.2.1",
+        "bp-admin@192.0.2.1",
         " -p 2222 ",
         "StrictHostKeyChecking=yes",
         "mktemp -d /tmp/ouro-run.XXXXXXXXXX",

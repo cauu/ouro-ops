@@ -418,3 +418,69 @@ OCI 身份与平台，`transitions` 仅作为可选的精确回滚能力声明�
 
 - 2026-07-21T16:39:37+08:00 删除 transition 作为升级准入链路的要求；保留精确 signed
   transition 仅用于自动回滚授权。
+
+## 9. Change Request: 运行时确认每台机器的 SSH 用户（2026-07-21，append-only）
+
+### 9.1 Requirement Amendment
+
+- 官网表单和 canonical Skill 不得假设 SSH 用户为 `cardano`、`root` 或控制机当前用户。
+- Agent 完成 mandatory compatibility preflight 后、写入 `pool-spec.yaml` 或首次连接远端前，
+  必须先询问用户：所有机器是否共用同一个 SSH 用户名。
+- 若共用，Agent 只询问一次用户名并填入全部 `machines[].ssh.user`；若不共用，按机器逐一
+  收集用户名并填入对应字段。不得要求密码、私钥内容或其他 secret。
+- 官网仍只收集 host；生成的 pool spec 使用明确的逐机占位符，Agent 必须完成上述对话并
+  替换全部占位符后才能写文件或发起 SSH。
+- CLI 必须使用每台机器在 pool spec 中声明且通过安全语法校验的 `ssh.user`，不再拒绝
+  非 `cardano` 用户；host、port、credential reference 和 known-host 校验保持不变。
+
+### 9.2 Solution Amendment
+
+沿用现有 `PoolSpec::validate` 的 `reject_unsafe_username` 作为用户名安全边界。所有 stateless
+read/plan/apply、fleet live facts、KES relay evidence 和 diagnostics SSH argv 从目标机器的
+`ssh.user` 派生。官网为每台机器生成 `__SSH_USER_<MACHINE_ID>__` YAML 字符串，并在完整
+Prompt 中规定“先确认共用或逐机，再替换占位符”的对话步骤。Upgrade Skill 只保留这一
+必要决策，不增加用户名表单或持久状态。
+
+### 9.3 Execution Plan Amendment
+
+- [x] p6-1 [CLI] 移除 stateless/diagnostics 的固定 `cardano` 门槛，逐机使用已校验的
+  `ssh.user`，并补 TC-15。
+- [~] p6-2 [Skill/Site] 更新 Upgrade Skill、官网生成 Prompt、UI 提示和文档，重建站点并
+  补 TC-16。
+
+| Item | Acceptance |
+| --- | --- |
+| p6-1 | TC-15 |
+| p6-2 | TC-16 |
+
+### 9.4 Acceptance Amendment
+
+- TC-15：同一 pool spec 中 BP 与 relay 使用不同安全用户名时，diagnostics、stateless
+  read/plan/apply、fleet/KES 辅助连接的 SSH argv 和 principal 均使用对应逐机用户名；SSH
+  option injection 等不安全用户名仍被 schema/Rust validation 拒绝。
+- TC-16：生成 Prompt 不含 `user: cardano` 或“existing cardano account”；明确先询问是否
+  共用用户名、共用时问一次、否则逐机询问，并在所有占位符替换前禁止写 spec/SSH；生成
+  站点精确内嵌新版 Upgrade Skill 且相关回归通过。
+
+### 9.5 Execution Log Amendment (append-only)
+
+- 2026-07-21T17:18:41+08:00 operator 指出不同机器可能使用不同 SSH 账号，要求 Agent
+  执行时先确认是共用账号还是逐机账号；检查发现 CLI 仍硬编码 `cardano`，p6-1 开始。
+- 2026-07-21T17:26:00+08:00 p6-1 完成：diagnostics、stateless read/plan/apply、fleet
+  live facts 和 KES relay evidence 均使用对应机器的已校验 `ssh.user`；BP/relay 不同账号
+  回归通过，TC-15 通过；p6-2 开始。
+
+### 9.6 Validation Evidence Amendment (append-only)
+
+- （待执行）
+- TC-15 | stack: rust/python | command: `cargo test -q`; `python3
+  tests/test_s0020_product_flow.py`; `python3 tests/test_s0020_observability.py`; `python3
+  tests/test_s0020_stateless_plan.py`; `python3 tests/test_s0020_stateless_apply.py`; `python3
+  tests/test_s0019_dispatch.py` | result: pass | note: BP `bp-admin`、relay `relay-ops` 分别进入
+  diagnostics、read/plan/apply、fleet status 和 KES evidence SSH argv/principal；原有 username
+  option-injection validation 保持通过。本地健康监听测试在获准的非沙箱环境执行。
+
+### 9.7 Change Requests Amendment (append-only)
+
+- 2026-07-21T17:18:41+08:00 SSH 用户从固定产品假设改为 Agent 对话后写入的逐机 pool
+  spec 事实；官网不新增用户名输入字段。

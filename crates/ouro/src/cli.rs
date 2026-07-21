@@ -850,12 +850,6 @@ fn run_diag_exec(args: &[String]) -> Result<()> {
         .iter()
         .find(|candidate| candidate.id == machine_id)
         .ok_or_else(|| OuroError::Validation(format!("unknown machine {machine_id}")))?;
-    if machine.ssh.user != "cardano" {
-        return Err(OuroError::Validation(format!(
-            "S0020 diagnostics use the existing cardano account; pool spec declares {:?} for {machine_id}",
-            machine.ssh.user
-        )));
-    }
     let paths = ConfigPaths::discover();
     let key_path = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
     if !key_path.is_file() {
@@ -1220,7 +1214,7 @@ fn print_help() {
     println!("Control setup:");
     println!("  creds     check/register one operator-named existing SSH key (no list, no copy)");
     println!(
-        "  Ordinary targets use the existing cardano account; no target Ouro install/adoption."
+        "  Ordinary targets use each pool-spec machine's existing SSH account; no target Ouro install/adoption."
     );
     println!("Operate (via the agent, S0020):");
     println!("  op        run --op <operation> --node <id> — live stateless read/plan/apply path");
