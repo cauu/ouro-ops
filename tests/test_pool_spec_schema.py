@@ -29,6 +29,7 @@ def main():
     assert_valid("examples/pool-spec.complete.yaml")  # p2-4: declared runtime (systemd + docker)
     # p5-12: operation-scoped omission — no economics/node_version/sync/upgrade is still valid.
     assert_valid("tests/fixtures/pool-spec/valid-operation-scoped.yaml")
+    assert_valid("tests/fixtures/pool-spec/valid-distinct-ssh-users.yaml")
     assert_invalid("tests/fixtures/pool-spec/invalid-network-magic.yaml")
     assert_invalid("tests/fixtures/pool-spec/invalid-plain-secret.yaml")
     assert_invalid("tests/fixtures/pool-spec/invalid-runtime-mode.yaml")  # p2-4: bad mode enum

@@ -447,11 +447,14 @@ Prompt 中规定“先确认共用或逐机，再替换占位符”的对话步�
   `ssh.user`，并补 TC-15。
 - [x] p6-2 [Skill/Site] 更新 Upgrade Skill、官网生成 Prompt、UI 提示和文档，重建站点并
   补 TC-16。
+- [x] p6-3 [Artifacts] 重建配对 release candidate，并用非 `cardano` 逐机账号验证候选
+  二进制 transport plan，补 TC-17。
 
 | Item | Acceptance |
 | --- | --- |
 | p6-1 | TC-15 |
 | p6-2 | TC-16 |
+| p6-3 | TC-17 |
 
 ### 9.4 Acceptance Amendment
 
@@ -461,6 +464,8 @@ Prompt 中规定“先确认共用或逐机，再替换占位符”的对话步�
 - TC-16：生成 Prompt 不含 `user: cardano` 或“existing cardano account”；明确先询问是否
   共用用户名、共用时问一次、否则逐机询问，并在所有占位符替换前禁止写 spec/SSH；生成
   站点精确内嵌新版 Upgrade Skill 且相关回归通过。
+- TC-17：本地 release candidate 从包含不同 BP/relay SSH 用户名的 pool spec 生成的
+  transport plan 使用目标机器声明的 principal，且配对构建、校验和与候选检查通过。
 
 ### 9.5 Execution Log Amendment (append-only)
 
@@ -472,6 +477,11 @@ Prompt 中规定“先确认共用或逐机，再替换占位符”的对话步�
 - 2026-07-21T17:26:33+08:00 p6-2 完成：Upgrade Skill v9 和官网完整 Prompt 在 preflight
   后先询问共用或逐机 SSH 用户名；pool spec 使用逐机 invalid-until-replaced 占位符，所有
   用户名确认前禁止写 spec/SSH。站点重建并在应用内浏览器验证，TC-16 通过。
+- 2026-07-21T17:27:30+08:00 p6-3 开始：重建包含 p6-1 CLI 行为的本地配对候选，避免
+  实机验收继续使用旧的固定 `cardano` 二进制。
+- 2026-07-21T17:31:30+08:00 p6-3 完成：配对 macOS control/Linux runner 候选重建通过；
+  候选二进制分别从同一 spec 生成 `bp-admin@192.0.2.1` 与
+  `relay-ops@192.0.2.2` transport plan。TC-17 通过，S0026 追加项全部完成并保持 active。
 
 ### 9.6 Validation Evidence Amendment (append-only)
 
@@ -487,6 +497,11 @@ Prompt 中规定“先确认共用或逐机，再替换占位符”的对话步�
   result: pass | note: Prompt 内含 Skill v9、先问共用/多个账号、共用只问一次、否则逐机
   收集、未全部替换前停止；BP/relay 分别出现 `__SSH_USER_BP1__`/
   `__SSH_USER_RELAY1__`，不含 `user: cardano` 或 existing-cardano 文案，浏览器无错误。
+- TC-17 | stack: bash/python | command: `make release-candidate`; candidate `op run --op
+  observability/health ... --transport-plan` for bp1 and relay1 using
+  `valid-distinct-ssh-users.yaml`; `python3 tests/test_pool_spec_schema.py`; `python3
+  tests/test_release_candidate.py` | result: pass | note: paired build/checksums pass；候选输出
+  principal `bp-admin`/`relay-ops` 和对应 SSH destination，未建立真实 SSH 连接。
 
 ### 9.7 Change Requests Amendment (append-only)
 

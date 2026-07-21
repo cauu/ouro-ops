@@ -1,0 +1,28 @@
+# S0026 TC-17: each machine may declare a different operator-confirmed SSH account.
+spec_version: 1
+pool:
+  network: mainnet
+  network_magic: 764824073
+  genesis_hashes:
+    shelley: "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81"
+topology_mode: p2p
+machines:
+  - id: bp1
+    role: bp
+    ssh:
+      host: 192.0.2.1
+      port: 22
+      user: bp-admin
+      key_ref: "creds://bp1"
+  - id: relay1
+    role: relay
+    public_endpoint:
+      host: 192.0.2.2
+      port: 3001
+    ssh:
+      host: 192.0.2.2
+      port: 22
+      user: relay-ops
+      key_ref: "creds://relay1"
+upgrade:
+  min_online_relays: 1
