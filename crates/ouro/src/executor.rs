@@ -19,6 +19,7 @@
 //! `build_plan` returns what the executor WOULD run; the actual `std::process` invocation happens
 //! target-side (as the confined principal). This module is the sealed argv builder + its proof.
 
+use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -43,6 +44,12 @@ pub struct RecreateSpec {
     pub binds: Vec<Bind>,
     pub env: Vec<String>,
     pub ports: Vec<Port>,
+    #[serde(default)]
+    pub user: String,
+    #[serde(default)]
+    pub group_add: Vec<String>,
+    #[serde(default)]
+    pub labels: BTreeMap<String, String>,
     /// The resolved entrypoint executable (`.Path`) + its args (`.Args`) — the exact process.
     pub entrypoint: String,
     pub args: Vec<String>,
@@ -305,6 +312,18 @@ fn recreate_run_argv(spec: &RecreateSpec, image_digest: &str) -> Result<Vec<Stri
             spec.restart_policy.clone()
         },
     ];
+    if !spec.user.is_empty() {
+        run.push(s("--user"));
+        run.push(spec.user.clone());
+    }
+    for group in &spec.group_add {
+        run.push(s("--group-add"));
+        run.push(group.clone());
+    }
+    for (key, value) in &spec.labels {
+        run.push(s("--label"));
+        run.push(format!("{key}={value}"));
+    }
     if !matches!(spec.network_mode.as_str(), "" | "default" | "bridge") {
         run.push(s("--network"));
         run.push(spec.network_mode.clone());
@@ -1486,6 +1505,15 @@ mod tests {
                 host_ip: "".into(),
                 host_port: "3001".into(),
             }],
+            user: "1000:1000".into(),
+            group_add: vec!["44".into(), "cardano".into()],
+            labels: BTreeMap::from([
+                ("io.ouro.role".into(), "bp".into()),
+                (
+                    "org.opencontainers.image.title".into(),
+                    "cardano-node".into(),
+                ),
+            ]),
             entrypoint: "/usr/local/bin/cardano-node".into(),
             args: vec![
                 "run".into(),
@@ -1512,6 +1540,16 @@ mod tests {
             "published port preserved: {j}"
         );
         assert!(j.contains("-e NETWORK=mainnet"), "env preserved: {j}");
+        assert!(j.contains("--user 1000:1000"), "user preserved: {j}");
+        assert!(j.contains("--group-add 44"), "numeric group preserved: {j}");
+        assert!(
+            j.contains("--group-add cardano"),
+            "named group preserved: {j}"
+        );
+        assert!(
+            j.contains("--label io.ouro.role=bp"),
+            "label preserved: {j}"
+        );
         assert!(
             j.contains("-v /srv/db:/data/db"),
             "bind mount preserved: {j}"

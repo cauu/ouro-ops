@@ -480,9 +480,9 @@ def recreate_spec():
     # v1 recreates only a deliberately small, direct `docker run` contract. Any explicit setting
     # outside the modeled fields below makes the spec null. Silently dropping one of these would
     # change privilege, namespace, identity, DNS, resource or filesystem semantics on upgrade.
-    # Docker merges image defaults into container Config. Allow inherited labels/user/workdir/etc.
-    # only when they exactly match the current image; any container-level override is unmodeled.
-    inherited_fields = ["User", "WorkingDir", "Healthcheck", "Labels", "StopSignal", "StopTimeout"]
+    # Docker merges image defaults into container Config. Allow inherited workdir/health/etc. only
+    # when they exactly match the current image; user and labels are modeled explicitly below.
+    inherited_fields = ["WorkingDir", "Healthcheck", "StopSignal", "StopTimeout"]
     def normalized(field, value):
         if field in ("Labels", "Healthcheck"):
             return value or {}
@@ -503,7 +503,7 @@ def recreate_spec():
         return None
     empty_lists = [
         "CapAdd", "CapDrop", "SecurityOpt", "Devices", "DeviceRequests", "Dns",
-        "DnsOptions", "DnsSearch", "ExtraHosts", "GroupAdd", "Links", "Ulimits",
+        "DnsOptions", "DnsSearch", "ExtraHosts", "Links", "Ulimits",
     ]
     if any(bool(hc.get(field)) for field in empty_lists):
         return None
@@ -573,6 +573,9 @@ def recreate_spec():
         "binds": binds,
         "env": list(cfg.get("Env", []) or []),
         "ports": ports,
+        "user": cfg.get("User", "") or "",
+        "group_add": list(hc.get("GroupAdd", []) or []),
+        "labels": dict(cfg.get("Labels", {}) or {}),
         "entrypoint": d.get("Path", "") or "",
         "args": list(d.get("Args", []) or []),
     }

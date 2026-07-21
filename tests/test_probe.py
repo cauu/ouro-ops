@@ -147,6 +147,9 @@ def main():
     }
     assert readiness["established_peers"] == 2, "ss-only Blink Labs image peers must be detected"
     assert obs["recreate"] is not None, "inherited nonempty OCI labels remain a valid baseline"
+    assert obs["recreate"]["user"] == ""
+    assert obs["recreate"]["group_add"] == []
+    assert obs["recreate"]["labels"] == {"org.opencontainers.image.title": "cardano-node"}
 
     docker_stub = (binp / "docker").read_text()
     inherited_label = '"Labels":{"org.opencontainers.image.title":"cardano-node"}'
@@ -347,19 +350,30 @@ def main():
     assert restart_obs["readiness"]["socket_answers"] is False
     assert restart_obs["readiness"]["kes"] is None
 
-    # An explicit container user is not modeled by the sealed recreate argv. The probe must return
-    # recreate:null instead of silently upgrading it as root.
-    (binp / "docker").write_text(docker_stub.replace(
+    # Explicit user, supplementary groups and labels are closed recreate fields.
+    modeled_stub = docker_stub.replace(
         '"Config":{"Hostname"',
-        '"Config":{"User":"1000","Hostname"',
+        '"Config":{"User":"1000:1000","Hostname"',
         1,
-    ))
-    unmodeled = subprocess.run(
+    ).replace(
+        '"PortBindings":{}',
+        '"PortBindings":{},"GroupAdd":["44","cardano"]',
+        1,
+    ).replace(
+        '"Labels":{"org.opencontainers.image.title":"cardano-node"}',
+        '"Labels":{"org.opencontainers.image.title":"cardano-node","io.ouro.role":"bp"}',
+        1,
+    )
+    (binp / "docker").write_text(modeled_stub)
+    modeled = subprocess.run(
         ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
         env=env, text=True, capture_output=True,
     )
-    assert unmodeled.returncode == 0, unmodeled.stderr
-    assert json.loads(unmodeled.stdout)["recreate"] is None, unmodeled.stdout
+    assert modeled.returncode == 0, modeled.stderr
+    modeled_recreate = json.loads(modeled.stdout)["recreate"]
+    assert modeled_recreate["user"] == "1000:1000", modeled_recreate
+    assert modeled_recreate["group_add"] == ["44", "cardano"], modeled_recreate
+    assert modeled_recreate["labels"]["io.ouro.role"] == "bp", modeled_recreate
     (binp / "docker").write_text(docker_stub)
 
     # An unrelated running container is not a node candidate and still produces a numeric zero.

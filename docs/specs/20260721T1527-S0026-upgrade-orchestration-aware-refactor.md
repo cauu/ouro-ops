@@ -174,7 +174,7 @@ Compose 不做自动回滚，失败后由 agent 根据当前事实和 release �
   Compose facts，并补对应 TC-1/TC-2 测试。
 - [x] p1-2 [CLI] 拆分 base/direct-run conformity；Compose 上非重建操作保持可用，并补
   对应 TC-3 测试。
-- [ ] p2-1 [CLI] RecreateSpec 和 docker argv 增加 user、group_add、labels，保持脱敏，
+- [x] p2-1 [CLI] RecreateSpec 和 docker argv 增加 user、group_add、labels，保持脱敏，
   并补对应 TC-4 测试。
 - [ ] p2-2 [CLI] upgrade/step 仅允许 run；apply 前重验，成功后验证 digest、参数和
   readiness；其他分支在 mutation 前拒绝，并补对应 TC-5/TC-6 测试。
@@ -245,6 +245,10 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
   分开，避免 Compose 被全局门控误伤。
 - 2026-07-21T15:36:59+08:00 p1-2 完成：base conformity 支持 Compose 上的读取、KES
   和普通状态路径，direct-run conformity 仅用于容器重建；TC-3 通过。
+- 2026-07-21T15:38:15+08:00 p2-1 开始：扩充可重建参数模型，补齐容器用户、附加组和
+  labels，同时维持 plan 输出脱敏。
+- 2026-07-21T15:48:48+08:00 p2-1 完成：probe、RecreateSpec 和密封 docker argv 已覆盖
+  user、group_add、labels；原有全部运行参数和环境变量脱敏保持有效；TC-4 通过。
 
 ## 6. Validation Evidence (append-only)
 
@@ -262,6 +266,11 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
   tests/test_s0020_observability.py && python3 tests/test_s0020_stateless_plan.py` | result: pass |
   note: Compose observation 下 observability、troubleshooting 和 KES plan 均可用，
   direct-run 门仍拒绝 Compose 重建。
+- TC-4 | stack: rust/python | command: `cargo test -q executor && python3 tests/test_probe.py &&
+  python3 tests/test_s0020_upgrade_workflow.py` | result: pass | note: 重建 argv 保留 name、
+  restart、network、ports、env、binds、entrypoint、args、user、group_add、labels；agent
+  plan 中敏感 env value 仍被替换为 redaction marker。升级工作流测试因本地监听限制在
+  获准的非沙箱环境执行。
 
 ## 7. Change Requests (append-only)
 
