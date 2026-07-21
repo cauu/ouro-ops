@@ -58,8 +58,8 @@ pub struct Allowlist {
     /// them. A denylist entry ALWAYS wins over an allow.
     #[serde(default)]
     pub denylist: Vec<String>,
-    /// Signed, explicit N→N+1 runtime transitions. Merely allowlisting two images does not prove DB
-    /// compatibility in either direction.
+    /// Optional signed runtime transitions. Upgrade admission targets `recommended`; an exact
+    /// transition only describes whether automatic rollback to the source runtime is safe.
     #[serde(default)]
     pub transitions: Vec<crate::upgrade::TransitionMeta>,
 }
@@ -160,30 +160,22 @@ impl Allowlist {
             .map(|(_, image)| image)
     }
 
-    pub fn next_for(
+    pub fn recommended_upgrade_for(
         &self,
         current: &str,
         platform: &str,
-    ) -> Result<(&AllowedImage, &crate::upgrade::TransitionMeta)> {
-        let mut candidates = self.transitions.iter().filter(|transition| {
-            transition.from_image_config_digest == current
-                && self
-                    .contract_and_image_for(&transition.to_image_config_digest, platform)
-                    .is_ok()
-        });
-        let transition = candidates.next().ok_or_else(|| {
-            OuroError::Validation(format!(
-                "signed release catalog has no next Upgrade hop from {current} on {platform}"
-            ))
-        })?;
-        if candidates.next().is_some() {
+    ) -> Result<(&AllowedImage, Option<&crate::upgrade::TransitionMeta>)> {
+        self.contract_and_image_for(current, platform)?;
+        let recommended = self.recommended_for(platform)?;
+        if recommended.image_config_digest == current {
             return Err(OuroError::Validation(format!(
-                "signed release catalog has ambiguous next Upgrade hops from {current} on {platform}"
+                "image {current} is already the signed recommended release for {platform}"
             )));
         }
-        let (_, image) =
-            self.contract_and_image_for(&transition.to_image_config_digest, platform)?;
-        Ok((image, transition))
+        Ok((
+            recommended,
+            self.transition_for_optional(current, &recommended.image_config_digest),
+        ))
     }
 
     /// Load the selected payload (embedded by default, or an externally delivered signed feed).
@@ -268,10 +260,21 @@ impl Allowlist {
             })
             .ok_or_else(|| {
                 OuroError::Validation(format!(
-                    "no signed N→N+1 transition metadata for {from_image_config_digest} → \
-                     {to_image_config_digest}; allowlisting images alone is insufficient"
+                    "no exact signed rollback metadata for {from_image_config_digest} → \
+                     {to_image_config_digest}"
                 ))
             })
+    }
+
+    pub fn transition_for_optional(
+        &self,
+        from_image_config_digest: &str,
+        to_image_config_digest: &str,
+    ) -> Option<&crate::upgrade::TransitionMeta> {
+        self.transitions.iter().find(|transition| {
+            transition.from_image_config_digest == from_image_config_digest
+                && transition.to_image_config_digest == to_image_config_digest
+        })
     }
 
     /// Control↔target allowlist-version skew is a refuse (§2.1): the two sides must agree on the
@@ -703,21 +706,28 @@ mod tests {
     const RELEASES: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/releases.json"));
 
     #[test]
-    fn signed_release_catalog_selects_deploy_and_next_upgrade() {
+    fn signed_release_catalog_selects_deploy_and_recommended_upgrade() {
         let catalog = Allowlist::release_document(RELEASES).expect("signed catalog verifies");
         assert_eq!(catalog.repository, BLINKLABS_REPOSITORY);
         let deploy = catalog.recommended_for("linux/amd64").unwrap();
         assert_eq!(deploy.release, "11.0.1-1");
-        let (next, transition) = catalog
-            .next_for(
+        let (target, transition) = catalog
+            .recommended_upgrade_for(
                 "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a",
                 "linux/amd64",
             )
             .unwrap();
-        assert_eq!(next.release, "10.6.4-1");
-        assert_eq!(transition.to_image_config_digest, next.image_config_digest);
+        assert_eq!(target.release, "11.0.1-1");
+        assert!(transition.is_none(), "direct rollback metadata is optional");
+        let (_, direct_transition) = catalog
+            .recommended_upgrade_for(
+                "sha256:5fe0bf791a0af8884386479555996bf4ad7621493889625a2886039bf8734e51",
+                "linux/amd64",
+            )
+            .unwrap();
+        assert!(direct_transition.is_some());
         assert!(catalog
-            .next_for(&deploy.image_config_digest, "linux/amd64")
+            .recommended_upgrade_for(&deploy.image_config_digest, "linux/amd64")
             .is_err());
 
         let tampered = RELEASES.replace("10.6.4-1", "10.6.4-evil");
@@ -730,7 +740,7 @@ mod tests {
         assert!(a.signature.starts_with("ed25519:"));
         assert!(!a.contracts.is_empty());
         assert_eq!(a.allowlist_version, 3);
-        assert_eq!(a.transitions.len(), 3, "only the reviewed adjacent graph");
+        assert_eq!(a.transitions.len(), 3, "three exact rollback declarations");
         // The blinklabs baseline contract is present with the standard layout.
         let c = &a.contracts[0];
         assert_eq!(c.in_container_paths.socket, "/ipc/node.socket");
@@ -796,7 +806,10 @@ mod tests {
         assert!(!a.transition_for(v105, v106).unwrap().db_backward_compatible);
         assert!(a.transition_for(v106, v107).unwrap().db_backward_compatible);
         assert!(a.transition_for(v107, v110).unwrap().db_backward_compatible);
-        assert!(a.transition_for(v105, v110).is_err(), "direct skip refused");
+        assert!(
+            a.transition_for(v105, v110).is_err(),
+            "no exact direct rollback declaration"
+        );
         assert!(
             a.transition_for(v110, v107).is_err(),
             "reverse edge refused"

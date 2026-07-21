@@ -1021,8 +1021,8 @@ fn run_release(args: &[String]) -> Result<()> {
     let digest = catalog.policy.signed_digest()?;
     let from = optional_flag_value(args, "--from");
     let (selection, image, transition) = if let Some(current) = from {
-        let (image, transition) = catalog.policy.next_for(current, platform)?;
-        ("upgrade_next", image, Some(transition))
+        let (image, transition) = catalog.policy.recommended_upgrade_for(current, platform)?;
+        ("upgrade_recommended", image, transition)
     } else {
         (
             "deploy_recommended",

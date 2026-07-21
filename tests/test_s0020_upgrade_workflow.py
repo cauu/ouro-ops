@@ -589,40 +589,66 @@ def main():
         commands = mutation_commands(docker_log)
         assert ["start", "cardano-node"] not in commands
 
-        # The production Ed25519 policy authorizes each reviewed adjacent runtime edge while all
-        # releases retain the same Blink layout contract. Direct skips and reverse edges fail at
-        # the target plan boundary before any executor can run.
+        # Every trusted historical amd64 release upgrades directly to the signed recommendation.
+        # Exact transition metadata is optional and only enables automatic rollback.
         production = json.loads((ROOT / "data/releases.json").read_text())
         assert production["allowlist_version"] == 5
         assert len(production["contracts"]) == 1
         assert production["contracts"][0]["convention_version"] == 1
         transitions = production["transitions"]
-        assert len(transitions) == 3
-        for index, transition in enumerate(transitions):
+        recommended = production["recommended"]["linux/amd64"]
+        amd64_images = [
+            image
+            for contract in production["contracts"]
+            for image in contract["allowed"]
+            if image["platform"] == "linux/amd64"
+        ]
+        historical = [
+            image["image_config_digest"]
+            for image in amd64_images
+            if image["image_config_digest"] != recommended
+        ]
+        assert len(historical) == 3
+        for index, current in enumerate(historical):
             completed, value = production_step_plan(
                 home / f"production-edge-{index}",
-                transition["from_image_config_digest"],
-                transition["to_image_config_digest"],
+                current,
+                recommended,
             )
             assert completed.returncode == 0, (completed, value)
-            assert value["data"]["upgrade_transition"] == transition
+            direct = next(
+                (
+                    transition
+                    for transition in transitions
+                    if transition["from_image_config_digest"] == current
+                    and transition["to_image_config_digest"] == recommended
+                ),
+                None,
+            )
+            assert value["data"]["upgrade_transition"] == direct
+            assert value["data"]["upgrade_failure_outcome"] == (
+                "verified_rollback_to_N"
+                if direct and direct["db_backward_compatible"]
+                else "forward_recovery_or_resync_required"
+            )
+            assert (value["data"]["rollback_executor_plan"] is not None) == bool(
+                direct and direct["db_backward_compatible"]
+            )
             assert value["data"]["runtime_policy"]["contract_id"] == "blinklabs-cardano-node-v1"
 
-        first = transitions[0]["from_image_config_digest"]
-        final = transitions[-1]["to_image_config_digest"]
-        skipped, skipped_value = production_step_plan(
-            home / "production-skip", first, final
+        nonrecommended, nonrecommended_value = production_step_plan(
+            home / "production-nonrecommended",
+            historical[0],
+            historical[1],
         )
-        assert skipped.returncode != 0
-        assert "allowlisting images alone is insufficient" in json.dumps(skipped_value)
+        assert nonrecommended.returncode != 0
+        assert "is not the signed recommended image" in json.dumps(nonrecommended_value)
 
-        reverse_from = transitions[-1]["to_image_config_digest"]
-        reverse_to = transitions[-1]["from_image_config_digest"]
         reversed_result, reversed_value = production_step_plan(
-            home / "production-reverse", reverse_from, reverse_to
+            home / "production-reverse", recommended, historical[-1]
         )
         assert reversed_result.returncode != 0
-        assert "allowlisting images alone is insufficient" in json.dumps(reversed_value)
+        assert "already the signed recommended release" in json.dumps(reversed_value)
 
     print("S0020 single-prompt Upgrade sealed workflow passed")
 

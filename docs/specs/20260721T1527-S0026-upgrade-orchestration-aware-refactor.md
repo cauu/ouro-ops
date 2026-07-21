@@ -323,3 +323,79 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
 - 2026-07-21T15:20:08+08:00 删除 systemd 归属证明、字段分类、strategy 框架、
   Compose transaction/candidate/finalize/verify-rebind 和自动回滚；保留 CLI 可信探测、
   run 写安全、Skill 人工指南和用户完成后的普通健康检查。
+
+## 8. Change Request: 直接升级到签名推荐最新版（2026-07-21，append-only）
+
+### 8.1 Requirement Amendment
+
+- 当前运行镜像必须是当前平台签名 release catalog 中的受信镜像；目标必须是该平台
+  `recommended` 指向的签名最新版。
+- `release select --from <current>` 直接返回签名推荐最新版，不再沿 transitions 选择相邻
+  hop；当前已是推荐版本时明确停止。
+- `upgrade/preload-image` 和 `upgrade/step` 只接受推荐目标。任意非推荐目标、逆向升级、
+  未受信当前镜像或平台不匹配均在 mutation 前拒绝。
+- signed transition 不再承担升级准入。只有恰好存在 current → recommended 的 signed
+  transition 且其 backward-compatible 为 true 时，才允许自动回滚；缺少该边时升级仍可
+  执行，但必须明确失败后采用 forward recovery 或 re-sync。
+- Agent Skill、operations、站点提示和本地验收产物必须使用同一语义，不再要求用户按
+  `10.5.4-1 → 10.6.4-1 → 10.7.1-3 → 11.0.1-1` 逐跳升级。
+
+### 8.2 Solution Amendment
+
+release catalog 的 `recommended` 是唯一自动升级目标；`allowed` 证明当前和目标的签名
+OCI 身份与平台，`transitions` 仅作为可选的精确回滚能力声明保留。CLI 在 plan/apply
+两端重新解析同一签名 catalog，验证 current 和 recommended；若有精确 transition，仍
+校验该元数据并据此生成 rollback plan，否则输出 `upgrade_transition: null`、
+`forward_recovery_or_resync_required`，且不生成 rollback executor plan。无需修改或重签
+现有 release catalog。
+
+### 8.3 Execution Plan Amendment
+
+- [x] p5-1 [CLI] 将 release selection、stateless/legacy Upgrade 准入改为直接推荐最新版，
+  transition 降级为可选回滚声明，并补 TC-11/TC-12。
+- [~] p5-2 [Skill/Docs] 同步 Upgrade Skill、operations 和站点提示，并补 TC-13。
+- [ ] p5-3 [Tests/Artifacts] 执行完整回归并重建本地 release candidate/网站验收产物，
+  证明 TC-14。
+
+| Item | Acceptance |
+| --- | --- |
+| p5-1 | TC-11, TC-12 |
+| p5-2 | TC-13 |
+| p5-3 | TC-14 |
+
+### 8.4 Acceptance Amendment
+
+- TC-11：从生产 catalog 中每个低于推荐版的受信 amd64 镜像执行 `release select --from`
+  或 upgrade plan，目标均为 11.0.1-1；10.5.4-1 可直接 plan 到 11.0.1-1。
+- TC-12：非推荐目标、逆向目标、未知当前镜像被拒绝；无 current → recommended 精确边时
+  `upgrade_transition` 为 null、无 rollback plan，失败语义为 forward recovery/re-sync；
+  有 backward-compatible 精确边时仍可自动回滚。
+- TC-13：Skill、operations 和生成站点明确“直升签名推荐最新版”，不再出现相邻 hop
+  准入要求，Compose 人工交接与 run 参数保持规则不变。
+- TC-14：原 TC-1 至 TC-10 与新增测试全部通过；本地 release candidate smoke 和站点
+  产物重新生成，内含新的直升最新版语义。
+
+### 8.5 Execution Log Amendment (append-only)
+
+- 2026-07-21T16:39:37+08:00 operator 确认官方并不要求按相邻版本链升级，要求执行
+  “任意受信当前版本直接升级到签名推荐最新版”；p5-1 开始。
+- 2026-07-21T16:48:52+08:00 p5-1 完成：release selection、stateless 与 legacy Upgrade
+  均以当前平台 `recommended` 为唯一目标；精确 transition 缺失时仍可 plan，但不生成
+  rollback plan，并明确 forward recovery/re-sync。TC-11、TC-12 通过；p5-2 开始。
+
+### 8.6 Validation Evidence Amendment (append-only)
+
+- （待执行）
+- TC-11 | stack: rust/python | command: `cargo test -q && python3
+  tests/test_release_catalog.py && python3 tests/test_s0020_upgrade_workflow.py` | result: pass |
+  note: 生产 catalog 中 10.5.4-1、10.6.4-1、10.7.1-3 均选择并 plan 到 11.0.1-1；
+  release selection 不写本地状态。
+- TC-12 | stack: rust/python | command: `cargo test -q && python3
+  tests/test_s0020_upgrade_workflow.py` | result: pass | note: 非推荐/逆向目标拒绝；10.5/10.6
+  直升时 transition/rollback plan 为空且报告 forward recovery/re-sync，10.7 直升保留已签名
+  backward-compatible 自动回滚。
+
+### 8.7 Change Requests Amendment (append-only)
+
+- 2026-07-21T16:39:37+08:00 删除 transition 作为升级准入链路的要求；保留精确 signed
+  transition 仅用于自动回滚授权。

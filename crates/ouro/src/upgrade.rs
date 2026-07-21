@@ -1,7 +1,7 @@
-//! S0019 p3-2 (§2.10) — node-runtime N→N+1 upgrade, DB-compat honest.
+//! S0019 p3-2 (§2.10) — node-runtime upgrade to the signed recommendation, DB-compat honest.
 //!
-//! S0018 distributes only the ouro-ops binary; the NODE runtime upgrade is owned here. A transition
-//! is gated by SIGNED metadata declaring node/cli/protocol and DB-format compatibility. The order:
+//! S0018 distributes only the ouro-ops binary; the NODE runtime upgrade is owned here. The target
+//! is the signed recommended image. Optional transition metadata describes rollback safety. Order:
 //! upgrade ouro first, canary a relay, BP last, preserve volumes, verify, then atomically rotate
 //! the attestation. Rollback restores runtime AND attestation ONLY if a tested backward-compatible
 //! downgrade exists; otherwise the ONLY honest outcome is
@@ -13,10 +13,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{OuroError, Result};
 
-/// Signed transition metadata for one adjacent runtime hop (verified against the release key like
-/// the allowlist). Adjacency is the presence of this exact directed digest edge in signed policy;
-/// layout convention versions remain independent because multiple node releases can share one
-/// stable container contract.
+/// Optional signed metadata for one exact source/target pair. Its presence is not upgrade
+/// admission; it can authorize automatic rollback when backward compatibility is explicit.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct TransitionMeta {
@@ -79,8 +77,8 @@ pub fn failure_outcome(meta: &TransitionMeta) -> FailureOutcome {
     }
 }
 
-/// Validate a selected transition before starting. The exact directed edge is the signed N→N+1
-/// authority; both endpoints must be allowlisted even when they share one layout convention.
+/// Validate an exact transition metadata claim before using it for rollback decisions. Upgrade
+/// admission itself is based on the signed recommended target.
 pub fn validate_transition(
     meta: &TransitionMeta,
     allowlist: &crate::convention::Allowlist,

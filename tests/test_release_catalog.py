@@ -51,20 +51,33 @@ def main():
         assert deploy_value["data"]["cache_written"] is False
         assert list(home.iterdir()) == [], "release selection must not create local state"
 
-        current = "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a"
-        upgrade = run(home, RELEASES, "--from", current)
-        assert upgrade.returncode == 0, upgrade.stderr
-        upgrade_value = json.loads(upgrade.stdout)
-        assert upgrade_value["data"]["selection"] == "upgrade_next"
-        assert upgrade_value["data"]["repository"] == "ghcr.io/blinklabs-io/cardano-node"
-        assert upgrade_value["data"]["image"]["release"] == "10.6.4-1"
-        for field in (
-            "oci_index_digest",
-            "platform_manifest_digest",
-            "image_config_digest",
-        ):
-            assert upgrade_value["data"]["image"][field].startswith("sha256:")
-        assert upgrade_value["data"]["transition"]["from_image_config_digest"] == current
+        historical = [
+            "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a",
+            "sha256:0fb74b5921860a6547ce5b6c669d59b71169d1c48b014f2fafcec2e4d382f1b3",
+            "sha256:5fe0bf791a0af8884386479555996bf4ad7621493889625a2886039bf8734e51",
+        ]
+        for current in historical:
+            upgrade = run(home, RELEASES, "--from", current)
+            assert upgrade.returncode == 0, upgrade.stderr
+            upgrade_value = json.loads(upgrade.stdout)
+            assert upgrade_value["data"]["selection"] == "upgrade_recommended"
+            assert upgrade_value["data"]["repository"] == "ghcr.io/blinklabs-io/cardano-node"
+            assert upgrade_value["data"]["image"]["release"] == "11.0.1-1"
+            for field in (
+                "oci_index_digest",
+                "platform_manifest_digest",
+                "image_config_digest",
+            ):
+                assert upgrade_value["data"]["image"][field].startswith("sha256:")
+            if current == historical[-1]:
+                assert upgrade_value["data"]["transition"]["from_image_config_digest"] == current
+            else:
+                assert upgrade_value["data"]["transition"] is None
+
+        already_current = deploy_value["data"]["image"]["image_config_digest"]
+        already = run(home, RELEASES, "--from", already_current)
+        assert already.returncode != 0
+        assert "already the signed recommended release" in (already.stdout + already.stderr)
         assert list(home.iterdir()) == []
 
         # A newly signed catalog changes selection without rebuilding this binary.

@@ -2854,14 +2854,17 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             allowlist.contract_and_image_for(target, &observation.live.platform)?;
         match op {
             "upgrade/preload-image" | "upgrade/step" => {
-                let transition =
-                    allowlist.transition_for(&observation.live.image_config_digest, target)?;
-                crate::upgrade::validate_transition(
-                    transition,
-                    &allowlist,
+                let (recommended, transition) = allowlist.recommended_upgrade_for(
+                    &observation.live.image_config_digest,
                     &observation.live.platform,
                 )?;
-                upgrade_transition = Some(transition.clone());
+                if target != recommended.image_config_digest {
+                    return Err(OuroError::Validation(format!(
+                        "upgrade target {target} is not the signed recommended image {} for {}; refused",
+                        recommended.image_config_digest, observation.live.platform
+                    )));
+                }
+                upgrade_transition = transition.cloned();
                 target_upgrade_image = Some(target_image.clone());
                 if op == "upgrade/step" {
                     crate::executor::require_image_present(target)?;
@@ -3055,12 +3058,20 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
             )))
         }
     };
-    let upgrade_failure_outcome = upgrade_transition.as_ref().map(|transition| {
-        match crate::upgrade::failure_outcome(transition) {
-            crate::upgrade::FailureOutcome::RollbackToN => "verified_rollback_to_N",
-            crate::upgrade::FailureOutcome::ReSyncRequired => "forward_recovery_or_resync_required",
-        }
-    });
+    let upgrade_failure_outcome = if matches!(op, "upgrade/preload-image" | "upgrade/step") {
+        Some(
+            if upgrade_transition
+                .as_ref()
+                .is_some_and(crate::upgrade::rollback_possible)
+            {
+                "verified_rollback_to_N"
+            } else {
+                "forward_recovery_or_resync_required"
+            },
+        )
+    } else {
+        None
+    };
     let rollback_executor_plan = if op == "upgrade/step"
         && upgrade_transition
             .as_ref()
@@ -4378,8 +4389,16 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 &current_container,
                 target,
             )?;
-            let transition = final_plan.policy.transition_for(&current_image, target)?;
-            let automatic_rollback_allowed = crate::upgrade::rollback_possible(transition);
+            let (recommended, transition) = final_plan
+                .policy
+                .recommended_upgrade_for(&current_image, &final_plan.observation.live.platform)?;
+            if target != recommended.image_config_digest {
+                return Err(OuroError::Validation(
+                    "upgrade target is no longer the signed recommended image".into(),
+                ));
+            }
+            let automatic_rollback_allowed =
+                transition.is_some_and(crate::upgrade::rollback_possible);
             let rollback = || {
                 crate::executor::run_rollback_plan("upgrade/step", &recovery.rollback)?;
                 let restored = read_observation(&[])?;
@@ -6013,6 +6032,26 @@ fn run_op_inner(args: &[String]) -> Result<()> {
             "kes-rotation/install-opcert is BP-only; a relay may never receive an opcert".into(),
         ));
     }
+    if op == "upgrade/preload-image" {
+        let target = payload
+            .get("image")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                OuroError::Validation("upgrade/preload-image lost target image".into())
+            })?;
+        let observation = read_observation(args)?;
+        require_current_contract_observation(&att, active_contract, &observation)?;
+        let (recommended, _) = active_allowlist.recommended_upgrade_for(
+            &att.immutable.image_config_digest,
+            &observation.live.platform,
+        )?;
+        if target != recommended.image_config_digest {
+            return Err(OuroError::Validation(format!(
+                "upgrade target {target} is not the signed recommended image {} for {}; refused",
+                recommended.image_config_digest, observation.live.platform
+            )));
+        }
+    }
     let upgrade_snapshot = if op == "upgrade/step" {
         let target = payload
             .get("image")
@@ -6020,14 +6059,16 @@ fn run_op_inner(args: &[String]) -> Result<()> {
             .ok_or_else(|| OuroError::Validation("upgrade/step lost target image".into()))?;
         let observation = read_observation(args)?;
         require_current_contract_observation(&att, active_contract, &observation)?;
-        let transition = active_allowlist
-            .transition_for(&att.immutable.image_config_digest, target)?
-            .clone();
-        crate::upgrade::validate_transition(
-            &transition,
-            &active_allowlist,
+        let (recommended, transition) = active_allowlist.recommended_upgrade_for(
+            &att.immutable.image_config_digest,
             &observation.live.platform,
         )?;
+        if target != recommended.image_config_digest {
+            return Err(OuroError::Validation(format!(
+                "upgrade target {target} is not the signed recommended image {} for {}; refused",
+                recommended.image_config_digest, observation.live.platform
+            )));
+        }
         crate::executor::require_image_present(target)?;
         let recreate = observation.recreate.as_ref().ok_or_else(|| {
             OuroError::Validation(
@@ -6036,7 +6077,7 @@ fn run_op_inner(args: &[String]) -> Result<()> {
             )
         })?;
         let binding = recreate_spec_binding(&paths, local, recreate)?;
-        Some((observation, transition, binding))
+        Some((observation, transition.cloned(), binding))
     } else {
         None
     };
@@ -6237,10 +6278,11 @@ fn run_op_inner(args: &[String]) -> Result<()> {
     } else {
         None
     };
-    // Upgrade safety is signed metadata, not an inference from "both images are allowlisted".
+    // Upgrade admission targets the signed recommendation. Exact transition metadata is optional
+    // and grants automatic rollback only when it explicitly declares backward compatibility.
     let upgrade_transition = upgrade_snapshot
         .as_ref()
-        .map(|(_, transition, _)| transition);
+        .and_then(|(_, transition, _)| transition.as_ref());
 
     // Target-validated FINAL plan: registry/schema, adoption, allowlist, parity, live drift, stable
     // fleet policy and (for upgrade) the sealed run-spec have passed. A permit is deliberately not
@@ -6323,9 +6365,15 @@ fn run_op_inner(args: &[String]) -> Result<()> {
             "confirmation_required": spec.mutability == Mutability::Dangerous,
             "commit_recheck_required": true,
             "upgrade_transition": upgrade_transition,
-            "upgrade_failure_outcome": upgrade_transition
-                .map(crate::upgrade::failure_outcome)
-                .map(|outcome| format!("{outcome:?}")),
+            "upgrade_failure_outcome": if op == "upgrade/step" {
+                Some(if upgrade_transition.is_some_and(crate::upgrade::rollback_possible) {
+                    "RollbackToN"
+                } else {
+                    "ReSyncRequired"
+                })
+            } else {
+                None
+            },
             "kes_candidate": kes_candidate.as_ref().map(|candidate| json!({
                 "counter": candidate.counter,
                 "kes_period": candidate.kes_period,
@@ -6460,9 +6508,6 @@ fn run_op_inner(args: &[String]) -> Result<()> {
             .ok_or_else(|| {
                 OuroError::Validation("upgrade/step needs image (an allowlisted digest)".into())
             })?;
-        let transition = upgrade_transition.as_ref().ok_or_else(|| {
-            OuroError::Validation("upgrade transition was not validated before planning".into())
-        })?;
         let spec = upgrade_snapshot
             .as_ref()
             .and_then(|(observation, _, _)| observation.recreate.as_ref())
@@ -6470,7 +6515,7 @@ fn run_op_inner(args: &[String]) -> Result<()> {
                 OuroError::Validation("upgrade lost the approved recreate spec".into())
             })?;
         let commit = crate::executor::recreate_argv(spec, &att.state.container_id, to_digest)?;
-        let rb = if crate::upgrade::rollback_possible(transition) {
+        let rb = if upgrade_transition.is_some_and(crate::upgrade::rollback_possible) {
             Some(crate::executor::upgrade_rollback_plan(&att, spec)?)
         } else {
             None
