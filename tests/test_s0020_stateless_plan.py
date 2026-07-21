@@ -268,6 +268,20 @@ def main():
     assert reordered_value["data"]["candidate_hash"] == data["candidate_hash"]
     write_probe(probe, observation())
 
+    # Compose ownership does not globally block KES planning; only container recreation is run-only.
+    compose_observation = observation()
+    compose_observation["supervisor"].update({
+        "orchestration": "compose",
+        "compose": {
+            "project": "cardano",
+            "service": "cardano-node",
+            "working_dir": "/opt/cardano",
+            "config_files": ["/opt/cardano/compose.yaml"],
+            "config_hash": "cfg-hash",
+        },
+    })
+    write_probe(probe, compose_observation)
+
     # Phase A derives the live period and proposes generation only in the fixed private stage.
     staged, staged_value = invoke(
         home,
@@ -289,6 +303,7 @@ def main():
     assert any(".ouro-kes-stage/kes.skey.tmp" in arg for argv in stage_plan for arg in argv)
     assert all("cold.skey" not in arg for argv in stage_plan for arg in argv)
     assert staged_value["data"]["fleet_permit_required"] is False
+    write_probe(probe, observation())
 
     # Phase B binds the exact staged public key and shows backup/promotion/restart/cleanup for the
     # active KES pair plus public opcert. No key bytes or arbitrary target path enter the plan.

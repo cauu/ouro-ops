@@ -1397,7 +1397,7 @@ fn run_kes_protocol_evidence(args: &[String]) -> Result<()> {
     let network = flag(args, "--network")?;
     let genesis = flag(args, "--genesis")?;
     let observation = read_observation(&[])?;
-    observation.supervisor.require_conformant()?;
+    observation.supervisor.require_base_conformant()?;
     require_typed_mounts(&observation.live.mounts)?;
     let contract = convention::Allowlist::stable_contract()?;
     require_adoption_contract(&contract, &observation, network, genesis, None, None)?;
@@ -2575,7 +2575,10 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
 
     let mut observation = read_observation(&[])?;
     canonicalize_typed_mounts(&mut observation.live.mounts);
-    observation.supervisor.require_conformant()?;
+    observation.supervisor.require_base_conformant()?;
+    if op == "upgrade/step" {
+        observation.supervisor.require_direct_run()?;
+    }
     require_typed_mounts(&observation.live.mounts)?;
     let is_upgrade = matches!(op, "upgrade/preload-image" | "upgrade/step");
     let allowlist = if is_upgrade {
@@ -3403,7 +3406,7 @@ fn require_stateless_post_contract(
             observation.live.image_config_digest
         )));
     }
-    observation.supervisor.require_conformant()?;
+    observation.supervisor.require_base_conformant()?;
     require_typed_mounts(&observation.live.mounts)?;
     let stable_contract;
     let contract = if matches!(plan.op.as_str(), "upgrade/preload-image" | "upgrade/step") {
@@ -4476,7 +4479,7 @@ fn run_stateless_target_status(args: &[String]) -> Result<()> {
     let genesis = flag(args, "--genesis")?;
     validate_digest_selector("--genesis", &format!("sha256:{genesis}"))?;
     let observation = read_observation(&[])?;
-    observation.supervisor.require_conformant()?;
+    observation.supervisor.require_base_conformant()?;
     require_typed_mounts(&observation.live.mounts)?;
     let release_policy = optional(args, "--release-policy");
     let allowlist = match release_policy {
@@ -4583,7 +4586,7 @@ fn stateless_observation_output(node: &str, observation: &Observation) -> ToolOu
         Ok(contract) => {
             let conformity = observation
                 .supervisor
-                .require_conformant()
+                .require_base_conformant()
                 .and_then(|_| require_typed_mounts(&observation.live.mounts))
                 .and_then(|_| {
                     require_adoption_contract(

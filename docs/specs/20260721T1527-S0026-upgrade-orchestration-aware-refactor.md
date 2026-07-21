@@ -172,7 +172,7 @@ Compose 不做自动回滚，失败后由 agent 根据当前事实和 release �
 
 - [x] p1-1 [CLI] 探针和 observability/health 输出 run/compose/unsupported、reason 和
   Compose facts，并补对应 TC-1/TC-2 测试。
-- [ ] p1-2 [CLI] 拆分 base/direct-run conformity；Compose 上非重建操作保持可用，并补
+- [x] p1-2 [CLI] 拆分 base/direct-run conformity；Compose 上非重建操作保持可用，并补
   对应 TC-3 测试。
 - [ ] p2-1 [CLI] RecreateSpec 和 docker argv 增加 user、group_add、labels，保持脱敏，
   并补对应 TC-4 测试。
@@ -241,6 +241,10 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
   S0026 promoted 为唯一 active spec，p1-1 开始。
 - 2026-07-21T15:31:49+08:00 p1-1 完成：probe 根据容器 labels 输出 run、compose 或
   unsupported，observability/health 透传 reason 和 Compose facts；TC-1、TC-2 通过。
+- 2026-07-21T15:35:24+08:00 p1-2 开始：将通用运行约束与仅限 docker run 的重建约束
+  分开，避免 Compose 被全局门控误伤。
+- 2026-07-21T15:36:59+08:00 p1-2 完成：base conformity 支持 Compose 上的读取、KES
+  和普通状态路径，direct-run conformity 仅用于容器重建；TC-3 通过。
 
 ## 6. Validation Evidence (append-only)
 
@@ -254,6 +258,10 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
 - TC-2 | stack: rust/python | command: `cargo fmt --all && python3 tests/test_probe.py &&
   python3 tests/test_s0020_observability.py` | result: pass | note: 补充验证冲突 labels 和
   非标准 runtime 均归一化为 unsupported，并保留稳定 reason。
+- TC-3 | stack: rust/python | command: `cargo test -q supervisor && python3
+  tests/test_s0020_observability.py && python3 tests/test_s0020_stateless_plan.py` | result: pass |
+  note: Compose observation 下 observability、troubleshooting 和 KES plan 均可用，
+  direct-run 门仍拒绝 Compose 重建。
 
 ## 7. Change Requests (append-only)
 

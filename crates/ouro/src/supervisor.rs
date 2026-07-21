@@ -80,9 +80,8 @@ impl SupervisorObservation {
         )
     }
 
-    /// Refuse everything outside the v1 contract with a specific reason. This is the ONLY place a
-    /// node's supervision shape is judged; adoption calls it before writing the attestation.
-    pub fn require_conformant(&self) -> Result<()> {
+    /// Validate the common runtime shape used by read, KES and other non-recreate operations.
+    pub fn require_base_conformant(&self) -> Result<()> {
         let refuse = |why: &str| {
             Err(OuroError::Validation(format!(
                 "node supervision does not conform to the S0019 v1 contract (§2.2): {why}; \
@@ -101,12 +100,6 @@ impl SupervisorObservation {
         }
         if !self.rootful {
             return refuse("non-rootful daemon");
-        }
-        if self.orchestration != "run" {
-            return refuse(&format!(
-                "orchestration={} (only direct `run` in v1; compose/swarm/k8s are separate contracts)",
-                self.orchestration
-            ));
         }
         if self.node_container_count != v1::NODES_PER_HOST {
             return refuse(&format!(
@@ -136,6 +129,24 @@ impl SupervisorObservation {
         }
         Ok(())
     }
+
+    /// Recreate operations are supported only for a container started directly with docker run.
+    pub fn require_direct_run(&self) -> Result<()> {
+        self.require_base_conformant()?;
+        if self.orchestration != "run" {
+            return Err(OuroError::Validation(format!(
+                "node supervision does not conform to the direct-run recreate contract: \
+                 orchestration={} (only direct `run` can be recreated automatically)",
+                self.orchestration
+            )));
+        }
+        Ok(())
+    }
+
+    /// Compatibility entry point for adoption and legacy paths whose full v1 contract is run-only.
+    pub fn require_conformant(&self) -> Result<()> {
+        self.require_direct_run()
+    }
 }
 
 #[cfg(test)]
@@ -160,6 +171,14 @@ mod tests {
     #[test]
     fn v1_conforming_shape_accepted() {
         assert!(conforming().require_conformant().is_ok());
+    }
+
+    #[test]
+    fn compose_is_base_conformant_but_not_direct_run() {
+        let mut observation = conforming();
+        observation.orchestration = "compose".into();
+        assert!(observation.require_base_conformant().is_ok());
+        assert!(observation.require_direct_run().is_err());
     }
 
     #[test]

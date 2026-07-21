@@ -168,6 +168,23 @@ def main():
     assert compose_container["orchestration"] == "compose", compose_container
     assert compose_container["compose"]["service"] == "cardano-node", compose_container
 
+    compose_payload = json.dumps(compose_observation, separators=(",", ":"))
+    probe.write_text(f"ouro_observe() {{ printf '%s\\n' '{compose_payload}'; }}\n")
+    compose_troubleshooting, compose_troubleshooting_value = invoke(
+        home,
+        "target",
+        "observe",
+        "--node",
+        "bp1",
+        "--op",
+        "troubleshooting/snapshot",
+        "--role",
+        "relay",
+        extra_env={"OURO_PROBE_LIB": str(probe)},
+    )
+    assert compose_troubleshooting.returncode == 0, compose_troubleshooting
+    assert compose_troubleshooting_value["data"]["op"] == "troubleshooting/snapshot"
+
     unsupported_observation = observation()
     unsupported_observation["supervisor"]["runtime"] = "podman"
     unsupported_fixture = home / "unsupported-observation.json"
