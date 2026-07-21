@@ -310,6 +310,63 @@ def main():
             "OURO_READINESS_SAMPLE_DELAY": "0",
         }
 
+        # upgrade/step is direct-run only. Compose and unsupported ownership refuse during both
+        # plan and apply before even an image-store lookup, let alone docker rename/run.
+        reset_state(state, old_image, target_image, target_present=True)
+        base_path = Path(env["OURO_TEST_BASE_OBSERVATION"])
+        direct_run_observation = json.loads(base_path.read_text())
+        for orchestration, reason_code in [
+            ("compose", "manual_compose_required"),
+            ("unsupported", "unsupported_orchestration"),
+        ]:
+            routed = copy.deepcopy(direct_run_observation)
+            routed["supervisor"]["orchestration"] = orchestration
+            if orchestration == "compose":
+                routed["supervisor"]["compose"] = {
+                    "project": "cardano",
+                    "service": "cardano-node",
+                    "working_dir": "/opt/cardano",
+                    "config_files": ["/opt/cardano/compose.yaml"],
+                    "config_hash": "cfg-hash",
+                }
+            else:
+                routed["supervisor"]["orchestration_reason"] = (
+                    "unsupported_orchestration:portainer"
+                )
+            base_path.write_text(json.dumps(routed, separators=(",", ":")))
+            docker_log.unlink(missing_ok=True)
+            routed_plan, routed_plan_value = invoke(
+                home,
+                *target_args(
+                    "upgrade/step",
+                    "--param",
+                    "machine=bp1",
+                    "--param",
+                    f"image={target_image}",
+                ),
+                env_extra=env,
+                path=fakebin,
+            )
+            assert routed_plan.returncode != 0
+            assert reason_code in json.dumps(routed_plan_value), routed_plan_value
+            routed_apply, routed_apply_value = invoke(
+                home,
+                *apply_args(
+                    "upgrade/step",
+                    "0" * 64,
+                    "--param",
+                    "machine=bp1",
+                    "--param",
+                    f"image={target_image}",
+                ),
+                env_extra=env,
+                path=fakebin,
+            )
+            assert routed_apply.returncode != 0
+            assert reason_code in json.dumps(routed_apply_value), routed_apply_value
+            assert not docker_log.exists(), "routing refusal must precede every docker command"
+        base_path.write_text(json.dumps(direct_run_observation, separators=(",", ":")))
+
         # Read-only planning exposes the signed pull tuple and never contacts the registry.
         reset_state(state, old_image, target_image, target_present=False)
         preload_plan = plan(home, env, fakebin, "upgrade/preload-image", target_image)
@@ -432,6 +489,35 @@ def main():
         assert alternate.returncode != 0 and "repository must be exactly" in json.dumps(alternate_value)
         assert not docker_log.exists()
 
+        # Any supported recreate-field drift after approval changes the candidate and refuses apply
+        # before the first rename/run mutation.
+        reset_state(state, old_image, target_image, target_present=True)
+        drift_plan = plan(home, env, fakebin, "upgrade/step", target_image)
+        drifted_observation = copy.deepcopy(direct_run_observation)
+        drifted_observation["recreate"].setdefault("labels", {})["io.ouro.drift"] = "changed"
+        base_path.write_text(json.dumps(drifted_observation, separators=(",", ":")))
+        docker_log.unlink(missing_ok=True)
+        drift_apply, drift_apply_value = invoke(
+            home,
+            *apply_args(
+                "upgrade/step",
+                drift_plan["data"]["candidate_hash"],
+                "--param",
+                "machine=bp1",
+                "--param",
+                f"image={target_image}",
+            ),
+            env_extra=env,
+            path=fakebin,
+        )
+        assert drift_apply.returncode != 0
+        assert "approved candidate does not match current live state" in json.dumps(drift_apply_value)
+        assert not any(
+            command and command[0] in {"rename", "run", "rm", "start"}
+            for command in mutation_commands(docker_log)
+        )
+        base_path.write_text(json.dumps(direct_run_observation, separators=(",", ":")))
+
         # Activation success: signed transition is candidate-bound and reviewable; N is retained
         # until N+1 passes readiness, then finalized. Environment values stay redacted.
         docker_log.unlink(missing_ok=True)
@@ -449,6 +535,9 @@ def main():
         )
         assert success.returncode == 0, (success, success_value)
         assert success_value["data"]["live_postcondition"]["container"]["image_config_digest"] == target_image
+        assert success_value["data"]["live_postcondition"]["recreate_spec"] == (
+            "matched_approved_supported_fields"
+        )
         success_state = json.loads(state.read_text())
         assert success_state["current"]["image"] == target_image and success_state["previous"] is None
         commands = mutation_commands(docker_log)

@@ -2500,6 +2500,26 @@ fn run_stateless_target_artifact_preflight(args: &[String]) -> Result<()> {
     output::print_json(&result)
 }
 
+fn require_upgrade_step_direct_run(supervisor: &SupervisorObservation) -> Result<()> {
+    let (orchestration, reason, _) = supervisor.upgrade_routing();
+    match orchestration.as_str() {
+        "run" => supervisor.require_direct_run(),
+        "compose" => Err(OuroError::Validation(
+            "manual_compose_required: upgrade/step cannot recreate a Compose-managed container; \
+             show the operator the signed Compose upgrade procedure and wait for completion"
+                .into(),
+        )),
+        "unsupported" => Err(OuroError::Validation(format!(
+            "unsupported_orchestration: upgrade/step refused before container mutation: {}",
+            reason.unwrap_or_else(|| "unknown orchestration owner".into())
+        ))),
+        other => Err(OuroError::Validation(format!(
+            "unsupported_orchestration: upgrade/step refused before container mutation: \
+             unknown_orchestration:{other}"
+        ))),
+    }
+}
+
 fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
     validate_closed_args(
         args,
@@ -2575,9 +2595,10 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
 
     let mut observation = read_observation(&[])?;
     canonicalize_typed_mounts(&mut observation.live.mounts);
-    observation.supervisor.require_base_conformant()?;
     if op == "upgrade/step" {
-        observation.supervisor.require_direct_run()?;
+        require_upgrade_step_direct_run(&observation.supervisor)?;
+    } else {
+        observation.supervisor.require_base_conformant()?;
     }
     require_typed_mounts(&observation.live.mounts)?;
     let is_upgrade = matches!(op, "upgrade/preload-image" | "upgrade/step");
@@ -3408,6 +3429,22 @@ fn require_stateless_post_contract(
     }
     observation.supervisor.require_base_conformant()?;
     require_typed_mounts(&observation.live.mounts)?;
+    if plan.op == "upgrade/step" {
+        let approved = plan.observation.recreate.as_ref().ok_or_else(|| {
+            OuroError::Validation("approved upgrade lost its recreate specification".into())
+        })?;
+        let observed = observation.recreate.as_ref().ok_or_else(|| {
+            OuroError::Validation(
+                "post-apply container no longer has a fully modeled recreate specification".into(),
+            )
+        })?;
+        if serde_json::to_value(approved).ok() != serde_json::to_value(observed).ok() {
+            return Err(OuroError::Validation(
+                "post-apply container parameters differ from the approved recreate specification"
+                    .into(),
+            ));
+        }
+    }
     let stable_contract;
     let contract = if matches!(plan.op.as_str(), "upgrade/preload-image" | "upgrade/step") {
         plan.policy
@@ -4409,6 +4446,7 @@ fn run_stateless_target_apply(args: &[String]) -> Result<()> {
                 "tip_era": readiness.tip_era,
                 "sync_progress": readiness.sync_progress,
                 "tip_synced": readiness.tip_synced,
+                "recreate_spec": "matched_approved_supported_fields",
                 "upgrade_failure_outcome": if automatic_rollback_allowed {
                     "verified_rollback_to_N"
                 } else {

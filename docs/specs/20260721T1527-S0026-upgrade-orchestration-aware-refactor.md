@@ -176,7 +176,7 @@ Compose 不做自动回滚，失败后由 agent 根据当前事实和 release �
   对应 TC-3 测试。
 - [x] p2-1 [CLI] RecreateSpec 和 docker argv 增加 user、group_add、labels，保持脱敏，
   并补对应 TC-4 测试。
-- [ ] p2-2 [CLI] upgrade/step 仅允许 run；apply 前重验，成功后验证 digest、参数和
+- [x] p2-2 [CLI] upgrade/step 仅允许 run；apply 前重验，成功后验证 digest、参数和
   readiness；其他分支在 mutation 前拒绝，并补对应 TC-5/TC-6 测试。
 - [ ] p3-1 [Skill] Upgrade Skill 加入三分支、Compose 人工指南、完成后 health 检查和
   不执行 raw Compose 写操作的 red line，并补对应 TC-7/TC-8 测试。
@@ -249,6 +249,11 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
   labels，同时维持 plan 输出脱敏。
 - 2026-07-21T15:48:48+08:00 p2-1 完成：probe、RecreateSpec 和密封 docker argv 已覆盖
   user、group_add、labels；原有全部运行参数和环境变量脱敏保持有效；TC-4 通过。
+- 2026-07-21T15:50:25+08:00 p2-2 开始：收紧 upgrade/step 分流、apply 前漂移检查和
+  重建后参数验证，确保非 run 分支在任何重建写操作前停止。
+- 2026-07-21T16:03:54+08:00 p2-2 完成：Compose/unsupported plan 与 apply 返回稳定
+  reason code，run apply 重验候选和 RecreateSpec，并在 digest、参数、readiness 都通过
+  后才完成；TC-5、TC-6 通过。
 
 ## 6. Validation Evidence (append-only)
 
@@ -271,6 +276,13 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
   restart、network、ports、env、binds、entrypoint、args、user、group_add、labels；agent
   plan 中敏感 env value 仍被替换为 redaction marker。升级工作流测试因本地监听限制在
   获准的非沙箱环境执行。
+- TC-5 | stack: rust/python | command: `cargo test -q supervisor && cargo test -q executor &&
+  python3 tests/test_s0020_upgrade_workflow.py` | result: pass | note: 批准后 labels 漂移在首个
+  rename/run 前拒绝；成功路径验证目标 digest、完整 RecreateSpec 与 typed readiness。
+- TC-6 | stack: python | command: `python3 tests/test_s0020_upgrade_workflow.py` | result: pass |
+  note: Compose plan/apply 返回 manual_compose_required，unsupported 返回
+  unsupported_orchestration，且拒绝发生在任一 docker 命令前；本地健康监听用例在获准的
+  非沙箱环境执行。
 
 ## 7. Change Requests (append-only)
 
