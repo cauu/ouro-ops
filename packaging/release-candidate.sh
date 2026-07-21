@@ -58,6 +58,10 @@ OURO_JSON=1 "$CANDIDATE/package-root/ouro-ops" contract check \
 OURO_JSON=1 env -u OURO_RELEASES_FILE -u OURO_ALLOWLIST_TEST_KEY \
   "$CANDIDATE/package-root/ouro-ops" release select --platform linux/amd64 \
   >"$CANDIDATE/release-select.json"
+OURO_JSON=1 env -u OURO_RELEASES_FILE -u OURO_ALLOWLIST_TEST_KEY \
+  "$CANDIDATE/package-root/ouro-ops" release select --platform linux/amd64 \
+  --from sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a \
+  >"$CANDIDATE/release-upgrade-select.json"
 
 python3 - "$CANDIDATE/descriptor.json" "$VERSION" "$RUNNER_SHA" <<'PY'
 import json, pathlib, sys
@@ -91,14 +95,20 @@ OURO_JSON=1 "$EXTRACTED/ouro-ops" contract check \
 PACKAGE_SHA=$(shasum -a 256 "$CANDIDATE/$PACKAGE_NAME" | awk '{print $1}')
 python3 - "$CANDIDATE/candidate.json" "$VERSION" "$HOST_TARGET" "$PACKAGE_NAME" \
   "$PACKAGE_SHA" "$RUNNER_NAME" "$RUNNER_SHA" "$CANDIDATE/descriptor.json" \
-  "$CANDIDATE/version.json" "$CANDIDATE/release-select.json" <<'PY'
+  "$CANDIDATE/version.json" "$CANDIDATE/release-select.json" \
+  "$CANDIDATE/release-upgrade-select.json" <<'PY'
 import json, pathlib, sys
 descriptor = json.loads(pathlib.Path(sys.argv[8]).read_text())["data"]
 version = json.loads(pathlib.Path(sys.argv[9]).read_text())
 selection = json.loads(pathlib.Path(sys.argv[10]).read_text())
+upgrade = json.loads(pathlib.Path(sys.argv[11]).read_text())
 assert version["status"] == "ok" and version["data"]["version"] == sys.argv[2], version
 assert selection["status"] == "ok" and selection["data"]["cache_written"] is False, selection
 assert selection["data"]["repository"] == "ghcr.io/blinklabs-io/cardano-node", selection
+assert upgrade["status"] == "ok" and upgrade["data"]["cache_written"] is False, upgrade
+assert upgrade["data"]["selection"] == "upgrade_recommended", upgrade
+assert upgrade["data"]["image"] == selection["data"]["image"], (upgrade, selection)
+assert upgrade["data"]["transition"] is None, upgrade
 document = {
     "schema_version": 1,
     "version": sys.argv[2],
@@ -119,6 +129,9 @@ document = {
         "policy_digest": selection["data"]["policy_digest"],
         "repository": selection["data"]["repository"],
         "source": selection["data"]["source"],
+        "historical_direct_upgrade_selection": upgrade["data"]["selection"],
+        "historical_direct_upgrade_release": upgrade["data"]["image"]["release"],
+        "historical_direct_upgrade_transition": upgrade["data"]["transition"],
     },
     "formal_cli_publication": "deferred",
 }
@@ -128,7 +141,7 @@ PY
 (
   cd "$CANDIDATE"
   shasum -a 256 "$PACKAGE_NAME" "build-evidence/$RUNNER_NAME" candidate.json \
-    descriptor.json version.json release-select.json \
+    descriptor.json version.json release-select.json release-upgrade-select.json \
     >SHA256SUMS
   shasum -a 256 -c SHA256SUMS
 )

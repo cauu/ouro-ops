@@ -32,6 +32,8 @@ def main() -> None:
         "OURO_EMBED_LINUX_X86_64_RUNNER",
         "contract check",
         "release select --platform linux/amd64",
+        "release-upgrade-select.json",
+        '"upgrade_recommended"',
         "shasum -a 256 -c SHA256SUMS",
         "SKILL.md",
         "formal_cli_publication",
@@ -63,6 +65,10 @@ def main() -> None:
     assert manifest["release_catalog_smoke"]["repository"] == (
         "ghcr.io/blinklabs-io/cardano-node"
     )
+    assert manifest["release_catalog_smoke"]["historical_direct_upgrade_selection"] == (
+        "upgrade_recommended"
+    )
+    assert manifest["release_catalog_smoke"]["historical_direct_upgrade_transition"] is None
     with tarfile.open(package, "r:gz") as archive:
         assert archive.getnames() == ["ouro-ops"]
     names = [path.relative_to(candidate).as_posix() for path in candidate.rglob("*")]

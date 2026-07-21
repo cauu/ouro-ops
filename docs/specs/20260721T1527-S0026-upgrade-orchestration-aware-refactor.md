@@ -354,7 +354,7 @@ OCI 身份与平台，`transitions` 仅作为可选的精确回滚能力声明�
 - [x] p5-1 [CLI] 将 release selection、stateless/legacy Upgrade 准入改为直接推荐最新版，
   transition 降级为可选回滚声明，并补 TC-11/TC-12。
 - [x] p5-2 [Skill/Docs] 同步 Upgrade Skill、operations 和站点提示，并补 TC-13。
-- [~] p5-3 [Tests/Artifacts] 执行完整回归并重建本地 release candidate/网站验收产物，
+- [x] p5-3 [Tests/Artifacts] 执行完整回归并重建本地 release candidate/网站验收产物，
   证明 TC-14。
 
 | Item | Acceptance |
@@ -385,6 +385,9 @@ OCI 身份与平台，`transitions` 仅作为可选的精确回滚能力声明�
 - 2026-07-21T16:58:31+08:00 p5-2 完成：Upgrade Skill v8、operations、release signing
   指南和网站多语言提示统一为直升签名推荐版；删除相邻 hop 准入语义，保留 transition
   仅描述自动回滚。TC-13 通过；p5-3 开始。
+- 2026-07-21T16:59:30+08:00 p5-3 完成：完整 Rust/Python 回归通过；release candidate
+  新增并通过 10.5.4-1 直升 11.0.1-1 smoke，网站 dist 重新嵌入 Upgrade Skill v8。
+  TC-14 通过，S0026 所有追加 item 完成，保持 active 等待 operator 显式 close。
 
 ### 8.6 Validation Evidence Amendment (append-only)
 
@@ -402,6 +405,14 @@ OCI 身份与平台，`transitions` 仅作为可选的精确回滚能力声明�
   指南、站点 UI 与内嵌 prompt 均明确直升签名推荐最新版；站点 9 项测试通过，本地 HTTP
   用例在获准的非沙箱环境执行。skill-creator 通用 quick_validate 不适用于本仓库带产品
   contract frontmatter 的外部 Skill，使用仓库专用校验。
+- TC-14 | stack: rust/python/bash | command: `cargo test -q`; `python3 tests/test_probe.py`;
+  `python3 tests/test_s0020_upgrade_workflow.py`; `python3 tests/test_s0020_stateless_plan.py`;
+  `python3 tests/test_s0020_stateless_apply.py`; `python3 tests/test_skill_docs.py`; `python3 -m
+  pytest -q tests/test_web_generator.py`; `make release-candidate`; `python3
+  tests/test_release_candidate.py`; `./web/onboarding/build.sh` | result: pass | note: Rust 177 项、
+  全部 workflow/safety/docs/site 回归通过；候选产物 `release-upgrade-select.json` 证明
+  10.5.4-1 返回 `upgrade_recommended` 11.0.1-1、transition null；站点 dist 内含 Skill v8。
+  需要本地监听或构建缓存/网络的步骤在获准的非沙箱环境执行。
 
 ### 8.7 Change Requests Amendment (append-only)
 
