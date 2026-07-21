@@ -1,5 +1,5 @@
 ---
-skill_version: 20
+skill_version: 21
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -17,6 +17,17 @@ Stage a fresh KES pair on the declared block producer, build a platform-specific
 bundle with a checksum-verified official `cardano-cli`, then validate and atomically activate the
 returned PUBLIC operational certificate. The KES signing key never leaves the BP and Ouro never
 reads or prints it.
+
+## SSH account discovery
+- After the mandatory compatibility preflight, but before writing `pool-spec.yaml`, resolving a
+  credential, or contacting any host, ask whether every declared machine uses the same SSH username
+  or different usernames. Do not infer an account from the image, host, local shell, or examples.
+- If all machines share one account, ask for that username once and apply it to every machine. If
+  they differ, ask for a machine-id → SSH-username mapping and apply each value only to that machine.
+- Replace every generated `__SSH_USER_<MACHINE_ID>__` placeholder with the operator-confirmed value
+  before writing the spec or running SSH. Stop if any machine remains unresolved.
+- Usernames are non-secret routing facts. Never ask for a password, private-key content, or other
+  credential material; keep each existing `creds://<machine-id>` reference separate.
 
 ## Invariants (the mechanism enforces these; you respect them)
 - `kes-rotation/stage-key` and `kes-rotation/install-opcert` are BP-only typed writes. Stage-key

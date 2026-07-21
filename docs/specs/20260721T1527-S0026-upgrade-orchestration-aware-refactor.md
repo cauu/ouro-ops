@@ -507,3 +507,61 @@ Prompt 中规定“先确认共用或逐机，再替换占位符”的对话步�
 
 - 2026-07-21T17:18:41+08:00 SSH 用户从固定产品假设改为 Agent 对话后写入的逐机 pool
   spec 事实；官网不新增用户名输入字段。
+
+## 10. Change Request: 所有公开 Skill 独立完成 SSH 账号确认（2026-07-21，append-only）
+
+### 10.1 Requirement Amendment
+
+- Upgrade、Runtime、Observability、KES Rotation、Troubleshooting、Deploy 六个 canonical Skill
+  必须各自独立包含同一套 SSH 账号确认规则，单独复制任一 Skill 都能完成正确对话。
+- 六份规则必须保持一致：mandatory compatibility preflight 后、写 pool spec/解析 credential/
+  首次 SSH 前确认全部机器共用还是逐机使用不同用户名；共用只问一次，不共用收集逐机映射；
+  全部占位符解析前停止；不询问密码、私钥内容或其他 secret。
+- 官网继续精确嵌入 canonical Skill；全局 Prompt 只负责表单上下文、生成逐机占位符和提示执行
+  顺序，不得成为任一 Skill 独立使用时不可缺少的行为定义。
+- 删除公开 Skill 中仍把 `cardano` 描述为固定 SSH principal 的过时文案。
+
+### 10.2 Solution Amendment
+
+以 Upgrade Skill v9 的 `SSH account discovery` 章节作为唯一文本模板，逐字加入其余五个
+公开 Skill，并提升被修改 Skill 的版本。仓库测试抽取六份同名章节并要求完全一致；站点测试
+继续要求每个内嵌 payload 与 canonical 文件完全相同，并逐一验证 SSH 对话边界。
+
+### 10.3 Execution Plan Amendment
+
+- [x] p7-1 [Skills/Site] 对齐六个公开 Skill 的 SSH discovery 规则，移除固定 principal
+  文案，重建官网并补 TC-18。
+
+| Item | Acceptance |
+| --- | --- |
+| p7-1 | TC-18 |
+
+### 10.4 Acceptance Amendment
+
+- TC-18：六个 canonical Skill 均包含字节一致的 `SSH account discovery` 章节；每个站点
+  payload 与对应 canonical Skill 完全一致并包含该章节；不再出现固定 `cardano` SSH account/
+  principal 文案；Skill 文档和站点生成回归通过。
+
+### 10.5 Execution Log Amendment (append-only)
+
+- 2026-07-21T17:38:58+08:00 operator 确认网站与 Skill 应保持同一规则，且任一 Skill
+  单独使用也应完整；p7-1 开始。
+- 2026-07-21T17:43:33+08:00 p7-1 完成：六个公开 Skill 使用完全一致的 SSH account
+  discovery 章节；Runtime v5、Observability v4、KES Rotation v21、Troubleshooting v4、
+  Deploy v3，Upgrade 保持 v9；Observability 删除固定 `cardano` SSH principal 文案，站点
+  重新生成且内嵌 canonical 副本一致。TC-18 通过，S0026 保持 active 等待 operator 显式
+  close。
+
+### 10.6 Validation Evidence Amendment (append-only)
+
+- （待执行）
+- TC-18 | stack: python/site | command: `python3 tests/test_skill_docs.py`; `python3 -m pytest -q
+  tests/test_web_generator.py`; `./web/onboarding/build.sh` | result: pass | note: 文档测试抽取六份
+  `SSH account discovery` 并要求完全一致；站点 9 项测试逐个验证 payload 与 canonical Skill
+  完全一致、包含同一对话规则，且本地 HTTP 产物可访问。回环监听用例在获准的非沙箱环境
+  执行。
+
+### 10.7 Change Requests Amendment (append-only)
+
+- 2026-07-21T17:38:58+08:00 SSH discovery 从 Upgrade 专属章节提升为六个公开 Skill 的
+  一致独立前置规则；网站全局 Prompt 保留组装职责，不再弥补 Skill 行为缺口。

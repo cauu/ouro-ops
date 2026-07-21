@@ -1,5 +1,5 @@
 ---
-skill_version: 4
+skill_version: 5
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -15,6 +15,17 @@ path.
 ## Purpose
 Restart one operator-selected node through a live-state-bound, typed operation and verify that it
 returns ready.
+
+## SSH account discovery
+- After the mandatory compatibility preflight, but before writing `pool-spec.yaml`, resolving a
+  credential, or contacting any host, ask whether every declared machine uses the same SSH username
+  or different usernames. Do not infer an account from the image, host, local shell, or examples.
+- If all machines share one account, ask for that username once and apply it to every machine. If
+  they differ, ask for a machine-id → SSH-username mapping and apply each value only to that machine.
+- Replace every generated `__SSH_USER_<MACHINE_ID>__` placeholder with the operator-confirmed value
+  before writing the spec or running SSH. Stop if any machine remains unresolved.
+- Usernames are non-secret routing facts. Never ask for a password, private-key content, or other
+  credential material; keep each existing `creds://<machine-id>` reference separate.
 
 ## Invariants (the mechanism enforces these; you respect them)
 - The final plan is derived from the current signed image policy, pool spec, role/network/genesis,

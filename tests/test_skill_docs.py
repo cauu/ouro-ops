@@ -39,7 +39,14 @@ def _front_matter(text):
     return meta
 
 
+def _section(text, heading):
+    match = re.search(rf"^{re.escape(heading)}\n.*?(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    assert match, f"SKILL.md lacks {heading}"
+    return match.group(0).rstrip()
+
+
 def main():
+    ssh_sections = []
     for path in SKILLS:
         text = path.read_text()
         # Website generator/CLI compatibility metadata.
@@ -70,6 +77,21 @@ def main():
                 assert "inbox stage" not in text.lower()
             assert "ouro-diag" not in text
             assert "UNPRIVILEGED" not in text
+        normalized = " ".join(text.split())
+        ssh_sections.append(_section(text, "## SSH account discovery"))
+        for phrase in [
+            "ask whether every declared machine uses the same SSH username or different usernames",
+            "ask for that username once",
+            "machine-id → SSH-username mapping",
+            "Stop if any machine remains unresolved",
+            "Never ask for a password, private-key content",
+        ]:
+            assert phrase in normalized, f"{path} lacks SSH discovery rule {phrase!r}"
+        assert "existing `cardano` account" not in normalized
+        assert "`cardano` principal" not in normalized
+
+    assert len(set(ssh_sections)) == 1, \
+        "all public Skills must carry the exact same standalone SSH account discovery section"
 
     kes = (ROOT / "ouro-skills/kes-rotation/SKILL.md").read_text()
     assert "typed BP observation supplies the current KES period automatically" in " ".join(kes.split())
@@ -158,14 +180,6 @@ def main():
     assert "planning performed no pull or mutation" in " ".join(upgrade.split())
     assert "active-container invariance" in " ".join(upgrade.split())
     normalized_upgrade = " ".join(upgrade.split())
-    for phrase in [
-        "ask whether every declared machine uses the same SSH username or different usernames",
-        "ask for that username once",
-        "machine-id → SSH-username mapping",
-        "Stop if any machine remains unresolved",
-        "Never ask for a password, private-key content",
-    ]:
-        assert phrase in normalized_upgrade, f"Upgrade Skill lacks SSH discovery rule {phrase!r}"
     assert "existing cardano account" not in normalized_upgrade
     for phrase in [
         "current platform's signed `recommended` IMAGE CONFIG DIGEST",

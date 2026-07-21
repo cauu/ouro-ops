@@ -53,18 +53,36 @@ def payload(html: str) -> dict[str, object]:
     return json.loads(match.group(1))
 
 
+def section(text: str, heading: str) -> str:
+    match = re.search(rf"^{re.escape(heading)}\n.*?(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    assert match, f"embedded Skill lacks {heading}"
+    return match.group(0).rstrip()
+
+
 def test_release_form_build_has_exact_canonical_skills() -> None:
     html = build()
     data = payload(html)
     assert set(data) == set(PUBLIC)
+    ssh_sections = []
     for operation, relative in PUBLIC.items():
         canonical = (ROOT / "ouro-skills" / relative).read_text(encoding="utf-8")
         item = data[operation]
         assert item["content"] == canonical
+        ssh_sections.append(section(item["content"], "## SSH account discovery"))
+        normalized = " ".join(item["content"].split())
+        for phrase in [
+            "ask whether every declared machine uses the same SSH username or different usernames",
+            "ask for that username once",
+            "machine-id → SSH-username mapping",
+            "Stop if any machine remains unresolved",
+            "Never ask for a password, private-key content",
+        ]:
+            assert phrase in normalized, f"{operation} embedded Skill lacks {phrase!r}"
         assert isinstance(item["skill_version"], int) and item["skill_version"] > 0
         assert re.fullmatch(r">=\d+\.\d+\.\d+", item["requires_ouro"])
         assert item["requires_contract"] == 1
         assert html.count(json.dumps(canonical, ensure_ascii=False)[1:-1]) <= 1
+    assert len(set(ssh_sections)) == 1
     assert "__OURO_PUBLIC_SKILLS_JSON__" not in html
     assert "skill.content.trimEnd()" in html
     assert "BEGIN OURO-SKILL.MD" in html
