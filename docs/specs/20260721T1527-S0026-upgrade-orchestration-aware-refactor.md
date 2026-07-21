@@ -181,7 +181,7 @@ Compose 不做自动回滚，失败后由 agent 根据当前事实和 release �
 - [x] p3-1 [Skill] Upgrade Skill 加入三分支、Compose 人工指南、完成后 health 检查和
   不执行 raw Compose 写操作的 red line，并补对应 TC-7/TC-8 测试。
 - [x] p3-2 [Docs] 同步 operations、生成站点和对应 TC-9 测试。
-- [ ] p4-1 [Tests] 执行完整回归门，证明 TC-10 且前述 TC 无回归。
+- [x] p4-1 [Tests] 执行完整回归门，证明 TC-10 且前述 TC 无回归。
 
 ### Item → TC Mapping
 
@@ -263,6 +263,11 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
   Upgrade Skill，验证三分支职责描述一致。
 - 2026-07-21T16:12:05+08:00 p3-2 完成：operations 明确 CLI/Skill/用户职责，站点生成
   精确内嵌新版 canonical Upgrade Skill；TC-9 通过。
+- 2026-07-21T16:16:26+08:00 p4-1 开始：执行 spec 列出的完整 Rust/Python 回归门，并
+  额外用 pytest 实际执行站点测试函数。
+- 2026-07-21T16:19:59+08:00 p4-1 完成：Rust 177 项、全部指定 Python workflow 与站点
+  9 项测试通过；TC-10 及 TC-1 至 TC-9 无回归。所有 execution item 已完成，spec 保持
+  active，等待 operator 按流程显式 close。
 
 ## 6. Validation Evidence (append-only)
 
@@ -303,6 +308,13 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
   tests/test_web_generator.py` | result: pass | note: operations、canonical Skill 与生成站点均
   描述 run/compose/unsupported 三分支；站点 9 项测试通过，本地 HTTP 用例在获准的非沙箱
   环境执行。
+- TC-10 | stack: rust/python | command: `cargo test -q`; `python3 tests/test_probe.py`;
+  `python3 tests/test_s0020_upgrade_workflow.py`; `python3 tests/test_s0020_stateless_plan.py`;
+  `python3 tests/test_s0020_stateless_apply.py`; `python3 tests/test_skill_docs.py`;
+  `python3 tests/test_web_generator.py`; `python3 -m pytest -q tests/test_web_generator.py` |
+  result: pass | note: Rust 177/177、Upgrade、preload、run canary/BP-last、
+  rollback_possible、KES、observability、probe、docs 与站点回归全部通过；需要本地监听的
+  workflow/HTTP 测试在获准的非沙箱环境执行。
 
 ## 7. Change Requests (append-only)
 
