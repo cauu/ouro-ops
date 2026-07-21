@@ -180,7 +180,7 @@ Compose 不做自动回滚，失败后由 agent 根据当前事实和 release �
   readiness；其他分支在 mutation 前拒绝，并补对应 TC-5/TC-6 测试。
 - [x] p3-1 [Skill] Upgrade Skill 加入三分支、Compose 人工指南、完成后 health 检查和
   不执行 raw Compose 写操作的 red line，并补对应 TC-7/TC-8 测试。
-- [ ] p3-2 [Docs] 同步 operations、生成站点和对应 TC-9 测试。
+- [x] p3-2 [Docs] 同步 operations、生成站点和对应 TC-9 测试。
 - [ ] p4-1 [Tests] 执行完整回归门，证明 TC-10 且前述 TC 无回归。
 
 ### Item → TC Mapping
@@ -259,6 +259,10 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
 - 2026-07-21T16:07:25+08:00 p3-1 完成：Skill 先读 live orchestration 再分流；Compose
   只展示签名不可变镜像与人工 config/up 命令，等待用户完成后做普通 health 检查；
   TC-7、TC-8 通过。
+- 2026-07-21T16:08:14+08:00 p3-2 开始：同步 operations 文档与站点内嵌 canonical
+  Upgrade Skill，验证三分支职责描述一致。
+- 2026-07-21T16:12:05+08:00 p3-2 完成：operations 明确 CLI/Skill/用户职责，站点生成
+  精确内嵌新版 canonical Upgrade Skill；TC-9 通过。
 
 ## 6. Validation Evidence (append-only)
 
@@ -295,6 +299,10 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
   Agent red line 禁止 raw Docker/Compose 写操作；用户完成后仅复用 observability/health，
   明确不创建 transaction、pending、finalize、receipt 或 verify-rebind。通用
   quick_validate 因本仓库产品 frontmatter 扩展而不适用，仓库专用校验通过。
+- TC-9 | stack: python | command: `python3 tests/test_skill_docs.py && python3 -m pytest -q
+  tests/test_web_generator.py` | result: pass | note: operations、canonical Skill 与生成站点均
+  描述 run/compose/unsupported 三分支；站点 9 项测试通过，本地 HTTP 用例在获准的非沙箱
+  环境执行。
 
 ## 7. Change Requests (append-only)
 

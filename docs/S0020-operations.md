@@ -28,7 +28,7 @@ compatibility preflight. The CLI carries execution mechanisms and no decision Sk
 | `kes-rotation/discard-stage` | destructive pending-key cleanup | exact confirmation; no fleet permit | target `--plan` only |
 | `kes-rotation/install-opcert` | disruptive matched KES-pair + public-opcert activation | exact confirmation + fleet permit | local preview + target preflight/`--plan` only |
 | `upgrade/preload-image` | non-disruptive exact GHCR pull | exact confirmation | target `--plan` only |
-| `upgrade/step` | disruptive recreate | exact confirmation + fleet permit + signed N→N+1 transition | typed safe refusal / `--plan` only |
+| `upgrade/step` | direct Docker-run disruptive recreate | exact confirmation + fleet permit + signed N→N+1 transition | Compose/unsupported refuse before mutation; run uses typed safe refusal / `--plan` only |
 | `deploy/register-submit` | irreversible transaction submission | exact confirmation; no fleet permit | signed transaction preview + target `--plan` only |
 | `diag exec` | diagnostic command through existing operator SSH | no write capability minted | real diagnostic-only commands |
 
@@ -63,6 +63,27 @@ candidate approval, then verifies repository/platform/config while proving the a
 unchanged. Upgrade plan/apply and its fleet permit
 fetch and verify the document again; a changed release policy changes the candidate and invalidates
 the old approval. No command writes a release cache or target policy file.
+
+Route Upgrade from `observability/health` container facts before planning activation:
+
+- `orchestration: run`: use the sealed preload/step flow. RecreateSpec preserves the observed name,
+  restart policy, network, ports, env, binds, entrypoint, args, user, supplementary groups and
+  labels. Apply revalidates this spec before mutation and verifies it with the target digest and
+  readiness afterwards.
+- `orchestration: compose`: the agent shows the signed release and immutable
+  `repository@platform-manifest-digest`, observed project/service/working directory/config files,
+  and manual `docker compose config` plus `docker compose up -d --no-deps <service>` templates.
+  The user edits the Compose image and runs those commands. The agent performs no raw Compose write.
+  After the user reports completion, rerun `observability/health` and check Compose ownership,
+  project/service when observable, target config digest, container, socket, sync and role readiness.
+  This is a fresh current-state check, not a transaction, pending/finalize flow or verify-rebind.
+- `orchestration: unsupported`: stop and show `orchestration_reason`; do not guess an owner or fall
+  back to a bare container recreate.
+
+Compose facts may be incomplete without changing the classification. Ask the user for missing
+project, service or config files; never infer paths. `upgrade/step` plan and apply return
+`manual_compose_required` for Compose and `unsupported_orchestration` for other owners before any
+Docker rename/run/remove action.
 
 ## Public artifacts
 

@@ -173,6 +173,17 @@ def main():
         assert phrase in normalized_upgrade, f"Upgrade Skill lacks orchestration branch {phrase!r}"
     assert "Do not plan or apply `upgrade/step`" in normalized_upgrade
     assert "quote `orchestration_reason`" in normalized_upgrade
+    operations = (ROOT / "docs/S0020-operations.md").read_text()
+    for phrase in [
+        "`orchestration: run`",
+        "`orchestration: compose`",
+        "`orchestration: unsupported`",
+        "The agent performs no raw Compose write",
+        "fresh current-state check, not a transaction",
+        "`manual_compose_required`",
+        "`unsupported_orchestration`",
+    ]:
+        assert phrase in operations, f"operations docs lack Upgrade routing contract {phrase!r}"
     for phrase in [
         "ONE Upgrade workflow",
         "internal operation boundaries",

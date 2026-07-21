@@ -82,6 +82,14 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "M-series Mac" in html and "Intel/AMD Linux" in html
     assert "uname -s" in html and "uname -m" in html
     kes_prompt = payload(html)["kes-rotation"]["content"]
+    upgrade_prompt = payload(html)["upgrade"]["content"]
+    assert "result.container.orchestration" in upgrade_prompt
+    assert "Compose manual handoff" in upgrade_prompt
+    assert "docker compose -p <project> -f <config-file> config" in upgrade_prompt
+    assert "docker compose -p <project> -f <config-file> up -d --no-deps <service>" in upgrade_prompt
+    assert "Agent 不得执行 raw docker/compose 写操作" in upgrade_prompt
+    assert "Do not create or request a transaction" in upgrade_prompt
+    assert "quote `orchestration_reason`" in upgrade_prompt
     assert "pending_existing: true" in kes_prompt
     assert "choose: continue this pending rotation, or discard it" in kes_prompt
     assert "kes-rotation/discard-stage" in kes_prompt
