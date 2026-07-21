@@ -132,14 +132,18 @@ impl Allowlist {
             .contracts
             .into_iter()
             .find(|contract| contract.contract_id == "blinklabs-cardano-node-v1")
-            .ok_or_else(|| OuroError::Validation("embedded stable layout contract is missing".into()))
+            .ok_or_else(|| {
+                OuroError::Validation("embedded stable layout contract is missing".into())
+            })
     }
 
     /// Verify one externally supplied release document. Used by the target after the control has
     /// transported the same public bytes; neither side trusts transport alone.
     pub fn release_document(text: &str) -> Result<Self> {
         if text.len() > MAX_RELEASE_DOCUMENT_BYTES {
-            return Err(OuroError::Validation("release document exceeds the 64 KiB bound".into()));
+            return Err(OuroError::Validation(
+                "release document exceeds the 64 KiB bound".into(),
+            ));
         }
         let policy = parse_verified(text)?;
         policy.validate_release_catalog()?;
@@ -152,13 +156,20 @@ impl Allowlist {
                 "signed release catalog has no deployment recommendation for {platform}"
             ))
         })?;
-        self.contract_and_image_for(digest, platform).map(|(_, image)| image)
+        self.contract_and_image_for(digest, platform)
+            .map(|(_, image)| image)
     }
 
-    pub fn next_for(&self, current: &str, platform: &str) -> Result<(&AllowedImage, &crate::upgrade::TransitionMeta)> {
+    pub fn next_for(
+        &self,
+        current: &str,
+        platform: &str,
+    ) -> Result<(&AllowedImage, &crate::upgrade::TransitionMeta)> {
         let mut candidates = self.transitions.iter().filter(|transition| {
             transition.from_image_config_digest == current
-                && self.contract_and_image_for(&transition.to_image_config_digest, platform).is_ok()
+                && self
+                    .contract_and_image_for(&transition.to_image_config_digest, platform)
+                    .is_ok()
         });
         let transition = candidates.next().ok_or_else(|| {
             OuroError::Validation(format!(
@@ -170,7 +181,8 @@ impl Allowlist {
                 "signed release catalog has ambiguous next Upgrade hops from {current} on {platform}"
             )));
         }
-        let (_, image) = self.contract_and_image_for(&transition.to_image_config_digest, platform)?;
+        let (_, image) =
+            self.contract_and_image_for(&transition.to_image_config_digest, platform)?;
         Ok((image, transition))
     }
 
@@ -223,11 +235,18 @@ impl Allowlist {
                 "image {image_config_digest} is on the emergency denylist — refused"
             )));
         }
-        self.contracts.iter().find_map(|contract| {
-            contract.allowed.iter().find(|image| {
-                image.image_config_digest == image_config_digest && image.platform == platform
-            }).map(|image| (contract, image))
-        })
+        self.contracts
+            .iter()
+            .find_map(|contract| {
+                contract
+                    .allowed
+                    .iter()
+                    .find(|image| {
+                        image.image_config_digest == image_config_digest
+                            && image.platform == platform
+                    })
+                    .map(|image| (contract, image))
+            })
             .ok_or_else(|| {
                 OuroError::Validation(format!(
                     "image {image_config_digest} ({platform}) is not on the allowlist — this node \
@@ -316,9 +335,11 @@ fn verify_signature(signature: &str, canonical: &[u8]) -> Result<()> {
         return VerifyingKey::from_bytes(&key)
             .map_err(|_| OuroError::Validation("pinned allowlist key is malformed".into()))?
             .verify_strict(canonical, &Signature::from_bytes(&signature))
-            .map_err(|_| OuroError::Validation(
-                "allowlist Ed25519 signature is invalid — refused before contract use".into(),
-            ));
+            .map_err(|_| {
+                OuroError::Validation(
+                    "allowlist Ed25519 signature is invalid — refused before contract use".into(),
+                )
+            });
     }
 
     // A dynamic container image has no release private key. Debug/test builds may opt into a
@@ -333,9 +354,9 @@ fn verify_signature(signature: &str, canonical: &[u8]) -> Result<()> {
         let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
             .map_err(|_| OuroError::Validation("invalid test allowlist key".into()))?;
         mac.update(canonical);
-        return mac.verify_slice(&expected).map_err(|_| {
-            OuroError::Validation("test allowlist HMAC is invalid — refused".into())
-        });
+        return mac
+            .verify_slice(&expected)
+            .map_err(|_| OuroError::Validation("test allowlist HMAC is invalid — refused".into()));
     }
 
     Err(OuroError::Validation(
@@ -361,7 +382,8 @@ impl Allowlist {
                 || contract.allowed.is_empty()
             {
                 return Err(OuroError::Validation(
-                    "allowlist contracts need unique nonempty ids/versions and allowed images".into(),
+                    "allowlist contracts need unique nonempty ids/versions and allowed images"
+                        .into(),
                 ));
             }
             for path in [
@@ -390,7 +412,9 @@ impl Allowlist {
                     || !valid_digest(&image.oci_index_digest)
                     || !valid_digest(&image.platform_manifest_digest)
                     || !valid_digest(&image.image_config_digest)
-                    || images.insert(&image.image_config_digest, contract.convention_version).is_some()
+                    || images
+                        .insert(&image.image_config_digest, contract.convention_version)
+                        .is_some()
                 {
                     return Err(OuroError::Validation(
                         "allowlist image identities must be unique lowercase sha256 OCI tuples on a supported platform"
@@ -400,7 +424,9 @@ impl Allowlist {
             }
         }
         if self.denylist.iter().any(|digest| !valid_digest(digest)) {
-            return Err(OuroError::Validation("allowlist denylist has a malformed digest".into()));
+            return Err(OuroError::Validation(
+                "allowlist denylist has a malformed digest".into(),
+            ));
         }
         let mut edges = HashSet::new();
         for transition in &self.transitions {
@@ -433,13 +459,21 @@ impl Allowlist {
             ));
         }
         for (platform, digest) in &self.recommended {
-            if self.contract_and_image_for(digest, platform)?.1.release.is_empty() {
+            if self
+                .contract_and_image_for(digest, platform)?
+                .1
+                .release
+                .is_empty()
+            {
                 return Err(OuroError::Validation(format!(
                     "recommended release {digest} ({platform}) has no release label"
                 )));
             }
         }
-        if self.contracts.iter().flat_map(|contract| &contract.allowed)
+        if self
+            .contracts
+            .iter()
+            .flat_map(|contract| &contract.allowed)
             .any(|image| image.release.is_empty())
         {
             return Err(OuroError::Validation(
@@ -499,23 +533,33 @@ pub fn fetch_release_catalog() -> Result<VerifiedReleaseCatalog> {
         (text, RELEASES_URL.to_string())
     };
     let policy = Allowlist::release_document(&text)?;
-    let document = serde_json::to_string(&policy)
-        .map_err(|error| OuroError::Validation(format!("cannot compact release catalog: {error}")))?;
-    Ok(VerifiedReleaseCatalog { policy, document, source })
+    let document = serde_json::to_string(&policy).map_err(|error| {
+        OuroError::Validation(format!("cannot compact release catalog: {error}"))
+    })?;
+    Ok(VerifiedReleaseCatalog {
+        policy,
+        document,
+        source,
+    })
 }
 
 fn safe_absolute(value: &str) -> bool {
     let path = Path::new(value);
     path.is_absolute()
         && path.components().all(|component| {
-            !matches!(component, Component::ParentDir | Component::CurDir | Component::Prefix(_))
+            !matches!(
+                component,
+                Component::ParentDir | Component::CurDir | Component::Prefix(_)
+            )
         })
 }
 
 fn valid_digest(value: &str) -> bool {
     value.strip_prefix("sha256:").map(|digest| {
         digest.len() == 64
-            && digest.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     }) == Some(true)
 }
 
@@ -570,10 +614,14 @@ fn read_floor(path: &Path, secret: &str) -> Result<Option<u32>> {
     let v: serde_json::Value = serde_json::from_str(&text).map_err(|_| {
         OuroError::Validation("allowlist anti-rollback floor is malformed — fail-closed".into())
     })?;
-    let ver = v.get("allowlist_version").and_then(|value| value.as_u64())
+    let ver = v
+        .get("allowlist_version")
+        .and_then(|value| value.as_u64())
         .and_then(|value| u32::try_from(value).ok())
         .ok_or_else(|| OuroError::Validation("allowlist floor version is malformed".into()))?;
-    let mac = v.get("mac").and_then(|value| value.as_str())
+    let mac = v
+        .get("mac")
+        .and_then(|value| value.as_str())
         .ok_or_else(|| OuroError::Validation("allowlist floor MAC is missing".into()))?;
     if mac != floor_mac(secret, ver) {
         return Err(OuroError::Validation(
@@ -590,7 +638,8 @@ fn write_floor(path: &Path, version: u32, secret: &str) -> Result<()> {
     let body = serde_json::to_vec(&serde_json::json!({
         "allowlist_version": version,
         "mac": floor_mac(secret, version),
-    })).expect("floor serializes");
+    }))
+    .expect("floor serializes");
     let tmp = path.with_extension(format!("tmp-{}", uuid::Uuid::new_v4().simple()));
     let mut options = OpenOptions::new();
     options.create_new(true).write(true);
@@ -599,7 +648,8 @@ fn write_floor(path: &Path, version: u32, secret: &str) -> Result<()> {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = options.open(&tmp)
+    let mut file = options
+        .open(&tmp)
         .map_err(|e| OuroError::Validation(format!("cannot create allowlist floor: {e}")))?;
     file.write_all(&body)?;
     file.sync_all()?;
@@ -631,22 +681,26 @@ fn hex(bytes: &[u8]) -> String {
 
 fn decode_hex(value: &str) -> Result<Vec<u8>> {
     if value.len() & 1 != 0
-        || !value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
         return Err(OuroError::Validation("hex value is malformed".into()));
     }
-    (0..value.len()).step_by(2).map(|index| {
-        u8::from_str_radix(&value[index..index + 2], 16)
-            .map_err(|_| OuroError::Validation("hex value is malformed".into()))
-    }).collect()
+    (0..value.len())
+        .step_by(2)
+        .map(|index| {
+            u8::from_str_radix(&value[index..index + 2], 16)
+                .map_err(|_| OuroError::Validation("hex value is malformed".into()))
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const RELEASES: &str =
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/releases.json"));
+    const RELEASES: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/releases.json"));
 
     #[test]
     fn signed_release_catalog_selects_deploy_and_next_upgrade() {
@@ -654,13 +708,17 @@ mod tests {
         assert_eq!(catalog.repository, BLINKLABS_REPOSITORY);
         let deploy = catalog.recommended_for("linux/amd64").unwrap();
         assert_eq!(deploy.release, "11.0.1-1");
-        let (next, transition) = catalog.next_for(
-            "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a",
-            "linux/amd64",
-        ).unwrap();
+        let (next, transition) = catalog
+            .next_for(
+                "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a",
+                "linux/amd64",
+            )
+            .unwrap();
         assert_eq!(next.release, "10.6.4-1");
         assert_eq!(transition.to_image_config_digest, next.image_config_digest);
-        assert!(catalog.next_for(&deploy.image_config_digest, "linux/amd64").is_err());
+        assert!(catalog
+            .next_for(&deploy.image_config_digest, "linux/amd64")
+            .is_err());
 
         let tampered = RELEASES.replace("10.6.4-1", "10.6.4-evil");
         assert!(Allowlist::release_document(&tampered).is_err());
@@ -676,7 +734,10 @@ mod tests {
         // The blinklabs baseline contract is present with the standard layout.
         let c = &a.contracts[0];
         assert_eq!(c.in_container_paths.socket, "/ipc/node.socket");
-        assert!(c.role_rules.relay.forbids_forging_keys, "relay must forbid forging keys");
+        assert!(
+            c.role_rules.relay.forbids_forging_keys,
+            "relay must forbid forging keys"
+        );
         assert!(c.role_rules.bp.requires_opcert, "bp must require opcert");
         assert!(valid_digest(&c.allowed[0].oci_index_digest));
         assert!(valid_digest(&c.allowed[0].platform_manifest_digest));
@@ -745,7 +806,10 @@ mod tests {
     #[test]
     fn signature_tamper_and_placeholder_contract_refuse() {
         let tampered = EMBEDDED_ALLOWLIST.replace("/ipc/node.socket", "/ipc/evil.socket");
-        assert!(parse_verified(&tampered).is_err(), "signed payload tamper refused");
+        assert!(
+            parse_verified(&tampered).is_err(),
+            "signed payload tamper refused"
+        );
 
         let mut unsigned: serde_json::Value = serde_json::from_str(EMBEDDED_ALLOWLIST).unwrap();
         unsigned["signature"] = serde_json::Value::String("EMBEDDED-TRUSTED".into());
@@ -832,7 +896,10 @@ mod tests {
         let a = Allowlist::embedded().unwrap();
         let good = &a.contracts[0].allowed[0].image_config_digest.clone();
         let platform = &a.contracts[0].allowed[0].platform.clone();
-        assert!(a.contract_for(good, platform).is_ok(), "allowlisted digest conforms");
+        assert!(
+            a.contract_for(good, platform).is_ok(),
+            "allowlisted digest conforms"
+        );
         // Unknown digest → refuse (no tag trust).
         assert!(a.contract_for("sha256:deadbeef", platform).is_err());
         // Wrong platform → refuse.
@@ -841,7 +908,10 @@ mod tests {
         // Denylist wins over allow.
         let mut d = a.clone();
         d.denylist.push(good.clone());
-        assert!(d.contract_for(good, platform).is_err(), "denylist overrides allow");
+        assert!(
+            d.contract_for(good, platform).is_err(),
+            "denylist overrides allow"
+        );
     }
 
     #[test]
@@ -858,11 +928,18 @@ mod tests {
         // A higher version ratchets forward.
         assert!(enforce_anti_rollback(&dir, embedded + 5, false).is_ok());
         // A lower version than the ratcheted floor is refused.
-        assert!(enforce_anti_rollback(&dir, embedded, false).is_err(), "rollback below floor refused");
+        assert!(
+            enforce_anti_rollback(&dir, embedded, false).is_err(),
+            "rollback below floor refused"
+        );
         // Erasing or corrupting the floor on a managed node fails closed instead of reopening v1.
         std::fs::remove_file(floor_path(&dir)).unwrap();
         assert!(enforce_anti_rollback(&dir, embedded, false).is_err());
-        std::fs::write(floor_path(&dir), br#"{"allowlist_version":99,"mac":"forged"}"#).unwrap();
+        std::fs::write(
+            floor_path(&dir),
+            br#"{"allowlist_version":99,"mac":"forged"}"#,
+        )
+        .unwrap();
         assert!(enforce_anti_rollback(&dir, embedded + 100, false).is_err());
         std::fs::remove_dir_all(&dir).ok();
     }

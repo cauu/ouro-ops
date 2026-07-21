@@ -167,7 +167,7 @@ ouro_observe() {
   OURO_OBS_KES_INFO="$kes_info" OURO_OBS_KES_GENESIS="$kes_genesis" \
   OURO_OBS_METRICS="$metrics" OURO_OBS_PEERS="$peers" \
   python3 - <<'PY'
-import json, os, stat
+import hashlib, json, os, stat
 def env(k): return os.environ.get(k, "") or ""
 def epoch(created):
     # docker Created is RFC3339; fall back to 0 if unparsable (no ambient clock use).
@@ -304,6 +304,86 @@ def inspect_record():
     except Exception:
         return None
 
+def fixed_bind_path(container_path):
+    """Map one fixed signed-layout path to its bind source without following symlinks."""
+    record = inspect_record()
+    if record is None or not container_path.startswith("/"):
+        return None
+    matches = []
+    for mount in (record.get("Mounts", []) or []):
+        destination = (mount.get("Destination", "") or "").rstrip("/")
+        source = mount.get("Source", "") or ""
+        if mount.get("Type") != "bind" or not destination or not source:
+            continue
+        if container_path == destination or container_path.startswith(destination + "/"):
+            matches.append((len(destination), destination, source))
+    if not matches:
+        return None
+    _, destination, source = max(matches)
+    relative = container_path[len(destination):].lstrip("/")
+    path = os.path.join(source, relative) if relative else source
+    try:
+        # The mount root and every fixed descendant must be real. This is metadata-only for secret
+        # paths; only the explicitly public helpers below ever open file bytes.
+        cursor = source
+        metadata = os.lstat(cursor)
+        if stat.S_ISLNK(metadata.st_mode):
+            return None
+        for component in relative.split("/") if relative else []:
+            cursor = os.path.join(cursor, component)
+            metadata = os.lstat(cursor)
+            if stat.S_ISLNK(metadata.st_mode):
+                return None
+        return path
+    except Exception:
+        return None
+
+def fixed_metadata(container_path):
+    path = fixed_bind_path(container_path)
+    if path is None:
+        return None
+    try:
+        return os.lstat(path)
+    except Exception:
+        return None
+
+def fixed_public_bytes(container_path, limit=1024 * 1024):
+    path = fixed_bind_path(container_path)
+    metadata = fixed_metadata(container_path)
+    if path is None or metadata is None or not stat.S_ISREG(metadata.st_mode):
+        return None
+    if metadata.st_size < 1 or metadata.st_size > limit:
+        return None
+    try:
+        with open(path, "rb") as source:
+            value = source.read(limit + 1)
+        return value if 0 < len(value) <= limit else None
+    except Exception:
+        return None
+
+def fixed_sha256(container_path):
+    value = fixed_public_bytes(container_path)
+    return hashlib.sha256(value).hexdigest() if value is not None else ""
+
+def fixed_genesis_hash():
+    value = fixed_public_bytes("/opt/cardano/config/mainnet/shelley-genesis.json")
+    return hashlib.blake2b(value, digest_size=32).hexdigest() if value is not None else ""
+
+def static_kes_path_facts():
+    directory = fixed_metadata("/opt/cardano/config/keys")
+    kes = fixed_metadata("/opt/cardano/config/keys/kes.skey")
+    vrf = fixed_metadata("/opt/cardano/config/keys/vrf.skey")
+    directory_safe = bool(
+        directory and stat.S_ISDIR(directory.st_mode)
+        and not bool(stat.S_IMODE(directory.st_mode) & 0o002)
+    )
+    def private_regular(metadata):
+        return bool(
+            metadata and stat.S_ISREG(metadata.st_mode)
+            and stat.S_IMODE(metadata.st_mode) in (0o400, 0o600)
+        )
+    return directory_safe, private_regular(kes), private_regular(vrf), bool(kes or vrf)
+
 def image_record():
     try:
         value = json.loads(env("OURO_OBS_IMAGE_FULL"))
@@ -350,6 +430,8 @@ def typed_mounts():
     return result
 
 mounts = typed_mounts()
+static_keys_directory_safe, static_kes_skey_private, static_vrf_skey_private, static_has_keys = static_kes_path_facts()
+record_state = ((inspect_record() or {}).get("State", {}) or {})
 
 # Upgrade recreate spec (§2.10) — parsed from the full inspect JSON. Fail-closed: emit null when the
 # container shape is not the standard single-container bind-mounted layout, so the executor refuses
@@ -488,17 +570,22 @@ obs = {
     "image_entrypoint": list(((image_record() or {}).get("Config", {}) or {}).get("Entrypoint", []) or []),
     "image_cmd": list(((image_record() or {}).get("Config", {}) or {}).get("Cmd", []) or []),
     "mounts": mounts,
-    "topology_hash": env("OURO_OBS_TOPO"), "config_hash": env("OURO_OBS_CFG"),
-    "kes_opcert_id": env("OURO_OBS_OPCERT"), "has_forging_keys": env("OURO_OBS_HASKEYS") == "true",
+    "container_running": bool(record_state.get("Running", False)) and not bool(record_state.get("Restarting", False)),
+    "container_restarting": bool(record_state.get("Restarting", False)),
+    "container_status": str(record_state.get("Status", "") or ""),
+    "topology_hash": env("OURO_OBS_TOPO") or fixed_sha256("/opt/cardano/config/mainnet/topology.json"),
+    "config_hash": env("OURO_OBS_CFG") or fixed_sha256("/opt/cardano/config/mainnet/config.json"),
+    "kes_opcert_id": env("OURO_OBS_OPCERT") or fixed_sha256("/opt/cardano/config/keys/node.cert"),
+    "has_forging_keys": (env("OURO_OBS_HASKEYS") == "true") if env("OURO_OBS_HASKEYS") else static_has_keys,
     "forging_key_permissions_safe": env("OURO_OBS_KEY_PERMS") == "true",
-    "keys_directory_safe": env("OURO_OBS_KEYS_DIRECTORY_SAFE") == "true",
-    "kes_skey_private": env("OURO_OBS_KES_SKEY_PRIVATE") == "true",
-    "vrf_skey_private": env("OURO_OBS_VRF_SKEY_PRIVATE") == "true",
-    "host_key_sha256": env("OURO_OBS_HOSTKEY"), "genesis_hash": env("OURO_OBS_GENESIS"),
+    "keys_directory_safe": (env("OURO_OBS_KEYS_DIRECTORY_SAFE") == "true") if env("OURO_OBS_KEYS_DIRECTORY_SAFE") else static_keys_directory_safe,
+    "kes_skey_private": (env("OURO_OBS_KES_SKEY_PRIVATE") == "true") if env("OURO_OBS_KES_SKEY_PRIVATE") else static_kes_skey_private,
+    "vrf_skey_private": (env("OURO_OBS_VRF_SKEY_PRIVATE") == "true") if env("OURO_OBS_VRF_SKEY_PRIVATE") else static_vrf_skey_private,
+    "host_key_sha256": env("OURO_OBS_HOSTKEY"), "genesis_hash": env("OURO_OBS_GENESIS") or fixed_genesis_hash(),
     "network": env("OURO_OBS_NET"),
   },
   "readiness": {
-    "node_running": bool(env("OURO_OBS_CID")),
+    "node_running": bool(record_state.get("Running", False)) and not bool(record_state.get("Restarting", False)),
     "socket_answers": tip_value(env("OURO_OBS_TIP1")) >= 0 and tip_value(env("OURO_OBS_TIP2")) >= 0,
     "tip_block": tip_value(env("OURO_OBS_TIP1")),
     "tip_block_next": tip_value(env("OURO_OBS_TIP2")),

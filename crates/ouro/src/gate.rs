@@ -32,7 +32,9 @@ mod unix_lock {
     pub const LOCK_EX: c_int = 2;
     pub const LOCK_NB: c_int = 4;
     pub const LOCK_UN: c_int = 8;
-    extern "C" { pub fn flock(fd: c_int, operation: c_int) -> c_int; }
+    extern "C" {
+        pub fn flock(fd: c_int, operation: c_int) -> c_int;
+    }
 }
 
 impl NodeLock {
@@ -67,7 +69,9 @@ impl NodeLock {
             }
         }
         #[cfg(not(unix))]
-        return Err(OuroError::Validation("the S0019 node lock requires a Unix target".into()));
+        return Err(OuroError::Validation(
+            "the S0019 node lock requires a Unix target".into(),
+        ));
         file.set_len(0)?;
         file.seek(SeekFrom::Start(0))?;
         file.write_all(audit_id.as_bytes())?;
@@ -126,7 +130,11 @@ pub fn require_attested_node<'a>(
     let lock = NodeLock::acquire(lock_root, node_id, audit_id)?;
     let live = probe()?;
     attestation.require_matches_live(&live)?;
-    Ok(AttestedGuard { attestation, probe, _lock: lock })
+    Ok(AttestedGuard {
+        attestation,
+        probe,
+        _lock: lock,
+    })
 }
 
 #[cfg(test)]
@@ -195,9 +203,15 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ouro-gate-lock-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
         let a = NodeLock::acquire(&dir, "bp1", "audit-1").unwrap();
-        assert!(NodeLock::acquire(&dir, "bp1", "audit-2").is_err(), "second holder refused");
+        assert!(
+            NodeLock::acquire(&dir, "bp1", "audit-2").is_err(),
+            "second holder refused"
+        );
         drop(a);
-        assert!(NodeLock::acquire(&dir, "bp1", "audit-3").is_ok(), "lock released on drop");
+        assert!(
+            NodeLock::acquire(&dir, "bp1", "audit-3").is_ok(),
+            "lock released on drop"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -220,7 +234,10 @@ mod tests {
         };
         let guard = require_attested_node(&a, &dir, "bp1", "audit-x", &probe).unwrap();
         // Pre-commit re-check must catch the swap that the initial gate accepted.
-        assert!(guard.recheck_before_commit().is_err(), "TOCTOU swap refused at pre-commit");
+        assert!(
+            guard.recheck_before_commit().is_err(),
+            "TOCTOU swap refused at pre-commit"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }

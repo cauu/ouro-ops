@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """S0019 p5-2 — the target-side observation probe emits a well-formed observation JSON. Uses docker
 stubs (no real container needed); real gathering is bed-level (p5-6)."""
+import hashlib
 import json
 import os
 import subprocess
@@ -21,6 +22,19 @@ def main():
     data_mount.mkdir()
     config_mount.mkdir()
     ipc_mount.mkdir()
+    mainnet = config_mount / "mainnet"
+    config_keys = config_mount / "keys"
+    mainnet.mkdir()
+    config_keys.mkdir()
+    (mainnet / "topology.json").write_text('{"Producers":[]}')
+    (mainnet / "config.json").write_text('{"Protocol":"Cardano"}')
+    (mainnet / "shelley-genesis.json").write_text('{"slotsPerKESPeriod":2}')
+    (config_keys / "node.cert").write_text('{"type":"NodeOperationalCertificate"}')
+    (config_keys / "kes.skey").write_text("metadata-only fixture")
+    (config_keys / "vrf.skey").write_text("metadata-only fixture")
+    os.chmod(config_keys, 0o755)
+    os.chmod(config_keys / "kes.skey", 0o600)
+    os.chmod(config_keys / "vrf.skey", 0o600)
     # docker stub: ps → the production Blink Labs image shape whose entrypoint command does not
     # contain `cardano-node`; inspect → fixed fields; exec → hashes/keys.
     (binp / "docker").write_text(
@@ -42,9 +56,9 @@ def main():
         '       "{{range .Mounts}}{{.Source}};{{end}}") echo "/srv/cardano/data;/srv/cardano/config;";;\n'
         '       "{{.HostConfig.RestartPolicy.Name}}") echo "unless-stopped";;\n'
         '     esac;;\n'
-        f'  "inspect cid-xyz") echo \'[{{"Id":"cid-xyz000000000000","Name":"/cardano-node","Mounts":[{{"Type":"bind","Source":"{data_mount}","Destination":"/data/db","RW":true,"Mode":"rw","Propagation":"rprivate"}},{{"Type":"bind","Source":"{config_mount}","Destination":"/opt/cardano/config","RW":false,"Mode":"ro","Propagation":"rprivate"}},{{"Type":"bind","Source":"{ipc_mount}","Destination":"/ipc","RW":true,"Mode":"rw","Propagation":"rprivate"}}],"HostConfig":{{"RestartPolicy":{{"Name":"unless-stopped","MaximumRetryCount":0}},"NetworkMode":"bridge","PortBindings":{{}}}},"NetworkSettings":{{"Networks":{{"bridge":{{"Aliases":null,"IPAMConfig":null}}}}}},"Config":{{"Hostname":"cid-xyz00000","Image":"ghcr.io/blinklabs-io/cardano-node:10.5.4-1","Env":["CARDANO_BLOCK_PRODUCER=true","CARDANO_NETWORK=mainnet"],"Labels":{{"org.opencontainers.image.title":"cardano-node"}},"Entrypoint":["/usr/local/bin/entrypoint"]}},"Path":"/usr/local/bin/entrypoint","Args":["run"]}}]\';;\n'
+        f'  "inspect cid-xyz") record=\'[{{"Id":"cid-xyz000000000000","Name":"/cardano-node","State":{{"Running":true,"Restarting":false,"Status":"running"}},"Mounts":[{{"Type":"bind","Source":"{data_mount}","Destination":"/data/db","RW":true,"Mode":"rw","Propagation":"rprivate"}},{{"Type":"bind","Source":"{config_mount}","Destination":"/opt/cardano/config","RW":false,"Mode":"ro","Propagation":"rprivate"}},{{"Type":"bind","Source":"{ipc_mount}","Destination":"/ipc","RW":true,"Mode":"rw","Propagation":"rprivate"}}],"HostConfig":{{"RestartPolicy":{{"Name":"unless-stopped","MaximumRetryCount":0}},"NetworkMode":"bridge","PortBindings":{{}}}},"NetworkSettings":{{"Networks":{{"bridge":{{"Aliases":null,"IPAMConfig":null}}}}}},"Config":{{"Hostname":"cid-xyz00000","Image":"ghcr.io/blinklabs-io/cardano-node:10.5.4-1","Env":["CARDANO_BLOCK_PRODUCER=true","CARDANO_NETWORK=mainnet"],"Labels":{{"org.opencontainers.image.title":"cardano-node"}},"Entrypoint":["/usr/local/bin/entrypoint"]}},"Path":"/usr/local/bin/entrypoint","Args":["run"]}}]\'; if test -n "$OURO_TEST_RESTARTING"; then printf "%s\\n" "$record" | sed \'s/"Running":true,"Restarting":false,"Status":"running"/"Running":false,"Restarting":true,"Status":"restarting"/\'; else printf "%s\\n" "$record"; fi;;\n'
         '  "image inspect") echo \'[{"Os":"linux","Architecture":"amd64","Config":{"Env":[],"Entrypoint":["/usr/local/bin/entrypoint"],"Cmd":[],"Labels":{"org.opencontainers.image.title":"cardano-node"}}}]\';;\n'
-        '  "exec cid-xyz") shift 2; # sh -c ...\n'
+        '  "exec cid-xyz") shift 2; test -z "$OURO_TEST_RESTARTING" || exit 1; # sh -c ...\n'
         '     if echo "$*" | grep -q "cardano-cli query tip"; then echo "{\\"block\\":9,\\"slot\\":10,\\"era\\":\\"Conway\\",\\"syncProgress\\":\\"100.00\\"}";\n'
         '     elif echo "$*" | grep -q "hash genesis-file"; then echo "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81";\n'
         '     elif echo "$*" | grep -q "kes-period-info"; then if test -z "$OURO_TEST_KES_EMPTY"; then if test -n "$OURO_TEST_KES_NULL"; then node_state=null; else node_state=5; fi; printf "✓ period is valid\\n✓ counter agrees\\n{\\"qKesCurrentKesPeriod\\":10,\\"qKesStartKesInterval\\":9,\\"qKesEndKesInterval\\":20,\\"qKesOnDiskOperationalCertificateNumber\\":5,\\"qKesNodeStateOperationalCertificateNumber\\":%s}\\n" "$node_state"; fi;\n'
@@ -93,6 +107,7 @@ def main():
     assert live["platform"] == "linux/amd64"
     assert live["container_name"] == "cardano-node"
     assert live["image_reference"] == "ghcr.io/blinklabs-io/cardano-node:10.5.4-1"
+    assert live["container_running"] is True and live["container_restarting"] is False
     assert len(live["mounts"]) == 3
     assert all(m["kind"] == "bind" and m["source_id"].count(":") == 1 for m in live["mounts"])
     assert {m["destination"] for m in live["mounts"]} == {"/data/db", "/opt/cardano/config", "/ipc"}
@@ -237,6 +252,40 @@ def main():
     }
     assert no_blocks_readiness["kes_opcert_valid"] is False
     assert no_blocks_readiness["forging_credentials_ready"] is False
+
+    # A restart-looping container cannot answer docker exec, but the signed fixed bind layout still
+    # provides enough public/metadata-only identity evidence for Phase B recovery planning. It must
+    # not be misreported as a network/genesis mismatch or as ordinary node readiness.
+    restarting = subprocess.run(
+        ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
+        env=dict(env, OURO_TEST_RESTARTING="1"), text=True, capture_output=True,
+    )
+    assert restarting.returncode == 0, restarting.stderr
+    restart_obs = json.loads(restarting.stdout)
+    restart_live = restart_obs["live"]
+    assert restart_live["container_running"] is False
+    assert restart_live["container_restarting"] is True
+    assert restart_live["container_status"] == "restarting"
+    assert restart_live["network"] == "mainnet"
+    assert restart_live["genesis_hash"] == hashlib.blake2b(
+        (mainnet / "shelley-genesis.json").read_bytes(), digest_size=32
+    ).hexdigest()
+    assert restart_live["topology_hash"] == hashlib.sha256(
+        (mainnet / "topology.json").read_bytes()
+    ).hexdigest()
+    assert restart_live["config_hash"] == hashlib.sha256(
+        (mainnet / "config.json").read_bytes()
+    ).hexdigest()
+    assert restart_live["kes_opcert_id"] == hashlib.sha256(
+        (config_keys / "node.cert").read_bytes()
+    ).hexdigest()
+    assert restart_live["has_forging_keys"] is True
+    assert restart_live["keys_directory_safe"] is True
+    assert restart_live["kes_skey_private"] is True
+    assert restart_live["vrf_skey_private"] is True
+    assert restart_obs["readiness"]["node_running"] is False
+    assert restart_obs["readiness"]["socket_answers"] is False
+    assert restart_obs["readiness"]["kes"] is None
 
     # An explicit container user is not modeled by the sealed recreate argv. The probe must return
     # recreate:null instead of silently upgrading it as root.

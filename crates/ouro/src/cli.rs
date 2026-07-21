@@ -267,10 +267,8 @@ fn run_self_update(args: &[String]) -> Result<()> {
             .map_err(|e| OuroError::Validation(format!("metadata {path} not JSON: {e}")))?;
         if let Some(v) = meta.get("latest_version").and_then(|v| v.as_str()) {
             latest = v.to_string();
-            if let (Some(c), Some(l)) = (
-                crate::version::parse(&current),
-                crate::version::parse(v),
-            ) {
+            if let (Some(c), Some(l)) = (crate::version::parse(&current), crate::version::parse(v))
+            {
                 update_available = l > c; // never downgrade: only flag when strictly newer
             }
         }
@@ -583,8 +581,7 @@ fn validate_control_key_matches(private_key: &std::path::Path, control_pubkey: &
         })?;
     if !derived.status.success() {
         return Err(OuroError::Validation(
-            "cannot derive the selected bootstrap credential's public key non-interactively"
-                .into(),
+            "cannot derive the selected bootstrap credential's public key non-interactively".into(),
         ));
     }
     let derived = String::from_utf8_lossy(&derived.stdout);
@@ -613,7 +610,10 @@ pub(crate) fn fingerprint_of(entry: &str) -> Option<String> {
         .stderr(std::process::Stdio::null())
         .spawn()
         .ok()?;
-    kg.stdin.take()?.write_all(format!("{entry}\n").as_bytes()).ok()?;
+    kg.stdin
+        .take()?
+        .write_all(format!("{entry}\n").as_bytes())
+        .ok()?;
     let out = kg.wait_with_output().ok()?;
     String::from_utf8_lossy(&out.stdout)
         .split_whitespace()
@@ -796,9 +796,12 @@ fn parse_diag_exec_args(args: &[String]) -> Result<(&str, &str, u32, &[String])>
                 "unexpected diagnostic control argument {name:?}"
             )));
         }
-        let value = args.get(index + 1).filter(|_| index + 1 < sep).ok_or_else(|| {
-            OuroError::InvalidArgs(format!("missing value for diagnostic argument {name}"))
-        })?;
+        let value = args
+            .get(index + 1)
+            .filter(|_| index + 1 < sep)
+            .ok_or_else(|| {
+                OuroError::InvalidArgs(format!("missing value for diagnostic argument {name}"))
+            })?;
         if value.starts_with("--") {
             return Err(OuroError::InvalidArgs(format!(
                 "missing value for diagnostic argument {name}"
@@ -819,7 +822,9 @@ fn parse_diag_exec_args(args: &[String]) -> Result<(&str, &str, u32, &[String])>
     }
     let machine = dispatch.ok_or_else(|| OuroError::InvalidArgs("missing --dispatch".into()))?;
     let spec = spec.ok_or_else(|| OuroError::InvalidArgs("missing --spec".into()))?;
-    let timeout_s = timeout.unwrap_or("30").parse::<u32>()
+    let timeout_s = timeout
+        .unwrap_or("30")
+        .parse::<u32>()
         .map_err(|_| OuroError::InvalidArgs("--timeout must be seconds (max 300)".to_string()))?;
     if !(1..=300).contains(&timeout_s) {
         return Err(OuroError::InvalidArgs(
@@ -906,7 +911,10 @@ fn run_diag_exec(args: &[String]) -> Result<()> {
         Some(machine_id),
         "finish",
         Some(0),
-        &format!("diagnostic result delivered with remote exit {}", outcome.status),
+        &format!(
+            "diagnostic result delivered with remote exit {}",
+            outcome.status
+        ),
     )?;
 
     const CAP: usize = 16 * 1024;
@@ -1274,10 +1282,11 @@ fn command_usage(command: &str) -> Option<&'static str> {
         "fleet" => "ouro-ops fleet spec identity --spec <pool-spec> | \
                     fleet permit create --spec <pool-spec> --node <id> --op <id> \
                     --intent-hash <final-plan-hash> --holder <id> \
-                    [--target-image sha256:<digest>]\n  \
+                    [--target-image sha256:<digest>] [--artifact-file <public-node.cert>]\n  \
                     Identity exposes stable pool id + exact spec revision. Permit derives signed \
                     target/network/host/quorum/BP-last facts and upgrade.min_online_relays directly \
-                    from the spec, then expires after 180 seconds.",
+                    from the spec, then expires after 180 seconds. KES activation additionally \
+                    binds healthy-relay protocol evidence for the reviewed public certificate.",
         "confirm" => "ouro-ops confirm create --op <id> --node <id> --intent-hash <hash> | \
                       confirm adopt create --node <id> --candidate-hash <hash> --host-key <sha256>\n  \
                       Mints a one-time approval bound to the exact S0020 candidate/intent; the adopt \

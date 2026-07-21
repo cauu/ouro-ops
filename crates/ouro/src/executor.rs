@@ -20,7 +20,7 @@
 //! target-side (as the confined principal). This module is the sealed argv builder + its proof.
 
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -212,7 +212,11 @@ pub fn build_plan(
 /// commit steps that install an artifact are followed by a restart; rolling back is the same restart
 /// after the prior artifact/config is what remains, so this is idempotent.
 pub fn rollback_plan(att: &AdoptionAttestation) -> Vec<Vec<String>> {
-    vec![vec![s("docker"), s("restart"), att.state.container_id.clone()]]
+    vec![vec![
+        s("docker"),
+        s("restart"),
+        att.state.container_id.clone(),
+    ]]
 }
 
 /// Build commit + honest rollback plans for a durable transaction. KES installation first copies
@@ -237,12 +241,19 @@ pub fn recoverable_plans(
             commit.insert(
                 0,
                 vec![
-                    s("docker"), s("cp"),
-                    format!("{}:{OPCERT_DEST}", att.state.container_id), backup.clone(),
+                    s("docker"),
+                    s("cp"),
+                    format!("{}:{OPCERT_DEST}", att.state.container_id),
+                    backup.clone(),
                 ],
             );
             let rollback = vec![
-                vec![s("docker"), s("cp"), backup, format!("{}:{OPCERT_DEST}", att.state.container_id)],
+                vec![
+                    s("docker"),
+                    s("cp"),
+                    backup,
+                    format!("{}:{OPCERT_DEST}", att.state.container_id),
+                ],
                 vec![s("docker"), s("restart"), att.state.container_id.clone()],
             ];
             Ok((commit, Some(rollback)))
@@ -263,7 +274,8 @@ fn recreate_run_argv(spec: &RecreateSpec, image_digest: &str) -> Result<Vec<Stri
     }
     if spec.binds.is_empty() {
         return Err(OuroError::Validation(
-            "upgrade: no bind mounts observed — refusing to recreate a node without its volumes".into(),
+            "upgrade: no bind mounts observed — refusing to recreate a node without its volumes"
+                .into(),
         ));
     }
     if spec.entrypoint.is_empty() {
@@ -271,15 +283,27 @@ fn recreate_run_argv(spec: &RecreateSpec, image_digest: &str) -> Result<Vec<Stri
             "upgrade: no resolved entrypoint observed — refused (fail-closed)".into(),
         ));
     }
-    if image_digest.strip_prefix("sha256:").map(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit())) != Some(true) {
+    if image_digest
+        .strip_prefix("sha256:")
+        .map(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit()))
+        != Some(true)
+    {
         return Err(OuroError::Validation(format!(
             "upgrade: target image {image_digest:?} is not a sha256 digest — refused"
         )));
     }
     let mut run = vec![
-        s("docker"), s("run"), s("-d"),
-        s("--name"), spec.name.clone(),
-        s("--restart"), if spec.restart_policy.is_empty() { s("unless-stopped") } else { spec.restart_policy.clone() },
+        s("docker"),
+        s("run"),
+        s("-d"),
+        s("--name"),
+        spec.name.clone(),
+        s("--restart"),
+        if spec.restart_policy.is_empty() {
+            s("unless-stopped")
+        } else {
+            spec.restart_policy.clone()
+        },
     ];
     if !matches!(spec.network_mode.as_str(), "" | "default" | "bridge") {
         run.push(s("--network"));
@@ -320,31 +344,102 @@ fn recreate_run_argv(spec: &RecreateSpec, image_digest: &str) -> Result<Vec<Stri
 /// missing/ambiguous fact is refused — we never recreate a node with a partial spec. `image_digest`
 /// is `sha256:<…>` (a target-present, allowlist-verified digest); nothing here is an agent string
 /// except the digest, which was validated as a closed selector + allowlist membership.
-pub fn recreate_argv(spec: &RecreateSpec, cid: &str, image_digest: &str) -> Result<Vec<Vec<String>>> {
+pub fn recreate_argv(
+    spec: &RecreateSpec,
+    cid: &str,
+    image_digest: &str,
+) -> Result<Vec<Vec<String>>> {
     let run = recreate_run_argv(spec, image_digest)?;
-    Ok(vec![vec![s("docker"), s("rm"), s("-f"), cid.to_string()], run])
+    Ok(vec![
+        vec![s("docker"), s("rm"), s("-f"), cid.to_string()],
+        run,
+    ])
 }
 
 /// Generate a new pair only inside the fixed BP-private stage; no active file is changed.
 pub fn stateless_kes_stage_plan(cid: &str) -> ExecutionPlan {
     vec![
-        vec![s("docker"), s("exec"), cid.to_string(), s("mkdir"), s("-m"), s("700"), s(KES_STAGE_DIR)],
         vec![
-            s("docker"), s("exec"), cid.to_string(), s("cardano-cli"), s("node"),
-            s("key-gen-KES"), s("--verification-key-file"), format!("{KES_STAGE_VKEY}.tmp"),
-            s("--signing-key-file"), format!("{KES_STAGE_SKEY}.tmp"),
+            s("docker"),
+            s("exec"),
+            cid.to_string(),
+            s("mkdir"),
+            s("-m"),
+            s("700"),
+            s(KES_STAGE_DIR),
         ],
-        vec![s("docker"), s("exec"), cid.to_string(), s("test"), s("-s"), format!("{KES_STAGE_VKEY}.tmp")],
-        vec![s("docker"), s("exec"), cid.to_string(), s("test"), s("-s"), format!("{KES_STAGE_SKEY}.tmp")],
-        vec![s("docker"), s("exec"), cid.to_string(), s("chmod"), s("600"), format!("{KES_STAGE_SKEY}.tmp")],
-        vec![s("docker"), s("exec"), cid.to_string(), s("chmod"), s("644"), format!("{KES_STAGE_VKEY}.tmp")],
-        vec![s("docker"), s("exec"), cid.to_string(), s("mv"), format!("{KES_STAGE_SKEY}.tmp"), s(KES_STAGE_SKEY)],
-        vec![s("docker"), s("exec"), cid.to_string(), s("mv"), format!("{KES_STAGE_VKEY}.tmp"), s(KES_STAGE_VKEY)],
+        vec![
+            s("docker"),
+            s("exec"),
+            cid.to_string(),
+            s("cardano-cli"),
+            s("node"),
+            s("key-gen-KES"),
+            s("--verification-key-file"),
+            format!("{KES_STAGE_VKEY}.tmp"),
+            s("--signing-key-file"),
+            format!("{KES_STAGE_SKEY}.tmp"),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            cid.to_string(),
+            s("test"),
+            s("-s"),
+            format!("{KES_STAGE_VKEY}.tmp"),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            cid.to_string(),
+            s("test"),
+            s("-s"),
+            format!("{KES_STAGE_SKEY}.tmp"),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            cid.to_string(),
+            s("chmod"),
+            s("600"),
+            format!("{KES_STAGE_SKEY}.tmp"),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            cid.to_string(),
+            s("chmod"),
+            s("644"),
+            format!("{KES_STAGE_VKEY}.tmp"),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            cid.to_string(),
+            s("mv"),
+            format!("{KES_STAGE_SKEY}.tmp"),
+            s(KES_STAGE_SKEY),
+        ],
+        vec![
+            s("docker"),
+            s("exec"),
+            cid.to_string(),
+            s("mv"),
+            format!("{KES_STAGE_VKEY}.tmp"),
+            s(KES_STAGE_VKEY),
+        ],
     ]
 }
 
 pub fn stateless_kes_stage_cleanup_plan(cid: &str) -> ExecutionPlan {
-    vec![vec![s("docker"), s("exec"), cid.to_string(), s("rm"), s("-rf"), s(KES_STAGE_DIR)]]
+    vec![vec![
+        s("docker"),
+        s("exec"),
+        cid.to_string(),
+        s("rm"),
+        s("-rf"),
+        s(KES_STAGE_DIR),
+    ]]
 }
 
 /// Preserve the previous active KES pair and public opcert as operator recovery evidence until the
@@ -352,29 +447,183 @@ pub fn stateless_kes_stage_cleanup_plan(cid: &str) -> ExecutionPlan {
 pub fn stateless_kes_recovery_plan(cid: &str, payload: &str) -> StatelessRecoveryPlan {
     StatelessRecoveryPlan {
         commit: vec![
-            vec![s("docker"), s("exec"), cid.to_string(), s("test"), s("!"), s("-e"), s(KES_SKEY_PREVIOUS)],
-            vec![s("docker"), s("exec"), cid.to_string(), s("test"), s("!"), s("-e"), s(KES_VKEY_PREVIOUS)],
-            vec![s("docker"), s("exec"), cid.to_string(), s("test"), s("!"), s("-e"), s(OPCERT_PREVIOUS)],
-            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(KES_SKEY_DEST), s(KES_SKEY_PREVIOUS)],
-            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(KES_VKEY_DEST), s(KES_VKEY_PREVIOUS)],
-            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(OPCERT_DEST), s(OPCERT_PREVIOUS)],
-            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(KES_STAGE_SKEY), s(KES_SKEY_DEST)],
-            vec![s("docker"), s("exec"), cid.to_string(), s("cp"), s("-p"), s(KES_STAGE_VKEY), s(KES_VKEY_DEST)],
-            vec![s("docker"), s("cp"), payload.to_string(), format!("{cid}:{OPCERT_DEST}")],
+            vec![
+                s("docker"),
+                s("exec"),
+                cid.to_string(),
+                s("test"),
+                s("!"),
+                s("-e"),
+                s(KES_SKEY_PREVIOUS),
+            ],
+            vec![
+                s("docker"),
+                s("exec"),
+                cid.to_string(),
+                s("test"),
+                s("!"),
+                s("-e"),
+                s(KES_VKEY_PREVIOUS),
+            ],
+            vec![
+                s("docker"),
+                s("exec"),
+                cid.to_string(),
+                s("test"),
+                s("!"),
+                s("-e"),
+                s(OPCERT_PREVIOUS),
+            ],
+            vec![
+                s("docker"),
+                s("exec"),
+                cid.to_string(),
+                s("cp"),
+                s("-p"),
+                s(KES_SKEY_DEST),
+                s(KES_SKEY_PREVIOUS),
+            ],
+            vec![
+                s("docker"),
+                s("exec"),
+                cid.to_string(),
+                s("cp"),
+                s("-p"),
+                s(KES_VKEY_DEST),
+                s(KES_VKEY_PREVIOUS),
+            ],
+            vec![
+                s("docker"),
+                s("exec"),
+                cid.to_string(),
+                s("cp"),
+                s("-p"),
+                s(OPCERT_DEST),
+                s(OPCERT_PREVIOUS),
+            ],
+            vec![
+                s("docker"),
+                s("exec"),
+                cid.to_string(),
+                s("cp"),
+                s("-p"),
+                s(KES_STAGE_SKEY),
+                s(KES_SKEY_DEST),
+            ],
+            vec![
+                s("docker"),
+                s("exec"),
+                cid.to_string(),
+                s("cp"),
+                s("-p"),
+                s(KES_STAGE_VKEY),
+                s(KES_VKEY_DEST),
+            ],
+            vec![
+                s("docker"),
+                s("cp"),
+                payload.to_string(),
+                format!("{cid}:{OPCERT_DEST}"),
+            ],
             vec![s("docker"), s("restart"), cid.to_string()],
         ],
         rollback: Vec::new(),
         finalize: vec![
-            vec![s("docker"), s("exec"), cid.to_string(), s("rm"), s("-f"), s(KES_SKEY_PREVIOUS), s(KES_VKEY_PREVIOUS), s(OPCERT_PREVIOUS)],
-            vec![s("docker"), s("exec"), cid.to_string(), s("rm"), s("-rf"), s(KES_STAGE_DIR)],
+            vec![
+                s("docker"),
+                s("exec"),
+                cid.to_string(),
+                s("rm"),
+                s("-f"),
+                s(KES_SKEY_PREVIOUS),
+                s(KES_VKEY_PREVIOUS),
+                s(OPCERT_PREVIOUS),
+            ],
+            vec![
+                s("docker"),
+                s("exec"),
+                cid.to_string(),
+                s("rm"),
+                s("-rf"),
+                s(KES_STAGE_DIR),
+            ],
         ],
+    }
+}
+
+fn kes_helper_argv(cid: &str, image: &str, payload: Option<&str>, script: &str) -> Vec<String> {
+    let mut argv = vec![
+        s("docker"),
+        s("run"),
+        s("--rm"),
+        s("--network"),
+        s("none"),
+        s("--pull"),
+        s("never"),
+        s("--read-only"),
+        s("--user"),
+        s("0:0"),
+        s("--volumes-from"),
+        cid.to_string(),
+    ];
+    if let Some(payload) = payload {
+        argv.extend([s("--volume"), format!("{payload}:/ouro/node.cert:ro")]);
+    }
+    argv.extend([
+        s("--entrypoint"),
+        s("/bin/sh"),
+        image.to_string(),
+        s("-eu"),
+        s("-c"),
+        script.to_string(),
+    ]);
+    argv
+}
+
+/// Restart-loop KES repair uses the exact current image as a network-disabled one-shot filesystem
+/// helper. It receives no operator path except the already digest-verified ephemeral public opcert;
+/// every in-container path and script token is compiled here.
+pub fn stateless_kes_restart_loop_recovery_plan(
+    cid: &str,
+    image: &str,
+    payload: &str,
+) -> StatelessRecoveryPlan {
+    const PREPARE: &str = "k=/opt/cardano/config/keys; s=$k/.ouro-kes-stage; \
+test -s $s/kes.skey; test -s $s/kes.vkey; test -s /ouro/node.cert; \
+if test ! -e $k/kes.skey.ouro-prev && test ! -e $k/kes.vkey.ouro-prev && test ! -e $k/node.cert.ouro-prev; then \
+cp -p $k/kes.skey $k/kes.skey.ouro-prev; cp -p $k/kes.vkey $k/kes.vkey.ouro-prev; cp -p $k/node.cert $k/node.cert.ouro-prev; \
+else test -s $k/kes.skey.ouro-prev; test -s $k/kes.vkey.ouro-prev; test -s $k/node.cert.ouro-prev; fi; \
+cp -p $s/kes.skey $k/kes.skey.ouro-next; cp -p $s/kes.vkey $k/kes.vkey.ouro-next; cp /ouro/node.cert $k/node.cert.ouro-next; \
+chmod 600 $k/kes.skey.ouro-next; chmod 644 $k/kes.vkey.ouro-next $k/node.cert.ouro-next; \
+test -s $k/kes.skey.ouro-next; test -s $k/kes.vkey.ouro-next; test -s $k/node.cert.ouro-next";
+    const PROMOTE: &str = "k=/opt/cardano/config/keys; \
+test -s $k/kes.skey.ouro-next; test -s $k/kes.vkey.ouro-next; test -s $k/node.cert.ouro-next; \
+mv -f $k/kes.skey.ouro-next $k/kes.skey; mv -f $k/kes.vkey.ouro-next $k/kes.vkey; mv -f $k/node.cert.ouro-next $k/node.cert";
+    const FINALIZE: &str = "k=/opt/cardano/config/keys; \
+rm -f $k/kes.skey.ouro-prev $k/kes.vkey.ouro-prev $k/node.cert.ouro-prev \
+$k/kes.skey.ouro-next $k/kes.vkey.ouro-next $k/node.cert.ouro-next; rm -rf $k/.ouro-kes-stage";
+    StatelessRecoveryPlan {
+        commit: vec![
+            kes_helper_argv(cid, image, Some(payload), PREPARE),
+            vec![s("docker"), s("stop"), cid.to_string()],
+            kes_helper_argv(cid, image, None, PROMOTE),
+            vec![s("docker"), s("start"), cid.to_string()],
+        ],
+        rollback: Vec::new(),
+        finalize: vec![kes_helper_argv(cid, image, None, FINALIZE)],
     }
 }
 
 pub fn stateless_kes_prepare_cleanup_plan(cid: &str) -> ExecutionPlan {
     vec![vec![
-        s("docker"), s("exec"), cid.to_string(), s("rm"), s("-f"),
-        s(KES_SKEY_PREVIOUS), s(KES_VKEY_PREVIOUS), s(OPCERT_PREVIOUS),
+        s("docker"),
+        s("exec"),
+        cid.to_string(),
+        s("rm"),
+        s("-f"),
+        s(KES_SKEY_PREVIOUS),
+        s(KES_VKEY_PREVIOUS),
+        s(OPCERT_PREVIOUS),
     ]]
 }
 
@@ -422,7 +671,12 @@ pub fn stateless_recreate_recovery_plan(
         ],
         rollback: vec![
             vec![s("docker"), s("rm"), s("-f"), spec.name.clone()],
-            vec![s("docker"), s("rename"), previous.clone(), spec.name.clone()],
+            vec![
+                s("docker"),
+                s("rename"),
+                previous.clone(),
+                spec.name.clone(),
+            ],
             vec![s("docker"), s("start"), spec.name.clone()],
         ],
         finalize: vec![vec![s("docker"), s("rm"), s("-f"), previous]],
@@ -434,7 +688,9 @@ fn redact_environment_values(plan: &mut ExecutionPlan) {
         let mut index = 0;
         while index + 1 < argv.len() {
             if argv[index] == "-e" {
-                let name = argv[index + 1].split_once('=').map(|(name, _)| name)
+                let name = argv[index + 1]
+                    .split_once('=')
+                    .map(|(name, _)| name)
                     .unwrap_or(argv[index + 1].as_str());
                 argv[index + 1] = format!("{name}=<redacted-target-value>");
                 index += 2;
@@ -488,7 +744,9 @@ pub fn require_image_present(target: &str) -> Result<()> {
     let output = std::process::Command::new("docker")
         .args(["image", "inspect", "--format", "{{.Id}}", target])
         .output()
-        .map_err(|e| OuroError::Validation(format!("cannot inspect preloaded upgrade image: {e}")))?;
+        .map_err(|e| {
+            OuroError::Validation(format!("cannot inspect preloaded upgrade image: {e}"))
+        })?;
     if !output.status.success() {
         return Err(OuroError::Validation(format!(
             "upgrade target image {target} is not preloaded — stage/pull it separately before planning"
@@ -566,9 +824,12 @@ pub fn pull_verified_image(
             "exact pulled image could not be inspected after pull".into(),
         ));
     }
-    let inspected: DockerImageInspect = serde_json::from_slice(&output.stdout).map_err(|error| {
-        OuroError::Validation(format!("docker returned malformed image inspection: {error}"))
-    })?;
+    let inspected: DockerImageInspect =
+        serde_json::from_slice(&output.stdout).map_err(|error| {
+            OuroError::Validation(format!(
+                "docker returned malformed image inspection: {error}"
+            ))
+        })?;
     let platform = format!("{}/{}", inspected.os, inspected.architecture);
     if inspected.id != expected_config_digest {
         return Err(OuroError::Validation(format!(
@@ -581,7 +842,11 @@ pub fn pull_verified_image(
             "pulled image platform mismatch: expected {expected_platform}, got {platform}"
         )));
     }
-    if !inspected.repo_digests.iter().any(|value| value == &reference) {
+    if !inspected
+        .repo_digests
+        .iter()
+        .any(|value| value == &reference)
+    {
         return Err(OuroError::Validation(format!(
             "pulled image is not bound to the approved repository manifest {reference}"
         )));
@@ -598,7 +863,10 @@ pub fn pull_verified_image(
 /// The upgrade rollback plan: recreate the container onto the PRIOR (attested) image digest with the
 /// same observed run-spec — the honest inverse of a recreate. (Whether this restores service depends
 /// on DB compatibility; the honest RollbackToN / ReSyncRequired classification is `upgrade.rs`.)
-pub fn upgrade_rollback_plan(att: &AdoptionAttestation, spec: &RecreateSpec) -> Result<Vec<Vec<String>>> {
+pub fn upgrade_rollback_plan(
+    att: &AdoptionAttestation,
+    spec: &RecreateSpec,
+) -> Result<Vec<Vec<String>>> {
     // Remove by stable container name. The old immutable id may already be gone, while a partially
     // created replacement may now occupy the name.
     recreate_argv(spec, &spec.name, &att.immutable.image_config_digest)
@@ -622,6 +890,150 @@ pub fn run_argv(argv: &[String]) -> Result<()> {
             out.status.code().unwrap_or(-1)
         )))
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct FixedPathMetadata {
+    pub is_file: bool,
+    pub is_dir: bool,
+    pub mode: u32,
+    pub size: u64,
+}
+
+/// Resolve one compile-time fixed in-container path through Docker's declared bind mounts. This is
+/// the restart-loop read seam: it never accepts an agent path and rejects symlinks at the mount root
+/// or any existing descendant. Secret callers use metadata only; public callers may use the bounded
+/// reader below.
+fn fixed_bind_path(container: &str, fixed_path: &str) -> Result<PathBuf> {
+    if !fixed_path.starts_with('/') || fixed_path.split('/').any(|part| part == "..") {
+        return Err(OuroError::Validation(
+            "fixed container path is not absolute/canonical".into(),
+        ));
+    }
+    let raw = run_read_plan(&[vec!["docker".into(), "inspect".into(), container.into()]])?;
+    let records: serde_json::Value = serde_json::from_str(&raw).map_err(|error| {
+        OuroError::Validation(format!(
+            "cannot parse Docker inspect for fixed-path read: {error}"
+        ))
+    })?;
+    let record = records
+        .as_array()
+        .filter(|records| records.len() == 1)
+        .and_then(|records| records.first())
+        .ok_or_else(|| {
+            OuroError::Validation("Docker inspect did not return exactly one container".into())
+        })?;
+    let fixed = Path::new(fixed_path);
+    let mut matches = record
+        .get("Mounts")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|mount| {
+            if mount.get("Type").and_then(serde_json::Value::as_str) != Some("bind") {
+                return None;
+            }
+            let source = mount.get("Source")?.as_str()?;
+            let destination = mount.get("Destination")?.as_str()?;
+            let destination = Path::new(destination);
+            let relative = fixed.strip_prefix(destination).ok()?;
+            Some((
+                destination.components().count(),
+                PathBuf::from(source),
+                relative.to_path_buf(),
+            ))
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|(depth, _, _)| *depth);
+    let (_, source, relative) = matches.pop().ok_or_else(|| {
+        OuroError::Validation(format!(
+            "fixed path {fixed_path} is not covered by a declared bind mount"
+        ))
+    })?;
+    let source_metadata = std::fs::symlink_metadata(&source).map_err(|error| {
+        OuroError::Validation(format!(
+            "cannot inspect fixed bind source metadata: {error}"
+        ))
+    })?;
+    if source_metadata.file_type().is_symlink() || !source_metadata.is_dir() {
+        return Err(OuroError::Validation(
+            "fixed bind source is not a real directory".into(),
+        ));
+    }
+    let mut resolved = source;
+    for component in relative.components() {
+        if !matches!(component, std::path::Component::Normal(_)) {
+            continue;
+        }
+        resolved.push(component);
+        if resolved.exists() {
+            let metadata = std::fs::symlink_metadata(&resolved).map_err(|error| {
+                OuroError::Validation(format!("cannot inspect fixed bind descendant: {error}"))
+            })?;
+            if metadata.file_type().is_symlink() {
+                return Err(OuroError::Validation(
+                    "fixed bind descendant is a symlink".into(),
+                ));
+            }
+        }
+    }
+    Ok(resolved)
+}
+
+pub fn fixed_path_metadata(container: &str, fixed_path: &str) -> Result<Option<FixedPathMetadata>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let path = fixed_bind_path(container, fixed_path)?;
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(OuroError::Validation(format!(
+                "cannot inspect fixed container path metadata: {error}"
+            )))
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(OuroError::Validation(
+            "fixed container path is a symlink".into(),
+        ));
+    }
+    Ok(Some(FixedPathMetadata {
+        is_file: metadata.is_file(),
+        is_dir: metadata.is_dir(),
+        mode: metadata.permissions().mode() & 0o7777,
+        size: metadata.len(),
+    }))
+}
+
+pub fn read_fixed_public_file(container: &str, fixed_path: &str, limit: usize) -> Result<Vec<u8>> {
+    let path = fixed_bind_path(container, fixed_path)?;
+    let metadata = std::fs::symlink_metadata(&path).map_err(|error| {
+        OuroError::Validation(format!("cannot inspect fixed public file: {error}"))
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(OuroError::Validation(
+            "fixed public path is not a real regular file".into(),
+        ));
+    }
+    let size = usize::try_from(metadata.len())
+        .map_err(|_| OuroError::Validation("fixed public file size is unsupported".into()))?;
+    if size == 0 || size > limit {
+        return Err(OuroError::Validation(format!(
+            "fixed public file size {size} is outside the bounded limit {limit}"
+        )));
+    }
+    let mut file = std::fs::File::open(path)?;
+    let mut bytes = Vec::with_capacity(size);
+    file.by_ref()
+        .take((limit + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() != size || bytes.len() > limit {
+        return Err(OuroError::Validation(
+            "fixed public file changed during bounded read".into(),
+        ));
+    }
+    Ok(bytes)
 }
 
 const MAX_READ_OUTPUT_BYTES: usize = 1024 * 1024;
@@ -672,12 +1084,14 @@ pub fn run_read_plan(plan: &[Vec<String>]) -> Result<String> {
         .map_err(|error| {
             OuroError::Validation(format!("read executor {prog} failed to start: {error}"))
         })?;
-    let stdout = child.stdout.take().ok_or_else(|| {
-        OuroError::Validation("read executor did not expose stdout".into())
-    })?;
-    let stderr = child.stderr.take().ok_or_else(|| {
-        OuroError::Validation("read executor did not expose stderr".into())
-    })?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| OuroError::Validation("read executor did not expose stdout".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| OuroError::Validation("read executor did not expose stderr".into()))?;
     let exceeded = Arc::new(AtomicBool::new(false));
     let stdout_thread = bounded_reader(stdout, MAX_READ_OUTPUT_BYTES, Arc::clone(&exceeded));
     let stderr_thread = bounded_reader(stderr, MAX_READ_OUTPUT_BYTES, Arc::clone(&exceeded));
@@ -697,9 +1111,10 @@ pub fn run_read_plan(plan: &[Vec<String>]) -> Result<String> {
                 OuroError::Validation(format!("read executor wait after timeout: {error}"))
             })?;
         }
-        match child.try_wait().map_err(|error| {
-            OuroError::Validation(format!("read executor status: {error}"))
-        })? {
+        match child
+            .try_wait()
+            .map_err(|error| OuroError::Validation(format!("read executor status: {error}")))?
+        {
             Some(status) => break status,
             None => std::thread::sleep(Duration::from_millis(10)),
         }
@@ -749,12 +1164,16 @@ pub fn run_plan(plan: &[Vec<String>]) -> Result<()> {
 pub fn run_rollback_plan(operation_id: &str, plan: &[Vec<String>]) -> Result<()> {
     if operation_id == "upgrade/step" {
         let Some((remove, recreate)) = plan.split_first() else {
-            return Err(OuroError::Validation("upgrade rollback plan is empty".into()));
+            return Err(OuroError::Validation(
+                "upgrade rollback plan is empty".into(),
+            ));
         };
         if remove.first().map(String::as_str) != Some("docker")
             || remove.get(1).map(String::as_str) != Some("rm")
         {
-            return Err(OuroError::Validation("upgrade rollback lacks fixed remove step".into()));
+            return Err(OuroError::Validation(
+                "upgrade rollback lacks fixed remove step".into(),
+            ));
         }
         let _ = run_argv(remove); // absent container is expected after a partial recreate
         return run_plan(recreate);
@@ -765,57 +1184,112 @@ pub fn run_rollback_plan(operation_id: &str, plan: &[Vec<String>]) -> Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::attestation::{AdoptionAttestation, ImmutableIdentity, ManagedState, Role, TypedMount};
+    use crate::attestation::{
+        AdoptionAttestation, ImmutableIdentity, ManagedState, Role, TypedMount,
+    };
     use serde_json::json;
 
     fn att() -> AdoptionAttestation {
         AdoptionAttestation {
             immutable: ImmutableIdentity {
-                role: Role::Bp, contract_id: "c".into(), convention_version: 1,
-                allowlist_version: 1, allowlist_digest: "sha256:a".into(),
-                host_key_sha256: "hk".into(), machine_id: "bp1".into(), oci_index_digest: "i".into(),
-                platform_manifest_digest: "p".into(), image_config_digest: "cfg".into(),
+                role: Role::Bp,
+                contract_id: "c".into(),
+                convention_version: 1,
+                allowlist_version: 1,
+                allowlist_digest: "sha256:a".into(),
+                host_key_sha256: "hk".into(),
+                machine_id: "bp1".into(),
+                oci_index_digest: "i".into(),
+                platform_manifest_digest: "p".into(),
+                image_config_digest: "cfg".into(),
                 platform: "linux/amd64".into(),
-                container_creation_epoch: 1, entrypoint: vec![], args: vec![],
-                mounts: vec![TypedMount { kind: "bind".into(), source_id: "8:1:1".into(),
-                    destination: "/data/db".into(), read_only: false, owner: "root".into(),
-                    mode: "0755".into(), no_symlink: true }],
-                network: "mainnet".into(), genesis_hash: "g".into(), public_credential_ids: vec![],
+                container_creation_epoch: 1,
+                entrypoint: vec![],
+                args: vec![],
+                mounts: vec![TypedMount {
+                    kind: "bind".into(),
+                    source_id: "8:1:1".into(),
+                    destination: "/data/db".into(),
+                    read_only: false,
+                    owner: "root".into(),
+                    mode: "0755".into(),
+                    no_symlink: true,
+                }],
+                network: "mainnet".into(),
+                genesis_hash: "g".into(),
+                public_credential_ids: vec![],
                 approval_evidence_hash: "e".into(),
             },
-            state: ManagedState { state_generation: 1, container_id: "cid-attested".into(),
-                topology_hash: "t".into(), config_hash: "c".into(), kes_opcert_id: "k".into() },
+            state: ManagedState {
+                state_generation: 1,
+                container_id: "cid-attested".into(),
+                topology_hash: "t".into(),
+                config_hash: "c".into(),
+                kes_opcert_id: "k".into(),
+            },
         }
     }
     fn intent(op: &str, payload: serde_json::Value) -> Intent {
-        Intent { schema_version: 1, operation_id: op.into(), node_id: "bp1".into(),
-            pre_state_generation: 1, pre_state_hash: "h".into(), expected_post_state: "".into(),
-            nonce: "n".into(), expiry_epoch: 0, payload }
+        Intent {
+            schema_version: 1,
+            operation_id: op.into(),
+            node_id: "bp1".into(),
+            pre_state_generation: 1,
+            pre_state_hash: "h".into(),
+            expected_post_state: "".into(),
+            nonce: "n".into(),
+            expiry_epoch: 0,
+            payload,
+        }
     }
 
     #[test]
     fn restart_uses_attested_container_not_agent_param() {
         // Even if the agent's machine param were hostile, argv uses the ATTESTED container id.
-        let plan = build_plan(&intent("runtime/restart", json!({"machine": "bp1"})), &att(), None).unwrap();
+        let plan = build_plan(
+            &intent("runtime/restart", json!({"machine": "bp1"})),
+            &att(),
+            None,
+        )
+        .unwrap();
         assert_eq!(plan, vec![vec!["docker", "restart", "cid-attested"]]);
     }
 
     #[test]
     fn hostile_param_never_reaches_argv() {
-        let plan = build_plan(&intent("runtime/restart", json!({"machine": "bp1; rm -rf /"})), &att(), None).unwrap();
+        let plan = build_plan(
+            &intent("runtime/restart", json!({"machine": "bp1; rm -rf /"})),
+            &att(),
+            None,
+        )
+        .unwrap();
         let flat: Vec<&String> = plan.iter().flatten().collect();
-        assert!(!flat.iter().any(|a| a.contains("rm") || a.contains(";") || a.contains("bp1")),
-            "no agent string reaches argv: {plan:?}");
+        assert!(
+            !flat
+                .iter()
+                .any(|a| a.contains("rm") || a.contains(";") || a.contains("bp1")),
+            "no agent string reaches argv: {plan:?}"
+        );
     }
 
     #[test]
     fn retired_config_render_has_no_executor() {
-        assert!(build_plan(&intent("config/render", json!({"machine": "bp1"})), &att(), None).is_err());
+        assert!(build_plan(
+            &intent("config/render", json!({"machine": "bp1"})),
+            &att(),
+            None
+        )
+        .is_err());
     }
 
     #[test]
     fn health_reads_tip_on_attested_network() {
-        let plan = build_plan(&intent("observability/health", json!({"machine": "bp1"})), &att(), None).unwrap();
+        let plan = build_plan(
+            &intent("observability/health", json!({"machine": "bp1"})),
+            &att(),
+            None,
+        )
+        .unwrap();
         let flat: Vec<String> = plan.into_iter().flatten().collect();
         assert!(flat.contains(&"tip".to_string()) && flat.contains(&"--mainnet".to_string()));
         assert!(flat.contains(&SOCKET.to_string()));
@@ -824,10 +1298,23 @@ mod tests {
     #[test]
     fn kes_installs_resolved_opcert_then_restarts() {
         // Refuse with no opcert.
-        assert!(build_plan(&intent("kes-rotation/install-opcert", json!({"machine":"bp1"})), &att(), None).is_err());
+        assert!(build_plan(
+            &intent("kes-rotation/install-opcert", json!({"machine":"bp1"})),
+            &att(),
+            None
+        )
+        .is_err());
         // Preview shows the cp+restart sequence with a placeholder path (no inbox needed).
         let good = format!("opcert-1@sha256:{}", "a".repeat(64));
-        let plan = build_plan(&intent("kes-rotation/install-opcert", json!({"machine":"bp1","opcert":good})), &att(), None).unwrap();
+        let plan = build_plan(
+            &intent(
+                "kes-rotation/install-opcert",
+                json!({"machine":"bp1","opcert":good}),
+            ),
+            &att(),
+            None,
+        )
+        .unwrap();
         assert_eq!(plan.len(), 2, "cp then restart");
         assert_eq!(plan[0][0..2], ["docker".to_string(), "cp".to_string()]);
         assert_eq!(plan[0][2], "<inbox:opcert-1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa>");
@@ -839,13 +1326,19 @@ mod tests {
     fn legacy_executor_cannot_accept_an_operator_image_archive() {
         let target = format!("sha256:{}", "b".repeat(64));
         let result = build_plan(
-            &intent("upgrade/preload-image", json!({
-                "machine": "bp1", "image": target,
-            })),
+            &intent(
+                "upgrade/preload-image",
+                json!({
+                    "machine": "bp1", "image": target,
+                }),
+            ),
             &att(),
             None,
         );
-        assert!(result.is_err(), "only the signed-catalog stateless pull flow is valid");
+        assert!(
+            result.is_err(),
+            "only the signed-catalog stateless pull flow is valid"
+        );
     }
 
     #[test]
@@ -853,13 +1346,23 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ouro-exec-kes-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let opcert_bytes = br#"{"type":"NodeOperationalCertificate","cborHex":"deadbeef"}"#;
-        let art_ref = crate::inbox::stage(&dir, crate::inbox::ArtifactType::Opcert, opcert_bytes).unwrap();
+        let art_ref =
+            crate::inbox::stage(&dir, crate::inbox::ArtifactType::Opcert, opcert_bytes).unwrap();
         let plan = build_plan(
-            &intent("kes-rotation/install-opcert", json!({"machine":"bp1","opcert":art_ref})),
-            &att(), Some(&dir),
-        ).unwrap();
+            &intent(
+                "kes-rotation/install-opcert",
+                json!({"machine":"bp1","opcert":art_ref}),
+            ),
+            &att(),
+            Some(&dir),
+        )
+        .unwrap();
         // The cp source is the REAL resolved inbox path (digest-verified), never the agent's string.
-        assert!(plan[0][2].contains(dir.to_str().unwrap()), "resolved to the inbox path: {:?}", plan[0]);
+        assert!(
+            plan[0][2].contains(dir.to_str().unwrap()),
+            "resolved to the inbox path: {:?}",
+            plan[0]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -870,11 +1373,18 @@ mod tests {
         let inbox = dir.join("inbox");
         let rollback = dir.join("rollback");
         let bytes = br#"{"type":"NodeOperationalCertificate","cborHex":"deadbeef"}"#;
-        let art_ref = crate::inbox::stage(&inbox, crate::inbox::ArtifactType::Opcert, bytes).unwrap();
+        let art_ref =
+            crate::inbox::stage(&inbox, crate::inbox::ArtifactType::Opcert, bytes).unwrap();
         let (commit, rb) = recoverable_plans(
-            &intent("kes-rotation/install-opcert", json!({"machine":"bp1","opcert":art_ref})),
-            &att(), &inbox, &rollback,
-        ).unwrap();
+            &intent(
+                "kes-rotation/install-opcert",
+                json!({"machine":"bp1","opcert":art_ref}),
+            ),
+            &att(),
+            &inbox,
+            &rollback,
+        )
+        .unwrap();
         assert_eq!(commit.len(), 3, "backup, install, restart");
         assert_eq!(commit[0][2], format!("cid-attested:{OPCERT_DEST}"));
         assert!(commit[0][3].ends_with("node.cert.pre"));
@@ -886,16 +1396,33 @@ mod tests {
 
     #[test]
     fn deploy_submits_resolved_tx() {
-        assert!(build_plan(&intent("deploy/register-submit", json!({"machine":"bp1","network":"mainnet"})), &att(), None).is_err());
+        assert!(build_plan(
+            &intent(
+                "deploy/register-submit",
+                json!({"machine":"bp1","network":"mainnet"})
+            ),
+            &att(),
+            None
+        )
+        .is_err());
         let tx = format!("tx-1@sha256:{}", "b".repeat(64));
         let plan = build_plan(
-            &intent("deploy/register-submit", json!({"machine":"bp1","tx":tx,"network":"mainnet"})),
-            &att(), None,
-        ).unwrap();
+            &intent(
+                "deploy/register-submit",
+                json!({"machine":"bp1","tx":tx,"network":"mainnet"}),
+            ),
+            &att(),
+            None,
+        )
+        .unwrap();
         assert_eq!(plan[0][0..2], ["docker".to_string(), "cp".to_string()]);
         let submit: Vec<String> = plan[1].clone();
-        assert!(submit.contains(&"submit".to_string()) && submit.contains(&"--tx-file".to_string()));
-        assert!(submit.contains(&TX_STAGE.to_string()) && submit.contains(&"--mainnet".to_string()));
+        assert!(
+            submit.contains(&"submit".to_string()) && submit.contains(&"--tx-file".to_string())
+        );
+        assert!(
+            submit.contains(&TX_STAGE.to_string()) && submit.contains(&"--mainnet".to_string())
+        );
     }
 
     #[test]
@@ -906,10 +1433,19 @@ mod tests {
         let tx_bytes = br#"{"type":"Tx ConwayEra","cborHex":"deadbeef"}"#;
         let tx = crate::inbox::stage(&inbox, crate::inbox::ArtifactType::Tx, tx_bytes).unwrap();
         let (_, rollback) = recoverable_plans(
-            &intent("deploy/register-submit", json!({"machine":"bp1","tx":tx,"network":"mainnet"})),
-            &att(), &inbox, &dir.join("rollback"),
-        ).unwrap();
-        assert!(rollback.is_none(), "on-chain submit cannot be undone by docker restart");
+            &intent(
+                "deploy/register-submit",
+                json!({"machine":"bp1","tx":tx,"network":"mainnet"}),
+            ),
+            &att(),
+            &inbox,
+            &dir.join("rollback"),
+        )
+        .unwrap();
+        assert!(
+            rollback.is_none(),
+            "on-chain submit cannot be undone by docker restart"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -917,10 +1453,21 @@ mod tests {
     fn upgrade_preview_defers_to_the_targetside_recreate() {
         // In preview (build_plan) upgrade has no observation, so it never fakes a restart — it says
         // the recreate is computed target-side. The real recreate is `recreate_argv` (tested below).
-        let err = build_plan(&intent("upgrade/step", json!({"machine":"bp1"})), &att(), None).unwrap_err();
+        let err = build_plan(
+            &intent("upgrade/step", json!({"machine":"bp1"})),
+            &att(),
+            None,
+        )
+        .unwrap_err();
         let msg = format!("{err:?}");
-        assert!(msg.contains("target-side"), "defers to the observed recreate: {msg}");
-        assert!(!msg.contains("restart"), "must not pretend a restart is an upgrade");
+        assert!(
+            msg.contains("target-side"),
+            "defers to the observed recreate: {msg}"
+        );
+        assert!(
+            !msg.contains("restart"),
+            "must not pretend a restart is an upgrade"
+        );
     }
 
     fn recreate_spec() -> RecreateSpec {
@@ -928,11 +1475,23 @@ mod tests {
             name: "bp1-node".into(),
             restart_policy: "unless-stopped".into(),
             network_mode: "bridge".into(),
-            binds: vec![Bind { source: "/srv/db".into(), destination: "/data/db".into(), read_only: false }],
+            binds: vec![Bind {
+                source: "/srv/db".into(),
+                destination: "/data/db".into(),
+                read_only: false,
+            }],
             env: vec!["NETWORK=mainnet".into()],
-            ports: vec![Port { container: "3001/tcp".into(), host_ip: "".into(), host_port: "3001".into() }],
+            ports: vec![Port {
+                container: "3001/tcp".into(),
+                host_ip: "".into(),
+                host_port: "3001".into(),
+            }],
             entrypoint: "/usr/local/bin/cardano-node".into(),
-            args: vec!["run".into(), "--socket-path".into(), "/ipc/node.socket".into()],
+            args: vec![
+                "run".into(),
+                "--socket-path".into(),
+                "/ipc/node.socket".into(),
+            ],
         }
     }
 
@@ -940,17 +1499,37 @@ mod tests {
     fn recreate_reproduces_the_observed_runspec_onto_the_new_digest() {
         let new = format!("sha256:{}", "d".repeat(64));
         let seq = recreate_argv(&recreate_spec(), "cid-attested", &new).unwrap();
-        assert_eq!(seq[0], vec!["docker", "rm", "-f", "cid-attested"], "removes the old container first");
+        assert_eq!(
+            seq[0],
+            vec!["docker", "rm", "-f", "cid-attested"],
+            "removes the old container first"
+        );
         let run = &seq[1];
         let j = run.join(" ");
         assert!(j.contains("docker run -d --name bp1-node --restart unless-stopped"));
-        assert!(j.contains("-p 3001:3001/tcp"), "published port preserved: {j}");
+        assert!(
+            j.contains("-p 3001:3001/tcp"),
+            "published port preserved: {j}"
+        );
         assert!(j.contains("-e NETWORK=mainnet"), "env preserved: {j}");
-        assert!(j.contains("-v /srv/db:/data/db"), "bind mount preserved: {j}");
-        assert!(j.contains("--entrypoint /usr/local/bin/cardano-node"), "entrypoint preserved: {j}");
+        assert!(
+            j.contains("-v /srv/db:/data/db"),
+            "bind mount preserved: {j}"
+        );
+        assert!(
+            j.contains("--entrypoint /usr/local/bin/cardano-node"),
+            "entrypoint preserved: {j}"
+        );
         // The NEW digest is the image ref; the args follow it.
         let img_pos = run.iter().position(|a| a == &new).unwrap();
-        assert_eq!(run[img_pos + 1..], ["run".to_string(), "--socket-path".into(), "/ipc/node.socket".into()]);
+        assert_eq!(
+            run[img_pos + 1..],
+            [
+                "run".to_string(),
+                "--socket-path".into(),
+                "/ipc/node.socket".into()
+            ]
+        );
     }
 
     #[test]
@@ -978,13 +1557,74 @@ mod tests {
             assert!(plan.commit.iter().flatten().any(|arg| arg == previous));
             assert!(plan.finalize.iter().flatten().any(|arg| arg == previous));
         }
-        assert!(plan.commit.iter().skip(6).flatten()
+        assert!(plan
+            .commit
+            .iter()
+            .skip(6)
+            .flatten()
             .any(|arg| arg == "/tmp/ouro-run.123/public-payload"));
-        assert!(plan.commit.iter().flatten().any(|arg| arg == KES_STAGE_SKEY));
-        assert!(plan.commit.iter().flatten().any(|arg| arg == KES_STAGE_VKEY));
-        assert!(plan.commit.iter().chain(&plan.rollback).chain(&plan.finalize).flatten()
+        assert!(plan
+            .commit
+            .iter()
+            .flatten()
+            .any(|arg| arg == KES_STAGE_SKEY));
+        assert!(plan
+            .commit
+            .iter()
+            .flatten()
+            .any(|arg| arg == KES_STAGE_VKEY));
+        assert!(plan
+            .commit
+            .iter()
+            .chain(&plan.rollback)
+            .chain(&plan.finalize)
+            .flatten()
             .filter(|arg| arg.contains("ouro-run.123"))
             .all(|arg| arg.ends_with("public-payload")));
+    }
+
+    #[test]
+    fn restart_loop_kes_repair_is_one_fixed_ephemeral_helper_and_one_stop_start() {
+        let image = format!("sha256:{}", "a".repeat(64));
+        let plan = stateless_kes_restart_loop_recovery_plan(
+            "cid",
+            &image,
+            "/tmp/ouro-run.123/public-payload",
+        );
+        assert!(plan.rollback.is_empty());
+        assert_eq!(plan.commit.len(), 4);
+        assert_eq!(plan.commit[1], vec!["docker", "stop", "cid"]);
+        assert_eq!(plan.commit[3], vec!["docker", "start", "cid"]);
+        assert_eq!(
+            plan.commit
+                .iter()
+                .filter(|argv| argv.get(1).map(String::as_str) == Some("stop"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            plan.commit
+                .iter()
+                .filter(|argv| argv.get(1).map(String::as_str) == Some("start"))
+                .count(),
+            1
+        );
+        for helper in [&plan.commit[0], &plan.commit[2], &plan.finalize[0]] {
+            let joined = helper.join(" ");
+            assert!(joined.contains("docker run --rm --network none --pull never --read-only"));
+            assert!(joined.contains("--volumes-from cid"));
+            assert!(joined.contains(&image));
+            assert!(!joined.contains("docker exec"));
+        }
+        assert!(plan.commit[0]
+            .iter()
+            .any(|arg| arg == "/tmp/ouro-run.123/public-payload:/ouro/node.cert:ro"));
+        assert!(plan
+            .commit
+            .iter()
+            .chain(&plan.finalize)
+            .flatten()
+            .all(|arg| !arg.contains("docker restart")));
     }
 
     #[test]
@@ -1019,35 +1659,48 @@ mod tests {
     fn stateless_upgrade_preserves_previous_container_until_finalize() {
         let new = format!("sha256:{}", "d".repeat(64));
         let plan = stateless_recreate_recovery_plan(&recreate_spec(), "cid-old", &new).unwrap();
-        assert_eq!(plan.commit[0], vec!["docker", "rename", "cid-old", "bp1-node.ouro-prev"]);
+        assert_eq!(
+            plan.commit[0],
+            vec!["docker", "rename", "cid-old", "bp1-node.ouro-prev"]
+        );
         assert_eq!(plan.commit[1], vec!["docker", "stop", "bp1-node.ouro-prev"]);
         assert_eq!(plan.commit[2][0..3], ["docker", "run", "-d"]);
         assert!(!plan.commit.iter().flatten().any(|arg| arg == "rm"));
-        assert_eq!(plan.rollback, vec![
-            vec!["docker", "rm", "-f", "bp1-node"],
-            vec!["docker", "rename", "bp1-node.ouro-prev", "bp1-node"],
-            vec!["docker", "start", "bp1-node"],
-        ]);
-        assert_eq!(plan.finalize, vec![
-            vec!["docker", "rm", "-f", "bp1-node.ouro-prev"],
-        ]);
+        assert_eq!(
+            plan.rollback,
+            vec![
+                vec!["docker", "rm", "-f", "bp1-node"],
+                vec!["docker", "rename", "bp1-node.ouro-prev", "bp1-node"],
+                vec!["docker", "start", "bp1-node"],
+            ]
+        );
+        assert_eq!(
+            plan.finalize,
+            vec![vec!["docker", "rm", "-f", "bp1-node.ouro-prev"],]
+        );
     }
 
     #[test]
     fn image_presence_requires_exact_config_digest() {
         let target = format!("sha256:{}", "d".repeat(64));
         assert!(verify_image_inspect_output(&target, format!("{target}\n").as_bytes()).is_ok());
-        assert!(verify_image_inspect_output(&target, format!("sha256:{}\n", "e".repeat(64)).as_bytes()).is_err());
+        assert!(verify_image_inspect_output(
+            &target,
+            format!("sha256:{}\n", "e".repeat(64)).as_bytes()
+        )
+        .is_err());
     }
 
     #[test]
     fn recreate_is_fail_closed() {
         let new = format!("sha256:{}", "d".repeat(64));
         // No binds → refuse (never recreate a node without its volumes).
-        let mut nb = recreate_spec(); nb.binds.clear();
+        let mut nb = recreate_spec();
+        nb.binds.clear();
         assert!(recreate_argv(&nb, "cid", &new).is_err());
         // No name → refuse.
-        let mut nn = recreate_spec(); nn.name.clear();
+        let mut nn = recreate_spec();
+        nn.name.clear();
         assert!(recreate_argv(&nn, "cid", &new).is_err());
         // Non-digest image → refuse.
         assert!(recreate_argv(&recreate_spec(), "cid", "blinklabs/cardano-node:latest").is_err());
@@ -1060,7 +1713,10 @@ mod tests {
         a.immutable.image_config_digest = prior.clone();
         let seq = upgrade_rollback_plan(&a, &recreate_spec()).unwrap();
         assert_eq!(seq[0][0..2], ["docker".to_string(), "rm".to_string()]);
-        assert!(seq[1].iter().any(|arg| arg == &prior), "rollback recreates onto the PRIOR digest");
+        assert!(
+            seq[1].iter().any(|arg| arg == &prior),
+            "rollback recreates onto the PRIOR digest"
+        );
     }
 
     #[test]
@@ -1070,7 +1726,10 @@ mod tests {
 
     #[test]
     fn rollback_is_a_restart_onto_the_attested_container() {
-        assert_eq!(rollback_plan(&att()), vec![vec!["docker", "restart", "cid-attested"]]);
+        assert_eq!(
+            rollback_plan(&att()),
+            vec![vec!["docker", "restart", "cid-attested"]]
+        );
     }
 
     #[test]
@@ -1078,7 +1737,10 @@ mod tests {
         assert!(run_argv(&["true".into()]).is_ok(), "exit 0 → ok");
         assert!(run_argv(&["false".into()]).is_err(), "nonzero → error");
         assert!(run_argv(&[]).is_err(), "empty argv → error");
-        assert!(run_argv(&["this-binary-does-not-exist-xyz".into()]).is_err(), "missing prog → error");
+        assert!(
+            run_argv(&["this-binary-does-not-exist-xyz".into()]).is_err(),
+            "missing prog → error"
+        );
     }
 
     #[test]

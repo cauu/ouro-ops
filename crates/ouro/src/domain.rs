@@ -35,7 +35,9 @@ pub struct UpgradePolicy {
 
 impl Default for UpgradePolicy {
     fn default() -> Self {
-        Self { min_online_relays: default_min_online_relays() }
+        Self {
+            min_online_relays: default_min_online_relays(),
+        }
     }
 }
 
@@ -227,7 +229,10 @@ impl PoolSpec {
                     "pool ticker must be 3-5 characters".to_string(),
                 ));
             }
-            if !ticker.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
+            if !ticker
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+            {
                 return Err(OuroError::Validation(
                     "pool ticker must be uppercase alphanumeric [A-Z0-9]".to_string(),
                 ));
@@ -255,18 +260,30 @@ impl PoolSpec {
             }
             // p4-1: id is used as OURO_MACHINE + a path/state component → single [a-z0-9-] segment.
             if machine.id.is_empty()
-                || !machine.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                || !machine
+                    .id
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
             {
                 return Err(OuroError::Validation(format!(
                     "machine id must be a single [a-z0-9-] segment: {}",
                     machine.id
                 )));
             }
-            reject_unsafe_host(&format!("machine {} ssh.host", machine.id), &machine.ssh.host)?;
+            reject_unsafe_host(
+                &format!("machine {} ssh.host", machine.id),
+                &machine.ssh.host,
+            )?;
             if let Some(ep) = &machine.public_endpoint {
-                reject_unsafe_host(&format!("machine {} public_endpoint.host", machine.id), &ep.host)?;
+                reject_unsafe_host(
+                    &format!("machine {} public_endpoint.host", machine.id),
+                    &ep.host,
+                )?;
             }
-            reject_unsafe_username(&format!("machine {} ssh.user", machine.id), &machine.ssh.user)?;
+            reject_unsafe_username(
+                &format!("machine {} ssh.user", machine.id),
+                &machine.ssh.user,
+            )?;
             // p2-4: if runtime is DECLARED, it must be internally consistent — a systemd
             // declaration names a unit; a container declaration names a container or image.
             // (Absent = undeclared = fail-safe: detection governs; no assumption here.)
@@ -407,8 +424,11 @@ impl PoolSpec {
 
     fn credential_ref_count(&self) -> usize {
         let ssh_refs = self.machines.len();
-        let mithril_refs =
-            usize::from(self.sync.as_ref().is_some_and(|sync| sync.mithril.is_some()));
+        let mithril_refs = usize::from(
+            self.sync
+                .as_ref()
+                .is_some_and(|sync| sync.mithril.is_some()),
+        );
         ssh_refs + mithril_refs
     }
 }
@@ -511,15 +531,24 @@ mod tests {
     fn rejects_truncated_or_noncanonical_genesis_hashes() {
         let mut spec = valid_spec();
         spec.pool.genesis_hashes.shelley.truncate(63);
-        assert!(spec.validate().is_err(), "63-character file SHA-256 rejected");
+        assert!(
+            spec.validate().is_err(),
+            "63-character file SHA-256 rejected"
+        );
 
         let mut spec = valid_spec();
         spec.pool.genesis_hashes.shelley.push('a');
-        assert!(spec.validate().is_err(), "65-character file SHA-256 rejected");
+        assert!(
+            spec.validate().is_err(),
+            "65-character file SHA-256 rejected"
+        );
 
         let mut spec = valid_spec();
         spec.pool.genesis_hashes.shelley.make_ascii_uppercase();
-        assert!(spec.validate().is_err(), "noncanonical uppercase digest rejected");
+        assert!(
+            spec.validate().is_err(),
+            "noncanonical uppercase digest rejected"
+        );
     }
 
     fn valid_spec() -> PoolSpec {
@@ -533,17 +562,22 @@ mod tests {
     fn pool_spec_rejects_unknown_top_level_and_nested_fields() {
         let baseline: serde_json::Value = serde_json::from_str(include_str!(
             "../../../tests/fixtures/pool-spec/valid-minimal.json"
-        )).unwrap();
+        ))
+        .unwrap();
         let mut top = baseline.clone();
         top.as_object_mut().unwrap().insert(
-            "unknown_security_policy".into(), serde_json::json!("allow_all"),
+            "unknown_security_policy".into(),
+            serde_json::json!("allow_all"),
         );
         assert!(serde_json::from_value::<PoolSpec>(top).is_err());
 
         let mut nested = baseline;
-        nested.pointer_mut("/machines/0/ssh").unwrap().as_object_mut().unwrap().insert(
-            "proxy_command".into(), serde_json::json!("evil"),
-        );
+        nested
+            .pointer_mut("/machines/0/ssh")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert("proxy_command".into(), serde_json::json!("evil"));
         assert!(serde_json::from_value::<PoolSpec>(nested).is_err());
     }
 
@@ -555,20 +589,36 @@ mod tests {
 
         let mut s = valid_spec();
         s.machines[0].ssh.host = "relay1; rm -rf /".to_string();
-        assert!(s.validate().is_err(), "shell metachars in ssh.host rejected");
+        assert!(
+            s.validate().is_err(),
+            "shell metachars in ssh.host rejected"
+        );
 
         let mut s = valid_spec();
         s.machines[0].ssh.user = "cardano".to_string();
-        assert!(s.validate().is_ok(), "bootstrap account is not the retired ouro-exec principal");
+        assert!(
+            s.validate().is_ok(),
+            "bootstrap account is not the retired ouro-exec principal"
+        );
 
         let mut s = valid_spec();
         s.machines[0].ssh.user = "-oProxyCommand=evil".to_string();
-        assert!(s.validate().is_err(), "ssh option injection in ssh.user rejected");
+        assert!(
+            s.validate().is_err(),
+            "ssh option injection in ssh.user rejected"
+        );
 
         let mut s = valid_spec();
-        if let Some(ep) = s.machines.iter_mut().find_map(|m| m.public_endpoint.as_mut()) {
+        if let Some(ep) = s
+            .machines
+            .iter_mut()
+            .find_map(|m| m.public_endpoint.as_mut())
+        {
             ep.host = "$(curl evil)".to_string();
-            assert!(s.validate().is_err(), "command-sub in endpoint.host rejected");
+            assert!(
+                s.validate().is_err(),
+                "command-sub in endpoint.host rejected"
+            );
         }
 
         let mut s = valid_spec();
@@ -581,7 +631,10 @@ mod tests {
 
         let mut s = valid_spec();
         s.machines[0].id = "bp 1; touch x".to_string();
-        assert!(s.validate().is_err(), "space/metachar in machine id rejected");
+        assert!(
+            s.validate().is_err(),
+            "space/metachar in machine id rejected"
+        );
 
         let mut s = valid_spec();
         s.pool.ticker = Some("ab;".to_string());
@@ -597,9 +650,18 @@ mod tests {
         s.pool.cost_lovelace = None;
         s.node_version = None;
         s.sync = None;
-        assert!(s.validate().is_ok(), "operation-scoped fields may be omitted");
-        assert!(s.registration_fields().is_err(), "registration fails closed without them");
-        assert!(s.require_node_version().is_err(), "render/upgrade fails closed without it");
+        assert!(
+            s.validate().is_ok(),
+            "operation-scoped fields may be omitted"
+        );
+        assert!(
+            s.registration_fields().is_err(),
+            "registration fails closed without them"
+        );
+        assert!(
+            s.require_node_version().is_err(),
+            "render/upgrade fails closed without it"
+        );
     }
 
     #[test]
@@ -639,7 +701,10 @@ mod tests {
             container: None,
             image: None,
         });
-        assert!(s.validate().is_err(), "docker without container/image rejected");
+        assert!(
+            s.validate().is_err(),
+            "docker without container/image rejected"
+        );
 
         // bare needs no extra fields.
         let mut s = valid_spec();

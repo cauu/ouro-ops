@@ -107,7 +107,14 @@ impl AuditStore {
     }
 
     pub fn finish_invocation(&self, invocation_id: &str, tool: &str) -> Result<()> {
-        self.record_terminal(invocation_id, tool, None, "finish", Some(0), "invocation finished")
+        self.record_terminal(
+            invocation_id,
+            tool,
+            None,
+            "finish",
+            Some(0),
+            "invocation finished",
+        )
     }
 
     pub fn record_crash(&self, invocation_id: &str, tool: &str, detail: &str) -> Result<()> {
@@ -197,7 +204,9 @@ mod tests {
     #[test]
     fn records_finish_and_crash_terminal_events() {
         let store = AuditStore::in_memory().unwrap();
-        let ok = store.begin_invocation("deploy/provision", Some("bp1")).unwrap();
+        let ok = store
+            .begin_invocation("deploy/provision", Some("bp1"))
+            .unwrap();
         store.finish_invocation(&ok, "deploy/provision").unwrap();
         let crashed = store.begin_invocation("deploy/sync", Some("bp1")).unwrap();
         store

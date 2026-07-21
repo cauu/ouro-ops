@@ -53,3 +53,9 @@ src-tauri/WixTools/
 .agents
 code_review
 tmp
+
+# Local KES rotation handoff (public/private artifacts, cold-sign, cardano-cli) — never commit
+ouro-kes-rotation/
+
+# Operator-local pool description (hosts/IPs/creds routing) — not part of the repo
+pool-spec.yaml

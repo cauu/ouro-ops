@@ -104,7 +104,9 @@ pub fn overview(spec: &PoolSpec, snapshot_path: Option<&Path>) -> Result<serde_j
             }
             value
         }
-        None => serde_json::json!({ "source": "spec-only", "note": "no live staking snapshot provided" }),
+        None => {
+            serde_json::json!({ "source": "spec-only", "note": "no live staking snapshot provided" })
+        }
     };
 
     Ok(serde_json::json!({
@@ -140,7 +142,10 @@ mod tests {
     fn overview_is_readonly_and_network_consistent() {
         let spec = PoolSpec::from_file(Path::new("examples/pool-spec.minimal.yaml")).unwrap();
         let overview = super::overview(&spec, None).unwrap();
-        assert_eq!(overview["pool"]["ticker"], serde_json::json!(spec.pool.ticker));
+        assert_eq!(
+            overview["pool"]["ticker"],
+            serde_json::json!(spec.pool.ticker)
+        );
         assert_eq!(
             overview["pool"]["network"],
             serde_json::json!(spec.pool.network.as_str())

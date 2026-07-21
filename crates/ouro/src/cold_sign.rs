@@ -256,7 +256,9 @@ fn validate_tx_body(tx_body: &str) -> Result<()> {
     // cardano `transaction build` writes a JSON envelope: {"type":"Unwitnessed Tx …"/"TxBody…",
     // "description":…, "cborHex":…}. Require the envelope shape + a tx-body-ish type.
     let looks_like_txbody = tx_body.contains("cborHex")
-        && (tx_body.contains("TxBody") || tx_body.contains("Unwitnessed") || tx_body.contains("Tx "));
+        && (tx_body.contains("TxBody")
+            || tx_body.contains("Unwitnessed")
+            || tx_body.contains("Tx "));
     if !looks_like_txbody {
         return Err(OuroError::Validation(
             "--tx-body does not look like a cardano unsigned transaction body \
@@ -411,11 +413,28 @@ mod tests {
         // p4-8: both scripts tell the operator to verify the digest out-of-band, review, run
         // air-gapped from a fresh dir, and return ONLY the public artifact.
         let kes = kes_cold_sign_script(REAL_VKEY, 1, "cardano-cli", "T").unwrap();
-        let dep = tx_cold_sign_script(REAL_TXBODY, &["cold".into()], "conway", "", "cardano-cli", "T").unwrap();
+        let dep = tx_cold_sign_script(
+            REAL_TXBODY,
+            &["cold".into()],
+            "conway",
+            "",
+            "cardano-cli",
+            "T",
+        )
+        .unwrap();
         for s in [&kes, &dep] {
-            assert!(s.contains("SHA256") && s.contains("out-of-band"), "no digest-verify guidance");
-            assert!(s.contains("AIR-GAPPED machine with networking OFF"), "no confinement guidance");
-            assert!(s.to_lowercase().contains("bring back only"), "no return-whitelist guidance");
+            assert!(
+                s.contains("SHA256") && s.contains("out-of-band"),
+                "no digest-verify guidance"
+            );
+            assert!(
+                s.contains("AIR-GAPPED machine with networking OFF"),
+                "no confinement guidance"
+            );
+            assert!(
+                s.to_lowercase().contains("bring back only"),
+                "no return-whitelist guidance"
+            );
         }
     }
 
@@ -424,10 +443,18 @@ mod tests {
         // p4-7: the counter (anti-replay authority) is backed up before issuing and the cert is
         // written to a temp path then renamed — never a half-written $OUT, and recoverable on crash.
         let s = kes_cold_sign_script(REAL_VKEY, 5, "cardano-cli", "T").unwrap();
-        assert!(s.contains("cp -f \"$COUNTER\" \"$COUNTER.ouro-bak\""), "counter not backed up");
-        assert!(s.contains("--out-file \"$OUT_TMP\"") && s.contains("mv -f \"$OUT_TMP\" \"$OUT\""),
-                "cert not written atomically via temp + rename");
-        assert!(s.contains("counter did not advance"), "no post-issue counter-advance check");
+        assert!(
+            s.contains("cp -f \"$COUNTER\" \"$COUNTER.ouro-bak\""),
+            "counter not backed up"
+        );
+        assert!(
+            s.contains("--out-file \"$OUT_TMP\"") && s.contains("mv -f \"$OUT_TMP\" \"$OUT\""),
+            "cert not written atomically via temp + rename"
+        );
+        assert!(
+            s.contains("counter did not advance"),
+            "no post-issue counter-advance check"
+        );
     }
 
     #[test]
@@ -442,7 +469,9 @@ mod tests {
     #[test]
     fn refuses_non_kes_vkey_input() {
         assert!(kes_cold_sign_script("not a key", 1, "cardano-cli", "T").is_err());
-        assert!(kes_cold_sign_script("{\"type\":\"VerificationKey\"}", 1, "cardano-cli", "T").is_err()); // no cborHex
+        assert!(
+            kes_cold_sign_script("{\"type\":\"VerificationKey\"}", 1, "cardano-cli", "T").is_err()
+        ); // no cborHex
     }
 
     #[test]
@@ -463,11 +492,23 @@ mod tests {
     #[test]
     fn tx_script_witnesses_each_role_era_scoped() {
         let roles = vec!["cold".to_string(), "stake".to_string()];
-        let s = tx_cold_sign_script(REAL_TXBODY, &roles, "conway", "--testnet-magic 1", "cardano-cli", "2026-07-12T00:00:00Z").unwrap();
+        let s = tx_cold_sign_script(
+            REAL_TXBODY,
+            &roles,
+            "conway",
+            "--testnet-magic 1",
+            "cardano-cli",
+            "2026-07-12T00:00:00Z",
+        )
+        .unwrap();
         assert!(s.starts_with("#!/usr/bin/env bash"));
         // era-scoped transaction witness (tx commands are NOT era-neutral, unlike issue-op-cert):
         // exactly two command invocations (the header comment names it once more — not counted).
-        assert_eq!(s.matches("\"$CARDANO_CLI\" conway transaction witness").count(), 2);
+        assert_eq!(
+            s.matches("\"$CARDANO_CLI\" conway transaction witness")
+                .count(),
+            2
+        );
         // one independent witness per cold role, key read in place by path.
         assert!(s.contains("--signing-key-file \"$COLD_SKEY\""));
         assert!(s.contains("--signing-key-file \"$STAKE_SKEY\""));
@@ -481,7 +522,15 @@ mod tests {
 
     #[test]
     fn tx_script_omits_network_flag_when_empty() {
-        let s = tx_cold_sign_script(REAL_TXBODY, &["cold".into()], "conway", "", "cardano-cli", "T").unwrap();
+        let s = tx_cold_sign_script(
+            REAL_TXBODY,
+            &["cold".into()],
+            "conway",
+            "",
+            "cardano-cli",
+            "T",
+        )
+        .unwrap();
         assert!(!s.contains("--testnet-magic") && !s.contains("--mainnet"));
     }
 
@@ -489,14 +538,43 @@ mod tests {
     fn tx_script_refuses_signing_key_and_non_txbody() {
         // a signing key smuggled as the "tx body"
         let skey = r#"{"type":"PaymentSigningKeyShelley_ed25519","description":"Payment Signing Key","cborHex":"5820dead"}"#;
-        assert!(tx_cold_sign_script(skey, &["cold".into()], "conway", "", "cardano-cli", "T").is_err());
+        assert!(
+            tx_cold_sign_script(skey, &["cold".into()], "conway", "", "cardano-cli", "T").is_err()
+        );
         // not a tx body at all
-        assert!(tx_cold_sign_script("hello", &["cold".into()], "conway", "", "cardano-cli", "T").is_err());
+        assert!(
+            tx_cold_sign_script("hello", &["cold".into()], "conway", "", "cardano-cli", "T")
+                .is_err()
+        );
         // no roles
         assert!(tx_cold_sign_script(REAL_TXBODY, &[], "conway", "", "cardano-cli", "T").is_err());
         // injection-resistant era + role + network
-        assert!(tx_cold_sign_script(REAL_TXBODY, &["cold".into()], "conway;rm -rf /", "", "cardano-cli", "T").is_err());
-        assert!(tx_cold_sign_script(REAL_TXBODY, &["a b".into()], "conway", "", "cardano-cli", "T").is_err());
-        assert!(tx_cold_sign_script(REAL_TXBODY, &["cold".into()], "conway", "--testnet-magic 1; rm -rf /", "cardano-cli", "T").is_err());
+        assert!(tx_cold_sign_script(
+            REAL_TXBODY,
+            &["cold".into()],
+            "conway;rm -rf /",
+            "",
+            "cardano-cli",
+            "T"
+        )
+        .is_err());
+        assert!(tx_cold_sign_script(
+            REAL_TXBODY,
+            &["a b".into()],
+            "conway",
+            "",
+            "cardano-cli",
+            "T"
+        )
+        .is_err());
+        assert!(tx_cold_sign_script(
+            REAL_TXBODY,
+            &["cold".into()],
+            "conway",
+            "--testnet-magic 1; rm -rf /",
+            "cardano-cli",
+            "T"
+        )
+        .is_err());
     }
 }

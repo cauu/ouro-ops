@@ -58,17 +58,30 @@ impl TargetFacts {
             }
         }
         let hay = format!("{id} {id_like}");
-        let family = ["debian", "ubuntu", "rhel", "fedora", "centos", "rocky", "almalinux"]
-            .into_iter()
-            .find(|fam| hay.split_whitespace().any(|t| t == *fam))
-            .map(|fam| match fam {
-                "ubuntu" => "debian",
-                "centos" | "rocky" | "almalinux" | "fedora" => "rhel",
-                other => other,
-            })
-            .unwrap_or("unknown")
-            .to_string();
-        TargetFacts { os, arch, distro_family: family, has_systemd }
+        let family = [
+            "debian",
+            "ubuntu",
+            "rhel",
+            "fedora",
+            "centos",
+            "rocky",
+            "almalinux",
+        ]
+        .into_iter()
+        .find(|fam| hay.split_whitespace().any(|t| t == *fam))
+        .map(|fam| match fam {
+            "ubuntu" => "debian",
+            "centos" | "rocky" | "almalinux" | "fedora" => "rhel",
+            other => other,
+        })
+        .unwrap_or("unknown")
+        .to_string();
+        TargetFacts {
+            os,
+            arch,
+            distro_family: family,
+            has_systemd,
+        }
     }
 
     /// Normalized arch token (`x86_64` / `aarch64`) or None if unsupported.
@@ -187,7 +200,10 @@ fn validate_owner(owner: &str) -> Result<()> {
         && owner
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
-    let starts_ok = owner.bytes().next().is_some_and(|b| b.is_ascii_alphabetic() || b == b'_');
+    let starts_ok = owner
+        .bytes()
+        .next()
+        .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_');
     if ok && starts_ok {
         Ok(())
     } else {
@@ -205,7 +221,10 @@ pub struct BootstrapTransport {
 
 impl BootstrapTransport {
     pub fn new(dry_run: bool) -> Self {
-        Self { dry_run, known_hosts: None }
+        Self {
+            dry_run,
+            known_hosts: None,
+        }
     }
 
     /// Bind bootstrap SSH to Ouro's independently verified/pinned known_hosts file.
@@ -363,7 +382,11 @@ impl BootstrapTransport {
         remote_cmd: &str,
     ) -> Result<BootstrapOutcome> {
         if self.dry_run {
-            return Ok(BootstrapOutcome { status: 0, stdout: String::new(), stderr: String::new() });
+            return Ok(BootstrapOutcome {
+                status: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            });
         }
         let argv = self.configured_run_argv(target, key_path, host_key, remote_cmd);
         let output = Command::new("ssh").args(&argv).output()?;
@@ -389,12 +412,7 @@ impl BootstrapTransport {
                 stderr: String::new(),
             });
         }
-        let mut argv = Self::ssh_prefix(
-            target,
-            key_path,
-            host_key,
-            self.known_hosts.as_deref(),
-        );
+        let mut argv = Self::ssh_prefix(target, key_path, host_key, self.known_hosts.as_deref());
         argv.push("true".into());
         let output = Command::new("ssh").args(&argv).output()?;
         Ok(BootstrapOutcome {
@@ -445,7 +463,11 @@ impl BootstrapTransport {
     ) -> Result<BootstrapOutcome> {
         let argv = self.configured_push_argv(target, key_path, host_key, remote_path, mode)?;
         if self.dry_run {
-            return Ok(BootstrapOutcome { status: 0, stdout: String::new(), stderr: String::new() });
+            return Ok(BootstrapOutcome {
+                status: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            });
         }
         let file = std::fs::File::open(local_path)?;
         let output = Command::new("ssh")
@@ -466,7 +488,11 @@ mod tests {
     use std::path::Path;
 
     fn target() -> BootstrapTarget {
-        BootstrapTarget { host: "10.0.0.10".to_string(), port: 22, user: "ubuntu".to_string() }
+        BootstrapTarget {
+            host: "10.0.0.10".to_string(),
+            port: 22,
+            user: "ubuntu".to_string(),
+        }
     }
 
     #[test]
@@ -487,13 +513,10 @@ mod tests {
 
     #[test]
     fn configured_transport_uses_the_ouro_known_hosts_file() {
-        let transport = BootstrapTransport::new(false).with_known_hosts("/control/ouro-known-hosts");
-        let argv = transport.configured_run_argv(
-            &target(),
-            Path::new("/k"),
-            HostKeyCheck::Yes,
-            "true",
-        );
+        let transport =
+            BootstrapTransport::new(false).with_known_hosts("/control/ouro-known-hosts");
+        let argv =
+            transport.configured_run_argv(&target(), Path::new("/k"), HostKeyCheck::Yes, "true");
         let joined = argv.join(" ");
         assert!(joined.contains("-F /dev/null"));
         assert!(joined.contains("IdentityFile=none"));
@@ -546,7 +569,14 @@ mod tests {
     fn push_argv_rejects_bad_mode() {
         for bad in ["", "75", "0999", "rwx", "07555"] {
             assert!(
-                BootstrapTransport::push_argv(&target(), Path::new("/k"), HostKeyCheck::AcceptNew, "/x", bad).is_err(),
+                BootstrapTransport::push_argv(
+                    &target(),
+                    Path::new("/k"),
+                    HostKeyCheck::AcceptNew,
+                    "/x",
+                    bad
+                )
+                .is_err(),
                 "mode {bad:?} should be rejected"
             );
         }
@@ -555,7 +585,8 @@ mod tests {
     #[test]
     fn target_facts_parse_and_support_gate() {
         // Ubuntu on aarch64 with systemd → supported, family normalized to debian.
-        let f = TargetFacts::parse("os=Linux\narch=aarch64\nid=ubuntu\nid_like=debian\nsystemd=yes\n");
+        let f =
+            TargetFacts::parse("os=Linux\narch=aarch64\nid=ubuntu\nid_like=debian\nsystemd=yes\n");
         assert_eq!(f.os, "Linux");
         assert_eq!(f.distro_family, "debian");
         assert_eq!(f.norm_arch(), Some("aarch64"));
@@ -563,7 +594,9 @@ mod tests {
         assert!(f.require_supported().is_ok());
 
         // Rocky (id_like rhel) on x86_64 → supported, family normalized to rhel.
-        let f = TargetFacts::parse("os=Linux\narch=x86_64\nid=rocky\nid_like=\"rhel centos fedora\"\nsystemd=yes");
+        let f = TargetFacts::parse(
+            "os=Linux\narch=x86_64\nid=rocky\nid_like=\"rhel centos fedora\"\nsystemd=yes",
+        );
         assert_eq!(f.distro_family, "rhel");
         assert!(f.require_supported().is_ok());
 
@@ -610,7 +643,11 @@ mod tests {
         // p4-9: the one private key that moves cold→BP (vrf.skey) lands 0400 owned by the node
         // runtime user, atomically, over the same SSH channel.
         let argv = BootstrapTransport::push_key_argv(
-            &target(), Path::new("/k"), HostKeyCheck::Yes, "/opt/cardano/keys/vrf.skey", "node",
+            &target(),
+            Path::new("/k"),
+            HostKeyCheck::Yes,
+            "/opt/cardano/keys/vrf.skey",
+            "node",
         )
         .unwrap();
         let joined = argv.join(" ");
@@ -621,9 +658,23 @@ mod tests {
 
     #[test]
     fn push_key_argv_rejects_shell_metachar_owner() {
-        for bad in ["", "no de", "node;rm", "-x", "$(id)", "a".repeat(33).as_str()] {
+        for bad in [
+            "",
+            "no de",
+            "node;rm",
+            "-x",
+            "$(id)",
+            "a".repeat(33).as_str(),
+        ] {
             assert!(
-                BootstrapTransport::push_key_argv(&target(), Path::new("/k"), HostKeyCheck::Yes, "/x", bad).is_err(),
+                BootstrapTransport::push_key_argv(
+                    &target(),
+                    Path::new("/k"),
+                    HostKeyCheck::Yes,
+                    "/x",
+                    bad
+                )
+                .is_err(),
                 "owner {bad:?} should be rejected"
             );
         }

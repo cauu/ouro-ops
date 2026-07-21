@@ -350,18 +350,26 @@ mod tests {
         let missing = credential_status(&credentials_dir, "bp1").unwrap();
         assert!(!missing.registered && !missing.credential_contents_read);
 
-        let preview =
-            register_existing_credential(&credentials_dir, "bp1", &source, true).unwrap();
+        let preview = register_existing_credential(&credentials_dir, "bp1", &source, true).unwrap();
         assert!(preview.planned && !preview.changed && !preview.registered);
-        assert!(!credentials_dir.exists(), "dry-run must not create the namespace");
+        assert!(
+            !credentials_dir.exists(),
+            "dry-run must not create the namespace"
+        );
         assert!(!preview.credential_contents_read);
 
         let registered =
             register_existing_credential(&credentials_dir, "bp1", &source, false).unwrap();
         assert!(registered.changed && registered.registered && registered.usable);
         let entry = credentials_dir.join("bp1");
-        assert!(fs::symlink_metadata(&entry).unwrap().file_type().is_symlink());
-        assert_eq!(fs::canonicalize(&entry).unwrap(), fs::canonicalize(&source).unwrap());
+        assert!(fs::symlink_metadata(&entry)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            fs::canonicalize(&entry).unwrap(),
+            fs::canonicalize(&source).unwrap()
+        );
         assert_eq!(fs::read(&source).unwrap(), b"test-only-private-key-bytes");
 
         let idempotent =

@@ -90,7 +90,11 @@ pub fn registry() -> &'static [OperationSpec] {
         OperationSpec {
             operation_id: "runtime/restart",
             mutability: Mutability::Dangerous, // a BP restart interrupts forging (§2.6a)
-            params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
+            params: &[ParamSpec {
+                name: "machine",
+                kind: ParamKind::MachineId,
+                required: true,
+            }],
             touched: &["container:restart"],
             may_expose_secret: false,
         },
@@ -99,7 +103,11 @@ pub fn registry() -> &'static [OperationSpec] {
             // public verification key may leave the target; the signing key remains on the BP.
             operation_id: "kes-rotation/stage-key",
             mutability: Mutability::Dangerous,
-            params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
+            params: &[ParamSpec {
+                name: "machine",
+                kind: ParamKind::MachineId,
+                required: true,
+            }],
             touched: &["file:kes-staged-key"],
             may_expose_secret: false,
         },
@@ -108,8 +116,16 @@ pub fn registry() -> &'static [OperationSpec] {
             operation_id: "kes-rotation/install-opcert",
             mutability: Mutability::Dangerous,
             params: &[
-                ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true },
-                ParamSpec { name: "opcert", kind: ParamKind::ArtifactRef, required: true },
+                ParamSpec {
+                    name: "machine",
+                    kind: ParamKind::MachineId,
+                    required: true,
+                },
+                ParamSpec {
+                    name: "opcert",
+                    kind: ParamKind::ArtifactRef,
+                    required: true,
+                },
             ],
             touched: &["file:kes-key", "file:opcert", "container:restart"],
             may_expose_secret: false,
@@ -131,8 +147,16 @@ pub fn registry() -> &'static [OperationSpec] {
             operation_id: "deploy/register-submit",
             mutability: Mutability::Dangerous,
             params: &[
-                ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true },
-                ParamSpec { name: "tx", kind: ParamKind::ArtifactRef, required: true },
+                ParamSpec {
+                    name: "machine",
+                    kind: ParamKind::MachineId,
+                    required: true,
+                },
+                ParamSpec {
+                    name: "tx",
+                    kind: ParamKind::ArtifactRef,
+                    required: true,
+                },
                 ParamSpec {
                     name: "network",
                     kind: ParamKind::Enum(&["mainnet", "preprod", "preview"]),
@@ -145,7 +169,11 @@ pub fn registry() -> &'static [OperationSpec] {
         OperationSpec {
             operation_id: "observability/health",
             mutability: Mutability::Read, // a managed read — no confirm, no write transaction
-            params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
+            params: &[ParamSpec {
+                name: "machine",
+                kind: ParamKind::MachineId,
+                required: true,
+            }],
             touched: &["read:health"],
             may_expose_secret: false,
         },
@@ -154,7 +182,11 @@ pub fn registry() -> &'static [OperationSpec] {
             // evidence required to assess a BP's current forging readiness.
             operation_id: "troubleshooting/snapshot",
             mutability: Mutability::Read,
-            params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
+            params: &[ParamSpec {
+                name: "machine",
+                kind: ParamKind::MachineId,
+                required: true,
+            }],
             touched: &["read:troubleshooting-snapshot"],
             may_expose_secret: false,
         },
@@ -163,7 +195,11 @@ pub fn registry() -> &'static [OperationSpec] {
             // current image digest and generation after the normal adoption/live-drift gate.
             operation_id: "fleet/status",
             mutability: Mutability::Read,
-            params: &[ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true }],
+            params: &[ParamSpec {
+                name: "machine",
+                kind: ParamKind::MachineId,
+                required: true,
+            }],
             touched: &["read:fleet-status"],
             may_expose_secret: false,
         },
@@ -173,8 +209,16 @@ pub fn registry() -> &'static [OperationSpec] {
             operation_id: "upgrade/preload-image",
             mutability: Mutability::Dangerous,
             params: &[
-                ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true },
-                ParamSpec { name: "image", kind: ParamKind::ImageDigest, required: true },
+                ParamSpec {
+                    name: "machine",
+                    kind: ParamKind::MachineId,
+                    required: true,
+                },
+                ParamSpec {
+                    name: "image",
+                    kind: ParamKind::ImageDigest,
+                    required: true,
+                },
             ],
             touched: &["image:pull"],
             may_expose_secret: false,
@@ -183,11 +227,19 @@ pub fn registry() -> &'static [OperationSpec] {
             operation_id: "upgrade/step",
             mutability: Mutability::Dangerous, // availability-affecting: recreates the container
             params: &[
-                ParamSpec { name: "machine", kind: ParamKind::MachineId, required: true },
+                ParamSpec {
+                    name: "machine",
+                    kind: ParamKind::MachineId,
+                    required: true,
+                },
                 // The N+1 target image, named by its config digest — must be on the signed allowlist
                 // (enforced at op time). The recreate preserves the observed run-spec; the operator
                 // prepares the image through upgrade/preload-image as a precondition.
-                ParamSpec { name: "image", kind: ParamKind::ImageDigest, required: true },
+                ParamSpec {
+                    name: "image",
+                    kind: ParamKind::ImageDigest,
+                    required: true,
+                },
             ],
             touched: &["container:recreate"],
             may_expose_secret: false,
@@ -206,7 +258,9 @@ impl Intent {
     /// Returns the matched OperationSpec so the caller knows the mutability / confirm requirement.
     pub fn validate(&self, now_epoch: u64) -> Result<&'static OperationSpec> {
         if self.schema_version != 1 {
-            return Err(OuroError::Validation("intent schema_version must be 1".into()));
+            return Err(OuroError::Validation(
+                "intent schema_version must be 1".into(),
+            ));
         }
         if self.expiry_epoch != 0 && now_epoch > self.expiry_epoch {
             return Err(OuroError::Validation("intent expired".into()));
@@ -236,7 +290,10 @@ impl Intent {
         for p in spec.params {
             match obj.get(p.name) {
                 None if p.required => {
-                    return Err(OuroError::Validation(format!("missing required param {}", p.name)))
+                    return Err(OuroError::Validation(format!(
+                        "missing required param {}",
+                        p.name
+                    )))
                 }
                 None => {}
                 Some(v) => validate_param(p, v)?,
@@ -264,11 +321,15 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 pub fn validate_machine_id(value: &str) -> Result<()> {
     if !value.is_empty()
         && value.len() <= 32
-        && value.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && value
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
     {
         Ok(())
     } else {
-        Err(OuroError::Validation("machine id must be [a-z0-9-]{1,32}".into()))
+        Err(OuroError::Validation(
+            "machine id must be [a-z0-9-]{1,32}".into(),
+        ))
     }
 }
 
@@ -290,12 +351,18 @@ fn validate_param(p: &ParamSpec, v: &serde_json::Value) -> Result<()> {
                     .split_once("@sha256:")
                     .map(|(id, hexd)| {
                         !id.is_empty()
-                            && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                            && id
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
                             && hexd.len() == 64
                             && hexd.chars().all(|c| c.is_ascii_hexdigit())
                     })
                     .unwrap_or(false);
-                if ok { Ok(()) } else { bad("must be <id>@sha256:<64hex> (an inbox artifact, §2.7)") }
+                if ok {
+                    Ok(())
+                } else {
+                    bad("must be <id>@sha256:<64hex> (an inbox artifact, §2.7)")
+                }
             }
             _ => bad("must be an artifact reference string"),
         },
@@ -307,7 +374,11 @@ fn validate_param(p: &ParamSpec, v: &serde_json::Value) -> Result<()> {
                     .strip_prefix("sha256:")
                     .map(|hexd| hexd.len() == 64 && hexd.chars().all(|c| c.is_ascii_hexdigit()))
                     .unwrap_or(false);
-                if ok { Ok(()) } else { bad("must be sha256:<64hex> (an allowlisted image digest)") }
+                if ok {
+                    Ok(())
+                } else {
+                    bad("must be sha256:<64hex> (an allowlisted image digest)")
+                }
             }
             _ => bad("must be an image digest string"),
         },
@@ -354,7 +425,13 @@ pub fn canonical_json(v: &serde_json::Value) -> String {
             keys.sort();
             let inner: Vec<String> = keys
                 .iter()
-                .map(|k| format!("{}:{}", serde_json::to_string(k).unwrap(), canonical_json(&o[*k])))
+                .map(|k| {
+                    format!(
+                        "{}:{}",
+                        serde_json::to_string(k).unwrap(),
+                        canonical_json(&o[*k])
+                    )
+                })
                 .collect();
             format!("{{{}}}", inner.join(","))
         }
@@ -391,7 +468,11 @@ mod tests {
         assert!(intent("evil/wipe", json!({})).validate(0).is_err());
         // Every registered op has a mutability + no secret exposure.
         for op in registry() {
-            assert!(!op.may_expose_secret, "{} must not expose secrets", op.operation_id);
+            assert!(
+                !op.may_expose_secret,
+                "{} must not expose secrets",
+                op.operation_id
+            );
             assert!(matches!(
                 op.mutability,
                 Mutability::Read | Mutability::Reversible | Mutability::Dangerous
@@ -402,45 +483,103 @@ mod tests {
     #[test]
     fn closed_schema_rejects_unknown_and_hostile_params() {
         // Unknown field.
-        assert!(intent("runtime/restart", json!({"machine": "bp1", "evil": 1})).validate(0).is_err());
+        assert!(
+            intent("runtime/restart", json!({"machine": "bp1", "evil": 1}))
+                .validate(0)
+                .is_err()
+        );
         // Hostile machine id (shell metachars) — not an enumerated/typed value → refused.
-        assert!(intent("runtime/restart", json!({"machine": "bp1; rm -rf /"})).validate(0).is_err());
-        assert!(intent("runtime/restart", json!({"machine": "../etc"})).validate(0).is_err());
+        assert!(
+            intent("runtime/restart", json!({"machine": "bp1; rm -rf /"}))
+                .validate(0)
+                .is_err()
+        );
+        assert!(intent("runtime/restart", json!({"machine": "../etc"}))
+            .validate(0)
+            .is_err());
         // A raw path where an ArtifactRef is required → refused (no path sink, §2.7).
-        assert!(intent("kes-rotation/install-opcert",
-            json!({"machine":"bp1","opcert":"/etc/passwd"})).validate(0).is_err());
+        assert!(intent(
+            "kes-rotation/install-opcert",
+            json!({"machine":"bp1","opcert":"/etc/passwd"})
+        )
+        .validate(0)
+        .is_err());
         // Well-formed artifact ref accepted.
         let good = format!("opcert-1@sha256:{}", "a".repeat(64));
-        assert!(intent("kes-rotation/install-opcert",
-            json!({"machine":"bp1","opcert": good})).validate(0).is_ok());
+        assert!(intent(
+            "kes-rotation/install-opcert",
+            json!({"machine":"bp1","opcert": good})
+        )
+        .validate(0)
+        .is_ok());
         let image = format!("sha256:{}", "b".repeat(64));
-        assert!(intent("upgrade/preload-image", json!({
-            "machine":"bp1", "image": image,
-        })).validate(0).is_ok());
-        assert!(intent("upgrade/preload-image", json!({
-            "machine":"bp1", "unexpected":"value", "image":format!("sha256:{}", "b".repeat(64)),
-        })).validate(0).is_err());
+        assert!(intent(
+            "upgrade/preload-image",
+            json!({
+                "machine":"bp1", "image": image,
+            })
+        )
+        .validate(0)
+        .is_ok());
+        assert!(intent(
+            "upgrade/preload-image",
+            json!({
+                "machine":"bp1", "unexpected":"value", "image":format!("sha256:{}", "b".repeat(64)),
+            })
+        )
+        .validate(0)
+        .is_err());
     }
 
     #[test]
     fn bad_enum_and_bounds_rejected() {
         let tx = format!("tx-1@sha256:{}", "b".repeat(64));
-        assert!(intent("deploy/register-submit",
-            json!({"machine":"bp1","tx":tx.clone(),"network":"evilnet"})).validate(0).is_err());
-        assert!(intent("deploy/register-submit",
-            json!({"machine":"bp1","tx":tx,"network":"mainnet"})).validate(0).is_ok());
+        assert!(intent(
+            "deploy/register-submit",
+            json!({"machine":"bp1","tx":tx.clone(),"network":"evilnet"})
+        )
+        .validate(0)
+        .is_err());
+        assert!(intent(
+            "deploy/register-submit",
+            json!({"machine":"bp1","tx":tx,"network":"mainnet"})
+        )
+        .validate(0)
+        .is_ok());
         // Over-long string bounded.
-        assert!(intent("runtime/restart", json!({"machine": "x".repeat(5000)})).validate(0).is_err());
+        assert!(
+            intent("runtime/restart", json!({"machine": "x".repeat(5000)}))
+                .validate(0)
+                .is_err()
+        );
     }
 
     #[test]
     fn dangerous_ops_flagged_confirm_required() {
-        assert_eq!(lookup("kes-rotation/stage-key").unwrap().mutability, Mutability::Dangerous);
-        assert_eq!(lookup("kes-rotation/install-opcert").unwrap().mutability, Mutability::Dangerous);
-        assert_eq!(lookup("runtime/restart").unwrap().mutability, Mutability::Dangerous);
-        assert_eq!(lookup("upgrade/preload-image").unwrap().mutability, Mutability::Dangerous);
-        assert!(lookup("config/render").is_none(), "render is retired until it really renders");
-        assert!(lookup("runtime/topology-apply").is_none(), "apply is retired until it applies bytes");
+        assert_eq!(
+            lookup("kes-rotation/stage-key").unwrap().mutability,
+            Mutability::Dangerous
+        );
+        assert_eq!(
+            lookup("kes-rotation/install-opcert").unwrap().mutability,
+            Mutability::Dangerous
+        );
+        assert_eq!(
+            lookup("runtime/restart").unwrap().mutability,
+            Mutability::Dangerous
+        );
+        assert_eq!(
+            lookup("upgrade/preload-image").unwrap().mutability,
+            Mutability::Dangerous
+        );
+        assert!(
+            lookup("config/render").is_none(),
+            "render is retired until it really renders"
+        );
+        assert!(
+            lookup("runtime/topology-apply").is_none(),
+            "apply is retired until it applies bytes"
+        );
     }
 
     #[test]
@@ -449,7 +588,11 @@ mod tests {
         let b = canonical_json(&json!({"a":2,"b":1}));
         assert_eq!(a, b, "canonical form independent of key order");
         let hash = intent("runtime/restart", json!({"machine":"bp1"})).canonical_hash();
-        assert_eq!(hash.len(), 64, "intent confirmation uses a full SHA-256 digest");
+        assert_eq!(
+            hash.len(),
+            64,
+            "intent confirmation uses a full SHA-256 digest"
+        );
         assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
     }
 

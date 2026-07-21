@@ -44,9 +44,15 @@ pub struct RolloutStep {
 pub fn plan_rollout(relays: &[&str], bp: &str) -> Vec<RolloutStep> {
     let mut steps: Vec<RolloutStep> = relays
         .iter()
-        .map(|r| RolloutStep { node_id: (*r).to_string(), is_bp: false })
+        .map(|r| RolloutStep {
+            node_id: (*r).to_string(),
+            is_bp: false,
+        })
         .collect();
-    steps.push(RolloutStep { node_id: bp.to_string(), is_bp: true });
+    steps.push(RolloutStep {
+        node_id: bp.to_string(),
+        is_bp: true,
+    });
     steps
 }
 
@@ -85,10 +91,8 @@ pub fn validate_transition(
             "runtime transition must change the exact image config digest (§2.10)".into(),
         ));
     }
-    let signed = allowlist.transition_for(
-        &meta.from_image_config_digest,
-        &meta.to_image_config_digest,
-    )?;
+    let signed =
+        allowlist.transition_for(&meta.from_image_config_digest, &meta.to_image_config_digest)?;
     if signed != meta {
         return Err(OuroError::Validation(
             "runtime transition metadata does not match the signed directed edge (§2.10)".into(),

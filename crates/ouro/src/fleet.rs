@@ -95,12 +95,12 @@ impl PoolAuthority {
         ttl_secs: u64,
     ) -> Result<Lease> {
         if pool_id != self.pool_id {
-            return Err(OuroError::Validation("fleet authority pool id mismatch".into()));
+            return Err(OuroError::Validation(
+                "fleet authority pool id mismatch".into(),
+            ));
         }
         let parent = self.path.parent().unwrap_or_else(|| Path::new("."));
-        let _lock = crate::gate::NodeLock::acquire(
-            &parent.join("locks"), pool_id, holder,
-        )?;
+        let _lock = crate::gate::NodeLock::acquire(&parent.join("locks"), pool_id, holder)?;
         let prev = self.read()?;
         if let Some(l) = &prev {
             let live = l.expiry_epoch > now_epoch;
@@ -169,7 +169,9 @@ impl TargetFence {
             return Err(OuroError::Validation("step permit expired (§2.9)".into()));
         }
         if permit.node_id != self.node_id {
-            return Err(OuroError::Validation("step permit node does not match target fence".into()));
+            return Err(OuroError::Validation(
+                "step permit node does not match target fence".into(),
+            ));
         }
         let state = self.state()?.unwrap();
         if !state.pool_id.is_empty() && state.pool_id != permit.pool_id {
@@ -227,6 +229,19 @@ pub struct RelayHealthEndpoint {
     pub port: u16,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct KesProtocolEvidence {
+    pub artifact_sha256: String,
+    pub relay_node: String,
+    pub current_period: u64,
+    pub start_period: u64,
+    pub end_period: u64,
+    pub on_disk_counter: u64,
+    pub node_state_counter: Option<u64>,
+    pub node_state_counter_status: String,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StepPermit {
@@ -255,6 +270,8 @@ pub struct StepPermit {
     /// Spec-derived public relay endpoints. The target probes these immediately before consuming
     /// the permit, narrowing (but not eliminating) the snapshot race for a relay crash/partition.
     pub relay_health_endpoints: Vec<RelayHealthEndpoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kes_protocol_evidence: Option<KesProtocolEvidence>,
     pub permit_id: String,
     pub signature: String,
 }
@@ -279,15 +296,34 @@ impl StepPermit {
     fn signing_message(&self) -> String {
         let endpoints = serde_json::to_string(&self.relay_health_endpoints)
             .expect("closed relay endpoint fields serialize");
-        format!(
+        let base = format!(
             "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
-            self.pool_id, self.pool_spec_digest, self.network, self.genesis_hash,
-            self.target_host_key_sha256, self.node_id,
-            self.operation_id, self.intent_hash, self.role,
-            self.target_image.as_deref().unwrap_or(""), self.fencing_token, self.expiry_epoch,
-            self.facts_epoch, self.online_relays, self.min_online_relays, self.relays_remaining,
-            endpoints, self.permit_id
-        )
+            self.pool_id,
+            self.pool_spec_digest,
+            self.network,
+            self.genesis_hash,
+            self.target_host_key_sha256,
+            self.node_id,
+            self.operation_id,
+            self.intent_hash,
+            self.role,
+            self.target_image.as_deref().unwrap_or(""),
+            self.fencing_token,
+            self.expiry_epoch,
+            self.facts_epoch,
+            self.online_relays,
+            self.min_online_relays,
+            self.relays_remaining,
+            endpoints,
+            self.permit_id
+        );
+        match &self.kes_protocol_evidence {
+            Some(evidence) => format!(
+                "{base}\n{}",
+                serde_json::to_string(evidence).expect("closed KES protocol evidence serializes")
+            ),
+            None => base,
+        }
     }
 
     /// Immediately before a disruptive commit, independently require enough OTHER live relay
@@ -298,7 +334,9 @@ impl StepPermit {
         if self.min_online_relays == 0 {
             return Ok(());
         }
-        let candidates = self.relay_health_endpoints.iter()
+        let candidates = self
+            .relay_health_endpoints
+            .iter()
             .filter(|endpoint| self.role != "relay" || endpoint.node_id != self.node_id)
             .cloned()
             .collect::<Vec<_>>();
@@ -311,13 +349,15 @@ impl StepPermit {
                     .to_socket_addrs()
                     .ok()
                     .and_then(|mut addresses| {
-                        addresses.any(|address| {
-                            std::net::TcpStream::connect_timeout(
-                                &address,
-                                std::time::Duration::from_secs(2),
-                            )
-                            .is_ok()
-                        }).then_some(())
+                        addresses
+                            .any(|address| {
+                                std::net::TcpStream::connect_timeout(
+                                    &address,
+                                    std::time::Duration::from_secs(2),
+                                )
+                                .is_ok()
+                            })
+                            .then_some(())
                     })
                     .is_some();
                 let _ = sender.send(live);
@@ -325,10 +365,14 @@ impl StepPermit {
             receivers.push(receiver);
         }
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
-        let online = receivers.into_iter().filter(|receiver| {
-            receiver.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
-                .unwrap_or(false)
-        }).count() as u32;
+        let online = receivers
+            .into_iter()
+            .filter(|receiver| {
+                receiver
+                    .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                    .unwrap_or(false)
+            })
+            .count() as u32;
         if online < self.min_online_relays {
             return Err(OuroError::Validation(format!(
                 "immediate relay endpoint quorum failed: {online} reachable other relays < required {} — disruptive commit refused",
@@ -342,7 +386,12 @@ impl StepPermit {
         let mut mac = Hmac::<Sha256>::new_from_slice(secret)
             .map_err(|_| OuroError::Validation("invalid fleet signing key".into()))?;
         mac.update(self.signing_message().as_bytes());
-        self.signature = mac.finalize().into_bytes().iter().map(|b| format!("{b:02x}")).collect();
+        self.signature = mac
+            .finalize()
+            .into_bytes()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         Ok(self)
     }
 
@@ -369,7 +418,9 @@ impl StepPermit {
             ));
         }
         if self.expiry_epoch <= now_epoch {
-            return Err(OuroError::Validation("fleet step permit expired (§2.9)".into()));
+            return Err(OuroError::Validation(
+                "fleet step permit expired (§2.9)".into(),
+            ));
         }
         if self.facts_epoch > now_epoch.saturating_add(5)
             || now_epoch.saturating_sub(self.facts_epoch) > LIVE_FACTS_VALIDITY_SECONDS
@@ -397,12 +448,17 @@ impl StepPermit {
 
 fn decode_hex(value: &str) -> Result<Vec<u8>> {
     if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(OuroError::Validation("malformed fleet permit signature".into()));
+        return Err(OuroError::Validation(
+            "malformed fleet permit signature".into(),
+        ));
     }
-    (0..value.len()).step_by(2).map(|index| {
-        u8::from_str_radix(&value[index..index + 2], 16)
-            .map_err(|_| OuroError::Validation("malformed fleet permit signature".into()))
-    }).collect()
+    (0..value.len())
+        .step_by(2)
+        .map(|index| {
+            u8::from_str_radix(&value[index..index + 2], 16)
+                .map_err(|_| OuroError::Validation("malformed fleet permit signature".into()))
+        })
+        .collect()
 }
 
 /// Quorum re-evaluation immediately before a disruptive step (§2.9): taking `about_to_stop` offline
@@ -448,21 +504,40 @@ mod tests {
 
     fn permit(token: u64, expiry: u64) -> StepPermit {
         StepPermit {
-            pool_id: "p".into(), pool_spec_digest: format!("sha256:{}", "a".repeat(64)),
-            network: "mainnet".into(), genesis_hash: "genesis".into(),
+            pool_id: "p".into(),
+            pool_spec_digest: format!("sha256:{}", "a".repeat(64)),
+            network: "mainnet".into(),
+            genesis_hash: "genesis".into(),
             target_host_key_sha256: "h".repeat(64),
-            node_id: "relay1".into(), operation_id: "runtime/restart".into(),
-            intent_hash: "i".repeat(64), role: "relay".into(),
+            node_id: "relay1".into(),
+            operation_id: "runtime/restart".into(),
+            intent_hash: "i".repeat(64),
+            role: "relay".into(),
             target_image: None,
-            fencing_token: token, expiry_epoch: expiry,
+            fencing_token: token,
+            expiry_epoch: expiry,
             facts_epoch: 1000,
-            online_relays: 2, min_online_relays: 1, relays_remaining: 1,
+            online_relays: 2,
+            min_online_relays: 1,
+            relays_remaining: 1,
             relay_health_endpoints: vec![
-                RelayHealthEndpoint { node_id: "relay1".into(), host: "127.0.0.1".into(), port: 9 },
-                RelayHealthEndpoint { node_id: "relay2".into(), host: "127.0.0.1".into(), port: 9 },
+                RelayHealthEndpoint {
+                    node_id: "relay1".into(),
+                    host: "127.0.0.1".into(),
+                    port: 9,
+                },
+                RelayHealthEndpoint {
+                    node_id: "relay2".into(),
+                    host: "127.0.0.1".into(),
+                    port: 9,
+                },
             ],
-            permit_id: format!("permit-{token}"), signature: String::new(),
-        }.sign(b"secret").unwrap()
+            kes_protocol_evidence: None,
+            permit_id: format!("permit-{token}"),
+            signature: String::new(),
+        }
+        .sign(b"secret")
+        .unwrap()
     }
 
     fn expectation(operation: &str, target_image: Option<&str>, host: &str) -> PermitExpectation {
@@ -492,7 +567,10 @@ mod tests {
         assert!(auth.acquire("pool1", "ctrl-A", 1100, 300).is_err());
         // After expiry, B can acquire and the fencing token strictly increases.
         let l2 = auth.acquire("pool1", "ctrl-B", 2000, 300).unwrap();
-        assert!(l2.fencing_token > l1.fencing_token, "fencing token increases");
+        assert!(
+            l2.fencing_token > l1.fencing_token,
+            "fencing token increases"
+        );
         std::fs::remove_dir_all(&d).ok();
     }
 
@@ -502,17 +580,28 @@ mod tests {
         let fence = TargetFence::at(&d, "relay1");
         // Controller B (token 2) acts first → target honors token 2.
         let p2 = permit(2, 5000);
-        p2.verify(&expectation("runtime/restart", None, &"h".repeat(64)), b"secret", 1000).unwrap();
+        p2.verify(
+            &expectation("runtime/restart", None, &"h".repeat(64)),
+            b"secret",
+            1000,
+        )
+        .unwrap();
         assert!(fence.accept(&p2, 1000).is_ok());
         // A superseded controller A (token 1) is now fenced at the point of action.
         let p1 = permit(1, 5000);
         assert!(fence.accept(&p1, 1000).is_err(), "stale token fenced");
-        assert!(fence.accept(&p2, 1000).is_err(), "equal-token replay fenced");
+        assert!(
+            fence.accept(&p2, 1000).is_err(),
+            "equal-token replay fenced"
+        );
         let mut wrong_pool = permit(3, 5000);
         wrong_pool.pool_id = "other-pool".into();
         wrong_pool.signature.clear();
         wrong_pool = wrong_pool.sign(b"secret").unwrap();
-        assert!(fence.accept(&wrong_pool, 1000).is_err(), "target pool binding enforced");
+        assert!(
+            fence.accept(&wrong_pool, 1000).is_err(),
+            "target pool binding enforced"
+        );
         // An expired permit is refused.
         let p3 = permit(3, 100);
         assert!(fence.accept(&p3, 1000).is_err(), "expired permit refused");
@@ -524,8 +613,14 @@ mod tests {
         // Two relays online, min 1. Each of two controllers thinks it can stop one relay.
         // The fleet authority makes only ONE hold the lease; and quorum re-eval refuses the second
         // stop even if a race got that far.
-        assert!(require_quorum(2, 1, true).is_ok(), "stopping 1 of 2 leaves 1 (>= min)");
-        assert!(require_quorum(1, 1, true).is_err(), "stopping the last relay breaks quorum");
+        assert!(
+            require_quorum(2, 1, true).is_ok(),
+            "stopping 1 of 2 leaves 1 (>= min)"
+        );
+        assert!(
+            require_quorum(1, 1, true).is_err(),
+            "stopping the last relay breaks quorum"
+        );
     }
 
     #[test]
@@ -543,24 +638,101 @@ mod tests {
 
     #[test]
     fn bp_is_last() {
-        assert!(require_bp_last(true, 2).is_err(), "bp refused while relays pending");
-        assert!(require_bp_last(true, 0).is_ok(), "bp allowed once relays done");
+        assert!(
+            require_bp_last(true, 2).is_err(),
+            "bp refused while relays pending"
+        );
+        assert!(
+            require_bp_last(true, 0).is_ok(),
+            "bp allowed once relays done"
+        );
         assert!(require_bp_last(false, 2).is_ok(), "relay steps unaffected");
     }
 
     #[test]
     fn signed_permit_binds_policy_and_refuses_quorum_lie_after_tamper() {
         let signed = permit(1, 5000);
-        assert!(signed.verify(&expectation("runtime/restart", None, &"h".repeat(64)), b"secret", 1000).is_ok());
+        assert!(signed
+            .verify(
+                &expectation("runtime/restart", None, &"h".repeat(64)),
+                b"secret",
+                1000
+            )
+            .is_ok());
         let mut tampered = signed.clone();
         tampered.online_relays = 99;
-        assert!(tampered.verify(&expectation("runtime/restart", None, &"h".repeat(64)), b"secret", 1000).is_err());
-        assert!(signed.verify(&expectation("runtime/restart", None, &"b".repeat(64)), b"secret", 1000).is_err(), "permit snapshot for host B cannot execute on host A");
+        assert!(tampered
+            .verify(
+                &expectation("runtime/restart", None, &"h".repeat(64)),
+                b"secret",
+                1000
+            )
+            .is_err());
+        assert!(
+            signed
+                .verify(
+                    &expectation("runtime/restart", None, &"b".repeat(64)),
+                    b"secret",
+                    1000
+                )
+                .is_err(),
+            "permit snapshot for host B cannot execute on host A"
+        );
         let mut unsafe_permit = permit(2, 5000);
         unsafe_permit.online_relays = 1;
         unsafe_permit.signature.clear();
         unsafe_permit = unsafe_permit.sign(b"secret").unwrap();
-        assert!(unsafe_permit.verify(&expectation("runtime/restart", None, &"h".repeat(64)), b"secret", 1000).is_err());
+        assert!(unsafe_permit
+            .verify(
+                &expectation("runtime/restart", None, &"h".repeat(64)),
+                b"secret",
+                1000
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn signed_kes_permit_binds_relay_protocol_evidence() {
+        let mut signed = permit(1, 5000);
+        signed.node_id = "bp1".into();
+        signed.operation_id = "kes-rotation/install-opcert".into();
+        signed.role = "bp".into();
+        signed.relays_remaining = 0;
+        signed.kes_protocol_evidence = Some(KesProtocolEvidence {
+            artifact_sha256: "c".repeat(64),
+            relay_node: "relay1".into(),
+            current_period: 100,
+            start_period: 100,
+            end_period: 162,
+            on_disk_counter: 7,
+            node_state_counter: None,
+            node_state_counter_status: "no_blocks_minted_yet".into(),
+        });
+        signed.signature.clear();
+        signed = signed.sign(b"secret").unwrap();
+
+        let mut tampered = signed.clone();
+        tampered
+            .kes_protocol_evidence
+            .as_mut()
+            .unwrap()
+            .on_disk_counter = 8;
+        assert_ne!(signed.signing_message(), tampered.signing_message());
+        let expected = PermitExpectation {
+            pool_id: "p".into(),
+            pool_spec_digest: format!("sha256:{}", "a".repeat(64)),
+            node_id: "bp1".into(),
+            operation_id: "kes-rotation/install-opcert".into(),
+            role: "bp".into(),
+            target_image: None,
+            min_online_relays: 1,
+            network: "mainnet".into(),
+            genesis_hash: "genesis".into(),
+            target_host_key_sha256: "h".repeat(64),
+            intent_hash: "i".repeat(64),
+        };
+        assert!(signed.verify(&expected, b"secret", 1000).is_ok());
+        assert!(tampered.verify(&expected, b"secret", 1000).is_err());
     }
 
     #[test]
@@ -569,11 +741,23 @@ mod tests {
         p.facts_epoch = 969;
         p.signature.clear();
         p = p.sign(b"secret").unwrap();
-        assert!(p.verify(&expectation("runtime/restart", None, &"h".repeat(64)), b"secret", 1000).is_ok());
+        assert!(p
+            .verify(
+                &expectation("runtime/restart", None, &"h".repeat(64)),
+                b"secret",
+                1000
+            )
+            .is_ok());
         p.facts_epoch = 819;
         p.signature.clear();
         p = p.sign(b"secret").unwrap();
-        assert!(p.verify(&expectation("runtime/restart", None, &"h".repeat(64)), b"secret", 1000).is_err());
+        assert!(p
+            .verify(
+                &expectation("runtime/restart", None, &"h".repeat(64)),
+                b"secret",
+                1000
+            )
+            .is_err());
     }
 
     #[test]
@@ -585,14 +769,29 @@ mod tests {
         p.target_image = Some(image.clone());
         p.signature.clear();
         p = p.sign(b"secret").unwrap();
-        assert!(p.verify(&expectation("upgrade/step", Some(&image), &"h".repeat(64)), b"secret", 1000).is_ok());
-        assert!(p.verify(&expectation("upgrade/step", Some(&other), &"h".repeat(64)), b"secret", 1000).is_err());
+        assert!(p
+            .verify(
+                &expectation("upgrade/step", Some(&image), &"h".repeat(64)),
+                b"secret",
+                1000
+            )
+            .is_ok());
+        assert!(p
+            .verify(
+                &expectation("upgrade/step", Some(&other), &"h".repeat(64)),
+                b"secret",
+                1000
+            )
+            .is_err());
     }
 
     #[test]
     fn permit_envelope_is_closed() {
         let mut value = serde_json::to_value(permit(1, 5000)).unwrap();
-        value.as_object_mut().unwrap().insert("online_bps".into(), serde_json::json!(99));
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("online_bps".into(), serde_json::json!(99));
         assert!(serde_json::from_value::<StepPermit>(value).is_err());
     }
 }

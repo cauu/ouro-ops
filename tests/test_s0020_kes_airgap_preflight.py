@@ -420,19 +420,49 @@ upgrade:
     credentials = home / "credentials"
     credentials.mkdir()
     (credentials / "bp1").write_text("disposable-test-key")
-    (home / "known_hosts").write_text("192.0.2.1 ssh-ed25519 test\n")
+    (credentials / "relay1").write_text("disposable-test-key")
+    (home / "known_hosts").write_text(
+        "192.0.2.1 ssh-ed25519 test\n192.0.2.2 ssh-ed25519 test\n"
+    )
     runner = home / "runner"
     runner_bytes = b"sealed-linux-runner-for-kes-preflight"
     runner.write_bytes(runner_bytes)
     transport_stream = home / "transport.stream"
     transport_args = home / "transport.args"
+    protocol_value = {
+        "tool": "ouro.kes.protocol_evidence",
+        "machine": None,
+        "status": "ok",
+        "changed": False,
+        "checks": [],
+        "duration_s": 0.0,
+        "audit_id": None,
+        "data": {
+            "artifact_ref": artifact_ref,
+            "evidence": {
+                "artifact_sha256": opcert_digest,
+                "relay_node": "relay1",
+                "current_period": 100,
+                "start_period": 100,
+                "end_period": 162,
+                "on_disk_counter": 7,
+                "node_state_counter": 7,
+                "node_state_counter_status": "present",
+            },
+            "source": "declared_healthy_relay_socket",
+            "persistent_target_state_written": False,
+        },
+    }
     ssh = fakebin / "ssh"
     ssh.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         "dd of=\"$OURO_TEST_TRANSPORT_STREAM\" bs=65536 status=none\n"
         "printf '%s' \"$*\" >\"$OURO_TEST_TRANSPORT_ARGS\"\n"
-        f"printf '%s\\n' '{json.dumps(value, separators=(',', ':'))}'\n"
+        "case \"$*\" in\n"
+        f"  *cardano@192.0.2.2*kes-protocol*) printf '%s\\n' '{json.dumps(protocol_value, separators=(',', ':'))}' ;;\n"
+        f"  *) printf '%s\\n' '{json.dumps(value, separators=(',', ':'))}' ;;\n"
+        "esac\n"
     )
     ssh.chmod(0o700)
     dispatched, dispatched_value = invoke(

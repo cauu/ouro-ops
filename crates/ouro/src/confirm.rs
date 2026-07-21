@@ -109,14 +109,14 @@ impl ConfirmationStore {
         if let Some(approved) = &entry.evidence {
             match evidence {
                 Some(live) if live == approved => {}
-                Some(_) => {
-                    return Err(OuroError::Validation(
-                        "confirmation token runtime evidence mismatch (target changed since approval)".to_string(),
-                    ))
-                }
+                Some(_) => return Err(OuroError::Validation(
+                    "confirmation token runtime evidence mismatch (target changed since approval)"
+                        .to_string(),
+                )),
                 None => {
                     return Err(OuroError::Validation(
-                        "confirmation token requires runtime evidence but none was supplied".to_string(),
+                        "confirmation token requires runtime evidence but none was supplied"
+                            .to_string(),
                     ))
                 }
             }
@@ -229,10 +229,22 @@ mod tests {
         assert!(token.starts_with("inv_"));
         assert!(verify_invocation_token("secret-key", "audit-123", &token));
         // Wrong secret, wrong audit id, and a tampered token all fail.
-        assert!(!verify_invocation_token("other-secret", "audit-123", &token));
+        assert!(!verify_invocation_token(
+            "other-secret",
+            "audit-123",
+            &token
+        ));
         assert!(!verify_invocation_token("secret-key", "audit-999", &token));
-        assert!(!verify_invocation_token("secret-key", "audit-123", "inv_deadbeef"));
-        assert!(!verify_invocation_token("secret-key", "audit-123", "not-a-token"));
+        assert!(!verify_invocation_token(
+            "secret-key",
+            "audit-123",
+            "inv_deadbeef"
+        ));
+        assert!(!verify_invocation_token(
+            "secret-key",
+            "audit-123",
+            "not-a-token"
+        ));
     }
 
     #[test]
@@ -263,18 +275,33 @@ mod tests {
         // Wrong live fingerprint (target changed since approval) is refused and does NOT
         // burn the token.
         assert!(ConfirmationStore::consume(
-            &path, &token.token, "runtime/restart", "bp1", Some("fp_DIFFERENT")
+            &path,
+            &token.token,
+            "runtime/restart",
+            "bp1",
+            Some("fp_DIFFERENT")
         )
         .is_err());
         // Missing live fingerprint on an evidence-bound token is refused.
         assert!(
-            ConfirmationStore::consume(&path, &token.token, "runtime/restart", "bp1", None).is_err()
+            ConfirmationStore::consume(&path, &token.token, "runtime/restart", "bp1", None)
+                .is_err()
         );
         // Matching fingerprint fires exactly once.
-        ConfirmationStore::consume(&path, &token.token, "runtime/restart", "bp1", Some("fp_abc123"))
-            .unwrap();
+        ConfirmationStore::consume(
+            &path,
+            &token.token,
+            "runtime/restart",
+            "bp1",
+            Some("fp_abc123"),
+        )
+        .unwrap();
         assert!(ConfirmationStore::consume(
-            &path, &token.token, "runtime/restart", "bp1", Some("fp_abc123")
+            &path,
+            &token.token,
+            "runtime/restart",
+            "bp1",
+            Some("fp_abc123")
         )
         .is_err());
     }

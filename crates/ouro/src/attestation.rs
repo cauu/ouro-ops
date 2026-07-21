@@ -136,17 +136,17 @@ impl AdoptionAttestation {
     /// opcert. Rejects a mis-adopted node before it becomes a trust root.
     pub fn check_role(&self, rule: &RoleRule, live: &LiveObservation) -> Result<()> {
         match self.immutable.role {
-            Role::Relay if rule.forbids_forging_keys && live.has_forging_keys => Err(
-                OuroError::Validation(
+            Role::Relay if rule.forbids_forging_keys && live.has_forging_keys => {
+                Err(OuroError::Validation(
                     "relay bears forging keys — refused (a relay must not hold KES/VRF; §2.3)"
                         .to_string(),
-                ),
-            ),
-            Role::Bp if rule.requires_opcert && live.kes_opcert_id.is_empty() => Err(
-                OuroError::Validation(
+                ))
+            }
+            Role::Bp if rule.requires_opcert && live.kes_opcert_id.is_empty() => {
+                Err(OuroError::Validation(
                     "bp has no operational certificate — refused (§2.3)".to_string(),
-                ),
-            ),
+                ))
+            }
             _ => Ok(()),
         }
     }
@@ -237,13 +237,16 @@ impl AdoptionAttestation {
 /// production target path ownership is fixed to `root:ouro-attest`; test overrides retain the
 /// invoking user's ownership but still receive mode 0640 and atomic durability.
 pub fn write_document(path: &Path, document: &serde_json::Value) -> Result<()> {
-    let parent = path.parent().ok_or_else(|| {
-        OuroError::Validation("attestation path has no parent directory".into())
-    })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| OuroError::Validation("attestation path has no parent directory".into()))?;
     fs::create_dir_all(parent)?;
     let bytes = serde_json::to_vec_pretty(document)
         .map_err(|e| OuroError::Validation(format!("cannot serialize attestation: {e}")))?;
-    let tmp = parent.join(format!(".node-attestation.{}.tmp", uuid::Uuid::new_v4().simple()));
+    let tmp = parent.join(format!(
+        ".node-attestation.{}.tmp",
+        uuid::Uuid::new_v4().simple()
+    ));
     let mut options = OpenOptions::new();
     options.create_new(true).write(true);
     #[cfg(unix)]
@@ -411,7 +414,10 @@ mod tests {
     #[test]
     fn live_match_and_drift() {
         let a = att();
-        assert!(a.require_matches_live(&live()).is_ok(), "identical live matches");
+        assert!(
+            a.require_matches_live(&live()).is_ok(),
+            "identical live matches"
+        );
         for mutate in [
             |l: &mut LiveObservation| l.image_config_digest = "sha256:evil".into(),
             |l: &mut LiveObservation| l.container_id = "cid999".into(),
@@ -446,7 +452,10 @@ mod tests {
         // After the write, the live node shows the new topology → matches the advanced record.
         let mut post = live();
         post.topology_hash = "t1".into();
-        assert!(advanced.require_matches_live(&post).is_ok(), "post-write is not drift");
+        assert!(
+            advanced.require_matches_live(&post).is_ok(),
+            "post-write is not drift"
+        );
         // Fingerprint changed because the generation advanced.
         assert_ne!(a.closed_fingerprint(), advanced.closed_fingerprint());
     }
@@ -454,17 +463,26 @@ mod tests {
     #[test]
     fn cas_rejects_stale_generation() {
         let a = att();
-        assert!(a.advance_state(6, a.state.clone()).is_err(), "stale expected gen refused");
+        assert!(
+            a.advance_state(6, a.state.clone()).is_err(),
+            "stale expected gen refused"
+        );
     }
 
     #[test]
     fn role_rule_relay_forbids_forging_keys() {
         let mut a = att();
         a.immutable.role = Role::Relay;
-        let rule = RoleRule { requires_opcert: false, forbids_forging_keys: true };
+        let rule = RoleRule {
+            requires_opcert: false,
+            forbids_forging_keys: true,
+        };
         let mut l = live();
         l.has_forging_keys = true;
-        assert!(a.check_role(&rule, &l).is_err(), "relay with forging keys refused");
+        assert!(
+            a.check_role(&rule, &l).is_err(),
+            "relay with forging keys refused"
+        );
         l.has_forging_keys = false;
         assert!(a.check_role(&rule, &l).is_ok());
     }

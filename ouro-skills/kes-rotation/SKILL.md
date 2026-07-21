@@ -1,5 +1,5 @@
 ---
-skill_version: 19
+skill_version: 20
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -46,12 +46,20 @@ reads or prints it.
   material. Re-running this same workflow with the same public certificate after the node becomes
   ready performs verification and cleanup only; it does not restage, cold-sign, advance the counter,
   reinstall the artifact or restart again.
+- Phase B has one bounded restart-loop repair branch, not a separate Phase C. When the declared BP
+  cannot execute commands but the fixed staged pair and returned public `pending/node.cert` exist,
+  Ouro derives static identity/genesis/public-key evidence from the signed bind-mounted layout and
+  obtains candidate counter/window evidence from a declared healthy relay. It then uses the exact
+  current image as a network-disabled, pull-disabled, `--rm` filesystem helper, performs one BP
+  stop/start cycle and rejoins the same forward verification/cleanup path. No other operation gains
+  offline admission.
 - Both writes need exact operator confirmation. Only activation is disruptive and therefore also
   needs a live fleet permit minted last.
 - The activation permit uses an operation-scoped `kes_rotation_repair_ready` target qualification:
-  the BP must be running, socket-responsive, synchronized, convention-conformant and have its BP
-  credential layout/permissions intact, but the old KES/opcert may already be invalid. Ordinary
-  fleet `online`, every other disruptive operation and relay quorum remain fully fail-closed.
+  the BP must be convention-conformant with its fixed BP credential layout/permissions intact, but
+  the old KES/opcert may already be invalid and the container may be restart-looping. In that case a
+  healthy declared relay supplies the live protocol evidence. Ordinary fleet `online` remains
+  fail-closed, and every other disruptive operation plus relay quorum remains fully fail-closed.
 - KES permission readiness is its own container-namespace contract, not the legacy
   `forging_key_permissions_safe` adoption/diagnostic aggregate. Require exactly three typed facts:
   `keys_directory_safe`, `kes_skey_private`, and `vrf_skey_private`. The fixed keys path must be a
@@ -70,6 +78,11 @@ reads or prints it.
   optional `node.cert` and never creates a discarded archive.
 
 ## Decision guidance (use your judgment; this is not a rigid script)
+- After the compatibility check and exact `pool-spec.yaml` write, derive the fixed local certificate
+  path `<pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert`. If that real regular file already
+  exists, do not start or repeat Phase A: preview it and enter the Phase-B planning/preflight path
+  below. The typed plan will classify a normal activation, retained forward transaction or bounded
+  restart-loop repair. If the file is absent, continue with normal Phase A.
 - Discover the BP, host and credential reference from `pool-spec.yaml`; do not ask the operator to
   repeat them. Obtain the FINAL Phase-A plan with `ouro-ops op run --op kes-rotation/stage-key
   --spec <pool-spec> --dispatch <bp-host> --ssh-key creds://<name> --node <bp> --param machine=<bp>
@@ -165,13 +178,18 @@ reads or prints it.
 - After approval mint `ouro-ops confirm create --op kes-rotation/install-opcert --node <bp>
   --intent-hash <final-hash>`, then mint the live permit LAST with `ouro-ops fleet permit create
   --spec <pool-spec> --node <bp> --op kes-rotation/install-opcert --intent-hash <final-hash>
-  --holder <controller-id>`. Require its facts to report
+  --holder <controller-id> --artifact-file
+  <pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert`. The public certificate is sent only to
+  one declared healthy relay through the same ephemeral runner so its socket can supply
+  candidate-bound period/node-state counter evidence; the permit signs that evidence. Require its
+  facts to report
   `target_qualification: kes_rotation_repair_ready` and
   `target_kes_rotation_repair_ready: true`, and require every boolean in
-  `target_kes_rotation_permissions` to be true. `target_online: false` is allowed only here when the
-  bound pre-existing KES/opcert readiness is the failed component; it is not permission to ignore
-  liveness, socket, sync, network/genesis, role/layout/host identity, relay quorum or permit
-  freshness.
+  `target_kes_rotation_permissions` to be true. Also require `kes_protocol_evidence` to bind the
+  exact artifact digest and a declared relay. `target_online: false` is allowed only here when the
+  BP is a statically bound KES repair target, including a Docker restart loop; it is not permission
+  to ignore network/genesis, role/layout/host identity, staged/certificate binding, healthy relay
+  protocol evidence, relay quorum or permit freshness.
 - Immediately rerun the plan command without `--plan`, adding `--candidate-hash <final-hash>
   --artifact-file <pool-spec-dir>/ouro-kes-rotation/<bp>/pending/node.cert --confirm-token <token>
   --fleet-permit '<fleet_permit-json>'`. Never replan with either capability. Report the remote
@@ -182,6 +200,10 @@ reads or prints it.
   --expected-vkey-sha256 <activated-staged-vkey-hash>` and require `absent: true`. Do not retain the
   bundle, certificate or a `.discarded-*` copy after success. If local cleanup refuses, accurately
   report that activation succeeded but local public residue remains; never repeat activation.
+- If the final plan reports `restart_loop_repair: true`, disclose the fixed one-shot helper plus one
+  BP stop/start instead of describing in-container command copies. Require the helper image to
+  equal the bound current image, `--network none`, `--pull never`, `--rm`, fixed `--volumes-from`
+  and compiled fixed paths. Never translate this into raw Docker commands for the agent/operator.
 - If apply returns `activation_unverified`, report that the replacement was promoted and the single
   restart occurred but readiness is not yet proven. Require `changed: true`,
   `automatic_rollback_performed: false` and `recovery_material_retained: true`. Do not run Phase A,
@@ -192,8 +214,8 @@ reads or prints it.
   removal of the retained stage/recovery files before local airgap cleanup.
 
 ## Stop Conditions
-- Stop if typed current-period evidence is missing, the offline ceremony is incomplete, typed
-  `cardano_cli_version` is missing, the device cannot map to one of
+- During Phase A, stop if typed current-period evidence or typed `cardano_cli_version` is missing.
+  In either phase, stop if the offline ceremony is incomplete or the device cannot map to one of
   the four supported platforms, the official release/checksum/bundle verification fails, the file
   is not a public opcert, its bytes change, deep preflight refuses it, the target is not the declared
   BP, or approval/permit is absent. A complete existing staged pair requires an explicit operator
@@ -208,14 +230,17 @@ reads or prints it.
 - Stop on signed-policy, role/network/genesis/layout drift or a Phase-A regression relative to the
   bound readiness pre-state. An unchanged pre-existing invalid KES/opcert is not drift. Report a
   typed refusal; do not adopt, reconfigure, or work around it.
-- Stop if the KES activation permit lacks the typed repair qualification or if any non-KES
-  availability/layout evidence is false. Do not substitute ordinary offline status, weaken another
-  operation's permit or reinterpret an unhealthy relay as quorum.
+- Stop if the KES activation permit lacks the typed repair qualification or required static layout,
+  identity and healthy-relay evidence. Do not weaken another operation's permit or reinterpret an
+  unhealthy relay as quorum.
 - Stop if any dedicated KES permission fact is false. The legacy
   `forging_key_permissions_safe:false` alone is not a KES refusal when the three dedicated facts are
   true. Do not use raw SSH, chmod or chown as a workaround and do not invent a normalization path.
 - Stop and preserve the forward activation state if readiness remains unverified. Never interpret
   absent startup evidence as authority to restore and restart the previous credentials.
+- A restart-loop is not itself a Phase-A recovery path. If no fixed returned `pending/node.cert` or
+  no complete staged pair exists, stop; do not invent offline key generation. If both exist, use
+  only the typed Phase-B restart-loop branch and its healthy-relay protocol evidence.
 
 ## Red Lines
 - No cold, KES secret, or VRF material is requested, printed, copied off the BP, or handled as

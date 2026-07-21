@@ -20,6 +20,7 @@ from test_s0020_stateless_plan import (
     target_args,
     write_probe,
 )
+from test_s0020_kes_airgap_preflight import OPCERT
 
 
 def apply_args(operation, candidate, *params):
@@ -364,10 +365,36 @@ def main():
     assert status_value["data"]["online"] is False
     assert status_value["data"]["kes_rotation_repair_ready"] is True
 
+    # Phase B target qualification intentionally does not require the broken BP's socket or sync;
+    # those protocol facts come from the healthy relay and the BP remains offline for fleet status.
+    for unavailable in ["node_running", "socket_answers", "tip_synced"]:
+        unavailable_bp = observation()
+        unavailable_bp["readiness"]["kes_opcert_valid"] = False
+        unavailable_bp["readiness"]["forging_credentials_ready"] = False
+        unavailable_bp["readiness"][unavailable] = False
+        write_probe(probe, unavailable_bp)
+        status, status_value = invoke(
+            home,
+            "target",
+            "status",
+            "--node",
+            "bp1",
+            "--role",
+            "bp",
+            "--network",
+            "mainnet",
+            "--genesis",
+            GENESIS,
+            "--expect-allowlist",
+            allowlist_digest,
+            env_extra=env,
+            path=fakebin,
+        )
+        assert status.returncode == 0, (unavailable, status, status_value)
+        assert status_value["data"]["online"] is False, unavailable
+        assert status_value["data"]["kes_rotation_repair_ready"] is True, unavailable
+
     for broken in [
-        "node_running",
-        "socket_answers",
-        "tip_synced",
         "block_producer_configured",
         "has_forging_keys",
         "keys_directory_safe",
@@ -628,6 +655,46 @@ upgrade:
         "OURO_EPHEMERAL_RUNNER": str(runner),
         "OURO_TEST_FLEET_SSH_LOG": str(fleet_ssh_log),
     }
+    reviewed_opcert = repair_home / "node.cert"
+    reviewed_opcert.write_text(json.dumps(OPCERT, separators=(",", ":")))
+    reviewed_opcert_digest = hashlib.sha256(reviewed_opcert.read_bytes()).hexdigest()
+    protocol_output = {
+        "tool": "ouro.kes.protocol_evidence",
+        "machine": None,
+        "status": "ok",
+        "changed": False,
+        "checks": [],
+        "duration_s": 0.0,
+        "audit_id": None,
+        "data": {
+            "artifact_ref": f"opcert-{reviewed_opcert_digest[:8]}@sha256:{reviewed_opcert_digest}",
+            "evidence": {
+                "artifact_sha256": reviewed_opcert_digest,
+                "relay_node": "relay1",
+                "current_period": 100,
+                "start_period": 100,
+                "end_period": 162,
+                "on_disk_counter": 7,
+                "node_state_counter": None,
+                "node_state_counter_status": "no_blocks_minted_yet",
+            },
+            "source": "declared_healthy_relay_socket",
+            "persistent_target_state_written": False,
+        },
+    }
+    ssh.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -eu\n"
+        "dd of=/dev/null bs=65536 status=none\n"
+        "printf '%s\\n' \"$*\" >>\"$OURO_TEST_FLEET_SSH_LOG\"\n"
+        "case \"$*\" in\n"
+        f"  *cardano@192.0.2.2*kes-protocol*) printf '%s\\n' '{json.dumps(protocol_output, separators=(',', ':'))}' ;;\n"
+        f"  *cardano@192.0.2.1*) printf '%s\\n' '{json.dumps(repair_bp_status, separators=(',', ':'))}' ;;\n"
+        f"  *cardano@192.0.2.2*) printf '%s\\n' '{json.dumps(relay_status, separators=(',', ':'))}' ;;\n"
+        "  *) exit 90 ;;\n"
+        "esac\n"
+    )
+    ssh.chmod(0o700)
     generic_refused, generic_refused_value = invoke(
         repair_home,
         "fleet",
@@ -661,6 +728,8 @@ upgrade:
         "kes-rotation/install-opcert",
         "--intent-hash",
         "f" * 64,
+        "--artifact-file",
+        str(reviewed_opcert),
         "--holder",
         "test-agent",
         env_extra=repair_env,

@@ -1,12 +1,12 @@
 # Release-Ready External Skills And Digest-Pinned Operations
 
 Spec-ID: S0025
-状态: active
+状态: completed
 创建时间: 2026-07-18T21:58:58+08:00
 开始时间: 2026-07-18T21:58:58+08:00
-完成时间:
+完成时间: 2026-07-21T10:44:00+08:00
 前一个 Spec-ID: S0024
-结项原因:
+结项原因: delivered
 
 ## 1. Requirement Details
 
@@ -1610,3 +1610,123 @@ candidate, and activate only after every typed fact passes.
 - TC-49 | stack: release | command: `make release-candidate` | result: pass | note: the macOS control
   CLI, linux/x86_64 ephemeral runner, package and release descriptors/checksums were rebuilt and
   verified without publishing, contacting a production host, or reading local KES artifacts.
+
+## 67. Seventeenth Follow-up Requirement And Design (append-only)
+
+- [~] p6-1-fix18 add one bounded restart-loop recovery branch to KES Phase B
+- Concrete defect: a BP in Docker restart-loop still has the declared container, bind-mounted
+  genesis, staged KES pair, public active/previous opcerts and returned public `node.cert`, but every
+  `docker exec` fails. The probe currently converts those unavailable reads into empty live fields,
+  reports the real mainnet genesis as a binding mismatch, and both Phase-A-first Skill sequencing
+  and the Phase-B permit form a circular online/socket prerequisite around the credentials being
+  repaired.
+- Scope: this is not a public Phase C, a general offline-operation framework or a new command. The
+  existing `kes-rotation/install-opcert` operation gains a `phase_b_restart_loop_repair` branch only
+  when the fixed staged pair and returned public certificate already exist. Phase A remains the only
+  key-generation path and continues to require a responsive BP/socket. Runtime, Upgrade, Deploy and
+  ordinary fleet readiness retain their current online requirements.
+- Static evidence: for the signed fixed layout, Docker inspect supplies container state, exact image
+  and bind mounts. The runner maps only fixed paths through the longest matching bind destination,
+  requires real non-symlink mount/file metadata, reads bounded public genesis/vkey/opcert bytes and
+  never opens a KES/VRF signing-key file. The Cardano genesis hash is derived from the real genesis
+  bytes even when `docker exec` is unavailable. Missing evidence is typed as unavailable; it is not
+  mislabeled as a mismatching value.
+- Protocol evidence: restart-loop Phase B must not trust wall-clock or disk counter evidence alone.
+  Its public candidate opcert is checked through a declared healthy relay's socket for current KES
+  period and protocol node-state counter, while the BP's static public files bind the exact staged
+  hot key, cold identity and previous counter. Relay quorum remains mandatory.
+- Activation: the approved apply uses a fixed, network-disabled, pull-disabled, `--rm` helper based
+  on the BP's exact current image and `--volumes-from` the declared container. It prepares only the
+  fixed next/previous/staged/active KES paths, stops the BP once, promotes the three candidate files,
+  starts it once and polls normal candidate-bound readiness. It accepts no agent path/script/image.
+  Post-promotion failure remains forward-only: report `activation_unverified`, retain candidate and
+  recovery material, perform no old-credential restore and no second start/restart.
+- Skill routing: if deterministic local `pending/node.cert` exists, a fresh KES journey attempts
+  Phase B first. It runs Phase A only when no returned certificate exists. A restart-loop with no
+  complete staged pair cannot enter the recovery branch and stops without inventing offline key
+  generation.
+
+## 68. Seventeenth Follow-up Test And Acceptance Criteria (append-only)
+
+- TC-50 Restart-loop evidence: with Docker reporting the BP as restarting and every `docker exec`
+  failing, the typed observation distinguishes container existence/restarting from node readiness,
+  derives the exact bound genesis and fixed public/file metadata without reading secret contents,
+  and never reports unavailable evidence as a concrete mismatching genesis.
+- TC-51 Phase B-R preflight: a complete fixed staged pair plus matching returned public opcert can
+  reach plan and no-write artifact preflight while the BP socket is unavailable, but only after a
+  healthy declared relay supplies valid period/node-state counter evidence. Wrong genesis/image/
+  layout, incomplete or unsafe stage, wrong hot/cold key, stale counter/window, unhealthy relay or
+  failed quorum refuses before confirmation, permit or mutation.
+- TC-52 Forward repair apply: an exact approved B-R candidate uses only the fixed ephemeral helper,
+  performs one BP stop/start cycle, promotes the bound files and either verifies normal readiness
+  then removes all transaction residue or truthfully retains the forward state without rollback or
+  a second restart. Re-entry never regenerates a key or repeats cold signing. Skill v20 and the local
+  website prefer existing `pending/node.cert`, expose no Phase C/new public command and the complete
+  release-candidate gate passes without a production mutation.
+- 2026-07-20 p6-1-fix18 started: operator acceptance reproduced `genesis=""` while the BP container
+  was restart-looping. Read-only diagnostics proved the declared mainnet genesis hashes to the exact
+  spec value and that the fixed staged/previous files remain present. The operator approved a
+  complexity-bounded Phase-B recovery branch and explicitly rejected a new independent Phase C.
+
+## 69. Seventeenth Follow-up Completion And Evidence (append-only)
+
+- [x] p6-1-fix18 completed: `kes-rotation/install-opcert` now classifies a restarting/stopped BP as
+  one bounded Phase-B recovery branch. The target probe and executor map only signed fixed paths
+  through Docker bind metadata, read only bounded public genesis/vkey/opcert bytes, and inspect
+  signing-key metadata without opening secret contents. Missing runtime evidence is reported as
+  unavailable rather than as a false network/genesis mismatch.
+- A healthy declared relay supplies candidate-bound KES period and protocol counter evidence. That
+  evidence is signed into the exact fleet permit and checked against the public artifact digest;
+  normal direct target preflight retains its existing BP query path, while restart-loop preflight
+  refuses without relay evidence. No general offline admission, public Phase C or new operation was
+  added.
+- The recovery executor is one compiled helper using the exact current image with `--network none`,
+  `--pull never`, `--rm`, read-only rootfs and fixed `--volumes-from`. An unpromoted candidate always
+  reruns idempotent prepare before one stop/promote/start. A promoted candidate rejoins the existing
+  verification/cleanup path. Failure is forward-only and never restores or restarts the previous
+  credentials.
+- Skill v20, the operations reference and the generated local website route an existing fixed
+  `pending/node.cert` directly into Phase B, describe restart-loop recovery as a branch rather than
+  a third workflow, and preserve all ordinary operation readiness gates.
+- TC-50 | stack: shell+python | command: `python3 tests/test_probe.py` | result: pass | note: a fake
+  restart-loop makes every in-container command fail while the probe still derives exact public
+  topology/config/opcert/genesis hashes and private-key metadata from the fixed bind layout; node
+  and socket readiness remain false.
+- TC-51 | stack: rust+python | command: `python3 tests/test_s0020_kes_airgap_preflight.py`, `python3
+  tests/test_s0020_stateless_plan.py`, and `python3 tests/test_s0020_stateless_apply.py` | result:
+  pass | note: no-write artifact preflight, operation-scoped offline BP qualification, healthy relay
+  evidence, artifact binding and signed permit behavior pass; ordinary disruptive readiness remains
+  unchanged.
+- TC-52 | stack: rust+python | command: `cargo fmt --all -- --check`, `cargo test -q -p ouro --lib`,
+  `cargo clippy -q -p ouro --all-targets -- -D warnings`, and `python3
+  tests/test_s0025_kes_rotation.py` | result: pass | note: 175 Rust tests pass; the mock Phase-B
+  restart-loop transaction performs exactly one prepare, promotion, stop, start and cleanup, with
+  no key regeneration, cold-signing or rollback.
+- TC-52 | stack: website+release | command: `./web/onboarding/build.sh`, `python3
+  tests/test_web_generator.py`, `python3 tests/test_skill_docs.py`, `make ci`, and `make
+  release-candidate` | result: pass | note: the local site embeds canonical Skill v20, all nine web
+  generation tests and the full CI boundary suite pass, and the macOS CLI plus Linux/x86_64 runner
+  release candidate was rebuilt and verified without publication or production mutation.
+- Commit exception: no item commit was created because the shared worktree already contained broad
+  unrelated/uncommitted Rust changes plus operator-owned `pool-spec.yaml` and KES handoff artifacts.
+  Those files were preserved; staging or committing the mixed worktree would violate change
+  isolation. S0025 remains active and is not closed pending operator acceptance.
+
+## 70. Closure (append-only)
+
+- 2026-07-21T10:44:00+08:00 结项：operator explicitly closed S0025 with `结项原因: delivered`. The
+  release-candidate scope (six external Skills, digest-pinned operations, signed release catalog,
+  KES rotation Phase A/B including the bounded restart-loop recovery branch) is treated as delivered.
+  Any residual `[~]`/`[ ]` items are intentionally not carried forward inside S0025.
+- 运维发现推动后续范围：during live KES rotation operation the operator identified that the Upgrade
+  flow recreates the node via a raw `docker rm -f` + `docker run` reconstruction that (1) hardcodes
+  `orchestration: "run"` in the probe and never reads `com.docker.compose.*` labels, so a
+  Compose-deployed node is silently recreated outside Compose management, and (2) drops container
+  labels on recreate. This orchestration-aware Upgrade redesign is scoped to a new spec (S0026) and
+  is NOT retrofitted into S0025.
+- 2026-07-21T14:44:00+08:00 落库一致性修复：the p6-1 KES-rotation implementation that was built into the
+  release-candidate control binary (`./target/release-candidate-control/release/ouro-ops`) had been
+  living only in the working tree since the `p6-1-fix17` commit (2026-07-20). It is now committed so
+  that the `completed`/`delivered` status is consistent with the repository state (previously "spec
+  says delivered but code never landed"). The operator-local `ouro-kes-rotation/` handoff artifacts
+  and `pool-spec.yaml` are intentionally git-ignored and excluded from the repository.

@@ -214,7 +214,10 @@ fn shell_quote(value: &str) -> String {
 }
 
 fn shell_join_argv(argv: &[String]) -> String {
-    argv.iter().map(|arg| shell_quote(arg)).collect::<Vec<_>>().join(" ")
+    argv.iter()
+        .map(|arg| shell_quote(arg))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[derive(Debug, Clone, Serialize)]

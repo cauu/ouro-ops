@@ -44,7 +44,9 @@ impl Readiness {
     /// Role-specific readiness verdict. Ok = the write's postcondition holds.
     pub fn evaluate(&self) -> Result<()> {
         let fail = |why: &str| {
-            Err(OuroError::Validation(format!("readiness proxy failed: {why} (§2.6a)")))
+            Err(OuroError::Validation(format!(
+                "readiness proxy failed: {why} (§2.6a)"
+            )))
         };
         if !self.node_running {
             return fail("node not running");
@@ -89,7 +91,11 @@ pub fn bind_confirm(canonical_intent_hash: &str, diff_summary: &str, secret: &[u
     mac.update(canonical_intent_hash.as_bytes());
     mac.update(b"|");
     mac.update(diff_summary.as_bytes());
-    mac.finalize().into_bytes().iter().map(|b| format!("{b:02x}")).collect()
+    mac.finalize()
+        .into_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 pub fn verify_confirm(

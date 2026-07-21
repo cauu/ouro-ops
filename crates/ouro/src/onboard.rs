@@ -63,8 +63,7 @@ pub const LEGACY_SUDOERS_PATH: &str = "/etc/sudoers.d/ouro-exec";
 pub const LEGACY_WRAPPER_PATH: &str = "/usr/local/sbin/ouro-tool-run";
 const SSH_ROLLBACK_DIR: &str = "/var/lib/ouro/onboard-ssh-rollback";
 const SSH_ROLLBACK_SCRIPT_PATH: &str = "/usr/local/sbin/ouro-onboard-ssh-rollback";
-const SSH_ROLLBACK_SERVICE_PATH: &str =
-    "/etc/systemd/system/ouro-onboard-ssh-rollback.service";
+const SSH_ROLLBACK_SERVICE_PATH: &str = "/etc/systemd/system/ouro-onboard-ssh-rollback.service";
 const SSH_ROLLBACK_TIMER_PATH: &str = "/etc/systemd/system/ouro-onboard-ssh-rollback.timer";
 const SSH_ROLLBACK_LOCK: &str = "/var/lib/ouro/onboard-ssh-rollback.lock";
 const SSH_ROLLBACK_SERVICE: &str = "[Unit]\n\
@@ -253,7 +252,9 @@ fn accepted_algorithm_check(control_pubkey: &str) -> Result<String> {
             "(accepted[\"rsa-sha2-512\"] || accepted[\"rsa-sha2-256\"] || accepted[\"ssh-rsa\"])"
                 .to_string()
         }
-        "ssh-ed25519" | "sk-ssh-ed25519@openssh.com" | "ecdsa-sha2-nistp256"
+        "ssh-ed25519"
+        | "sk-ssh-ed25519@openssh.com"
+        | "ecdsa-sha2-nistp256"
         | "ecdsa-sha2-nistp384" => format!("accepted[\"{algorithm}\"]"),
         _ => {
             return Err(OuroError::Validation(
@@ -298,10 +299,7 @@ fn effective_sshd_policy_check(bootstrap_user: &str, control_pubkey: &str) -> Re
     ))
 }
 
-fn effective_sshd_policy_and_reload(
-    bootstrap_user: &str,
-    control_pubkey: &str,
-) -> Result<String> {
+fn effective_sshd_policy_and_reload(bootstrap_user: &str, control_pubkey: &str) -> Result<String> {
     Ok(format!(
         "{} && {{ systemctl reload ssh 2>/dev/null || service ssh reload 2>/dev/null || systemctl reload sshd 2>/dev/null; }}",
         effective_sshd_policy_check(bootstrap_user, control_pubkey)?
@@ -316,12 +314,16 @@ fn validate_guard_id(guard_id: &str) -> Result<()> {
     {
         Ok(())
     } else {
-        Err(OuroError::Validation("invalid internal SSH rollback guard id".into()))
+        Err(OuroError::Validation(
+            "invalid internal SSH rollback guard id".into(),
+        ))
     }
 }
 
 fn validate_authkey_stage(authkey_stage: &str) -> Result<()> {
-    let suffix = authkey_stage.strip_prefix("/tmp/ouro-onboard-authkey-").unwrap_or("");
+    let suffix = authkey_stage
+        .strip_prefix("/tmp/ouro-onboard-authkey-")
+        .unwrap_or("");
     if !suffix.is_empty()
         && suffix
             .bytes()
@@ -329,14 +331,18 @@ fn validate_authkey_stage(authkey_stage: &str) -> Result<()> {
     {
         Ok(())
     } else {
-        Err(OuroError::Validation("invalid internal authorized-key staging path".into()))
+        Err(OuroError::Validation(
+            "invalid internal authorized-key staging path".into(),
+        ))
     }
 }
 
 fn guard_stage_path(kind: &str, guard_id: &str) -> Result<String> {
     validate_guard_id(guard_id)?;
     if !matches!(kind, "script" | "service" | "timer" | "sshd") {
-        return Err(OuroError::Validation("invalid internal SSH guard stage kind".into()));
+        return Err(OuroError::Validation(
+            "invalid internal SSH guard stage kind".into(),
+        ));
     }
     Ok(format!("/tmp/ouro-onboard-{kind}-{guard_id}"))
 }
@@ -443,7 +449,10 @@ pub fn onboard_plan(
     validate_bootstrap_user(bootstrap_user)?;
     validate_authkey_stage(authkey_stage)?;
     validate_guard_id(guard_id)?;
-    let run = |desc: &str, cmd: &str| Step::Run { desc: desc.into(), cmd: cmd.into() };
+    let run = |desc: &str, cmd: &str| Step::Run {
+        desc: desc.into(),
+        cmd: cmd.into(),
+    };
     let content = |desc: &str, content: String, remote: &str, mode: &str| Step::PushContent {
         desc: desc.into(),
         content,
@@ -728,12 +737,8 @@ pub fn execute_onboard(
         manifest.steps.insert(0, preflight_result);
         manifest
     } else {
-        let command = convergence_probe(
-            &target.user,
-            control_pubkey,
-            ouro_binary,
-            &confirm_secret,
-        )?;
+        let command =
+            convergence_probe(&target.user, control_pubkey, ouro_binary, &confirm_secret)?;
         let current = transport.run(target, key_path, host_key, &command)?;
         if current.status == 255 {
             return Err(OuroError::Validation(format!(
@@ -848,7 +853,12 @@ mod tests {
             .stderr(Stdio::null())
             .spawn()
             .unwrap();
-        child.stdin.as_mut().unwrap().write_all(input.as_bytes()).unwrap();
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
         child.wait().unwrap().success()
     }
 
@@ -865,7 +875,10 @@ mod tests {
         assert!(OP_WRAPPER.contains("unset OURO_ATTESTATION OURO_ALLOWLIST_FILE OURO_PROBE_LIB"));
         assert!(INBOX_WRAPPER.contains("OURO_HOME=/var/lib/ouro"));
         assert!(INBOX_WRAPPER.contains("unset OURO_ATTESTATION OURO_ALLOWLIST_FILE OURO_PROBE_LIB"));
-        assert!(!OP_WRAPPER.contains("tool run"), "greenfield: no S0017 tool-run wrapper");
+        assert!(
+            !OP_WRAPPER.contains("tool run"),
+            "greenfield: no S0017 tool-run wrapper"
+        );
         // sudoers confines ouro-op to the op wrapper only.
         assert!(OP_SUDOERS.contains("ouro-op ALL=(root) NOPASSWD: /usr/local/sbin/ouro-op-run"));
         assert!(OP_SUDOERS.contains("/usr/local/sbin/ouro-inbox-stage"));
@@ -874,7 +887,10 @@ mod tests {
         assert!(d.contains(&"guarded install, validate and reload SSH policy"));
         assert!(plan
             .iter()
-            .filter_map(|step| match step { Step::Run { cmd, .. } => Some(cmd), _ => None })
+            .filter_map(|step| match step {
+                Step::Run { cmd, .. } => Some(cmd),
+                _ => None,
+            })
             .any(|command| command.contains(LEGACY_SSHD_DROP_IN_PATH)));
     }
 
@@ -885,12 +901,14 @@ mod tests {
         let pos = |x: &str| d.iter().position(|s| *s == x).unwrap();
         assert!(pos("install ouro-ops binary") < pos("install op wrapper"));
         assert!(pos("install op wrapper") < pos("install control key (ouro-op)"));
-        assert!(pos("create attestation reader group") == 0, "attestation group first");
+        assert!(
+            pos("create attestation reader group") == 0,
+            "attestation group first"
+        );
         assert!(pos("install control key (ouro-diag)") < pos("arm SSH policy rollback"));
         assert!(pos("stage hardened sshd policy") < pos("arm SSH policy rollback"));
         assert!(
-            pos("arm SSH policy rollback")
-                < pos("guarded install, validate and reload SSH policy")
+            pos("arm SSH policy rollback") < pos("guarded install, validate and reload SSH policy")
         );
         assert!(
             pos("guarded install, validate and reload SSH policy") == d.len() - 1,
@@ -918,8 +936,7 @@ mod tests {
             SSHD_MAIN_INCLUDE_AWK,
             "PermitRootLogin prohibit-password\n"
         ));
-        let multi =
-            "Include /etc/ssh/sshd_config.d/*.conf /etc/ssh/custom.conf\n";
+        let multi = "Include /etc/ssh/sshd_config.d/*.conf /etc/ssh/custom.conf\n";
         assert!(!awk_accepts(SSHD_MAIN_INCLUDE_AWK, multi));
         assert!(!awk_accepts(SSHD_GLOBAL_SHAPE_AWK, multi));
         assert!(!awk_accepts(
@@ -947,20 +964,32 @@ strictmodes yes\n\
 pubkeyacceptedalgorithms ssh-ed25519,rsa-sha2-512\n";
         assert!(awk_accepts(&program, good));
         for bad in [
-            good.replace("authenticationmethods publickey", "authenticationmethods any"),
+            good.replace(
+                "authenticationmethods publickey",
+                "authenticationmethods any",
+            ),
             good.replace(
                 "authorizedkeysfile .ssh/authorized_keys",
                 "authorizedkeysfile .ssh/authorized_keys /etc/ssh/shared-keys",
             ),
-            good.replace("authorizedkeyscommand none", "authorizedkeyscommand /usr/bin/keys"),
-            good.replace("trustedusercakeys none", "trustedusercakeys /etc/ssh/user-ca.pub"),
+            good.replace(
+                "authorizedkeyscommand none",
+                "authorizedkeyscommand /usr/bin/keys",
+            ),
+            good.replace(
+                "trustedusercakeys none",
+                "trustedusercakeys /etc/ssh/user-ca.pub",
+            ),
             good.replace("strictmodes yes", "strictmodes no"),
             good.replace(
                 "pubkeyacceptedalgorithms ssh-ed25519,rsa-sha2-512",
                 "pubkeyacceptedalgorithms rsa-sha2-512",
             ),
         ] {
-            assert!(!awk_accepts(&program, &bad), "unsafe fixture passed:\n{bad}");
+            assert!(
+                !awk_accepts(&program, &bad),
+                "unsafe fixture passed:\n{bad}"
+            );
         }
     }
 
@@ -1040,10 +1069,16 @@ pubkeyacceptedalgorithms ssh-ed25519,rsa-sha2-512\n";
         assert_eq!(policy.allow_users, ["ouro-op", "ouro-diag", "cardano"]);
         assert_eq!(policy.bootstrap_user, "cardano");
         assert!(policy.bootstrap_user_preserved);
-        assert!(policy.rendered_config.contains("AllowUsers ouro-op ouro-diag cardano"));
+        assert!(policy
+            .rendered_config
+            .contains("AllowUsers ouro-op ouro-diag cardano"));
         assert_eq!(
             policy.legacy_s0017_paths_retired,
-            [LEGACY_SSHD_DROP_IN_PATH, LEGACY_SUDOERS_PATH, LEGACY_WRAPPER_PATH]
+            [
+                LEGACY_SSHD_DROP_IN_PATH,
+                LEGACY_SUDOERS_PATH,
+                LEGACY_WRAPPER_PATH
+            ]
         );
         let effective = effective_sshd_policy_and_reload("cardano", TEST_KEY).unwrap();
         assert!(effective.contains("sshd -T"));
@@ -1060,7 +1095,10 @@ pubkeyacceptedalgorithms ssh-ed25519,rsa-sha2-512\n";
         assert!(effective.contains("trustedusercakeys"));
         assert!(effective.contains("strictmodes"));
         assert!(effective.contains("accepted[\"ssh-ed25519\"]"));
-        assert!(!effective.contains("|| true"), "reload failure must fail onboarding");
+        assert!(
+            !effective.contains("|| true"),
+            "reload failure must fail onboarding"
+        );
         let shape = sshd_policy_shape_preflight();
         assert!(shape.contains("NF != 2"));
         assert!(shape.contains("if (!seen) exit 1"));
@@ -1078,10 +1116,7 @@ pubkeyacceptedalgorithms ssh-ed25519,rsa-sha2-512\n";
             "ouro-op",
             "ouro-diag",
         ] {
-            assert!(
-                test_plan(invalid).is_err(),
-                "rejected {invalid:?}"
-            );
+            assert!(test_plan(invalid).is_err(), "rejected {invalid:?}");
         }
     }
 
@@ -1107,7 +1142,10 @@ pubkeyacceptedalgorithms ssh-ed25519,rsa-sha2-512\n";
         assert!(test_plan("ubuntu")
             .unwrap()
             .iter()
-            .filter_map(|step| match step { Step::Run { cmd, .. } => Some(cmd), _ => None })
+            .filter_map(|step| match step {
+                Step::Run { cmd, .. } => Some(cmd),
+                _ => None,
+            })
             .any(|command| command.contains(TEST_STAGE)));
     }
 
@@ -1120,8 +1158,7 @@ pubkeyacceptedalgorithms ssh-ed25519,rsa-sha2-512\n";
         assert!(SSH_ROLLBACK_SCRIPT.contains("20-ouro-s0019.conf"));
         assert!(SSH_ROLLBACK_SCRIPT.contains("sshd -t"));
         let arm = ssh_rollback_arm_command(TEST_GUARD).unwrap();
-        let commit =
-            guarded_ssh_policy_commit_command(TEST_GUARD, "cardano", TEST_KEY).unwrap();
+        let commit = guarded_ssh_policy_commit_command(TEST_GUARD, "cardano", TEST_KEY).unwrap();
         let disarm = ssh_rollback_disarm_command(TEST_GUARD, "cardano", TEST_KEY).unwrap();
         assert!(arm.contains("/tmp/ouro-onboard-script-test-guard-1"));
         assert!(arm.contains("systemctl enable --now ouro-onboard-ssh-rollback.timer"));

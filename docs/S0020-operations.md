@@ -94,6 +94,15 @@ recovery material; the same Phase-B workflow can later verify and clean that sta
 install or restart. Success verifies the fixed stage and all recovery backups are absent before
 reporting completion.
 
+A BP Docker restart loop is handled only as a bounded Phase-B branch; it is not a third KES phase or
+a general offline-operation framework. Ouro derives network/genesis/layout, public opcert hashes and
+key metadata from the already signed fixed bind layout, while one declared healthy relay validates
+the candidate's current KES window and protocol counter. The signed fleet permit binds that relay
+evidence to the exact public `node.cert`. Apply then runs the exact current node image as one
+network-disabled, no-pull, auto-removed filesystem helper, performs one stop/promote/start, and uses
+the ordinary candidate-bound postcondition before deleting staged/recovery material. It never runs
+Phase A, generates another key, advances the cold counter, or restores the known-bad old triple.
+
 Use `ouro-ops inbox preview --type opcert|tx --file <operator-named-file>` on control. It validates
 the public artifact and returns a content-addressed reference without writing an inbox. Put that ref
 in the target plan. Approved apply reopens the same file, verifies its bytes against the candidate,

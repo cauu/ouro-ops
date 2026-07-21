@@ -284,22 +284,40 @@ mod tests {
             22,
             Path::new("/creds/relay1"),
             Path::new("/home/op/.ouro/known_hosts"),
-            &["run".into(), "--op".into(), "runtime/restart".into(), "--local".into()],
+            &[
+                "run".into(),
+                "--op".into(),
+                "runtime/restart".into(),
+                "--local".into(),
+            ],
             "sha256:abc",
         );
         let j = argv.join(" ");
         assert!(j.contains("ouro-op@10.0.0.1"), "confined principal");
-        assert!(!j.contains("ouro-exec@"), "must be the onboard-installed ouro-op, not ouro-exec");
+        assert!(
+            !j.contains("ouro-exec@"),
+            "must be the onboard-installed ouro-op, not ouro-exec"
+        );
         assert!(j.contains("StrictHostKeyChecking=yes"), "host key pinned");
         assert!(j.contains("UserKnownHostsFile=/home/op/.ouro/known_hosts"));
         assert!(j.contains("GlobalKnownHostsFile=/dev/null"));
         assert!(j.contains("-F /dev/null"));
         assert!(j.contains("IdentityFile=none") && j.contains("IdentityAgent=none"));
         assert!(j.contains("IdentitiesOnly=yes"));
-        assert!(j.contains("sudo -n /usr/local/sbin/ouro-op-run"), "fixed wrapper");
+        assert!(
+            j.contains("sudo -n /usr/local/sbin/ouro-op-run"),
+            "fixed wrapper"
+        );
         assert!(j.contains("'runtime/restart'"), "op quoted");
-        assert!(j.contains("--expect-embedded 'sha256:abc'"), "parity carried");
-        assert_eq!(j.matches("--expect-embedded").count(), 1, "parity flag exactly once");
+        assert!(
+            j.contains("--expect-embedded 'sha256:abc'"),
+            "parity carried"
+        );
+        assert_eq!(
+            j.matches("--expect-embedded").count(),
+            1,
+            "parity flag exactly once"
+        );
         assert!(!j.contains("accept-new"));
     }
 
@@ -312,7 +330,12 @@ mod tests {
             Path::new("/creds/bp1"),
             Path::new("/kh"),
             &"a".repeat(64),
-            &["target".into(), "observe".into(), "--node".into(), "bp1".into()],
+            &[
+                "target".into(),
+                "observe".into(),
+                "--node".into(),
+                "bp1".into(),
+            ],
         )
         .unwrap();
         let joined = argv.join(" ");
@@ -333,25 +356,49 @@ mod tests {
     #[test]
     fn ephemeral_runner_rejects_digest_user_and_empty_command() {
         assert!(ephemeral_runner_dispatch_argv(
-            "h", 22, "cardano", Path::new("/k"), Path::new("/kh"), "ABC", &["x".into()]
-        ).is_err());
+            "h",
+            22,
+            "cardano",
+            Path::new("/k"),
+            Path::new("/kh"),
+            "ABC",
+            &["x".into()]
+        )
+        .is_err());
         assert!(ephemeral_runner_dispatch_argv(
-            "h", 22, "-oProxyCommand=id", Path::new("/k"), Path::new("/kh"),
-            &"a".repeat(64), &["x".into()]
-        ).is_err());
+            "h",
+            22,
+            "-oProxyCommand=id",
+            Path::new("/k"),
+            Path::new("/kh"),
+            &"a".repeat(64),
+            &["x".into()]
+        )
+        .is_err());
         assert!(ephemeral_runner_dispatch_argv(
-            "h", 22, "cardano", Path::new("/k"), Path::new("/kh"),
-            &"a".repeat(64), &[]
-        ).is_err());
+            "h",
+            22,
+            "cardano",
+            Path::new("/k"),
+            Path::new("/kh"),
+            &"a".repeat(64),
+            &[]
+        )
+        .is_err());
     }
 
     #[test]
     fn ephemeral_runner_quotes_every_target_argument() {
         let argv = ephemeral_runner_dispatch_argv(
-            "h", 22, "cardano", Path::new("/k"), Path::new("/kh"),
+            "h",
+            22,
+            "cardano",
+            Path::new("/k"),
+            Path::new("/kh"),
             &"a".repeat(64),
             &["target".into(), "x'; touch /tmp/pwned #".into()],
-        ).unwrap();
+        )
+        .unwrap();
         let remote = argv.last().unwrap();
         assert!(remote.contains("'x'\\''; touch /tmp/pwned #'"));
     }
@@ -423,38 +470,68 @@ mod tests {
     #[test]
     fn hostile_arg_stays_quoted() {
         let argv = op_dispatch_argv(
-            "h", 22, Path::new("/k"), Path::new("/kh"),
-            &["run".into(), "--param".into(), "machine=x'; rm -rf / #".into()],
+            "h",
+            22,
+            Path::new("/k"),
+            Path::new("/kh"),
+            &[
+                "run".into(),
+                "--param".into(),
+                "machine=x'; rm -rf / #".into(),
+            ],
             "d",
         );
         let j = argv.join(" ");
         // The metachars are inside a single-quoted span; the remote shell sees them as data.
-        assert!(j.contains("'machine=x'\\''; rm -rf / #'"), "hostile arg quoted: {j}");
+        assert!(
+            j.contains("'machine=x'\\''; rm -rf / #'"),
+            "hostile arg quoted: {j}"
+        );
     }
 
     #[test]
     fn adopt_dispatch_uses_bootstrap_account() {
         let argv = adopt_dispatch_argv(
-            "10.0.0.2", 22, "ubuntu", Path::new("/creds/bp1"),
-            Path::new("/kh"), &["--node".into(), "bp1".into(), "--role".into(), "bp".into()],
+            "10.0.0.2",
+            22,
+            "ubuntu",
+            Path::new("/creds/bp1"),
+            Path::new("/kh"),
+            &["--node".into(), "bp1".into(), "--role".into(), "bp".into()],
             "sha256:abc",
-        ).unwrap();
+        )
+        .unwrap();
         let j = argv.join(" ");
         assert!(j.contains("ubuntu@10.0.0.2"), "bootstrap account");
         assert!(j.contains("sudo -n env -i HOME=/root OURO_HOME=/var/lib/ouro"));
-        assert!(j.contains("/usr/local/bin/ouro-ops adopt --local"), "adopt --local on target");
+        assert!(
+            j.contains("/usr/local/bin/ouro-ops adopt --local"),
+            "adopt --local on target"
+        );
         assert!(j.contains("'bp1'"));
-        assert!(j.contains("--expect-embedded 'sha256:abc'"), "parity carried");
-        assert_eq!(j.matches("--expect-embedded").count(), 1, "parity flag exactly once");
+        assert!(
+            j.contains("--expect-embedded 'sha256:abc'"),
+            "parity carried"
+        );
+        assert_eq!(
+            j.matches("--expect-embedded").count(),
+            1,
+            "parity flag exactly once"
+        );
     }
 
     #[test]
     fn adopt_dispatch_rejects_ssh_option_shaped_bootstrap_user() {
         assert!(adopt_dispatch_argv(
-            "10.0.0.2", 22, "-oProxyCommand=touch /tmp/pwned", Path::new("/creds/bp1"),
-            Path::new("/kh"), &[],
+            "10.0.0.2",
+            22,
+            "-oProxyCommand=touch /tmp/pwned",
+            Path::new("/creds/bp1"),
+            Path::new("/kh"),
+            &[],
             "sha256:abc",
-        ).is_err());
+        )
+        .is_err());
     }
 
     #[test]
@@ -470,6 +547,8 @@ mod tests {
         let joined = argv.join(" ");
         assert!(joined.contains("ouro-op@10.0.0.3"));
         assert!(joined.contains("StrictHostKeyChecking=yes"));
-        assert!(joined.contains("sudo -n /usr/local/sbin/ouro-inbox-stage 'opcert' 'opcert-deadbeef@sha256:"));
+        assert!(joined.contains(
+            "sudo -n /usr/local/sbin/ouro-inbox-stage 'opcert' 'opcert-deadbeef@sha256:"
+        ));
     }
 }

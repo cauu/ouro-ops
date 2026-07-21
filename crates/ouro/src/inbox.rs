@@ -72,9 +72,11 @@ pub fn open_source(kind: ArtifactType, source: &Path) -> Result<fs::File> {
         use std::os::unix::fs::OpenOptionsExt;
         options.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
     }
-    let file = options.open(source)
+    let file = options
+        .open(source)
         .map_err(|e| OuroError::Validation(format!("cannot open artifact safely: {e}")))?;
-    let metadata = file.metadata()
+    let metadata = file
+        .metadata()
         .map_err(|e| OuroError::Validation(format!("cannot inspect opened artifact: {e}")))?;
     if !metadata.file_type().is_file() {
         return Err(OuroError::Validation(
@@ -120,10 +122,13 @@ pub fn preview_source(kind: ArtifactType, source: &Path) -> Result<(fs::File, Ar
     }
     let digest = hex_digest(hasher.finalize().as_slice());
     file.seek(SeekFrom::Start(0))?;
-    Ok((file, ArtifactPreview {
-        artifact_ref: format!("{}-{}@sha256:{}", kind.prefix(), &digest[..8], digest),
-        size_bytes,
-    }))
+    Ok((
+        file,
+        ArtifactPreview {
+            artifact_ref: format!("{}-{}@sha256:{}", kind.prefix(), &digest[..8], digest),
+            size_bytes,
+        },
+    ))
 }
 
 /// Bounded ingress used by the target-side SSH stdin wrapper. Reads at most `limit + 1`, so an
@@ -157,9 +162,9 @@ pub fn stage_reader_expected<R: Read>(
         if read == 0 {
             break;
         }
-        total = total.checked_add(read).ok_or_else(|| {
-            OuroError::Validation("artifact size overflow".into())
-        })?;
+        total = total
+            .checked_add(read)
+            .ok_or_else(|| OuroError::Validation("artifact size overflow".into()))?;
         if total > kind.max_bytes() {
             drop(output);
             fs::remove_file(&tmp).ok();
@@ -236,11 +241,7 @@ pub fn resolve(inbox: &Path, artifact_ref: &str) -> Result<PathBuf> {
 
 /// Resolve an artifact for a consuming operation, binding both the human id prefix and the
 /// expected type to the revalidated bytes. `opcert-…` can no longer be relabeled as a tx/image.
-pub fn resolve_typed(
-    inbox: &Path,
-    artifact_ref: &str,
-    expected: ArtifactType,
-) -> Result<PathBuf> {
+pub fn resolve_typed(inbox: &Path, artifact_ref: &str, expected: ArtifactType) -> Result<PathBuf> {
     let (actual, digest) = parse_reference(artifact_ref)?;
     if actual != expected {
         return Err(OuroError::Validation(format!(
@@ -253,10 +254,14 @@ pub fn resolve_typed(
     let metadata = fs::symlink_metadata(&path)
         .map_err(|_| OuroError::Validation(format!("artifact {digest} not in inbox — refused")))?;
     if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
-        return Err(OuroError::Validation("inbox artifact is not a regular file".into()));
+        return Err(OuroError::Validation(
+            "inbox artifact is not a regular file".into(),
+        ));
     }
     if metadata.len() > expected.max_bytes() as u64 {
-        return Err(OuroError::Validation("stored artifact exceeds its type limit".into()));
+        return Err(OuroError::Validation(
+            "stored artifact exceeds its type limit".into(),
+        ));
     }
     if hash_file(&path, expected.max_bytes())? != digest {
         return Err(OuroError::Validation(
@@ -279,7 +284,9 @@ fn hash_file(path: &Path, max_bytes: usize) -> Result<String> {
         }
         total = total.saturating_add(read);
         if total > max_bytes {
-            return Err(OuroError::Validation("stored artifact exceeds its type limit".into()));
+            return Err(OuroError::Validation(
+                "stored artifact exceeds its type limit".into(),
+            ));
         }
         hasher.update(&buffer[..read]);
     }
@@ -300,7 +307,9 @@ fn parse_reference(artifact_ref: &str) -> Result<(ArtifactType, &str)> {
         .split_once("@sha256:")
         .ok_or_else(|| OuroError::Validation("malformed artifact reference".into()))?;
     if digest.len() != 64
-        || !digest.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        || !digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
         return Err(OuroError::Validation("malformed artifact digest".into()));
     }
@@ -328,8 +337,14 @@ fn validate_shape(kind: ArtifactType, bytes: &[u8]) -> Result<()> {
             let object = envelope.as_object().ok_or_else(|| {
                 OuroError::Validation("opcert/tx envelope must be a JSON object".into())
             })?;
-            let envelope_type = object.get("type").and_then(|value| value.as_str()).unwrap_or("");
-            let cbor = object.get("cborHex").and_then(|value| value.as_str()).unwrap_or("");
+            let envelope_type = object
+                .get("type")
+                .and_then(|value| value.as_str())
+                .unwrap_or("");
+            let cbor = object
+                .get("cborHex")
+                .and_then(|value| value.as_str())
+                .unwrap_or("");
             if cbor.is_empty()
                 || cbor.len() % 2 != 0
                 || !cbor.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -340,8 +355,12 @@ fn validate_shape(kind: ArtifactType, bytes: &[u8]) -> Result<()> {
             }
             match kind {
                 ArtifactType::Opcert if envelope_type == "NodeOperationalCertificate" => Ok(()),
-                ArtifactType::Tx if envelope_type.contains("Tx")
-                    && envelope_type != "NodeOperationalCertificate" => Ok(()),
+                ArtifactType::Tx
+                    if envelope_type.contains("Tx")
+                        && envelope_type != "NodeOperationalCertificate" =>
+                {
+                    Ok(())
+                }
                 ArtifactType::Opcert => Err(OuroError::Validation(
                     "opcert envelope type must be NodeOperationalCertificate".into(),
                 )),
@@ -362,7 +381,9 @@ pub fn gc(inbox: &Path, now_secs: u64, ttl_secs: u64) -> usize {
     };
     for e in entries.flatten() {
         let Ok(meta) = e.metadata() else { continue };
-        let Ok(modified) = meta.modified() else { continue };
+        let Ok(modified) = meta.modified() else {
+            continue;
+        };
         let age = modified
             .elapsed()
             .map(|d| d.as_secs())
@@ -425,12 +446,31 @@ mod tests {
     #[test]
     fn shape_and_size_validation() {
         let dir = inbox("shape");
-        assert!(stage(&dir, ArtifactType::Opcert, b"not json").is_err(), "junk opcert refused");
-        assert!(stage(&dir, ArtifactType::Opcert, b"").is_err(), "empty refused");
+        assert!(
+            stage(&dir, ArtifactType::Opcert, b"not json").is_err(),
+            "junk opcert refused"
+        );
+        assert!(
+            stage(&dir, ArtifactType::Opcert, b"").is_err(),
+            "empty refused"
+        );
         let huge = vec![b'{'; MAX_OPCERT + 1];
-        assert!(stage(&dir, ArtifactType::Opcert, &huge).is_err(), "oversized refused");
-        assert!(stage(&dir, ArtifactType::Tx, br#"{"type":"Tx BabbageEra","cborHex":"aa"}"#).is_ok());
-        assert!(stage(&dir, ArtifactType::Tx, br#"{"type":"NodeOperationalCertificate","cborHex":"aa"}"#).is_err());
+        assert!(
+            stage(&dir, ArtifactType::Opcert, &huge).is_err(),
+            "oversized refused"
+        );
+        assert!(stage(
+            &dir,
+            ArtifactType::Tx,
+            br#"{"type":"Tx BabbageEra","cborHex":"aa"}"#
+        )
+        .is_ok());
+        assert!(stage(
+            &dir,
+            ArtifactType::Tx,
+            br#"{"type":"NodeOperationalCertificate","cborHex":"aa"}"#
+        )
+        .is_err());
         std::fs::remove_dir_all(&dir).ok();
     }
 

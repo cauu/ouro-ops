@@ -57,7 +57,11 @@ impl SupervisorObservation {
             return refuse("rootless runtime (only rootful docker is supported in v1)");
         }
         if self.runtime != v1::RUNTIME {
-            return refuse(&format!("runtime={} (only {} in v1)", self.runtime, v1::RUNTIME));
+            return refuse(&format!(
+                "runtime={} (only {} in v1)",
+                self.runtime,
+                v1::RUNTIME
+            ));
         }
         if !self.rootful {
             return refuse("non-rootful daemon");
@@ -71,22 +75,27 @@ impl SupervisorObservation {
         if self.node_container_count != v1::NODES_PER_HOST {
             return refuse(&format!(
                 "{} node containers on this host (v1 requires exactly {})",
-                self.node_container_count, v1::NODES_PER_HOST
+                self.node_container_count,
+                v1::NODES_PER_HOST
             ));
         }
         if v1::REQUIRE_BIND_MOUNTS && !self.uses_bind_mounts {
-            return refuse("node data/keys are not bind-mounted (named-volume-only is refused in v1)");
+            return refuse(
+                "node data/keys are not bind-mounted (named-volume-only is refused in v1)",
+            );
         }
         if self.daemon_socket != v1::DAEMON_SOCKET {
             return refuse(&format!(
                 "daemon socket {} (v1 requires {})",
-                self.daemon_socket, v1::DAEMON_SOCKET
+                self.daemon_socket,
+                v1::DAEMON_SOCKET
             ));
         }
         if self.restart_policy != v1::RESTART_POLICY {
             return refuse(&format!(
                 "restart policy {} (v1 requires {})",
-                self.restart_policy, v1::RESTART_POLICY
+                self.restart_policy,
+                v1::RESTART_POLICY
             ));
         }
         Ok(())
@@ -125,13 +134,18 @@ mod tests {
             ("compose", |o| o.orchestration = "compose".into()),
             ("multi-node", |o| o.node_container_count = 2),
             ("named-volume-only", |o| o.uses_bind_mounts = false),
-            ("nonstandard-socket", |o| o.daemon_socket = "/run/user/1000/docker.sock".into()),
+            ("nonstandard-socket", |o| {
+                o.daemon_socket = "/run/user/1000/docker.sock".into()
+            }),
             ("wrong-restart", |o| o.restart_policy = "no".into()),
         ];
         for (name, mutate) in cases {
             let mut o = conforming();
             mutate(&mut o);
-            assert!(o.require_conformant().is_err(), "shape {name} must be refused");
+            assert!(
+                o.require_conformant().is_err(),
+                "shape {name} must be refused"
+            );
         }
     }
 }

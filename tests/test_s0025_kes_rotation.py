@@ -30,6 +30,14 @@ def write_dynamic_probe(path: Path, state: Path) -> None:
         f"obs=json.loads({base!r})\n"
         "state=json.load(open(sys.argv[1]))\n"
         "obs['live']['kes_opcert_id']=state['active_opcert']\n"
+        "if state.get('restart_loop'):\n"
+        "  obs['live']['container_running']=False\n"
+        "  obs['live']['container_restarting']=True\n"
+        "  obs['live']['container_status']='restarting'\n"
+        "  obs['readiness']['node_running']=False\n"
+        "  obs['readiness']['socket_answers']=False\n"
+        "  obs['readiness']['tip_synced']=False\n"
+        "  obs['readiness']['kes']=None\n"
         "if state['active_opcert'] != state['initial_opcert']:\n"
         "  if state.get('readiness_delay_remaining',0)>0:\n"
         "    state['readiness_delay_remaining']-=1\n"
@@ -51,9 +59,20 @@ def write_dynamic_probe(path: Path, state: Path) -> None:
     )
 
 
-def permit_for(candidate: str, port: int) -> str:
+def permit_for(candidate: str, port: int, artifact_digest: str | None = None) -> str:
     value = json.loads(target_fleet_permit(candidate, port, int(time.time()) + 30))
     value["operation_id"] = "kes-rotation/install-opcert"
+    if artifact_digest is not None:
+        value["kes_protocol_evidence"] = {
+            "artifact_sha256": artifact_digest,
+            "relay_node": "relay1",
+            "current_period": 100,
+            "start_period": 100,
+            "end_period": 162,
+            "on_disk_counter": 7,
+            "node_state_counter": None,
+            "node_state_counter_status": "no_blocks_minted_yet",
+        }
     return json.dumps(value, separators=(",", ":"))
 
 
@@ -80,6 +99,13 @@ def main() -> None:
         "fail_post": False,
         "readiness_delay_remaining": 0,
         "fail_promotion_once": False,
+        "restart_loop": False,
+        "next_ready": False,
+        "helper_prepare_count": 0,
+        "helper_promote_count": 0,
+        "helper_finalize_count": 0,
+        "stop_count": 0,
+        "start_count": 0,
     }))
     probe = home / "probe.sh"
     write_dynamic_probe(probe, state)
@@ -95,6 +121,20 @@ def main() -> None:
         "open(log,'a').write(joined+'\\n')\n"
         "stage='/opt/cardano/config/keys/.ouro-kes-stage'\n"
         "if a[:2]==['exec','cid-plan']: a=a[2:]; joined=' '.join(a)\n"
+        "if a and a[0]=='run':\n"
+        "  script=a[-1]\n"
+        "  if 'cp -p $s/kes.skey $k/kes.skey.ouro-next' in script:\n"
+        "    s['backups']=True; s['next_ready']=True; s['helper_prepare_count']+=1\n"
+        "    s['previous_vkey']=s['active_vkey']; s['previous_opcert']=s['active_opcert']; s['previous_opcert_envelope']=s['active_opcert_envelope']\n"
+        "    raw=open(os.environ['OURO_EPHEMERAL_PAYLOAD'],'rb').read(); s['next_opcert']=hashlib.sha256(raw).hexdigest(); s['next_opcert_envelope']=json.loads(raw)\n"
+        "  elif 'mv -f $k/kes.skey.ouro-next' in script:\n"
+        "    if not s['next_ready']: sys.exit(1)\n"
+        "    s['active_vkey']=s['staged_vkey']; s['active_opcert']=s['next_opcert']; s['active_opcert_envelope']=s['next_opcert_envelope']; s['helper_promote_count']+=1; s['next_ready']=False\n"
+        "  elif 'rm -f $k/kes.skey.ouro-prev' in script:\n"
+        "    s['backups']=False; s['stage']=False; s['next_ready']=False; s['helper_finalize_count']+=1\n"
+        "  json.dump(s,open(p,'w')); sys.exit(0)\n"
+        "if a and a[0]=='stop': s['stop_count']+=1; json.dump(s,open(p,'w')); sys.exit(0)\n"
+        "if a and a[0]=='start': s['start_count']+=1; s['restart_loop']=False; json.dump(s,open(p,'w')); sys.exit(0)\n"
         "if a==['cardano-cli','--version']:\n"
         "  print('cardano-cli 10.14.0.0 - linux-x86_64 - ghc-9.6'); sys.exit(0)\n"
         "if a[:2]==['test','!']:\n"
@@ -342,7 +382,10 @@ def main() -> None:
     install_candidate = install_value["data"]["candidate_hash"]
     assert install_value["data"]["kes_rotation"]["staged_vkey_sha256"] == stage_post["kes_vkey_sha256"]
 
-    def fresh_permit(candidate: str = install_candidate) -> str:
+    def fresh_permit(
+        candidate: str = install_candidate,
+        artifact_digest: str | None = None,
+    ) -> str:
         listener = socket.socket()
         listener.bind(("127.0.0.1", 0))
         listener.listen(1)
@@ -354,7 +397,7 @@ def main() -> None:
             listener.close()
 
         threading.Thread(target=accept_probe, daemon=True).start()
-        return permit_for(candidate, relay_port)
+        return permit_for(candidate, relay_port, artifact_digest)
 
     # If promotion is interrupted before restart, the retained previous/staged transaction set is
     # recognized by the same operation. Re-entry finishes forward promotion and performs the one
@@ -510,6 +553,60 @@ def main() -> None:
     assert next_plan.returncode == 0, (next_plan, next_value)
     assert next_value["data"]["kes_rotation"]["pending_existing"] is False
     assert next_value["data"]["confirmation_required"] is True
+
+    # Phase B restart-loop recovery is not a third workflow. Given the already staged pair and the
+    # same public opcert, it plans one fixed network-disabled helper around exactly one stop/start.
+    # The healthy-relay protocol evidence is carried in the candidate-bound fleet permit.
+    restart_fixture = dict(pre_apply_state)
+    restart_fixture.update({
+        "restart_loop": True,
+        "next_ready": False,
+        "helper_prepare_count": 0,
+        "helper_promote_count": 0,
+        "helper_finalize_count": 0,
+        "stop_count": 0,
+        "start_count": 0,
+        "restart_count": 0,
+    })
+    state.write_text(json.dumps(restart_fixture))
+    restart_plan, restart_plan_value = invoke(
+        home,
+        *target_args("kes-rotation/install-opcert", *install_params),
+        env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(opcert)},
+        path=fakebin,
+    )
+    assert restart_plan.returncode == 0, (restart_plan, restart_plan_value)
+    restart_kes = restart_plan_value["data"]["kes_rotation"]
+    assert restart_kes["restart_loop_repair"] is True
+    assert restart_kes["current_period"] is None
+    commands = restart_plan_value["data"]["executor_plan"]
+    assert sum(command[:2] == ["docker", "stop"] for command in commands) == 1
+    assert sum(command[:2] == ["docker", "start"] for command in commands) == 1
+    helpers = [command for command in commands if command[:2] == ["docker", "run"]]
+    assert len(helpers) == 3
+    assert all("--network" in command and "none" in command for command in helpers)
+    assert all("--pull" in command and "never" in command for command in helpers)
+    assert not any(command[:2] == ["docker", "restart"] for command in commands)
+
+    restart_candidate = restart_plan_value["data"]["candidate_hash"]
+    repaired, repaired_value = invoke(
+        home,
+        *apply_args("kes-rotation/install-opcert", restart_candidate, *install_params),
+        "--verified-fleet-permit",
+        fresh_permit(restart_candidate, opcert_digest),
+        env_extra={**env, "OURO_EPHEMERAL_PAYLOAD": str(opcert)},
+        path=fakebin,
+    )
+    assert repaired.returncode == 0, (repaired, repaired_value)
+    repaired_state = json.loads(state.read_text())
+    assert repaired_state["active_vkey"] == KES_VKEY
+    assert repaired_state["active_opcert"] == opcert_digest
+    assert repaired_state["helper_prepare_count"] == 1
+    assert repaired_state["helper_promote_count"] == 1
+    assert repaired_state["helper_finalize_count"] == 1
+    assert repaired_state["stop_count"] == 1 and repaired_state["start_count"] == 1
+    assert repaired_state["stage"] is False and repaired_state["backups"] is False
+    assert repaired_value["data"]["live_postcondition"]["restart_performed"] is True
     print("S0025 genuine staged KES rotation mock end-to-end passed")
 
 

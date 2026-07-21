@@ -59,7 +59,9 @@ pub struct Journal {
 
 impl Journal {
     pub fn at(dir: &Path, node_id: &str) -> Journal {
-        Journal { path: dir.join(format!("{node_id}.txn.json")) }
+        Journal {
+            path: dir.join(format!("{node_id}.txn.json")),
+        }
     }
 
     pub fn record(&self, rec: &JournalRecord) -> Result<()> {
@@ -78,7 +80,8 @@ impl Journal {
                 use std::os::unix::fs::OpenOptionsExt;
                 options.mode(0o600);
             }
-            let mut f = options.open(&tmp)
+            let mut f = options
+                .open(&tmp)
                 .map_err(|e| OuroError::Validation(format!("journal write: {e}")))?;
             let bytes = serde_json::to_vec(rec)
                 .map_err(|e| OuroError::Validation(format!("journal serialize: {e}")))?;
@@ -144,7 +147,9 @@ pub struct WriteSeal {
 
 impl WriteSeal {
     pub fn at(dir: &Path, node_id: &str) -> WriteSeal {
-        WriteSeal { path: dir.join(format!("{node_id}.seal")) }
+        WriteSeal {
+            path: dir.join(format!("{node_id}.seal")),
+        }
     }
     pub fn is_sealed(&self) -> bool {
         self.path.exists()
@@ -198,7 +203,10 @@ impl WriteSeal {
 }
 
 fn rec(base: &JournalRecord, state: TxState) -> JournalRecord {
-    JournalRecord { state, ..base.clone() }
+    JournalRecord {
+        state,
+        ..base.clone()
+    }
 }
 
 /// Run a write transaction to a terminal state. Records every transition before its side effect.
@@ -240,7 +248,8 @@ pub fn run_observed(
         Err(error) => {
             rollback_to_terminal(journal, seal, base, ops, observe)?;
             return Err(OuroError::Validation(format!(
-                "commit failed for {} and was rolled back: {error}", base.operation_id
+                "commit failed for {} and was rolled back: {error}",
+                base.operation_id
             )));
         }
     }
@@ -257,7 +266,8 @@ pub fn run_observed(
         Err(error) => {
             rollback_to_terminal(journal, seal, base, ops, observe)?;
             Err(OuroError::Validation(format!(
-                "verification failed for {} and was rolled back: {error}", base.operation_id
+                "verification failed for {} and was rolled back: {error}",
+                base.operation_id
             )))
         }
     }
@@ -320,8 +330,7 @@ pub fn recover(
                 journal.record(&rec(&r, TxState::Sealed))?;
                 seal.set("interrupted transaction lacks durable recovery context")?;
                 return Err(OuroError::Validation(
-                    "interrupted transaction lacks durable recovery context — writes sealed"
-                        .into(),
+                    "interrupted transaction lacks durable recovery context — writes sealed".into(),
                 ));
             }
             // At Committing an arbitrary prefix of the executor sequence may have run. Treating a
@@ -335,8 +344,7 @@ pub fn recover(
                 journal.record(&rec(&r, TxState::Sealed))?;
                 seal.set("interrupted transaction lacks durable recovery context")?;
                 return Err(OuroError::Validation(
-                    "interrupted transaction lacks durable recovery context — writes sealed"
-                        .into(),
+                    "interrupted transaction lacks durable recovery context — writes sealed".into(),
                 ));
             }
             match (ops.verify)(&r) {
@@ -381,7 +389,10 @@ fn rollback_recovery(
         }
         Err(error) => {
             journal.record(&rec(record, TxState::Sealed))?;
-            seal.set(&format!("recovery rollback failed for {}: {error}", record.operation_id))?;
+            seal.set(&format!(
+                "recovery rollback failed for {}: {error}",
+                record.operation_id
+            ))?;
             Err(OuroError::Validation(format!(
                 "recovery rollback failed → writes sealed: {error}"
             )))
@@ -400,25 +411,44 @@ mod tests {
     fn durable() -> DurableTransaction {
         DurableTransaction {
             intent: Intent {
-                schema_version: 1, operation_id: "runtime/restart".into(), node_id: "bp1".into(),
-                pre_state_generation: 1, pre_state_hash: "h".into(), expected_post_state: "".into(),
-                nonce: "n".into(), expiry_epoch: 0, payload: json!({"machine":"bp1"}),
+                schema_version: 1,
+                operation_id: "runtime/restart".into(),
+                node_id: "bp1".into(),
+                pre_state_generation: 1,
+                pre_state_hash: "h".into(),
+                expected_post_state: "".into(),
+                nonce: "n".into(),
+                expiry_epoch: 0,
+                payload: json!({"machine":"bp1"}),
             },
             pre_attestation: AdoptionAttestation {
                 immutable: ImmutableIdentity {
-                    role: Role::Bp, contract_id: "c".into(), convention_version: 1,
-                    allowlist_version: 1, allowlist_digest: "sha256:a".into(),
-                    host_key_sha256: "hk".into(), machine_id: "bp1".into(),
-                    oci_index_digest: "i".into(), platform_manifest_digest: "p".into(),
-                    image_config_digest: "cfg".into(), platform: "linux/amd64".into(),
+                    role: Role::Bp,
+                    contract_id: "c".into(),
+                    convention_version: 1,
+                    allowlist_version: 1,
+                    allowlist_digest: "sha256:a".into(),
+                    host_key_sha256: "hk".into(),
+                    machine_id: "bp1".into(),
+                    oci_index_digest: "i".into(),
+                    platform_manifest_digest: "p".into(),
+                    image_config_digest: "cfg".into(),
+                    platform: "linux/amd64".into(),
                     container_creation_epoch: 1,
-                    entrypoint: vec![], args: vec![], mounts: vec![], network: "mainnet".into(),
-                    genesis_hash: "g".into(), public_credential_ids: vec![],
+                    entrypoint: vec![],
+                    args: vec![],
+                    mounts: vec![],
+                    network: "mainnet".into(),
+                    genesis_hash: "g".into(),
+                    public_credential_ids: vec![],
                     approval_evidence_hash: "e".into(),
                 },
                 state: ManagedState {
-                    state_generation: 1, container_id: "cid".into(), topology_hash: "t".into(),
-                    config_hash: "c".into(), kes_opcert_id: "k".into(),
+                    state_generation: 1,
+                    container_id: "cid".into(),
+                    topology_hash: "t".into(),
+                    config_hash: "c".into(),
+                    kes_opcert_id: "k".into(),
                 },
             },
             commit_plan: vec![vec!["docker".into(), "restart".into(), "cid".into()]],
@@ -430,20 +460,27 @@ mod tests {
         let d = std::env::temp_dir().join(format!("ouro-txn-{}-{name}", std::process::id()));
         std::fs::remove_dir_all(&d).ok();
         std::fs::create_dir_all(&d).unwrap();
-        (d, JournalRecord {
-            audit_id: "a1".into(),
-            operation_id: "runtime/restart".into(),
-            node_id: "bp1".into(),
-            state: TxState::Prepared,
-            durable: Some(durable()),
-        })
+        (
+            d,
+            JournalRecord {
+                audit_id: "a1".into(),
+                operation_id: "runtime/restart".into(),
+                node_id: "bp1".into(),
+                state: TxState::Prepared,
+                durable: Some(durable()),
+            },
+        )
     }
 
     #[test]
     fn happy_path_reaches_verified_and_clears() {
         let (d, base) = dirs("happy");
         let (j, s) = (Journal::at(&d, "bp1"), WriteSeal::at(&d, "bp1"));
-        let ops = TxOps { commit: &|| Ok(()), verify: &|| Ok(()), rollback: &|| Ok(()) };
+        let ops = TxOps {
+            commit: &|| Ok(()),
+            verify: &|| Ok(()),
+            rollback: &|| Ok(()),
+        };
         assert_eq!(run(&j, &s, &base, &ops).unwrap(), TxState::Verified);
         assert!(j.read().unwrap().is_none(), "journal cleared on success");
         assert!(!s.is_sealed());
@@ -456,7 +493,11 @@ mod tests {
 
         let (d, base) = dirs("observed");
         let (journal, seal) = (Journal::at(&d, "bp1"), WriteSeal::at(&d, "bp1"));
-        let ops = TxOps { commit: &|| Ok(()), verify: &|| Ok(()), rollback: &|| Ok(()) };
+        let ops = TxOps {
+            commit: &|| Ok(()),
+            verify: &|| Ok(()),
+            rollback: &|| Ok(()),
+        };
         let phases = RefCell::new(Vec::new());
         run_observed(&journal, &seal, &base, &ops, &|state| {
             phases.borrow_mut().push(state);
@@ -484,10 +525,16 @@ mod tests {
         let ops = TxOps {
             commit: &|| Ok(()),
             verify: &|| Err(OuroError::Validation("not healthy".into())),
-            rollback: &|| { rolled.set(true); Ok(()) },
+            rollback: &|| {
+                rolled.set(true);
+                Ok(())
+            },
         };
         let error = run(&j, &s, &base, &ops).unwrap_err().to_string();
-        assert!(error.contains("rolled back"), "requested operation still reports failure");
+        assert!(
+            error.contains("rolled back"),
+            "requested operation still reports failure"
+        );
         assert!(rolled.get(), "rollback ran on verify failure");
         assert!(!s.is_sealed());
         std::fs::remove_dir_all(&d).ok();
@@ -518,7 +565,10 @@ mod tests {
         // Simulate a crash: journal left at Committed, process died before verify.
         j.record(&rec(&base, TxState::Committed)).unwrap();
         // Recovery re-verifies; node is healthy → reaches Verified, clears.
-        let ops = RecoveryOps { verify: &|_| Ok(()), rollback: &|_| Ok(()) };
+        let ops = RecoveryOps {
+            verify: &|_| Ok(()),
+            rollback: &|_| Ok(()),
+        };
         assert_eq!(recover(&j, &s, &ops).unwrap(), Some(TxState::Verified));
         assert!(j.read().unwrap().is_none());
         std::fs::remove_dir_all(&d).ok();
@@ -532,7 +582,10 @@ mod tests {
         let rolled = Cell::new(false);
         let ops = RecoveryOps {
             verify: &|_| panic!("Committing must never be promoted by verify"),
-            rollback: &|_| { rolled.set(true); Ok(()) },
+            rollback: &|_| {
+                rolled.set(true);
+                Ok(())
+            },
         };
         assert_eq!(recover(&j, &s, &ops).unwrap(), Some(TxState::RolledBack));
         assert!(rolled.get());
@@ -543,7 +596,10 @@ mod tests {
     fn recovery_on_clean_journal_is_noop() {
         let (d, _base) = dirs("clean");
         let (j, s) = (Journal::at(&d, "bp1"), WriteSeal::at(&d, "bp1"));
-        let ops = RecoveryOps { verify: &|_| Ok(()), rollback: &|_| Ok(()) };
+        let ops = RecoveryOps {
+            verify: &|_| Ok(()),
+            rollback: &|_| Ok(()),
+        };
         assert_eq!(recover(&j, &s, &ops).unwrap(), None);
         std::fs::remove_dir_all(&d).ok();
     }
@@ -555,7 +611,10 @@ mod tests {
         base.state = TxState::Committed;
         base.durable = None;
         j.record(&base).unwrap();
-        let ops = RecoveryOps { verify: &|_| Ok(()), rollback: &|_| Ok(()) };
+        let ops = RecoveryOps {
+            verify: &|_| Ok(()),
+            rollback: &|_| Ok(()),
+        };
         assert!(recover(&j, &s, &ops).is_err());
         assert!(s.is_sealed(), "uncertain legacy write must seal");
         assert_eq!(j.read().unwrap().unwrap().state, TxState::Sealed);

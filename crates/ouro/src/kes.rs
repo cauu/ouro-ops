@@ -35,21 +35,24 @@ struct TextEnvelope {
 
 fn decode_hex(value: &str) -> Result<Vec<u8>> {
     if !value.len().is_multiple_of(2) || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(OuroError::Validation("text-envelope cborHex is malformed".into()));
+        return Err(OuroError::Validation(
+            "text-envelope cborHex is malformed".into(),
+        ));
     }
-    (0..value.len()).step_by(2).map(|index| {
-        u8::from_str_radix(&value[index..index + 2], 16)
-            .map_err(|_| OuroError::Validation("text-envelope cborHex is malformed".into()))
-    }).collect()
+    (0..value.len())
+        .step_by(2)
+        .map(|index| {
+            u8::from_str_radix(&value[index..index + 2], 16)
+                .map_err(|_| OuroError::Validation("text-envelope cborHex is malformed".into()))
+        })
+        .collect()
 }
 
 fn cbor_u64(value: &serde_cbor::Value, field: &str) -> Result<u64> {
     match value {
-        serde_cbor::Value::Integer(integer) => {
-            u64::try_from(*integer).map_err(|_| {
-                OuroError::Validation(format!("operational certificate {field} is out of range"))
-            })
-        }
+        serde_cbor::Value::Integer(integer) => u64::try_from(*integer).map_err(|_| {
+            OuroError::Validation(format!("operational certificate {field} is out of range"))
+        }),
         _ => Err(OuroError::Validation(format!(
             "operational certificate {field} is not an integer"
         ))),
@@ -60,7 +63,9 @@ fn cbor_u64(value: &serde_cbor::Value, field: &str) -> Result<u64> {
 /// tuple `(OCert, cold_vkey)` and `OCert` as `[hot_kes_vkey, counter, kes_period, signature]`.
 pub fn parse_operational_certificate(bytes: &[u8]) -> Result<ParsedOperationalCertificate> {
     let envelope: TextEnvelope = serde_json::from_slice(bytes).map_err(|error| {
-        OuroError::Validation(format!("operational certificate envelope is malformed: {error}"))
+        OuroError::Validation(format!(
+            "operational certificate envelope is malformed: {error}"
+        ))
     })?;
     let _ = envelope.description;
     if envelope.envelope_type != "NodeOperationalCertificate" {
@@ -69,18 +74,34 @@ pub fn parse_operational_certificate(bytes: &[u8]) -> Result<ParsedOperationalCe
         ));
     }
     let value: serde_cbor::Value = serde_cbor::from_slice(&decode_hex(&envelope.cbor_hex)?)
-        .map_err(|error| OuroError::Validation(format!("operational certificate CBOR is malformed: {error}")))?;
+        .map_err(|error| {
+            OuroError::Validation(format!(
+                "operational certificate CBOR is malformed: {error}"
+            ))
+        })?;
     let outer = match value {
         serde_cbor::Value::Array(values) if values.len() == 2 => values,
-        _ => return Err(OuroError::Validation("operational certificate CBOR has the wrong outer shape".into())),
+        _ => {
+            return Err(OuroError::Validation(
+                "operational certificate CBOR has the wrong outer shape".into(),
+            ))
+        }
     };
     let cert = match &outer[0] {
         serde_cbor::Value::Array(values) if values.len() == 4 => values,
-        _ => return Err(OuroError::Validation("operational certificate CBOR has the wrong OCert shape".into())),
+        _ => {
+            return Err(OuroError::Validation(
+                "operational certificate CBOR has the wrong OCert shape".into(),
+            ))
+        }
     };
     let hot = match &cert[0] {
         serde_cbor::Value::Bytes(bytes) if !bytes.is_empty() => bytes.clone(),
-        _ => return Err(OuroError::Validation("operational certificate has no hot KES verification key".into())),
+        _ => {
+            return Err(OuroError::Validation(
+                "operational certificate has no hot KES verification key".into(),
+            ))
+        }
     };
     let cold: [u8; 32] = match &outer[1] {
         serde_cbor::Value::Bytes(bytes) => bytes.as_slice().try_into().map_err(|_| {
@@ -119,9 +140,7 @@ pub fn parse_operational_certificate(bytes: &[u8]) -> Result<ParsedOperationalCe
     VerifyingKey::from_bytes(&cold)
         .and_then(|key| key.verify_strict(&signable, &signature))
         .map_err(|_| {
-            OuroError::Validation(
-                "operational certificate cold-key signature is invalid".into(),
-            )
+            OuroError::Validation("operational certificate cold-key signature is invalid".into())
         })?;
     Ok(ParsedOperationalCertificate {
         hot_kes_verification_key: hot,
@@ -133,17 +152,29 @@ pub fn parse_operational_certificate(bytes: &[u8]) -> Result<ParsedOperationalCe
 
 pub fn parse_kes_verification_key(bytes: &[u8]) -> Result<Vec<u8>> {
     let envelope: TextEnvelope = serde_json::from_slice(bytes).map_err(|error| {
-        OuroError::Validation(format!("KES verification-key envelope is malformed: {error}"))
+        OuroError::Validation(format!(
+            "KES verification-key envelope is malformed: {error}"
+        ))
     })?;
     let _ = envelope.description;
-    if !envelope.envelope_type.to_ascii_lowercase().contains("kesverificationkey") {
-        return Err(OuroError::Validation("public key is not a KES verification key".into()));
+    if !envelope
+        .envelope_type
+        .to_ascii_lowercase()
+        .contains("kesverificationkey")
+    {
+        return Err(OuroError::Validation(
+            "public key is not a KES verification key".into(),
+        ));
     }
     let value: serde_cbor::Value = serde_cbor::from_slice(&decode_hex(&envelope.cbor_hex)?)
-        .map_err(|error| OuroError::Validation(format!("KES verification-key CBOR is malformed: {error}")))?;
+        .map_err(|error| {
+            OuroError::Validation(format!("KES verification-key CBOR is malformed: {error}"))
+        })?;
     match value {
         serde_cbor::Value::Bytes(bytes) if !bytes.is_empty() => Ok(bytes),
-        _ => Err(OuroError::Validation("KES verification-key CBOR has the wrong shape".into())),
+        _ => Err(OuroError::Validation(
+            "KES verification-key CBOR has the wrong shape".into(),
+        )),
     }
 }
 
@@ -328,7 +359,10 @@ mod tests {
             Value::Bytes(signing.verifying_key().to_bytes().to_vec()),
         ]);
         let cbor = serde_cbor::to_vec(&value).unwrap();
-        let cbor_hex = cbor.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+        let cbor_hex = cbor
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
         serde_json::to_vec(&serde_json::json!({
             "type": "NodeOperationalCertificate",
             "description": "synthetic protocol-valid opcert",
