@@ -565,3 +565,58 @@ Prompt 中规定“先确认共用或逐机，再替换占位符”的对话步�
 
 - 2026-07-21T17:38:58+08:00 SSH discovery 从 Upgrade 专属章节提升为六个公开 Skill 的
   一致独立前置规则；网站全局 Prompt 保留组装职责，不再弥补 Skill 行为缺口。
+
+## 11. Change Request: Skill 是 SSH 决策唯一真实来源（2026-07-21，append-only）
+
+### 11.1 Requirement Amendment
+
+- canonical Skill 是 SSH 账号确认行为的唯一真实信息来源。
+- 网站 Prompt wrapper 只提供逐机占位符、pool spec 模板和执行顺序上下文，不得再次定义
+  “共用或逐机账号”、询问次数、secret 边界或停止条件。
+- 网站表单提示不得复述 SSH 决策逻辑，只能说明执行时由内嵌 canonical Skill 确认用户名。
+- 生成测试必须同时证明六个内嵌 Skill 仍具备完整规则，以及源 wrapper 只委托 Skill、没有
+  第二份行为定义。
+
+### 11.2 Solution Amendment
+
+删除网站 wrapper 和多语言表单提示中的 SSH 决策复述。wrapper 只标记 YAML 中存在逐机
+invalid-until-replaced 占位符，并要求严格按内嵌 Skill 的 `SSH account discovery` 章节解析；
+完成该 Skill 章节后才进入写 pool spec 的顺序说明。新增源模板级负向测试，防止决策文案
+重新进入 wrapper；已有 payload 测试继续验证六个 canonical Skill 的完整且一致规则。
+
+### 11.3 Execution Plan Amendment
+
+- [x] p8-1 [Site/Tests] 将 SSH 决策唯一归属 canonical Skill，简化 wrapper 与多语言提示，
+  重建站点并补 TC-19。
+
+| Item | Acceptance |
+| --- | --- |
+| p8-1 | TC-19 |
+
+### 11.4 Acceptance Amendment
+
+- TC-19：源网站 wrapper 不含共用/逐机询问、用户名次数、secret 或停止策略的重复定义；只
+  说明逐机占位符并委托内嵌 Skill 的 `SSH account discovery`。六个生成 payload 仍与 canonical
+  Skill 完全一致且包含完整 SSH 规则；多语言 UI 不再复述决策；站点生成与本地 HTTP 回归通过。
+
+### 11.5 Execution Log Amendment (append-only)
+
+- 2026-07-21T17:58:39+08:00 operator 确认修复 review P2，要求 canonical Skill 成为 SSH
+  决策唯一真实信息来源；p8-1 开始。
+- 2026-07-21T18:00:17+08:00 p8-1 完成：网站 wrapper 仅描述逐机占位符并委托内嵌 Skill
+  的 `SSH account discovery`；删除共用/逐机、询问次数、secret 和停止规则复述，四种语言
+  UI 也只指向 canonical Skill。源模板负向守卫和完整网站回归通过，TC-19 通过；S0026
+  保持 active。
+
+### 11.6 Validation Evidence Amendment (append-only)
+
+- （待执行）
+- TC-19 | stack: python/site | command: `python3 tests/test_skill_docs.py`; `python3 -m pytest -q
+  tests/test_web_generator.py`; `./web/onboarding/build.sh` | result: pass | note: 六个 Skill 继续
+  包含完全一致的完整 SSH 规则；新增测试证明源 wrapper/UI 不含第二份决策策略，只提供逐机
+  placeholder 上下文并委托 canonical Skill；站点 10 项测试及本地 HTTP 访问通过。
+
+### 11.7 Change Requests Amendment (append-only)
+
+- 2026-07-21T17:58:39+08:00 网站从“复制一份 SSH 行为规则”改为“提供上下文并显式委托
+  canonical Skill”；六个 Skill 的独立规则保持不变。

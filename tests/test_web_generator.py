@@ -112,10 +112,8 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "Exact transition metadata is optional and never blocks an upgrade" in upgrade_prompt
     assert "N→N+1 transition must be present" not in upgrade_prompt
     assert "Upgrade to signed recommended release" in html
-    assert "same SSH username or different usernames" in html
-    assert "ask me for that username once" in html
-    assert "ask me for the username of each" in html
-    assert "Until every placeholder is resolved" in html
+    assert "included Skill's \"SSH account discovery\" section" in html
+    assert "This wrapper adds no SSH-account decision" in html
     assert "__SSH_USER_${m.id.toUpperCase().replaceAll" in html
     assert "user: cardano" not in html
     assert "existing cardano account" not in html
@@ -149,6 +147,35 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "ouro-ops kes cold-sign-script" not in kes_prompt
     assert "ouro-ops skill show" not in html
     assert html.count('data-op="') == 6
+
+
+def test_wrapper_delegates_ssh_policy_to_canonical_skill() -> None:
+    source = SOURCE.read_text(encoding="utf-8")
+    for duplicate_policy in [
+        "ask me whether every machine uses the",
+        "same SSH username or different usernames",
+        "ask me for that username once",
+        "ask me for the username of each",
+        "Do not assume cardano",
+        "Do not ask for passwords or private-key",
+        "Until every placeholder is resolved",
+        "agent first asks whether machines share one SSH username",
+        "agent 会先确认所有机器共用一个 SSH 用户名还是各自不同",
+        "agent 會先確認所有機器共用一個 SSH 使用者名稱或各自不同",
+        "全マシン共通の SSH ユーザー名か個別アカウントかを先に確認",
+    ]:
+        assert duplicate_policy not in source, \
+            f"website wrapper/UI duplicates canonical Skill policy: {duplicate_policy!r}"
+    assert "Resolve every __SSH_USER_<MACHINE_ID>__ placeholder exactly as required by the" in source
+    assert "included Skill's \"SSH account discovery\" section" in source
+    assert "This wrapper adds no SSH-account decision" in source
+    for delegated_ui_copy in [
+        "canonical Skill is the sole source",
+        "仅由生成 Prompt 中内嵌的 canonical Skill 规定",
+        "僅由生成 Prompt 中內嵌的 canonical Skill 規定",
+        "canonical Skill のみが規定します",
+    ]:
+        assert delegated_ui_copy in source
 
 
 def test_page_keeps_payload_inert_and_network_bounded() -> None:
