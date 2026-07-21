@@ -445,7 +445,7 @@ Prompt 中规定“先确认共用或逐机，再替换占位符”的对话步�
 
 - [x] p6-1 [CLI] 移除 stateless/diagnostics 的固定 `cardano` 门槛，逐机使用已校验的
   `ssh.user`，并补 TC-15。
-- [~] p6-2 [Skill/Site] 更新 Upgrade Skill、官网生成 Prompt、UI 提示和文档，重建站点并
+- [x] p6-2 [Skill/Site] 更新 Upgrade Skill、官网生成 Prompt、UI 提示和文档，重建站点并
   补 TC-16。
 
 | Item | Acceptance |
@@ -469,6 +469,9 @@ Prompt 中规定“先确认共用或逐机，再替换占位符”的对话步�
 - 2026-07-21T17:26:00+08:00 p6-1 完成：diagnostics、stateless read/plan/apply、fleet
   live facts 和 KES relay evidence 均使用对应机器的已校验 `ssh.user`；BP/relay 不同账号
   回归通过，TC-15 通过；p6-2 开始。
+- 2026-07-21T17:26:33+08:00 p6-2 完成：Upgrade Skill v9 和官网完整 Prompt 在 preflight
+  后先询问共用或逐机 SSH 用户名；pool spec 使用逐机 invalid-until-replaced 占位符，所有
+  用户名确认前禁止写 spec/SSH。站点重建并在应用内浏览器验证，TC-16 通过。
 
 ### 9.6 Validation Evidence Amendment (append-only)
 
@@ -479,6 +482,11 @@ Prompt 中规定“先确认共用或逐机，再替换占位符”的对话步�
   tests/test_s0019_dispatch.py` | result: pass | note: BP `bp-admin`、relay `relay-ops` 分别进入
   diagnostics、read/plan/apply、fleet status 和 KES evidence SSH argv/principal；原有 username
   option-injection validation 保持通过。本地健康监听测试在获准的非沙箱环境执行。
+- TC-16 | stack: python/ui | command: `python3 tests/test_skill_docs.py`; `python3 -m pytest -q
+  tests/test_web_generator.py`; `./web/onboarding/build.sh`; in-app browser generate Upgrade prompt |
+  result: pass | note: Prompt 内含 Skill v9、先问共用/多个账号、共用只问一次、否则逐机
+  收集、未全部替换前停止；BP/relay 分别出现 `__SSH_USER_BP1__`/
+  `__SSH_USER_RELAY1__`，不含 `user: cardano` 或 existing-cardano 文案，浏览器无错误。
 
 ### 9.7 Change Requests Amendment (append-only)
 

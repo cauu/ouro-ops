@@ -94,6 +94,14 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "Exact transition metadata is optional and never blocks an upgrade" in upgrade_prompt
     assert "N→N+1 transition must be present" not in upgrade_prompt
     assert "Upgrade to signed recommended release" in html
+    assert "same SSH username or different usernames" in html
+    assert "ask me for that username once" in html
+    assert "ask me for the username of each" in html
+    assert "Until every placeholder is resolved" in html
+    assert "__SSH_USER_${m.id.toUpperCase().replaceAll" in html
+    assert "user: cardano" not in html
+    assert "existing cardano account" not in html
+    assert "Never ask for a password, private-key content" in upgrade_prompt
     assert "pending_existing: true" in kes_prompt
     assert "choose: continue this pending rotation, or discard it" in kes_prompt
     assert "kes-rotation/discard-stage" in kes_prompt

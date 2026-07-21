@@ -1,5 +1,5 @@
 ---
-skill_version: 8
+skill_version: 9
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -18,6 +18,17 @@ containers through the sealed CLI workflow. Hand Compose-managed containers to t
 exact signed image and Compose instructions. Stop with the observed reason for unsupported owners.
 Treat the direct-run path as ONE Upgrade workflow: preload and step are internal operation
 boundaries with separate candidates and operator approvals.
+
+## SSH account discovery
+- After the mandatory compatibility preflight, but before writing `pool-spec.yaml`, resolving a
+  credential, or contacting any host, ask whether every declared machine uses the same SSH username
+  or different usernames. Do not infer an account from the image, host, local shell, or examples.
+- If all machines share one account, ask for that username once and apply it to every machine. If
+  they differ, ask for a machine-id → SSH-username mapping and apply each value only to that machine.
+- Replace every generated `__SSH_USER_<MACHINE_ID>__` placeholder with the operator-confirmed value
+  before writing the spec or running SSH. Stop if any machine remains unresolved.
+- Usernames are non-secret routing facts. Never ask for a password, private-key content, or other
+  credential material; keep each existing `creds://<machine-id>` reference separate.
 
 ## Invariants (the mechanism enforces these; you respect them)
 - The running IMAGE CONFIG DIGEST must be trusted by signed immutable policy, and the target must be

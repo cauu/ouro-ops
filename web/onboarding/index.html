@@ -711,7 +711,8 @@ function yaml(d) {
   for (const m of d.machines) {
     L.push(`  - id: ${m.id}`,`    role: ${m.role}`);
     if (m.role==="relay") L.push(`    public_endpoint: { host: ${m.host}, port: ${m.port} }`);
-    L.push(`    ssh: { host: ${m.host}, port: 22, user: cardano, key_ref: "creds://${m.id}" }`);
+    const sshUserPlaceholder = `__SSH_USER_${m.id.toUpperCase().replaceAll("-", "_")}__`;
+    L.push(`    ssh: { host: ${m.host}, port: 22, user: "${sshUserPlaceholder}", key_ref: "creds://${m.id}" }`);
   }
   // Both upgrade and runtime/restart consume the fleet availability policy. Omitting it from a
   // Runtime/KES prompts silently selecting the schema default can make a single-relay disruptive
@@ -754,7 +755,15 @@ function prompt(d) {
 skill.content.trimEnd(),
 `END OURO-SKILL.MD (marker only — do not include)`,
 ``,
-`After the Skill's first compatibility preflight passes, write the spec below to pool-spec.yaml. It DESCRIBES my existing pool so ouro-ops can address`,
+`After the Skill's first compatibility preflight passes, ask me whether every machine uses the`,
+`   same SSH username or different usernames. Do not assume cardano, root, or the control machine's`,
+`   current user. If they all share one account, ask me for that username once and replace every`,
+`   __SSH_USER_<MACHINE_ID>__ placeholder with it. Otherwise ask me for the username of each`,
+`   machine and replace only its matching placeholder. Do not ask for passwords or private-key`,
+`   content. Until every placeholder is resolved, do not write pool-spec.yaml, resolve credentials,`,
+`   or contact any host.`,
+``,
+`After that SSH-account dialogue is complete, write the spec below to pool-spec.yaml. It DESCRIBES my existing pool so ouro-ops can address`,
 `   the machines; it is not a list of actions to perform, and it contains only operation-scoped`,
 `   routing and safety context (unrelated workflow fields are omitted on purpose).`,
 `   Copy only the text between the BEGIN/END marker lines; the marker lines are not YAML and must`,
@@ -762,7 +771,7 @@ skill.content.trimEnd(),
 `BEGIN POOL-SPEC.YAML (marker only — do not include)`,
 yaml(d).trimEnd(),
 `END POOL-SPEC.YAML (marker only — do not include)`,
-`   Ordinary operations use the existing cardano SSH account. The local CLI automatically sends`,
+`   Ordinary operations use each machine's operator-confirmed SSH account. The local CLI automatically sends`,
 `   its release-paired ephemeral Linux runner for each operation and removes it afterward. Do`,
 `   not install, onboard, adopt, synchronize, or ask me for a target Ouro binary/version.`,
 `   Selector rule: for every \`ouro-ops op run\`, replace \`<spec-host>\`, \`<host>\`, or`,
@@ -810,7 +819,7 @@ const I18N = {
     "lbl.network":"Network","lbl.ticker":"Ticker (3–5, A–Z 0–9)","lbl.machines":"Machines (1 BP + N relays)",
     "btn.addRelay":"+ Add relay","lbl.id":"id","lbl.role":"role","lbl.host":"host (DNS or IP)",
     "persist.note":"Inputs are saved in this browser only (localStorage) — they never leave your machine.","persist.clear":"Clear saved inputs",
-    "machHint":"SSH user is the existing cardano account and the port is 22. Only the host is yours to fill.",
+    "machHint":"During execution, the agent first asks whether machines share one SSH username or use different accounts, then collects what is needed. Only the host is entered here; port is 22.",
     "lbl.nodever":"Desired node release label (descriptive)","ver.checking":"Checking latest upstream release…","ver.latest":"Latest upstream release (not image authorization):",
     "ver.fail":"Couldn't reach GitHub — using the versions baked into this page.",
     "ver.relnotes":"Release notes ↗","ver.tail":" — descriptive only; the signed recommended config digest authorizes the target, while an exact transition only controls rollback.",
@@ -854,7 +863,7 @@ const I18N = {
     "lbl.network":"网络","lbl.ticker":"Ticker(3–5 位,A–Z 0–9)","lbl.machines":"机器(1 台 BP + 若干 relay)",
     "btn.addRelay":"+ 添加 relay","lbl.id":"id","lbl.role":"角色","lbl.host":"host(域名或 IP)",
     "persist.note":"输入只保存在本浏览器(localStorage),不会离开你的机器。","persist.clear":"清除已存输入",
-    "machHint":"SSH 用户使用现有 cardano 账号,端口固定为 22,这里只需要填 host。",
+    "machHint":"执行时 agent 会先确认所有机器共用一个 SSH 用户名还是各自不同,再按需收集。这里只填写 host,端口固定为 22。",
     "lbl.nodever":"期望的 Node 发布标签（仅描述）","ver.checking":"正在获取上游最新版本…","ver.latest":"上游最新版本（不代表镜像授权）:",
     "ver.fail":"连不上 GitHub,先用页面内置的版本列表。",
     "ver.relnotes":"更新说明 ↗","ver.tail":"——仅作描述；签名推荐配置摘要决定升级目标，精确转换仅决定能否回滚。",
@@ -898,7 +907,7 @@ const I18N = {
     "lbl.network":"網路","lbl.ticker":"Ticker(3–5 位,A–Z 0–9)","lbl.machines":"機器(1 台 BP + 若干 relay)",
     "btn.addRelay":"+ 新增 relay","lbl.id":"id","lbl.role":"角色","lbl.host":"host(網域或 IP)",
     "persist.note":"輸入只儲存在本瀏覽器(localStorage),不會離開你的機器。","persist.clear":"清除已存輸入",
-    "machHint":"SSH 使用者沿用現有 cardano 帳號,連接埠固定為 22,這裡只要填 host。",
+    "machHint":"執行時 agent 會先確認所有機器共用一個 SSH 使用者名稱或各自不同,再按需收集。這裡只填 host,連接埠固定為 22。",
     "lbl.nodever":"期望的 Node 發布標籤（僅描述）","ver.checking":"正在取得上游最新版本…","ver.latest":"上游最新版本（不代表映像授權）:",
     "ver.fail":"連不上 GitHub,先用頁面內建的版本清單。",
     "ver.relnotes":"更新說明 ↗","ver.tail":"——僅作描述；簽署推薦設定摘要決定升級目標，精確轉換只決定能否回滾。",
@@ -942,7 +951,7 @@ const I18N = {
     "lbl.network":"ネットワーク","lbl.ticker":"Ticker(3–5 文字、A–Z 0–9)","lbl.machines":"マシン(BP 1 台 + relay 複数)",
     "btn.addRelay":"+ relay を追加","lbl.id":"id","lbl.role":"ロール","lbl.host":"host(ドメインまたは IP)",
     "persist.note":"入力はこのブラウザーのみに保存され(localStorage)、あなたのマシンから出ることはありません。","persist.clear":"保存した入力を消去",
-    "machHint":"SSH ユーザーは既存の cardano、ポートは 22 です。入力するのは host だけです。",
+    "machHint":"実行時に agent が全マシン共通の SSH ユーザー名か個別アカウントかを先に確認し、必要な名前を収集します。ここでは host のみ入力し、ポートは 22 です。",
     "lbl.nodever":"希望ノードリリース（説明用）","ver.checking":"最新の上流リリースを確認中…","ver.latest":"最新の上流リリース（イメージ許可ではありません）:",
     "ver.fail":"GitHub に届かないため、ページ内蔵の一覧を使います。",
     "ver.relnotes":"リリースノート ↗","ver.tail":"——説明用です。署名済み推奨設定ダイジェストが対象を決め、正確な遷移はロールバック可否だけを決めます。",

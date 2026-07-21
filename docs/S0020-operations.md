@@ -9,7 +9,7 @@ compatibility preflight. The CLI carries execution mechanisms and no decision Sk
 - The control machine holds the complete CLI, Skills, named `creds://` references, known-hosts,
   confirmations, permits and audit state.
 - Every ordinary target command automatically transports the control release's static Linux runner
-  as the existing `cardano` account, verifies it in a run-unique private directory, executes a
+  as that machine's declared existing SSH account, verifies it in a run-unique private directory, executes a
   closed target action, bounds output/deadline and removes the directory.
 - A target-installed Ouro CLI, remote Ouro version, adoption attestation, global managed marker,
   resident gate/daemon and persistent remote transaction journal are not prerequisites.
@@ -89,6 +89,11 @@ Compose facts may be incomplete without changing the classification. Ask the use
 project, service or config files; never infer paths. `upgrade/step` plan and apply return
 `manual_compose_required` for Compose and `unsupported_orchestration` for other owners before any
 Docker rename/run/remove action.
+
+SSH usernames are also operator facts. After compatibility preflight and before writing the pool
+spec or contacting a host, the agent first asks whether all machines share one SSH username. It asks
+once when they do, otherwise collects a machine-id-to-username mapping. It never assumes `cardano`,
+`root`, or the control machine's current user, and never asks for passwords or private-key content.
 
 ## Public artifacts
 

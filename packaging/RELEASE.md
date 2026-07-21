@@ -17,7 +17,7 @@ defeats first-install typosquat / fake-package / bootstrap-key substitution (R2 
 
 Ordinary non-deploy operations do not provision or update target-resident Ouro software. The
 macOS/control release carries its matching static Linux/x86_64 runner; each invocation sends it to a
-run-unique private directory through the operator's existing `cardano` SSH credential, verifies the
+run-unique private directory through each machine's operator-confirmed SSH account, verifies the
 control-known digest, executes a closed `target` action with a clean environment, bounds output and
 deadline, and removes it. Public KES opcert or Deploy transaction artifacts may be appended to that
 same one-shot stream. Node images never are: approved Upgrade preparation makes the target Docker

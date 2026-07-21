@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# Exact public Skill set: local control CLI + existing cardano SSH + ephemeral runner.
+# Exact public Skill set: local control CLI + declared existing SSH + ephemeral runner.
 STATELESS_SKILLS = [
     ROOT / "ouro-skills/upgrade/SKILL.md",
     ROOT / "ouro-skills/runtime/SKILL.md",
@@ -158,6 +158,15 @@ def main():
     assert "planning performed no pull or mutation" in " ".join(upgrade.split())
     assert "active-container invariance" in " ".join(upgrade.split())
     normalized_upgrade = " ".join(upgrade.split())
+    for phrase in [
+        "ask whether every declared machine uses the same SSH username or different usernames",
+        "ask for that username once",
+        "machine-id → SSH-username mapping",
+        "Stop if any machine remains unresolved",
+        "Never ask for a password, private-key content",
+    ]:
+        assert phrase in normalized_upgrade, f"Upgrade Skill lacks SSH discovery rule {phrase!r}"
+    assert "existing cardano account" not in normalized_upgrade
     for phrase in [
         "current platform's signed `recommended` IMAGE CONFIG DIGEST",
         "Upgrade does not walk an intermediate version chain",
