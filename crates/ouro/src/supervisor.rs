@@ -26,6 +26,20 @@ pub mod v1 {
 
 /// Closed projection of what the adopt-time probe observed on the host (no raw daemon JSON).
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ComposeObservation {
+    #[serde(default)]
+    pub project: Option<String>,
+    #[serde(default)]
+    pub service: Option<String>,
+    #[serde(default)]
+    pub working_dir: Option<String>,
+    #[serde(default)]
+    pub config_files: Vec<String>,
+    #[serde(default)]
+    pub config_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SupervisorObservation {
     /// `docker` | `podman` | `containerd` | ...
     pub runtime: String,
@@ -39,11 +53,33 @@ pub struct SupervisorObservation {
     pub uses_bind_mounts: bool,
     pub daemon_socket: String,
     pub restart_policy: String,
-    /// Orchestration: `run` (direct) is accepted; `compose`/`swarm`/`k8s` are refused in v1.
+    /// Upgrade routing observation: `run`, `compose`, or `unsupported`.
     pub orchestration: String,
+    #[serde(default)]
+    pub orchestration_reason: Option<String>,
+    #[serde(default)]
+    pub compose: Option<ComposeObservation>,
 }
 
 impl SupervisorObservation {
+    pub fn upgrade_routing(&self) -> (String, Option<String>, Option<&ComposeObservation>) {
+        let unsupported = |reason: String| ("unsupported".into(), Some(reason), None);
+        if self.runtime != "docker" {
+            return unsupported(format!("unsupported_runtime:{}", self.runtime));
+        }
+        if !self.rootful || self.rootless {
+            return unsupported("unsupported_runtime_mode:rootless".into());
+        }
+        if self.daemon_socket != "/var/run/docker.sock" {
+            return unsupported(format!("unsupported_daemon_socket:{}", self.daemon_socket));
+        }
+        (
+            self.orchestration.clone(),
+            self.orchestration_reason.clone(),
+            self.compose.as_ref(),
+        )
+    }
+
     /// Refuse everything outside the v1 contract with a specific reason. This is the ONLY place a
     /// node's supervision shape is judged; adoption calls it before writing the attestation.
     pub fn require_conformant(&self) -> Result<()> {
@@ -116,6 +152,8 @@ mod tests {
             daemon_socket: "/var/run/docker.sock".into(),
             restart_policy: "unless-stopped".into(),
             orchestration: "run".into(),
+            orchestration_reason: None,
+            compose: None,
         }
     }
 
@@ -147,5 +185,19 @@ mod tests {
                 "shape {name} must be refused"
             );
         }
+    }
+
+    #[test]
+    fn nonstandard_runtime_routes_to_unsupported() {
+        let mut observation = conforming();
+        observation.runtime = "podman".into();
+        assert_eq!(
+            observation.upgrade_routing(),
+            (
+                "unsupported".into(),
+                Some("unsupported_runtime:podman".into()),
+                None
+            )
+        );
     }
 }

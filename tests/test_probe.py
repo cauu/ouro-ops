@@ -99,6 +99,9 @@ def main():
     assert obs["supervisor"]["runtime"] == "docker"
     assert obs["supervisor"]["node_container_count"] == 1
     assert obs["supervisor"]["uses_bind_mounts"] is True
+    assert obs["supervisor"]["orchestration"] == "run"
+    assert obs["supervisor"]["orchestration_reason"] is None
+    assert obs["supervisor"]["compose"] is None
     live = obs["live"]
     assert live["image_config_digest"] == "sha256:cfg"
     assert live["container_id"] == "cid-xyz"
@@ -144,6 +147,63 @@ def main():
     }
     assert readiness["established_peers"] == 2, "ss-only Blink Labs image peers must be detected"
     assert obs["recreate"] is not None, "inherited nonempty OCI labels remain a valid baseline"
+
+    docker_stub = (binp / "docker").read_text()
+    inherited_label = '"Labels":{"org.opencontainers.image.title":"cardano-node"}'
+    compose_labels = (
+        '"Labels":{"org.opencontainers.image.title":"cardano-node",'
+        '"com.docker.compose.project":"cardano",'
+        '"com.docker.compose.service":"cardano-node",'
+        '"com.docker.compose.project.working_dir":"/opt/cardano",'
+        '"com.docker.compose.project.config_files":"/opt/cardano/compose.yaml",'
+        '"com.docker.compose.config-hash":"cfg-hash"}'
+    )
+    (binp / "docker").write_text(docker_stub.replace(inherited_label, compose_labels, 1))
+    compose_result = subprocess.run(
+        ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
+        env=env, text=True, capture_output=True,
+    )
+    assert compose_result.returncode == 0, compose_result.stderr
+    compose_obs = json.loads(compose_result.stdout)["supervisor"]
+    assert compose_obs["orchestration"] == "compose", compose_obs
+    assert compose_obs["orchestration_reason"] is None, compose_obs
+    assert compose_obs["compose"] == {
+        "project": "cardano",
+        "service": "cardano-node",
+        "working_dir": "/opt/cardano",
+        "config_files": ["/opt/cardano/compose.yaml"],
+        "config_hash": "cfg-hash",
+    }, compose_obs
+
+    portainer_labels = (
+        '"Labels":{"org.opencontainers.image.title":"cardano-node",'
+        '"io.portainer.accesscontrol.public":"true"}'
+    )
+    (binp / "docker").write_text(docker_stub.replace(inherited_label, portainer_labels, 1))
+    unsupported_result = subprocess.run(
+        ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
+        env=env, text=True, capture_output=True,
+    )
+    assert unsupported_result.returncode == 0, unsupported_result.stderr
+    unsupported_obs = json.loads(unsupported_result.stdout)["supervisor"]
+    assert unsupported_obs["orchestration"] == "unsupported", unsupported_obs
+    assert unsupported_obs["orchestration_reason"] == "unsupported_orchestration:portainer"
+    assert unsupported_obs["compose"] is None
+
+    conflicting_labels = (
+        '"Labels":{"com.docker.compose.project":"cardano",'
+        '"io.portainer.accesscontrol.public":"true"}'
+    )
+    (binp / "docker").write_text(docker_stub.replace(inherited_label, conflicting_labels, 1))
+    conflicting_result = subprocess.run(
+        ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
+        env=env, text=True, capture_output=True,
+    )
+    assert conflicting_result.returncode == 0, conflicting_result.stderr
+    conflicting_obs = json.loads(conflicting_result.stdout)["supervisor"]
+    assert conflicting_obs["orchestration"] == "unsupported", conflicting_obs
+    assert conflicting_obs["orchestration_reason"] == "conflicting_orchestration_labels:compose,portainer"
+    (binp / "docker").write_text(docker_stub)
 
     def permission_facts(root: Path) -> dict[str, bool]:
         checked = subprocess.run(
@@ -289,7 +349,6 @@ def main():
 
     # An explicit container user is not modeled by the sealed recreate argv. The probe must return
     # recreate:null instead of silently upgrading it as root.
-    docker_stub = (binp / "docker").read_text()
     (binp / "docker").write_text(docker_stub.replace(
         '"Config":{"Hostname"',
         '"Config":{"User":"1000","Hostname"',

@@ -95,6 +95,9 @@ def assert_live_result(value):
     }, data
     assert data["result"]["runtime_policy"]["supported"] is True, data
     assert data["result"]["runtime_policy"]["image_release_admission"] == "not_required_for_read", data
+    assert data["result"]["container"]["orchestration"] == "run", data
+    assert data["result"]["container"]["orchestration_reason"] is None, data
+    assert data["result"]["container"]["compose"] is None, data
 
 
 def main():
@@ -135,6 +138,56 @@ def main():
     )
     assert target.returncode == 0, target
     assert_live_result(target_value)
+
+    compose_observation = observation()
+    compose_observation["supervisor"].update({
+        "orchestration": "compose",
+        "compose": {
+            "project": "cardano",
+            "service": "cardano-node",
+            "working_dir": "/opt/cardano",
+            "config_files": ["/opt/cardano/compose.yaml"],
+            "config_hash": "cfg-hash",
+        },
+    })
+    compose_fixture = home / "compose-observation.json"
+    compose_fixture.write_text(json.dumps(compose_observation))
+    compose_read, compose_value = invoke(
+        home,
+        "op",
+        "run",
+        "--op",
+        "observability/health",
+        "--node",
+        "bp1",
+        "--observation",
+        str(compose_fixture),
+    )
+    assert compose_read.returncode == 0, compose_read
+    compose_container = compose_value["data"]["result"]["container"]
+    assert compose_container["orchestration"] == "compose", compose_container
+    assert compose_container["compose"]["service"] == "cardano-node", compose_container
+
+    unsupported_observation = observation()
+    unsupported_observation["supervisor"]["runtime"] = "podman"
+    unsupported_fixture = home / "unsupported-observation.json"
+    unsupported_fixture.write_text(json.dumps(unsupported_observation))
+    unsupported_read, unsupported_value = invoke(
+        home,
+        "op",
+        "run",
+        "--op",
+        "observability/health",
+        "--node",
+        "bp1",
+        "--observation",
+        str(unsupported_fixture),
+    )
+    assert unsupported_read.returncode == 0, unsupported_read
+    unsupported_container = unsupported_value["data"]["result"]["container"]
+    assert unsupported_container["orchestration"] == "unsupported", unsupported_container
+    assert unsupported_container["orchestration_reason"] == "unsupported_runtime:podman"
+    assert unsupported_container["compose"] is None
 
     credentials = home / "credentials"
     credentials.mkdir()

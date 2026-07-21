@@ -433,6 +433,34 @@ mounts = typed_mounts()
 static_keys_directory_safe, static_kes_skey_private, static_vrf_skey_private, static_has_keys = static_kes_path_facts()
 record_state = ((inspect_record() or {}).get("State", {}) or {})
 
+def orchestration_facts():
+    labels = (((inspect_record() or {}).get("Config", {}) or {}).get("Labels", {}) or {})
+    keys = [str(key) for key in labels]
+    families = []
+    if any(key.startswith("com.docker.compose.") for key in keys):
+        families.append("compose")
+    if any(key.startswith("com.docker.stack.") for key in keys):
+        families.append("swarm")
+    if any(key.startswith("io.kubernetes.") for key in keys):
+        families.append("k8s")
+    if any(key.startswith("io.portainer.") for key in keys):
+        families.append("portainer")
+    if len(families) > 1:
+        return "unsupported", "conflicting_orchestration_labels:" + ",".join(families), None
+    if families and families[0] != "compose":
+        return "unsupported", "unsupported_orchestration:" + families[0], None
+    if not families:
+        return "run", None, None
+    raw_files = str(labels.get("com.docker.compose.project.config_files", "") or "")
+    compose = {
+        "project": labels.get("com.docker.compose.project"),
+        "service": labels.get("com.docker.compose.service"),
+        "working_dir": labels.get("com.docker.compose.project.working_dir"),
+        "config_files": [item.strip() for item in raw_files.split(",") if item.strip()],
+        "config_hash": labels.get("com.docker.compose.config-hash"),
+    }
+    return "compose", None, compose
+
 # Upgrade recreate spec (§2.10) — parsed from the full inspect JSON. Fail-closed: emit null when the
 # container shape is not the standard single-container bind-mounted layout, so the executor refuses
 # rather than recreate a container it cannot faithfully reproduce.
@@ -549,13 +577,17 @@ def recreate_spec():
         "args": list(d.get("Args", []) or []),
     }
 
+orchestration, orchestration_reason, compose = orchestration_facts()
 obs = {
   "supervisor": {
     "runtime": "docker", "rootful": True, "rootless": False,
     "node_container_count": int(env("OURO_OBS_COUNT") or 0),
     "uses_bind_mounts": bool(mounts) and all(m["kind"] == "bind" for m in mounts),
     "daemon_socket": "/var/run/docker.sock",
-    "restart_policy": env("OURO_OBS_RESTART") or "unless-stopped", "orchestration": "run",
+    "restart_policy": env("OURO_OBS_RESTART") or "unless-stopped",
+    "orchestration": orchestration,
+    "orchestration_reason": orchestration_reason,
+    "compose": compose,
   },
   "live": {
     "image_config_digest": env("OURO_OBS_IMAGE"),

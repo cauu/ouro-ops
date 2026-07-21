@@ -4577,6 +4577,7 @@ fn run_stateless_target_status(args: &[String]) -> Result<()> {
 }
 
 fn stateless_observation_output(node: &str, observation: &Observation) -> ToolOutput {
+    let (orchestration, orchestration_reason, compose) = observation.supervisor.upgrade_routing();
     let readiness = observation.readiness.as_ref();
     let runtime_policy = match convention::Allowlist::stable_contract() {
         Ok(contract) => {
@@ -4635,6 +4636,9 @@ fn stateless_observation_output(node: &str, observation: &Observation) -> ToolOu
             "container": {
                 "running_count": observation.supervisor.node_container_count,
                 "runtime": observation.supervisor.runtime,
+                "orchestration": orchestration,
+                "orchestration_reason": orchestration_reason,
+                "compose": compose,
                 "id": observation.live.container_id,
                 "name": observation.live.container_name,
                 "image_reference": observation.live.image_reference,
@@ -8574,6 +8578,8 @@ mod tests {
                 daemon_socket: "/var/run/docker.sock".into(),
                 restart_policy: "unless-stopped".into(),
                 orchestration: "run".into(),
+                orchestration_reason: None,
+                compose: None,
             },
             live: ObsLive {
                 image_config_digest: image.image_config_digest.clone(),
