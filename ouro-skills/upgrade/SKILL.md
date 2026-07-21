@@ -1,5 +1,5 @@
 ---
-skill_version: 6
+skill_version: 7
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -13,11 +13,11 @@ If it refuses, stop and ask the operator to install the compatible CLI; do not c
 path.
 
 ## Purpose
-Run one user-visible Upgrade workflow across the fleet: obtain the current signed next release,
-prepare that exact image, then
-activate one signed convention step (N→N+1), canary relay first, remaining relays next, and the
-block producer last. Preparation and activation are internal operation boundaries with separate
-candidates and operator approvals; the operator does not start two unrelated workflows.
+Route one user-visible Upgrade workflow from live container facts. Upgrade direct Docker-run
+containers through the sealed CLI workflow. Hand Compose-managed containers to the operator with
+exact signed image and Compose instructions. Stop with the observed reason for unsupported owners.
+Treat the direct-run path as ONE Upgrade workflow: preload and step are internal operation
+boundaries with separate candidates and operator approvals.
 
 ## Invariants (the mechanism enforces these; you respect them)
 - Both the running and target IMAGE CONFIG DIGESTS must be in signed immutable policy, and the exact
@@ -40,7 +40,39 @@ candidates and operator approvals; the operator does not start two unrelated wor
 - Rollback is claimed only when transition metadata and live state support a verified inverse;
   otherwise the honest failure outcome is a re-sync.
 
-## Decision guidance (use your judgment; this is not a rigid script)
+## Route from live facts
+1. Run `ouro-ops op run --op observability/health ...` and read
+   `result.container.orchestration`, `orchestration_reason`, and `compose`.
+2. Run `ouro-ops release select --platform linux/amd64 --from
+   sha256:<current-config-digest>` to obtain the signed next hop. Never invent a version or digest.
+3. Follow exactly one branch:
+   - `run`: use the sealed preload/step workflow below.
+   - `compose`: show the manual handoff below. Do not plan or apply `upgrade/step`.
+   - `unsupported`: stop, quote `orchestration_reason`, and explain that Ouro cannot safely choose
+     the owning deployment mechanism.
+
+## Compose manual handoff
+- Show the current and recommended signed releases, target config digest, and exact
+  `repository@platform-manifest-digest` returned by release selection.
+- Show every available Compose fact: project, service, working directory, config files, and config
+  hash. If project, service, or config files are missing, ask the operator for them; do not guess.
+- Tell the operator to update that service's image to the signed immutable reference, then run the
+  equivalent commands themselves:
+
+  ```text
+  docker compose -p <project> -f <config-file> config
+  docker compose -p <project> -f <config-file> up -d --no-deps <service>
+  ```
+
+  Add `cd <working-dir>` and repeated `-f <config-file>` flags when the observed facts require them.
+- Wait until the operator says the manual upgrade is complete. Then rerun
+  `observability/health` and verify: orchestration is still `compose`; observable project/service
+  still match; image config digest equals the signed target; container, socket, sync, and role
+  readiness pass. If a check fails, report the current facts and continue the conversation.
+- Treat this as a fresh health check. Do not create or request a transaction, pending state,
+  finalize step, baseline, receipt, or verify-rebind step.
+
+## Decision guidance — direct-run workflow
 - Treat this as ONE Upgrade workflow with two explicit gates. Obtain the current running image
   config digest from typed live evidence, then run `ouro-ops release select --platform linux/amd64
   --from sha256:<current-config-digest>`. Show the signed source, policy version/digest, selected
@@ -73,6 +105,7 @@ candidates and operator approvals; the operator does not start two unrelated wor
 - Stop if the signed N→N+1 transition is absent, exact repository/manifest/platform/config
   verification fails, the live
   recreate shape is unsupported, or a step would violate quorum/BP order.
+- Stop automatic activation for `compose` or `unsupported`; use the routing branch above.
 - Stop when live state changes after approval; obtain a new plan and new operator decision.
 - Stop and require operator recovery if a failed step cannot prove a known rollback state.
 
@@ -85,4 +118,7 @@ candidates and operator approvals; the operator does not start two unrelated wor
 - Never issue a raw image command. Only the approved `upgrade/preload-image` operation may pull the
   exact signed Blink Labs GHCR manifest; tags, alternate repositories, local archives and manually
   selected digests are forbidden.
+- Agent 不得执行 raw docker/compose 写操作；确认 Compose 管理后，可以向用户展示人工
+  Compose 升级命令。目标版本和镜像必须来自 release select，不得使用 latest 或自行选择
+  digest。
 - `--transport-plan` is only transport shape, never evidence that an upgrade is valid.

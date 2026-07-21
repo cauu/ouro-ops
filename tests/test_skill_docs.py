@@ -159,6 +159,21 @@ def main():
     assert "active-container invariance" in " ".join(upgrade.split())
     normalized_upgrade = " ".join(upgrade.split())
     for phrase in [
+        "result.container.orchestration",
+        "project, service, or config files are missing, ask the operator",
+        "docker compose -p <project> -f <config-file> config",
+        "docker compose -p <project> -f <config-file> up -d --no-deps <service>",
+        "Wait until the operator says the manual upgrade is complete",
+        "orchestration is still `compose`",
+        "image config digest equals the signed target",
+        "Do not create or request a transaction, pending state, finalize step, baseline, receipt, or verify-rebind step",
+        "Agent 不得执行 raw docker/compose 写操作",
+        "不得使用 latest 或自行选择 digest",
+    ]:
+        assert phrase in normalized_upgrade, f"Upgrade Skill lacks orchestration branch {phrase!r}"
+    assert "Do not plan or apply `upgrade/step`" in normalized_upgrade
+    assert "quote `orchestration_reason`" in normalized_upgrade
+    for phrase in [
         "ONE Upgrade workflow",
         "internal operation boundaries",
         "separate candidates and operator approvals",

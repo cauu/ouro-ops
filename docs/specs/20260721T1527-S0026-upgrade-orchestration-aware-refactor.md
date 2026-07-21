@@ -178,7 +178,7 @@ Compose 不做自动回滚，失败后由 agent 根据当前事实和 release �
   并补对应 TC-4 测试。
 - [x] p2-2 [CLI] upgrade/step 仅允许 run；apply 前重验，成功后验证 digest、参数和
   readiness；其他分支在 mutation 前拒绝，并补对应 TC-5/TC-6 测试。
-- [ ] p3-1 [Skill] Upgrade Skill 加入三分支、Compose 人工指南、完成后 health 检查和
+- [x] p3-1 [Skill] Upgrade Skill 加入三分支、Compose 人工指南、完成后 health 检查和
   不执行 raw Compose 写操作的 red line，并补对应 TC-7/TC-8 测试。
 - [ ] p3-2 [Docs] 同步 operations、生成站点和对应 TC-9 测试。
 - [ ] p4-1 [Tests] 执行完整回归门，证明 TC-10 且前述 TC 无回归。
@@ -254,6 +254,11 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
 - 2026-07-21T16:03:54+08:00 p2-2 完成：Compose/unsupported plan 与 apply 返回稳定
   reason code，run apply 重验候选和 RecreateSpec，并在 digest、参数、readiness 都通过
   后才完成；TC-5、TC-6 通过。
+- 2026-07-21T16:04:52+08:00 p3-1 开始：按 skill-creator 的简洁指令原则，将 Upgrade
+  Skill 改为 run 自动、Compose 人工交接、unsupported 停止三分支。
+- 2026-07-21T16:07:25+08:00 p3-1 完成：Skill 先读 live orchestration 再分流；Compose
+  只展示签名不可变镜像与人工 config/up 命令，等待用户完成后做普通 health 检查；
+  TC-7、TC-8 通过。
 
 ## 6. Validation Evidence (append-only)
 
@@ -283,6 +288,13 @@ run 重建丢失支持字段、敏感 env 进入 agent 输出，或 Compose 上 
   note: Compose plan/apply 返回 manual_compose_required，unsupported 返回
   unsupported_orchestration，且拒绝发生在任一 docker 命令前；本地健康监听用例在获准的
   非沙箱环境执行。
+- TC-7 | stack: python | command: `python3 tests/test_skill_docs.py` | result: pass | note:
+  Compose 分支展示签名版本、repository@manifest、project/service/files 与用户执行的
+  config/up 模板；缺失信息时明确询问用户。
+- TC-8 | stack: python | command: `python3 tests/test_skill_docs.py` | result: pass | note:
+  Agent red line 禁止 raw Docker/Compose 写操作；用户完成后仅复用 observability/health，
+  明确不创建 transaction、pending、finalize、receipt 或 verify-rebind。通用
+  quick_validate 因本仓库产品 frontmatter 扩展而不适用，仓库专用校验通过。
 
 ## 7. Change Requests (append-only)
 
