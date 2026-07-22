@@ -521,7 +521,28 @@ def recreate_spec():
     if any(hc.get(field) not in allowed for field, allowed in allowed_modes.items()):
         return None
     log_config = hc.get("LogConfig") or {}
-    if log_config.get("Type") not in (None, "", "json-file") or bool(log_config.get("Config")):
+    log_driver = log_config.get("Type") or ""
+    log_options = log_config.get("Config") or {}
+    if not isinstance(log_driver, str) or log_driver not in ("", "json-file"):
+        return None
+    if not isinstance(log_options, dict) or any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in log_options.items()):
+        return None
+    def positive_decimal(value, max_digits):
+        return (0 < len(value) <= max_digits and value[0] != "0" and value.isascii()
+                and value.isdigit())
+    for key, value in log_options.items():
+        if key == "max-file":
+            valid = positive_decimal(value, 9)
+        elif key == "max-size":
+            digits = value[:-1] if value.endswith(("k", "m", "g")) else value
+            valid = positive_decimal(digits, 18)
+        else:
+            valid = False
+        if not valid:
+            return None
+    if log_options and log_driver != "json-file":
         return None
     zero_resources = [
         "Memory", "MemoryReservation", "MemorySwap", "MemorySwappiness", "NanoCpus",
@@ -576,6 +597,8 @@ def recreate_spec():
         "user": cfg.get("User", "") or "",
         "group_add": list(hc.get("GroupAdd", []) or []),
         "labels": dict(cfg.get("Labels", {}) or {}),
+        "log_driver": log_driver,
+        "log_options": dict(sorted(log_options.items())),
         "entrypoint": d.get("Path", "") or "",
         "args": list(d.get("Args", []) or []),
     }

@@ -620,3 +620,70 @@ invalid-until-replaced 占位符，并要求严格按内嵌 Skill 的 `SSH accou
 
 - 2026-07-21T17:58:39+08:00 网站从“复制一份 SSH 行为规则”改为“提供上下文并显式委托
   canonical Skill”；六个 Skill 的独立规则保持不变。
+
+## 12. Change Request: 保留 direct-run json-file 日志轮转参数（2026-07-22，append-only）
+
+### 12.1 Requirement Amendment
+
+- relay1 实机 `docker inspect` 仅因 `HostConfig.LogConfig` 包含 `json-file` 的
+  `max-file=3`、`max-size=50m` 而被 Upgrade recreate 探针拒绝；其余 direct-run 条件均通过。
+- Upgrade 不得要求运维删除现有日志轮转策略，也不得在 recreate 时静默丢弃；产品必须把
+  这两个参数纳入受支持、可审批、可漂移检测、可回滚的密封模型。
+- 仅新增 `json-file` driver 下 `max-file` 与 `max-size` 的封闭子集；其他 driver、其他 log
+  option、空键、非法值或非字符串值继续在 mutation 前 fail-closed。
+- 已完成的 preload 保持有效且不改变运行容器；修复后重新执行 `upgrade/step --plan` 即可。
+
+### 12.2 Solution Amendment
+
+`ouro-probe.sh` 将支持的日志配置规范化为 `RecreateSpec.log_driver` 与排序后的
+`log_options`。默认/空 `json-file` 表示无需显式 argv；存在受支持 option 时密封 executor
+生成独立参数数组 `--log-driver json-file --log-opt key=value`。Rust 侧再次校验 driver、键和值，
+避免仅依赖 shell 探针。序列化后的完整 `RecreateSpec` 已进入 HMAC candidate binding、apply
+前 fresh-observation equality、rollback recreate 与 postcondition equality，因此新增字段自动进入
+这些安全边界。Skill 只需说明支持范围和 fail-closed 结果，不承载参数解析。
+
+### 12.3 Execution Plan Amendment
+
+- [x] p9-1 [Probe/CLI/Tests] 扩展 `RecreateSpec` 与密封 executor，支持并验证 `json-file`
+  `max-file`/`max-size`，补 TC-20。
+- [ ] p9-2 [Skill/Docs/Artifacts] 同步 Upgrade Skill/operations，重建配对 candidate 与站点，
+  补 TC-21。
+
+| Item | Acceptance |
+| --- | --- |
+| p9-1 | TC-20 |
+| p9-2 | TC-21 |
+
+### 12.4 Acceptance Amendment
+
+- TC-20：探针对 `LogConfig={Type:json-file, Config:{max-file:3,max-size:50m}}` 生成非空
+  recreate；最终 plan/executor 包含精确 `--log-driver json-file` 与两个 `--log-opt`，字段进入
+  candidate/drift/postcondition/rollback；未知 driver/option 和非法值仍返回 recreate null 或 Rust
+  validation refusal，且 mutation 之前无 Docker 写操作。
+- TC-21：Upgrade Skill 与 operations 明确 direct-run 会原样保留受支持的 json-file 轮转参数；
+  配对 release candidate、站点和回归重新生成并通过，候选 control binary 内嵌本次 Linux
+  runner；实机只需重跑 upgrade plan，不要求删除 log-opt。
+
+### 12.5 Execution Log Amendment (append-only)
+
+- 2026-07-22T12:01:52+08:00 relay1 实机确认唯一未建模项为 `json-file` 的
+  `max-file=3`/`max-size=50m`；operator 选择产品侧扩展，不改变运行态；p9-1 开始。
+- 2026-07-22T12:07:03+08:00 p9-1 完成：probe 与 Rust executor 双层限制
+  `json-file`/`max-file`/`max-size`，RecreateSpec、审批 plan、实际 run、HMAC candidate、fresh
+  drift、postcondition 和 rollback 共用同一字段；日志策略漂移在首次 Docker mutation 前拒绝，
+  未知/非法配置保持 fail-closed。TC-20 通过。
+
+### 12.6 Validation Evidence Amendment (append-only)
+
+- （待执行）
+- TC-20 | stack: rust/python | command: `cargo test -q`; `python3 tests/test_probe.py`;
+  `python3 tests/test_s0020_stateless_plan.py`; `python3 tests/test_s0020_stateless_apply.py`;
+  `python3 tests/test_s0020_upgrade_workflow.py` | result: pass | note: Rust 178 项通过；relay1
+  日志轮转 fixture 生成 recreate 并在 sealed run 中精确重放两个 log-opt；driver/option/字符串
+  类型/值负例返回 null 或 validation refusal；`50m→100m` fresh drift 在 rename/run 前拒绝。
+  stateless apply 的本地监听用例在获准的非沙箱环境执行。
+
+### 12.7 Change Requests Amendment (append-only)
+
+- 2026-07-22T12:01:52+08:00 direct-run 密封模型新增常用 json-file 日志轮转参数；不扩大到
+  任意 Docker logging 配置，未知形状继续拒绝。

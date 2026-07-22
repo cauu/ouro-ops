@@ -133,6 +133,8 @@ def observation(container="cid-plan"):
             ],
             "env": ["CARDANO_NETWORK=mainnet", "PRIVATE_VALUE=not-output"],
             "ports": [],
+            "log_driver": "json-file",
+            "log_options": {"max-file": "3", "max-size": "50m"},
             "entrypoint": "/usr/local/bin/entrypoint",
             "args": ["run"],
         },

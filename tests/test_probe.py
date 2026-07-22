@@ -150,6 +150,8 @@ def main():
     assert obs["recreate"]["user"] == ""
     assert obs["recreate"]["group_add"] == []
     assert obs["recreate"]["labels"] == {"org.opencontainers.image.title": "cardano-node"}
+    assert obs["recreate"]["log_driver"] == ""
+    assert obs["recreate"]["log_options"] == {}
 
     docker_stub = (binp / "docker").read_text()
     inherited_label = '"Labels":{"org.opencontainers.image.title":"cardano-node"}'
@@ -206,6 +208,45 @@ def main():
     conflicting_obs = json.loads(conflicting_result.stdout)["supervisor"]
     assert conflicting_obs["orchestration"] == "unsupported", conflicting_obs
     assert conflicting_obs["orchestration_reason"] == "conflicting_orchestration_labels:compose,portainer"
+    (binp / "docker").write_text(docker_stub)
+
+    # The direct-run recreate contract preserves the common json-file rotation pair observed on
+    # production relay1. Any other driver, option or malformed value remains fail-closed.
+    empty_port_bindings = '"PortBindings":{}'
+    supported_logging = (
+        '"PortBindings":{},"LogConfig":{"Type":"json-file",'
+        '"Config":{"max-file":"3","max-size":"50m"}}'
+    )
+    (binp / "docker").write_text(docker_stub.replace(empty_port_bindings, supported_logging, 1))
+    logging_result = subprocess.run(
+        ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
+        env=env, text=True, capture_output=True,
+    )
+    assert logging_result.returncode == 0, logging_result.stderr
+    logging_recreate = json.loads(logging_result.stdout)["recreate"]
+    assert logging_recreate["log_driver"] == "json-file", logging_recreate
+    assert logging_recreate["log_options"] == {
+        "max-file": "3",
+        "max-size": "50m",
+    }, logging_recreate
+
+    refused_logging = [
+        supported_logging.replace('"json-file"', '"journald"', 1),
+        supported_logging.replace('"max-file":"3"', '"compress":"true"', 1),
+        supported_logging.replace('"max-file":"3"', '"max-file":"0"', 1),
+        supported_logging.replace('"max-size":"50m"', '"max-size":"50mb"', 1),
+        supported_logging.replace('"max-file":"3"', '"max-file":3', 1),
+    ]
+    for refused_log_config in refused_logging:
+        (binp / "docker").write_text(
+            docker_stub.replace(empty_port_bindings, refused_log_config, 1)
+        )
+        refused = subprocess.run(
+            ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
+            env=env, text=True, capture_output=True,
+        )
+        assert refused.returncode == 0, refused.stderr
+        assert json.loads(refused.stdout)["recreate"] is None, refused.stdout
     (binp / "docker").write_text(docker_stub)
 
     def permission_facts(root: Path) -> dict[str, bool]:

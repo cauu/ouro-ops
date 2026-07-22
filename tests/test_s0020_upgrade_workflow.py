@@ -489,12 +489,12 @@ def main():
         assert alternate.returncode != 0 and "repository must be exactly" in json.dumps(alternate_value)
         assert not docker_log.exists()
 
-        # Any supported recreate-field drift after approval changes the candidate and refuses apply
+        # A supported logging-policy drift after approval changes the candidate and refuses apply
         # before the first rename/run mutation.
         reset_state(state, old_image, target_image, target_present=True)
         drift_plan = plan(home, env, fakebin, "upgrade/step", target_image)
         drifted_observation = copy.deepcopy(direct_run_observation)
-        drifted_observation["recreate"].setdefault("labels", {})["io.ouro.drift"] = "changed"
+        drifted_observation["recreate"]["log_options"]["max-size"] = "100m"
         base_path.write_text(json.dumps(drifted_observation, separators=(",", ":")))
         docker_log.unlink(missing_ok=True)
         drift_apply, drift_apply_value = invoke(
@@ -542,6 +542,13 @@ def main():
         assert success_state["current"]["image"] == target_image and success_state["previous"] is None
         commands = mutation_commands(docker_log)
         assert sum(command and command[0] == "run" for command in commands) == 1
+        run_command = next(command for command in commands if command and command[0] == "run")
+        assert run_command[run_command.index("--log-driver") + 1] == "json-file", run_command
+        assert {
+            run_command[index + 1]
+            for index, token in enumerate(run_command[:-1])
+            if token == "--log-opt"
+        } == {"max-file=3", "max-size=50m"}, run_command
         assert ["rm", "-f", "cardano-node.ouro-prev"] in commands
 
         # Backward-compatible failure restores and verifies N.

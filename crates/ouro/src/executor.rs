@@ -50,6 +50,12 @@ pub struct RecreateSpec {
     pub group_add: Vec<String>,
     #[serde(default)]
     pub labels: BTreeMap<String, String>,
+    /// Closed Docker logging contract. Only the json-file driver and the bounded rotation options
+    /// validated by `recreate_log_argv` are reproducible; every other shape is refused.
+    #[serde(default)]
+    pub log_driver: String,
+    #[serde(default)]
+    pub log_options: BTreeMap<String, String>,
     /// The resolved entrypoint executable (`.Path`) + its args (`.Args`) — the exact process.
     pub entrypoint: String,
     pub args: Vec<String>,
@@ -324,6 +330,7 @@ fn recreate_run_argv(spec: &RecreateSpec, image_digest: &str) -> Result<Vec<Stri
         run.push(s("--label"));
         run.push(format!("{key}={value}"));
     }
+    run.extend(recreate_log_argv(spec)?);
     if !matches!(spec.network_mode.as_str(), "" | "default" | "bridge") {
         run.push(s("--network"));
         run.push(spec.network_mode.clone());
@@ -354,6 +361,52 @@ fn recreate_run_argv(spec: &RecreateSpec, image_digest: &str) -> Result<Vec<Stri
     run.push(image_digest.to_string());
     run.extend(spec.args.iter().cloned());
     Ok(run)
+}
+
+fn positive_decimal(value: &str, max_digits: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= max_digits
+        && value.as_bytes()[0].is_ascii_digit()
+        && value.as_bytes()[0] != b'0'
+        && value.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn valid_json_file_log_option(key: &str, value: &str) -> bool {
+    match key {
+        "max-file" => positive_decimal(value, 9),
+        "max-size" => {
+            let digits = value
+                .strip_suffix('k')
+                .or_else(|| value.strip_suffix('m'))
+                .or_else(|| value.strip_suffix('g'))
+                .unwrap_or(value);
+            positive_decimal(digits, 18)
+        }
+        _ => false,
+    }
+}
+
+fn recreate_log_argv(spec: &RecreateSpec) -> Result<Vec<String>> {
+    if spec.log_driver.is_empty() && spec.log_options.is_empty() {
+        return Ok(Vec::new());
+    }
+    if spec.log_driver != "json-file" {
+        return Err(OuroError::Validation(format!(
+            "upgrade: unsupported Docker log driver {:?} — refused (fail-closed)",
+            spec.log_driver
+        )));
+    }
+    let mut argv = vec![s("--log-driver"), s("json-file")];
+    for (key, value) in &spec.log_options {
+        if !valid_json_file_log_option(key, value) {
+            return Err(OuroError::Validation(format!(
+                "upgrade: unsupported json-file log option {key}={value:?} — refused (fail-closed)"
+            )));
+        }
+        argv.push(s("--log-opt"));
+        argv.push(format!("{key}={value}"));
+    }
+    Ok(argv)
 }
 
 /// Build the legacy remove-first recreate sequence. Stateless S0020 apply uses the recovery plan
@@ -1514,6 +1567,11 @@ mod tests {
                     "cardano-node".into(),
                 ),
             ]),
+            log_driver: "json-file".into(),
+            log_options: BTreeMap::from([
+                ("max-file".into(), "3".into()),
+                ("max-size".into(), "50m".into()),
+            ]),
             entrypoint: "/usr/local/bin/cardano-node".into(),
             args: vec![
                 "run".into(),
@@ -1551,6 +1609,10 @@ mod tests {
             "label preserved: {j}"
         );
         assert!(
+            j.contains("--log-driver json-file --log-opt max-file=3 --log-opt max-size=50m"),
+            "json-file rotation policy preserved: {j}"
+        );
+        assert!(
             j.contains("-v /srv/db:/data/db"),
             "bind mount preserved: {j}"
         );
@@ -1568,6 +1630,30 @@ mod tests {
                 "/ipc/node.socket".into()
             ]
         );
+    }
+
+    #[test]
+    fn recreate_refuses_unmodeled_or_invalid_log_options() {
+        let new = format!("sha256:{}", "d".repeat(64));
+        let mut unsupported_driver = recreate_spec();
+        unsupported_driver.log_driver = "journald".into();
+        assert!(recreate_argv(&unsupported_driver, "cid", &new).is_err());
+
+        let mut unsupported_option = recreate_spec();
+        unsupported_option
+            .log_options
+            .insert("compress".into(), "true".into());
+        assert!(recreate_argv(&unsupported_option, "cid", &new).is_err());
+
+        for (key, value) in [
+            ("max-file", "0"),
+            ("max-file", "three"),
+            ("max-size", "50mb"),
+        ] {
+            let mut invalid = recreate_spec();
+            invalid.log_options.insert(key.into(), value.into());
+            assert!(recreate_argv(&invalid, "cid", &new).is_err());
+        }
     }
 
     #[test]
