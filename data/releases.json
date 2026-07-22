@@ -1,6 +1,6 @@
 {
-  "allowlist_version": 5,
-  "signature": "ed25519:2d87dd1128ea5abd0fee17dd53993f45b620101c332a161b58a61eb1399bbe854af576a3f178da5466e122dd874ed22c0cffd0650cc27196e0ab44adac06ad0f",
+  "allowlist_version": 6,
+  "signature": "ed25519:85da628e462397c9e4b2ed142df012574dc964faadac93fbde5c675b60a9d466fbc3d26ccac3e3f1b2c167048836954bd4ca3a3b8dec492aea210edb7ce9630b",
   "repository": "ghcr.io/blinklabs-io/cardano-node",
   "recommended": {
     "linux/amd64": "sha256:0bb21e45159327c4e6109704df256c3c297c725a4b2cdf6d0e1899e3a9df468f",
@@ -42,6 +42,13 @@
           "oci_index_digest": "sha256:d5ede07a890e9b6a0a5182cdba9dbaf73756336762235e0934a11690beedae02",
           "platform_manifest_digest": "sha256:03211991d65a019073657fe8ad5be1ac8a4cd889bc9b17660faa34ba8b67078d",
           "image_config_digest": "sha256:f313721b677fbe9a64e9a25ed1f5790c47bf0b3e88f48bad22d822e243f47179"
+        },
+        {
+          "release": "10.5.3-1",
+          "platform": "linux/amd64",
+          "oci_index_digest": "sha256:ec379c67d1ef2f0e4478bf3b28ac16db3a62535d6af8f92d6d1e53766a382afb",
+          "platform_manifest_digest": "sha256:3f2aa6636cae566d89faf44b4a1640fd1619b715306664c0d3db0b27dcb31dd4",
+          "image_config_digest": "sha256:ea53539f722c08ced4df221e329438e1f48ae80ef196687753c2583081421905"
         },
         {
           "release": "10.5.4-1",

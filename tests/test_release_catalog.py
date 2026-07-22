@@ -51,7 +51,25 @@ def main():
         assert deploy_value["data"]["cache_written"] is False
         assert list(home.iterdir()) == [], "release selection must not create local state"
 
+        production = json.loads(RELEASES.read_text())
+        bp_1053 = [
+            image
+            for contract in production["contracts"]
+            for image in contract["allowed"]
+            if image["release"] == "10.5.3-1" and image["platform"] == "linux/amd64"
+        ]
+        assert bp_1053 == [
+            {
+                "release": "10.5.3-1",
+                "platform": "linux/amd64",
+                "oci_index_digest": "sha256:ec379c67d1ef2f0e4478bf3b28ac16db3a62535d6af8f92d6d1e53766a382afb",
+                "platform_manifest_digest": "sha256:3f2aa6636cae566d89faf44b4a1640fd1619b715306664c0d3db0b27dcb31dd4",
+                "image_config_digest": "sha256:ea53539f722c08ced4df221e329438e1f48ae80ef196687753c2583081421905",
+            }
+        ]
+
         historical = [
+            "sha256:ea53539f722c08ced4df221e329438e1f48ae80ef196687753c2583081421905",
             "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a",
             "sha256:0fb74b5921860a6547ce5b6c669d59b71169d1c48b014f2fafcec2e4d382f1b3",
             "sha256:5fe0bf791a0af8884386479555996bf4ad7621493889625a2886039bf8734e51",

@@ -699,3 +699,70 @@ invalid-until-replaced 占位符，并要求严格按内嵌 Skill 的 `SSH accou
 
 - 2026-07-22T12:01:52+08:00 direct-run 密封模型新增常用 json-file 日志轮转参数；不扩大到
   任意 Docker logging 配置，未知形状继续拒绝。
+
+## 13. Change Request: 信任 BP 10.5.3-1 精确 OCI 身份（2026-07-22，append-only）
+
+### 13.1 Requirement Amendment
+
+- BP 实机当前运行 `ghcr.io/blinklabs-io/cardano-node:10.5.3-1`，其 image config digest 为
+  `sha256:ea53539f722c08ced4df221e329438e1f48ae80ef196687753c2583081421905`；该已知官方镜像
+  必须进入可信 release catalog，才能从当前版本执行 upgrade。
+- 可信项必须记录从官方 GHCR 解析出的完整 linux/amd64 OCI 三元组：index digest
+  `sha256:ec379c67d1ef2f0e4478bf3b28ac16db3a62535d6af8f92d6d1e53766a382afb`、platform
+  manifest digest `sha256:3f2aa6636cae566d89faf44b4a1640fd1619b715306664c0d3db0b27dcb31dd4`
+  与上述 image config digest；不得仅信任 tag 或截断 digest。
+- `10.5.3-1` 可直接选择当前签名推荐版本 `11.0.1-1`，不新增强制逐跳升级链；没有显式
+  transition 时不承诺自动回滚，失败后按现有 forward recovery/resync 语义处理。
+- production catalog 版本从 5 提升到 6，并继续使用 CLI 内置 production Ed25519 公钥签名。
+  本次不自动发布或推送 catalog；真实候选 E2E 读取固定 main URL，需在签名提交发布后生效。
+
+### 13.2 Solution Amendment
+
+只修改 `data/releases.json` 的签名 release catalog：在唯一 contract 的 `allowed` 中加入
+`10.5.3-1` linux/amd64 完整 OCI 身份、提升 `allowlist_version` 并重新签名；不修改静态
+`data/allowlist.json`，不修改 CLI 代码，也不为该版本添加 transition。catalog 回归将它纳入
+全部历史 amd64 镜像集合，证明签名验证通过且直接选择 11.0.1-1、transition 为 null。
+
+### 13.3 Execution Plan Amendment
+
+- [x] p10-1 [Catalog/Tests] 加入并签名 BP 10.5.3-1 linux/amd64 OCI 身份，验证直接推荐选择，
+  补 TC-22。
+
+| Item | Acceptance |
+| --- | --- |
+| p10-1 | TC-22 |
+
+### 13.4 Acceptance Amendment
+
+- TC-22：production release catalog v6 以既有 production key 签名并通过 schema/签名校验；
+  `10.5.3-1` 的完整 linux/amd64 OCI 三元组唯一存在于 allowed；从其 image config digest
+  执行 release selection/upgrade plan 时直接得到签名推荐 `11.0.1-1` 且 transition null；
+  tamper 与未知镜像仍 fail-closed。
+
+### 13.5 Execution Log Amendment (append-only)
+
+- 2026-07-22T12:15:54+08:00 operator 提供 BP 当前 `10.5.3-1` config digest 截断展示；从
+  官方 GHCR 解析并核对完整 linux/amd64 OCI 三元组，p10-1 开始。
+- 2026-07-22T12:18:21+08:00 p10-1 完成：production catalog 提升到 v6，以既有 production
+  Ed25519 authority 重新签名；10.5.3-1 linux/amd64 的 index/manifest/config 完整身份进入
+  allowed。从该 config 选择时直接返回 11.0.1-1、transition null；不新增升级链或自动回滚
+  声明。TC-22 通过，S0026 保持 active；真实候选读取 main 固定 URL，待该签名提交发布后
+  才能在远端 E2E 生效。
+
+### 13.6 Validation Evidence Amendment (append-only)
+
+- （待执行）
+- TC-22 | stack: rust/python/catalog | command: signer `inspect`/`sign`; `cargo test -q`;
+  `python3 tests/test_release_catalog.py`; `python3 tests/test_s0020_upgrade_workflow.py`;
+  `OURO_RELEASES_FILE=data/releases.json target/debug/ouro-ops release select --platform
+  linux/amd64 --from sha256:ea53539f722c08ced4df221e329438e1f48ae80ef196687753c2583081421905` |
+  result: pass | note: production public key
+  `3ceb1920f30d3768a7b979c563b4e1738dc7708e8ed6e91d6e32bd7a0df165dd` 匹配内置 trust
+  root，canonical SHA-256 `e7e5b0252e76110608b5a2f3d999af1d6ecfec68c6f4bbc9148f7d366068d940`；
+  Rust 178 项及两个端到端 Python 套件通过；精确选择输出 policy_version 6、
+  `upgrade_recommended` 11.0.1-1、transition null，篡改与未知镜像拒绝回归继续通过。
+
+### 13.7 Change Requests Amendment (append-only)
+
+- 2026-07-22T12:15:54+08:00 production catalog 扩展一个已知 BP 历史镜像身份；推荐目标、
+  direct-upgrade 策略、transition 与 CLI 信任根均不改变。
