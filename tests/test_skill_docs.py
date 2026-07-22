@@ -186,6 +186,9 @@ def main():
         "Upgrade does not walk an intermediate version chain",
         "Exact transition metadata is optional and never blocks an upgrade",
         "If `transition` is null, state that the direct upgrade remains valid",
+        "preserves an observed `json-file` log driver",
+        "`max-file` and `max-size` rotation options",
+        "never ask the operator to discard a valid supported rotation policy",
     ]:
         assert phrase in normalized_upgrade, f"Upgrade Skill lacks direct-latest rule {phrase!r}"
     for obsolete in [

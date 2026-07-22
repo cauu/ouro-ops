@@ -1,5 +1,5 @@
 ---
-skill_version: 9
+skill_version: 10
 requires_ouro: ">=0.1.0"
 requires_contract: 1
 ---
@@ -44,6 +44,10 @@ boundaries with separate candidates and operator approvals.
 - Preparation changes only the target image store. It proves the running container identity,
   image, command, mounts, network, creation time and readiness remain unchanged. Upgrade re-derives
   the full live recreate spec and refuses shapes it cannot reproduce.
+- Direct-run recreate preserves an observed `json-file` log driver plus its `max-file` and
+  `max-size` rotation options. Any other log driver, option, type or invalid value remains an
+  unsupported shape and stops before mutation; never ask the operator to discard a valid supported
+  rotation policy merely to pass planning.
 - `upgrade/preload-image` is the non-disruptive preparation boundary. `upgrade/step` is the
   disruptive activation boundary. A successful preparation never authorizes activation or the next
   target; each phase gets its own final candidate and exact approval.

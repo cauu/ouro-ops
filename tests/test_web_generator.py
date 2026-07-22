@@ -101,6 +101,7 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "uname -s" in html and "uname -m" in html
     kes_prompt = payload(html)["kes-rotation"]["content"]
     upgrade_prompt = payload(html)["upgrade"]["content"]
+    normalized_upgrade_prompt = " ".join(upgrade_prompt.split())
     assert "result.container.orchestration" in upgrade_prompt
     assert "Compose manual handoff" in upgrade_prompt
     assert "docker compose -p <project> -f <config-file> config" in upgrade_prompt
@@ -110,6 +111,8 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "quote `orchestration_reason`" in upgrade_prompt
     assert "Upgrade does not walk an intermediate version chain" in upgrade_prompt
     assert "Exact transition metadata is optional and never blocks an upgrade" in upgrade_prompt
+    assert "preserves an observed `json-file` log driver" in normalized_upgrade_prompt
+    assert "`max-file` and `max-size` rotation options" in normalized_upgrade_prompt
     assert "N→N+1 transition must be present" not in upgrade_prompt
     assert "Upgrade to signed recommended release" in html
     assert "included Skill's \"SSH account discovery\" section" in html

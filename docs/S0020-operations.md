@@ -73,8 +73,9 @@ Route Upgrade from `observability/health` container facts before planning activa
 
 - `orchestration: run`: use the sealed preload/step flow. RecreateSpec preserves the observed name,
   restart policy, network, ports, env, binds, entrypoint, args, user, supplementary groups and
-  labels. Apply revalidates this spec before mutation and verifies it with the target digest and
-  readiness afterwards.
+  labels, plus the `json-file` log driver and its supported `max-file`/`max-size` rotation options.
+  Apply revalidates this spec before mutation and verifies it with the target digest and readiness
+  afterwards. Other logging drivers/options remain fail-closed rather than being dropped.
 - `orchestration: compose`: the agent shows the signed release and immutable
   `repository@platform-manifest-digest`, observed project/service/working directory/config files,
   and manual `docker compose config` plus `docker compose up -d --no-deps <service>` templates.

@@ -646,7 +646,7 @@ invalid-until-replaced 占位符，并要求严格按内嵌 Skill 的 `SSH accou
 
 - [x] p9-1 [Probe/CLI/Tests] 扩展 `RecreateSpec` 与密封 executor，支持并验证 `json-file`
   `max-file`/`max-size`，补 TC-20。
-- [ ] p9-2 [Skill/Docs/Artifacts] 同步 Upgrade Skill/operations，重建配对 candidate 与站点，
+- [x] p9-2 [Skill/Docs/Artifacts] 同步 Upgrade Skill/operations，重建配对 candidate 与站点，
   补 TC-21。
 
 | Item | Acceptance |
@@ -672,6 +672,12 @@ invalid-until-replaced 占位符，并要求严格按内嵌 Skill 的 `SSH accou
   `json-file`/`max-file`/`max-size`，RecreateSpec、审批 plan、实际 run、HMAC candidate、fresh
   drift、postcondition 和 rollback 共用同一字段；日志策略漂移在首次 Docker mutation 前拒绝，
   未知/非法配置保持 fail-closed。TC-20 通过。
+- 2026-07-22T12:07:20+08:00 p9-1 独立提交完成；p9-2 开始同步 Agent 决策文案、公开
+  operations 与本地验收产物。
+- 2026-07-22T12:11:14+08:00 p9-2 完成：Upgrade Skill v10 与 operations 明确保留受支持
+  json-file 轮转策略且不要求运维删除；站点重新嵌入 canonical Skill v10；macOS control 与
+  Linux x86_64 runner 配对 candidate 重建，manifest/hash/contract 通过，runner 二进制含 probe
+  与 Rust 双层 logging guard。TC-21 通过，S0026 保持 active 等待实机重跑 plan。
 
 ### 12.6 Validation Evidence Amendment (append-only)
 
@@ -682,6 +688,12 @@ invalid-until-replaced 占位符，并要求严格按内嵌 Skill 的 `SSH accou
   日志轮转 fixture 生成 recreate 并在 sealed run 中精确重放两个 log-opt；driver/option/字符串
   类型/值负例返回 null 或 validation refusal；`50m→100m` fresh drift 在 rename/run 前拒绝。
   stateless apply 的本地监听用例在获准的非沙箱环境执行。
+- TC-21 | stack: bash/python/site | command: `make release-candidate`; `python3
+  tests/test_release_candidate.py`; `python3 tests/test_skill_docs.py`; `./web/onboarding/build.sh`;
+  `python3 -m pytest -q tests/test_web_generator.py`; candidate `contract check` | result: pass |
+  note: Skill v10/operations/站点一致；配对 candidate 校验和与 descriptor 通过，Linux runner
+  strings 含 probe 的 max-file/max-size 分支及 Rust 未支持 driver/option refusal；网站 10 项
+  含本地 HTTP 回归通过。Zig 缓存和 HTTP 监听步骤在获准的非沙箱环境执行。
 
 ### 12.7 Change Requests Amendment (append-only)
 

@@ -62,6 +62,16 @@ def main() -> None:
     package = candidate / manifest["control"]["package"]
     assert sha256(runner) == descriptor["runner_sha256"]
     assert sha256(package) == manifest["control"]["sha256"]
+    runner_strings = subprocess.run(
+        ["strings", str(runner)], check=True, text=True, capture_output=True
+    ).stdout
+    for marker in (
+        "upgrade: unsupported Docker log driver",
+        "upgrade: unsupported json-file log option",
+        'if key == "max-file"',
+        'elif key == "max-size"',
+    ):
+        assert marker in runner_strings, f"paired Linux runner lacks logging marker {marker!r}"
     assert manifest["release_catalog_smoke"]["repository"] == (
         "ghcr.io/blinklabs-io/cardano-node"
     )
