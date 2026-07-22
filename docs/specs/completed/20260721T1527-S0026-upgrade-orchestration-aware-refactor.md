@@ -1,12 +1,12 @@
 # Orchestration-Aware Upgrade Routing
 
 Spec-ID: S0026
-状态: active
+状态: completed
 创建时间: 2026-07-21T10:44:00+08:00
 开始时间: 2026-07-21T15:27:12+08:00
-完成时间:
+完成时间: 2026-07-22T22:00:36+08:00
 前一个 Spec-ID: S0025
-结项原因:
+结项原因: delivered
 
 ## 1. Requirement Details
 
@@ -835,3 +835,23 @@ group_add/唯一 env 被重排后仍可 apply，并继续证明日志值等真�
   canonical representation；安全边界不放宽到任意 recreate 差异。
 - 2026-07-22T16:08:10+08:00 因本次行为位于 CLI 与内嵌 probe，配对本地候选随 p11-1
   重建；Skill 决策文本和网站 Prompt 未改变。
+
+## 15. Closure（2026-07-22，append-only）
+
+### 15.1 Closure Plan And Acceptance
+
+- [x] p12-1 [Spec] 按 operator 明确指令以 `delivered` 关闭 S0026，并移入 completed。
+- TC-24：S0026 不含未完成执行项；header 为 completed/delivered 且记录完成时间；文件位于
+  `docs/specs/completed/`，`docs/specs/` 不再存在 active Markdown spec。
+
+### 15.2 Closure Log And Evidence (append-only)
+
+- 2026-07-22T22:00:36+08:00 operator 明确指令 `close s0026`；全部已知实现项 p1-1 至
+  p11-1 及 TC-1 至 TC-23 已完成，S0026 以 `delivered` 结项。后续新需求不得继续追加到本
+  spec，应创建新的 draft/active spec。
+- TC-24 | stack: spec/git | command: pending completed-path/header/active-root verification |
+  result: pending | note: 移动并验证后在结项 commit 前回填最终结果。
+- TC-24 | stack: spec/git | command: `find docs/specs -maxdepth 1 -type f -name '*.md'`;
+  completed header/pending-item checks | result: pass | note: completed 文件 header 为
+  completed、完成时间 `2026-07-22T22:00:36+08:00`、结项原因 delivered；无未完成 item，
+  active root 无 Markdown spec。
