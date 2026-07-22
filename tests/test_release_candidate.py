@@ -70,6 +70,10 @@ def main() -> None:
         "upgrade: unsupported json-file log option",
         'if key == "max-file"',
         'elif key == "max-size"',
+        "binds.sort(key=lambda item:",
+        "ports.sort(key=lambda item:",
+        "group_add.sort()",
+        "len(set(env_keys)) == len(env_keys)",
     ):
         assert marker in runner_strings, f"paired Linux runner lacks logging marker {marker!r}"
     assert manifest["release_catalog_smoke"]["repository"] == (

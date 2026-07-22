@@ -489,33 +489,93 @@ def main():
         assert alternate.returncode != 0 and "repository must be exactly" in json.dumps(alternate_value)
         assert not docker_log.exists()
 
-        # A supported logging-policy drift after approval changes the candidate and refuses apply
+        # Docker may enumerate set-like recreate fields in a different order between plan and
+        # apply. The candidate, fresh drift gate, postcondition and emitted run argv all share one
+        # canonical order, while preserving every field value.
+        reset_state(state, old_image, target_image, target_present=True)
+        order_insensitive = copy.deepcopy(direct_run_observation)
+        order_insensitive["recreate"]["ports"] = [
+            {"container": "3001/tcp", "host_ip": "", "host_port": "3001"},
+            {
+                "container": "12798/tcp",
+                "host_ip": "127.0.0.1",
+                "host_port": "12798",
+            },
+        ]
+        order_insensitive["recreate"]["group_add"] = ["cardano", "44"]
+        base_path.write_text(json.dumps(order_insensitive, separators=(",", ":")))
+        canonical_plan = plan(home, env, fakebin, "upgrade/step", target_image)
+        reordered = copy.deepcopy(order_insensitive)
+        for field in ["binds", "ports", "group_add", "env"]:
+            reordered["recreate"][field].reverse()
+        base_path.write_text(json.dumps(reordered, separators=(",", ":")))
+        reordered_plan = plan(home, env, fakebin, "upgrade/step", target_image)
+        assert reordered_plan["data"]["candidate_hash"] == canonical_plan["data"]["candidate_hash"]
+        docker_log.unlink(missing_ok=True)
+        reordered_apply, reordered_value = step_apply(
+            home,
+            env,
+            fakebin,
+            canonical_plan["data"]["candidate_hash"],
+            target_image,
+            relay_listener(),
+        )
+        assert reordered_apply.returncode == 0, (reordered_apply, reordered_value)
+        reordered_run = next(
+            command
+            for command in mutation_commands(docker_log)
+            if command and command[0] == "run"
+        )
+        values_after = lambda flag: [
+            reordered_run[index + 1]
+            for index, token in enumerate(reordered_run[:-1])
+            if token == flag
+        ]
+        assert values_after("-v") == [
+            "/srv/data:/data/db",
+            "/srv/ipc:/ipc",
+            "/srv/config:/opt/cardano/config:ro",
+        ]
+        assert values_after("-p") == ["127.0.0.1:12798:12798/tcp", "3001:3001/tcp"]
+        assert values_after("--group-add") == ["44", "cardano"]
+        assert values_after("-e") == ["CARDANO_NETWORK=mainnet", "PRIVATE_VALUE=not-output"]
+        base_path.write_text(json.dumps(direct_run_observation, separators=(",", ":")))
+
+        # Real bind, environment and logging changes still alter the candidate and refuse apply
         # before the first rename/run mutation.
         reset_state(state, old_image, target_image, target_present=True)
         drift_plan = plan(home, env, fakebin, "upgrade/step", target_image)
-        drifted_observation = copy.deepcopy(direct_run_observation)
-        drifted_observation["recreate"]["log_options"]["max-size"] = "100m"
-        base_path.write_text(json.dumps(drifted_observation, separators=(",", ":")))
-        docker_log.unlink(missing_ok=True)
-        drift_apply, drift_apply_value = invoke(
-            home,
-            *apply_args(
-                "upgrade/step",
-                drift_plan["data"]["candidate_hash"],
-                "--param",
-                "machine=bp1",
-                "--param",
-                f"image={target_image}",
-            ),
-            env_extra=env,
-            path=fakebin,
-        )
-        assert drift_apply.returncode != 0
-        assert "approved candidate does not match current live state" in json.dumps(drift_apply_value)
-        assert not any(
-            command and command[0] in {"rename", "run", "rm", "start"}
-            for command in mutation_commands(docker_log)
-        )
+        bind_drift = copy.deepcopy(direct_run_observation)
+        bind_drift["recreate"]["binds"][0]["source"] = "/srv/other-data"
+        env_drift = copy.deepcopy(direct_run_observation)
+        env_drift["recreate"]["env"][1] = "PRIVATE_VALUE=changed"
+        log_drift = copy.deepcopy(direct_run_observation)
+        log_drift["recreate"]["log_options"]["max-size"] = "100m"
+        for drifted_observation in [bind_drift, env_drift, log_drift]:
+            reset_state(state, old_image, target_image, target_present=True)
+            base_path.write_text(json.dumps(drifted_observation, separators=(",", ":")))
+            docker_log.unlink(missing_ok=True)
+            drift_apply, drift_apply_value = invoke(
+                home,
+                *apply_args(
+                    "upgrade/step",
+                    drift_plan["data"]["candidate_hash"],
+                    "--param",
+                    "machine=bp1",
+                    "--param",
+                    f"image={target_image}",
+                ),
+                env_extra=env,
+                path=fakebin,
+            )
+            assert drift_apply.returncode != 0
+            assert "approved candidate does not match current live state" in json.dumps(
+                drift_apply_value
+            )
+            assert not any(
+                command and command[0] in {"rename", "run", "rm", "start"}
+                for command in mutation_commands(docker_log)
+            )
         base_path.write_text(json.dumps(direct_run_observation, separators=(",", ":")))
 
         # Activation success: signed transition is candidate-bound and reviewable; N is retained

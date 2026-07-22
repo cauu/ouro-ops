@@ -2890,7 +2890,7 @@ fn build_stateless_target_plan(args: &[String]) -> Result<StatelessTargetPlan> {
         .map_err(|error| OuroError::Validation(format!("cannot bind live state: {error}")))?;
     let live_state_hash = crate::intent::sha256_hex(&live_bytes);
     let recreate_binding = observation.recreate.as_ref().map(|spec| {
-        serde_json::to_vec(spec)
+        serde_json::to_vec(&spec.canonicalized())
             .map(|bytes| crate::intent::sha256_hex(&bytes))
             .unwrap_or_default()
     });
@@ -3419,9 +3419,12 @@ fn stateless_live_drift_components(
     changed_live!(host_key_sha256);
     changed_live!(genesis_hash);
     changed_live!(network);
-    if operation == "upgrade/step"
-        && serde_json::to_value(&before.recreate).ok() != serde_json::to_value(&after.recreate).ok()
-    {
+    let recreate_matches = match (&before.recreate, &after.recreate) {
+        (Some(approved), Some(observed)) => approved.semantically_eq(observed),
+        (None, None) => true,
+        _ => false,
+    };
+    if operation == "upgrade/step" && !recreate_matches {
         changed.push("upgrade_recreate_spec");
     }
     changed
@@ -3449,7 +3452,7 @@ fn require_stateless_post_contract(
                 "post-apply container no longer has a fully modeled recreate specification".into(),
             )
         })?;
-        if serde_json::to_value(approved).ok() != serde_json::to_value(observed).ok() {
+        if !approved.semantically_eq(observed) {
             return Err(OuroError::Validation(
                 "post-apply container parameters differ from the approved recreate specification"
                     .into(),
@@ -5104,8 +5107,12 @@ fn read_observation(args: &[String]) -> Result<Observation> {
             .map_err(|e| OuroError::Validation(format!("cannot read observation {path}: {e}")))?,
         None => run_probe()?,
     };
-    serde_json::from_str(&text)
-        .map_err(|e| OuroError::Validation(format!("malformed observation: {e}")))
+    let mut observation: Observation = serde_json::from_str(&text)
+        .map_err(|e| OuroError::Validation(format!("malformed observation: {e}")))?;
+    if let Some(recreate) = observation.recreate.as_mut() {
+        recreate.normalize_order();
+    }
+    Ok(observation)
 }
 
 struct ExtractedProbe {
@@ -5276,7 +5283,7 @@ fn recreate_spec_binding(
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
     let secret = operation_secret(paths, local)?;
-    let bytes = serde_json::to_vec(spec)
+    let bytes = serde_json::to_vec(&spec.canonicalized())
         .map_err(|e| OuroError::Validation(format!("cannot bind upgrade recreate spec: {e}")))?;
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.trim().as_bytes())
         .map_err(|_| OuroError::Validation("invalid operation secret".into()))?;

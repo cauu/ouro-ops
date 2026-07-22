@@ -766,3 +766,72 @@ invalid-until-replaced 占位符，并要求严格按内嵌 Skill 的 `SSH accou
 
 - 2026-07-22T12:15:54+08:00 production catalog 扩展一个已知 BP 历史镜像身份；推荐目标、
   direct-upgrade 策略、transition 与 CLI 信任根均不改变。
+
+## 14. Change Request: 消除 RecreateSpec 集合枚举顺序假漂移（2026-07-22，append-only）
+
+### 14.1 Requirement Amendment
+
+- Docker inspect 对 bind 等集合型字段不保证稳定枚举顺序；仅顺序变化不得改变 upgrade
+  candidate、触发 apply 前 fresh drift，或导致 postcondition 失败。
+- 仅规范化语义上顺序无关的字段：`binds` 按 destination/source/read-only 稳定排序，`ports`
+  按 container/host-ip/host-port 排序，`group_add` 排序；`labels` 与 `log_options` 继续依赖
+  `BTreeMap` 的稳定键序。
+- `env` 不得整段忽略：仅当所有条目都有非空且唯一的 KEY 时按 KEY 排序；存在重复或不可
+  判定 KEY 时保留原始顺序，使可能依赖重复变量顺序的真实变化继续触发拒绝。
+- 规范化必须同时覆盖 probe 构建、candidate/hash binding、apply 前后 drift 比较及实际
+  `docker run` argv；挂载增删、source/destination/read-only、端口、组、环境值、日志策略等
+  真变化继续 fail-closed。
+
+### 14.2 Solution Amendment
+
+在 Rust `RecreateSpec` 建立单一 canonical-order 方法，由 observation 反序列化边界、opaque
+binding、语义比较与 executor argv 共用；不删除或绕过 `upgrade_recreate_spec` 检查。probe
+同时输出同一排序，减少跨 Docker 版本的表示噪声。回归覆盖同一 plan 在 binds/ports/
+group_add/唯一 env 被重排后仍可 apply，并继续证明日志值等真实变化在第一次 Docker mutation
+前拒绝；重复 env key 保留顺序，不被错误等价化。
+
+### 14.3 Execution Plan Amendment
+
+- [x] p11-1 [Probe/CLI/Executor/Tests] 规范化 RecreateSpec 顺序无关字段并保留真实漂移门控，
+  补 TC-23。
+
+| Item | Acceptance |
+| --- | --- |
+| p11-1 | TC-23 |
+
+### 14.4 Acceptance Amendment
+
+- TC-23：仅重排 binds、ports、group_add 与无重复 KEY 的 env 时，candidate hash、fresh apply
+  与 postcondition 均保持稳定，生成的 `docker run` 参数按 canonical order 输出；重复 env key
+  不排序；任一 bind 内容或 env/log option 值变化仍在 mutation 前拒绝。probe、Rust 与 sealed
+  upgrade 回归通过。
+
+### 14.5 Execution Log Amendment (append-only)
+
+- 2026-07-22T15:59:29+08:00 operator 指出仅 bind 枚举顺序不同被误报为 recreate drift；
+  确认采用字段级规范化而非关闭完整 drift gate，p11-1 开始。
+- 2026-07-22T16:08:10+08:00 p11-1 完成：probe 与 Rust RecreateSpec 共用 binds/ports/
+  group_add/唯一 env key 的 canonical order；candidate hash、opaque binding、fresh drift、
+  postcondition 与 executor argv 均消费规范化结果。重复 env key 保留原序；bind/env/log
+  内容变化仍在 mutation 前拒绝。配对 macOS control/Linux x86_64 runner candidate 已重建并
+  验证包含新 probe；TC-23 通过，S0026 保持 active。
+
+### 14.6 Validation Evidence Amendment (append-only)
+
+- （待执行）
+- TC-23 | stack: rust/python/bash/artifact | command: `cargo test -q`; `cargo clippy -q
+  --all-targets -- -D warnings`; `python3 tests/test_probe.py`; `python3
+  tests/test_s0020_stateless_plan.py`; `python3 tests/test_s0020_stateless_apply.py`; `python3
+  tests/test_s0020_upgrade_workflow.py`; `make release-candidate`; `python3
+  tests/test_release_candidate.py` | result: pass | note: Rust 179 项通过；probe 对 binds/ports/
+  group_add/唯一 env key 输出稳定顺序；同一 candidate 在四类字段反序后成功通过 fresh apply
+  与 postcondition，并以 canonical argv recreate；重复 env key 未等价化，bind source/env value/
+  log option 真漂移均在 rename/run 前拒绝；配对候选 checksum、descriptor、内嵌 Linux runner
+  marker 与签名 catalog smoke 通过。stateless apply 回环监听套件在获准的非沙箱环境执行。
+
+### 14.7 Change Requests Amendment (append-only)
+
+- 2026-07-22T15:59:29+08:00 RecreateSpec equality 从 JSON 数组表示相等收敛为显式、封闭的
+  canonical representation；安全边界不放宽到任意 recreate 差异。
+- 2026-07-22T16:08:10+08:00 因本次行为位于 CLI 与内嵌 probe，配对本地候选随 p11-1
+  重建；Skill 决策文本和网站 Prompt 未改变。

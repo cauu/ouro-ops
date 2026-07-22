@@ -574,6 +574,9 @@ def recreate_spec():
             return None
         binds.append({"source": m.get("Source", ""), "destination": m.get("Destination", ""),
                       "read_only": not m.get("RW", True)})
+    binds.sort(key=lambda item: (
+        item["destination"], item["source"], item["read_only"]
+    ))
     network_mode = hc.get("NetworkMode", "") or ""
     networks = ((d.get("NetworkSettings", {}) or {}).get("Networks", {}) or {})
     expected_network = "bridge" if network_mode in ("", "default", "bridge") else network_mode
@@ -587,15 +590,28 @@ def recreate_spec():
         for c in (confs or []):
             ports.append({"container": cont, "host_ip": c.get("HostIp", "") or "",
                           "host_port": c.get("HostPort", "") or ""})
+    ports.sort(key=lambda item: (
+        item["container"], item["host_ip"], item["host_port"]
+    ))
+    group_add = list(hc.get("GroupAdd", []) or [])
+    if any(not isinstance(group, str) for group in group_add):
+        return None
+    group_add.sort()
+    environment = list(cfg.get("Env", []) or [])
+    if any(not isinstance(item, str) for item in environment):
+        return None
+    env_keys = [item.partition("=")[0] for item in environment]
+    if all(env_keys) and len(set(env_keys)) == len(env_keys):
+        environment.sort(key=lambda item: item.partition("=")[0])
     return {
         "name": (d.get("Name", "") or "").lstrip("/"),
         "restart_policy": ((hc.get("RestartPolicy", {}) or {}).get("Name", "") or ""),
         "network_mode": network_mode,
         "binds": binds,
-        "env": list(cfg.get("Env", []) or []),
+        "env": environment,
         "ports": ports,
         "user": cfg.get("User", "") or "",
-        "group_add": list(hc.get("GroupAdd", []) or []),
+        "group_add": group_add,
         "labels": dict(cfg.get("Labels", {}) or {}),
         "log_driver": log_driver,
         "log_options": dict(sorted(log_options.items())),

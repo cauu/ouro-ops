@@ -152,6 +152,15 @@ def main():
     assert obs["recreate"]["labels"] == {"org.opencontainers.image.title": "cardano-node"}
     assert obs["recreate"]["log_driver"] == ""
     assert obs["recreate"]["log_options"] == {}
+    assert [bind["destination"] for bind in obs["recreate"]["binds"]] == [
+        "/data/db",
+        "/ipc",
+        "/opt/cardano/config",
+    ]
+    assert obs["recreate"]["env"] == [
+        "CARDANO_BLOCK_PRODUCER=true",
+        "CARDANO_NETWORK=mainnet",
+    ]
 
     docker_stub = (binp / "docker").read_text()
     inherited_label = '"Labels":{"org.opencontainers.image.title":"cardano-node"}'
@@ -398,7 +407,9 @@ def main():
         1,
     ).replace(
         '"PortBindings":{}',
-        '"PortBindings":{},"GroupAdd":["44","cardano"]',
+        '"PortBindings":{"3001/tcp":[{"HostIp":"","HostPort":"3001"}],'
+        '"12798/tcp":[{"HostIp":"127.0.0.1","HostPort":"12798"}]},'
+        '"GroupAdd":["cardano","44"]',
         1,
     ).replace(
         '"Labels":{"org.opencontainers.image.title":"cardano-node"}',
@@ -414,6 +425,14 @@ def main():
     modeled_recreate = json.loads(modeled.stdout)["recreate"]
     assert modeled_recreate["user"] == "1000:1000", modeled_recreate
     assert modeled_recreate["group_add"] == ["44", "cardano"], modeled_recreate
+    assert modeled_recreate["ports"] == [
+        {
+            "container": "12798/tcp",
+            "host_ip": "127.0.0.1",
+            "host_port": "12798",
+        },
+        {"container": "3001/tcp", "host_ip": "", "host_port": "3001"},
+    ], modeled_recreate
     assert modeled_recreate["labels"]["io.ouro.role"] == "bp", modeled_recreate
     (binp / "docker").write_text(docker_stub)
 

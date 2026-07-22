@@ -19,7 +19,7 @@
 //! `build_plan` returns what the executor WOULD run; the actual `std::process` invocation happens
 //! target-side (as the confined principal). This module is the sealed argv builder + its proof.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -36,7 +36,7 @@ use crate::{OuroError, Result};
 /// The upgrade recreate spec (§2.10) — the target-side `docker inspect` facts needed to recreate the
 /// container onto a new image WITHOUT losing anything the probe modeled. Fail-closed: the probe emits
 /// `null` (→ refusal) for any shape it cannot faithfully reproduce (named volumes, tmpfs, etc.).
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RecreateSpec {
     pub name: String,
     pub restart_policy: String,
@@ -61,18 +61,80 @@ pub struct RecreateSpec {
     pub args: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Bind {
     pub source: String,
     pub destination: String,
     pub read_only: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Port {
     pub container: String,
     pub host_ip: String,
     pub host_port: String,
+}
+
+fn environment_key(value: &str) -> &str {
+    value.split_once('=').map(|(key, _)| key).unwrap_or(value)
+}
+
+impl RecreateSpec {
+    /// Canonicalize only Docker fields whose order does not affect container semantics. This is
+    /// shared by candidate binding, drift comparison and argv generation so a probe enumeration
+    /// reorder cannot look like a container-shape change.
+    pub fn normalize_order(&mut self) {
+        self.binds.sort_by(|left, right| {
+            (
+                left.destination.as_str(),
+                left.source.as_str(),
+                left.read_only,
+            )
+                .cmp(&(
+                    right.destination.as_str(),
+                    right.source.as_str(),
+                    right.read_only,
+                ))
+        });
+        self.ports.sort_by(|left, right| {
+            (
+                left.container.as_str(),
+                left.host_ip.as_str(),
+                left.host_port.as_str(),
+            )
+                .cmp(&(
+                    right.container.as_str(),
+                    right.host_ip.as_str(),
+                    right.host_port.as_str(),
+                ))
+        });
+        self.group_add.sort();
+
+        // Docker can represent duplicate environment names, where ordering may be observable by
+        // the process. Sort only when every key is nonempty and unique; otherwise preserve the
+        // original sequence so a potentially meaningful reorder remains drift.
+        let env_is_keyed_set = {
+            let mut seen = BTreeSet::new();
+            self.env.iter().all(|entry| {
+                let key = environment_key(entry);
+                !key.is_empty() && seen.insert(key.to_string())
+            })
+        };
+        if env_is_keyed_set {
+            self.env
+                .sort_by(|left, right| environment_key(left).cmp(environment_key(right)));
+        }
+    }
+
+    pub fn canonicalized(&self) -> Self {
+        let mut canonical = self.clone();
+        canonical.normalize_order();
+        canonical
+    }
+
+    pub fn semantically_eq(&self, other: &Self) -> bool {
+        self.canonicalized() == other.canonicalized()
+    }
 }
 
 /// The converged container layout (§2.2): fixed destinations the sealed executor writes to.
@@ -280,6 +342,8 @@ pub fn recoverable_plans(
 }
 
 fn recreate_run_argv(spec: &RecreateSpec, image_digest: &str) -> Result<Vec<String>> {
+    let canonical = spec.canonicalized();
+    let spec = &canonical;
     if spec.name.is_empty() {
         return Err(OuroError::Validation(
             "upgrade: observed container has no name — refused (fail-closed)".into(),
@@ -1630,6 +1694,81 @@ mod tests {
                 "/ipc/node.socket".into()
             ]
         );
+    }
+
+    #[test]
+    fn recreate_canonicalizes_only_order_independent_fields() {
+        let new = format!("sha256:{}", "d".repeat(64));
+        let mut observed = recreate_spec();
+        observed.binds.extend([
+            Bind {
+                source: "/srv/config".into(),
+                destination: "/opt/cardano/config".into(),
+                read_only: true,
+            },
+            Bind {
+                source: "/srv/ipc".into(),
+                destination: "/ipc".into(),
+                read_only: false,
+            },
+        ]);
+        observed.ports.push(Port {
+            container: "12798/tcp".into(),
+            host_ip: "127.0.0.1".into(),
+            host_port: "12798".into(),
+        });
+        observed.env.push("CARDANO_BLOCK_PRODUCER=true".into());
+
+        let mut reordered = observed.clone();
+        reordered.binds.reverse();
+        reordered.ports.reverse();
+        reordered.group_add.reverse();
+        reordered.env.reverse();
+        assert!(observed.semantically_eq(&reordered));
+        assert_eq!(
+            serde_json::to_vec(&observed.canonicalized()).unwrap(),
+            serde_json::to_vec(&reordered.canonicalized()).unwrap()
+        );
+        assert_eq!(
+            recreate_argv(&observed, "cid", &new).unwrap(),
+            recreate_argv(&reordered, "cid", &new).unwrap()
+        );
+
+        let canonical = reordered.canonicalized();
+        assert_eq!(
+            canonical
+                .binds
+                .iter()
+                .map(|bind| bind.destination.as_str())
+                .collect::<Vec<_>>(),
+            ["/data/db", "/ipc", "/opt/cardano/config"]
+        );
+        assert_eq!(canonical.group_add, ["44", "cardano"]);
+        assert_eq!(
+            canonical.env.iter().map(String::as_str).collect::<Vec<_>>(),
+            ["CARDANO_BLOCK_PRODUCER=true", "NETWORK=mainnet"]
+        );
+
+        let duplicate_env = RecreateSpec {
+            env: vec!["TOKEN=first".into(), "TOKEN=second".into()],
+            ..recreate_spec()
+        };
+        let mut reversed_duplicate_env = duplicate_env.clone();
+        reversed_duplicate_env.env.reverse();
+        assert_eq!(duplicate_env.canonicalized().env, duplicate_env.env);
+        assert!(!duplicate_env.semantically_eq(&reversed_duplicate_env));
+
+        let mut real_drift = observed.clone();
+        real_drift.binds[0].source = "/srv/other".into();
+        assert!(!observed.semantically_eq(&real_drift));
+        real_drift = observed.clone();
+        real_drift.env[0] = "NETWORK=preview".into();
+        assert!(!observed.semantically_eq(&real_drift));
+        real_drift = observed.clone();
+        real_drift
+            .log_options
+            .insert("max-size".into(), "100m".into());
+        assert!(!observed.semantically_eq(&real_drift));
     }
 
     #[test]
