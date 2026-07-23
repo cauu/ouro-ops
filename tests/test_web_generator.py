@@ -172,6 +172,15 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert html.count('data-op="') == 6
 
 
+def test_animated_decorations_cannot_expand_document_width() -> None:
+    source = SOURCE.read_text(encoding="utf-8")
+    rendered = build()
+    for html in (source, rendered):
+        assert "html,body{overflow-x:clip}" in html
+        assert "animation:aura-drift 10s ease-in-out infinite alternate" in html
+        assert ".hero{position:relative;overflow:visible}" in html
+
+
 def test_wrapper_delegates_ssh_policy_to_canonical_skill() -> None:
     source = SOURCE.read_text(encoding="utf-8")
     for retired_registration_field in [

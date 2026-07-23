@@ -693,6 +693,8 @@ takeover 或未校验下载。
   `counter_status=no_blocks_minted_yet` 解释为“尚未产生 node-state counter”的正常初始
   状态，而不是凭证损坏；保留 KES period、凭证、权限和未知 counter evidence 的严格
   门禁，并在 snapshot/Skill 中明确呈现该区别。
+- [x] p4-2-fix2 [Website] 阻止 Hero 装饰光晕动画扩大根页面横向 scrollable overflow，
+  消除首屏加载及动画过程中右侧空白区域出现后缓慢收回的布局抖动。
 
 ### Item → TC Mapping
 
@@ -709,6 +711,7 @@ takeover 或未校验下载。
 | p5-1 | TC-15, TC-16, TC-17, TC-18 |
 | p4-2-fix1 | TC-19 |
 | p4-1-fix1 | TC-20 |
+| p4-2-fix2 | TC-21 |
 
 ## 4. Test And Acceptance Criteria
 
@@ -798,6 +801,9 @@ takeover 或未校验下载。
   liveness 均有效，普通 snapshot 必须报告 `block_production_ready=true`，同时保留
   “尚未出块”的显式事实；未标型/不可用 counter、counter 不一致、KES 未生效/过期及
   凭证异常仍 fail closed。KES Rotation 对 candidate/cold identity 的授权约束保持不变。
+- TC-21：Hero aura/orb 等纯装饰动画在任意 transform 帧均不得扩大根页面横向
+  scrollable overflow；页面保留纵向滚动、sticky navigation、光晕运动与
+  reduced-motion 行为，网站 source 与生成产物均固化横向 clip invariant。
 
 Pass/fail：
 
@@ -917,6 +923,12 @@ python3 tests/test_s0027_deploy.py
   使用有效 KES period 形成普通 readiness；snapshot 显式输出 counter status/period
   validity 并仅为该 typed state 接受空 node-state counter；canonical Skill/网站同步
   说明“可产块但尚未出块”，未标型或 unavailable counter 继续证据不足。
+- 2026-07-23T22:25:11+08:00 p4-2-fix2 started：operator 截图复现页面右侧空白随加载
+  动画缓慢收回；静态审计定位 `.hero-aura` 的横向 translate + scale 在
+  `.hero{overflow:visible}` 下进入根 scrollable overflow，开始添加根级横向 clip 门禁。
+- 2026-07-23T22:26:54+08:00 p4-2-fix2 completed：为 html/body 固化
+  `overflow-x:clip`，在不创建横向滚动容器、不移除 aura 动画的情况下截断纯装饰
+  transform 对 document width 的影响；source/生成产物独立回归通过。
 
 ## 6. Validation Evidence (append-only)
 
@@ -1014,6 +1026,11 @@ python3 tests/test_s0027_deploy.py
   `counter_status=no_blocks_minted_yet`；unavailable counter 返回
   `opcert_counter_evidence_unavailable`/insufficient；180 Rust tests、KES candidate-bound
   activation、Observability 和 canonical website payload 均通过。
+- TC-21 | stack: CSS hardening + static website generator | command:
+  `web/onboarding/build.sh`; `python3 -m pytest -q tests/test_web_generator.py` (12 passed);
+  `git diff --check` | result: pass | note: source 与生成产物均包含根级
+  `overflow-x:clip`；aura-drift 动画和 Hero visible overflow 保持存在，装饰 transform
+  不再扩大 document 横向滚动范围。
 
 ## 7. Change Requests (append-only)
 
@@ -1022,3 +1039,5 @@ python3 tests/test_s0027_deploy.py
 - 2026-07-23T22:11:48+08:00 operator 报告 operational BP 尚未出块时
   `node_state=null` 被误报为 `block_production_ready=false`；作为 p4-1-fix1 修复普通
   readiness 的类型解释，不放宽 KES Rotation 的 candidate-bound 安全边界。
+- 2026-07-23T22:25:11+08:00 operator 报告网站初次打开时右侧被撑开并随动画缓慢收回；
+  作为 p4-2-fix2 修复纯装饰 transform 泄漏到根页面横向滚动范围的问题。

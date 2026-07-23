@@ -31,6 +31,7 @@
   }
   *{box-sizing:border-box}
   html{color-scheme:light;scroll-behavior:smooth}
+  html,body{overflow-x:clip} /* animated decorative transforms must not widen the document */
   body{margin:0;background:var(--canvas);color:var(--body);font:15px/1.55 var(--font);
     -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
   ::selection{background:var(--sea);color:#fff}
