@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
-"""Current fixed cold-signing scripts preserve cardano-cli era discipline.
+"""The KES cold-signing script preserves cardano-cli era discipline.
 
 The cold-sign / registration flows separate the cardano-cli VERSION from the ledger ERA:
   * KES opcert commands are era-NEUTRAL — `node issue-op-cert` / `node key-gen-KES` are NEVER
     prefixed with an era (the opcert format does not depend on the ledger era).
-  * deploy transaction commands are era-SCOPED — `<era> transaction witness/build/...` and the
-    certificate builders always carry the era (the tx/cert format DOES depend on it).
-
-This gate freezes that discipline so a future edit cannot silently add an era to an opcert command
-or drop it from a transaction witness.
+This gate freezes that discipline so a future edit cannot silently add an era to an opcert command.
 
     python3 tests/test_cardano_cli_matrix.py
 """
@@ -19,7 +15,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 KES_VKEY = ROOT / "tests/fixtures/kes/kes-vkey-public.json"
-TXBODY = ROOT / "tests/fixtures/deploy/tx-body-unsigned.json"
 
 failures = []
 def check(cond, msg):
@@ -55,21 +50,12 @@ def main():
     for cmd in ERA_NEUTRAL:
         check(no_era_prefix(kes, cmd), f"kes cold-sign wrongly era-prefixes `{cmd}`")
 
-    # Deploy cold-sign script: era-scoped transaction witness.
-    dep = subprocess.run([binary, "deploy", "cold-sign-script", "--tx-body", str(TXBODY),
-                          "--cold-key", "cold", "--testnet-magic", "1"],
-                         cwd=ROOT, capture_output=True, text=True).stdout
-    check(re.search(r'\bconway\s+transaction\s+witness', dep) is not None,
-          "deploy cold-sign must call era-scoped `<era> transaction witness`")
-    check(re.search(r'\btransaction\s+witness', dep) and "conway transaction witness" in dep,
-          "deploy cold-sign transaction witness must be era-scoped")
-
     if failures:
         print("FAIL — cardano-cli era/version gate:")
         for f in failures:
             print(f"  - {f}")
         sys.exit(1)
-    print("PASS — cardano-cli era gate: opcert era-neutral, transaction witness era-scoped")
+    print("PASS — cardano-cli era gate: opcert commands remain era-neutral")
 
 
 if __name__ == "__main__":

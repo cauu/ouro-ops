@@ -144,29 +144,6 @@ pub fn registry() -> &'static [OperationSpec] {
             may_expose_secret: false,
         },
         OperationSpec {
-            operation_id: "deploy/register-submit",
-            mutability: Mutability::Dangerous,
-            params: &[
-                ParamSpec {
-                    name: "machine",
-                    kind: ParamKind::MachineId,
-                    required: true,
-                },
-                ParamSpec {
-                    name: "tx",
-                    kind: ParamKind::ArtifactRef,
-                    required: true,
-                },
-                ParamSpec {
-                    name: "network",
-                    kind: ParamKind::Enum(&["mainnet", "preprod", "preview"]),
-                    required: true,
-                },
-            ],
-            touched: &["chain:submit"],
-            may_expose_secret: false,
-        },
-        OperationSpec {
             operation_id: "observability/health",
             mutability: Mutability::Read, // a managed read — no confirm, no write transaction
             params: &[ParamSpec {
@@ -533,19 +510,6 @@ mod tests {
 
     #[test]
     fn bad_enum_and_bounds_rejected() {
-        let tx = format!("tx-1@sha256:{}", "b".repeat(64));
-        assert!(intent(
-            "deploy/register-submit",
-            json!({"machine":"bp1","tx":tx.clone(),"network":"evilnet"})
-        )
-        .validate(0)
-        .is_err());
-        assert!(intent(
-            "deploy/register-submit",
-            json!({"machine":"bp1","tx":tx,"network":"mainnet"})
-        )
-        .validate(0)
-        .is_ok());
         // Over-long string bounded.
         assert!(
             intent("runtime/restart", json!({"machine": "x".repeat(5000)}))

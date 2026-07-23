@@ -17,7 +17,7 @@ pub struct PoolSpec {
     #[serde(default)]
     pub node_version: Option<String>,
     pub machines: Vec<Machine>,
-    /// S0017 p5-12 — operation-scoped: only deploy/sync (and its verify) consume it.
+    /// Legacy sync declaration retained for non-Deploy readers; S0027 Deploy does not consume it.
     #[serde(default)]
     pub sync: Option<Sync>,
     /// Human-authored fleet availability policy. It is part of the canonical pool-spec digest;

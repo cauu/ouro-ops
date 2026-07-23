@@ -222,12 +222,6 @@ const LEGACY_WRITE_TOOLS: &[&str] = &[
     "kes-rotation/rotate",
     "kes-rotation/generate-offline",
     "kes-rotation/push-offline",
-    "deploy/register-build",
-    "deploy/register-submit",
-    "deploy/provision",
-    "deploy/sync",
-    "deploy/start",
-    "deploy/takeover",
     "observability/install-gateway",
     "upgrade/rollout",
     "upgrade/upgrade-one",
@@ -291,7 +285,7 @@ mod tests {
         // A registered op passes.
         assert!(require_registered_write("runtime/restart").is_ok());
         // A legacy write NOT in the registry is refused as disabled.
-        assert!(require_registered_write("deploy/takeover").is_err());
+        assert!(require_registered_write("retired/write").is_err());
         // An entirely unknown op is refused deny-by-default.
         assert!(require_registered_write("evil/wipe").is_err());
     }

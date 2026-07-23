@@ -235,154 +235,6 @@ echo "Bring ONLY $OUT back online; follow the current KES Rotation Skill for typ
     )
 }
 
-/// A cold key the tx must be witnessed by. `role` is a short kebab id (e.g. `cold`, `stake`);
-/// it names both the env var the operator points at their key (`<ROLE>_SKEY`) and the witness
-/// output file (`<ROLE>_WITNESS`). Each role produces ONE independent witness — the operator
-/// need not co-locate all cold keys, and only the public witnesses come back for assembly.
-fn role_env(role: &str) -> String {
-    role.to_uppercase().replace('-', "_")
-}
-
-/// Validate that `tx_body` is a cardano transaction BODY envelope (public — no signatures), not a
-/// signing key. `transaction witness` consumes exactly this; embedding it leaks nothing private.
-fn validate_tx_body(tx_body: &str) -> Result<()> {
-    let lower = tx_body.to_lowercase();
-    if lower.contains("signingkey") || lower.contains("signing key") {
-        return Err(OuroError::Validation(
-            "refusing: --tx-body looks like a SIGNING key, not an unsigned transaction body"
-                .to_string(),
-        ));
-    }
-    // cardano `transaction build` writes a JSON envelope: {"type":"Unwitnessed Tx …"/"TxBody…",
-    // "description":…, "cborHex":…}. Require the envelope shape + a tx-body-ish type.
-    let looks_like_txbody = tx_body.contains("cborHex")
-        && (tx_body.contains("TxBody")
-            || tx_body.contains("Unwitnessed")
-            || tx_body.contains("Tx "));
-    if !looks_like_txbody {
-        return Err(OuroError::Validation(
-            "--tx-body does not look like a cardano unsigned transaction body \
-             (expected a JSON envelope with a TxBody/Unwitnessed type and cborHex)"
-                .to_string(),
-        ));
-    }
-    Ok(())
-}
-
-/// Build the deploy/registration cold-signing script (S0017 p4-2). `tx_body` is the PUBLIC
-/// unsigned transaction body (from an online `transaction build`); `roles` are the cold keys
-/// that must witness it. On the air-gapped machine the script runs, for each role, era-scoped
-/// `cardano-cli <era> transaction witness`, reading the cold key IN PLACE → one witness file per
-/// role. The witnesses (public) come back and are assembled + submitted online. No private key is
-/// embedded; cold keys are referenced by path and never copied.
-pub fn tx_cold_sign_script(
-    tx_body: &str,
-    roles: &[String],
-    era: &str,
-    network: &str,
-    cardano_cli: &str,
-    generated_at: &str,
-) -> Result<String> {
-    validate_tx_body(tx_body)?;
-    if roles.is_empty() {
-        return Err(OuroError::Validation(
-            "at least one --cold-key role is required".to_string(),
-        ));
-    }
-    // era guards against an injected shell token in a passthrough field.
-    if !era.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Err(OuroError::Validation(
-            "--era must be alphanumeric (e.g. conway)".to_string(),
-        ));
-    }
-    // `network` is a pre-formed cardano-cli flag (`--mainnet` or `--testnet-magic <n>`) that some
-    // cardano-cli versions require on `transaction witness`; validate it can't smuggle a token.
-    let net = network.trim();
-    let net_ok = net.is_empty()
-        || net == "--mainnet"
-        || net
-            .strip_prefix("--testnet-magic ")
-            .is_some_and(|m| !m.is_empty() && m.chars().all(|c| c.is_ascii_digit()));
-    if !net_ok {
-        return Err(OuroError::Validation(
-            "--network must be mainnet or a numeric testnet magic".to_string(),
-        ));
-    }
-    let net_line = if net.is_empty() {
-        String::new()
-    } else {
-        format!("  {net} \\\n")
-    };
-    let mut config = String::new();
-    let mut witness_cmds = String::new();
-    let mut assemble_hint = String::from("  ouro-ops deploy submit --tx-body <this body>");
-    for role in roles {
-        if !role.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') || role.is_empty() {
-            return Err(OuroError::Validation(format!(
-                "cold-key role {role:?} must be a non-empty kebab/alnum id"
-            )));
-        }
-        let env = role_env(role);
-        config.push_str(&format!(
-            "{env}_SKEY=\"${{{env}_SKEY:-./{role}.skey}}\"      # cold signing key for '{role}' (read in place)\n\
-             {env}_WITNESS=\"${{{env}_WITNESS:-./{role}.witness}}\" # witness this script writes for '{role}'\n"
-        ));
-        witness_cmds.push_str(&format!(
-            "[ -f \"${env}_SKEY\" ] || {{ echo \"{role} signing key not found at ${env}_SKEY (set {env}_SKEY=...)\" >&2; exit 1; }}\n\
-             \"$CARDANO_CLI\" {era} transaction witness \\\n  \
-             --tx-body-file \"$TXBODY\" \\\n  \
-             --signing-key-file \"${env}_SKEY\" \\\n\
-             {net_line}  \
-             --out-file \"${env}_WITNESS\"\n\
-             echo \"Wrote witness for {role}: ${env}_WITNESS\"\n"
-        ));
-        assemble_hint.push_str(&format!(" --witness ${env}_WITNESS"));
-    }
-    Ok(format!(
-        r#"#!/usr/bin/env bash
-# ==============================================================================
-# ouro-ops DEPLOY cold-signing script (GENERATED). RUN ON THE AIR-GAPPED MACHINE.
-#
-# It embeds ONLY the PUBLIC unsigned transaction body. It reads your cold signing
-# key(s) IN PLACE and never copies them anywhere; they do not move. Only the
-# public witness file(s) it writes are brought back.
-#
-# Before running (p4-8 trusted delivery):
-#   1. Verify this file's SHA256 matches the digest ouro-ops printed when it generated it
-#      (compare out-of-band): `sha256sum <this file>`.
-#   2. Review it (`less` this file). It runs only `cardano-cli {era} transaction witness`.
-#      It contains NO private key.
-#   3. Run it on the AIR-GAPPED machine with networking OFF, from a fresh working directory.
-#   4. Bring back ONLY the public witness file(s). Return nothing else.
-#
-# Generated: {generated_at}
-# ==============================================================================
-set -euo pipefail
-
-# ---- EDIT to your cold machine's layout (or export these before running) -----
-{config}# ------------------------------------------------------------------------------
-
-CARDANO_CLI="${{CARDANO_CLI:-{cardano_cli}}}"
-
-TXBODY="$(mktemp)"; trap 'rm -f "$TXBODY"' EXIT
-cat > "$TXBODY" <<'OURO_TX_BODY'
-{tx_body}
-OURO_TX_BODY
-
-{witness_cmds}
-echo "Bring the witness file(s) back online and assemble + submit, e.g.:"
-echo "{assemble_hint}"
-"#,
-        era = era,
-        generated_at = generated_at,
-        config = config,
-        cardano_cli = cardano_cli,
-        tx_body = tx_body.trim_end(),
-        witness_cmds = witness_cmds.trim_end(),
-        assemble_hint = assemble_hint,
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -409,33 +261,22 @@ mod tests {
     }
 
     #[test]
-    fn scripts_carry_trusted_delivery_guidance() {
-        // p4-8: both scripts tell the operator to verify the digest out-of-band, review, run
+    fn script_carries_trusted_delivery_guidance() {
+        // p4-8: the KES script tells the operator to verify the digest out-of-band, review, run
         // air-gapped from a fresh dir, and return ONLY the public artifact.
         let kes = kes_cold_sign_script(REAL_VKEY, 1, "cardano-cli", "T").unwrap();
-        let dep = tx_cold_sign_script(
-            REAL_TXBODY,
-            &["cold".into()],
-            "conway",
-            "",
-            "cardano-cli",
-            "T",
-        )
-        .unwrap();
-        for s in [&kes, &dep] {
-            assert!(
-                s.contains("SHA256") && s.contains("out-of-band"),
-                "no digest-verify guidance"
-            );
-            assert!(
-                s.contains("AIR-GAPPED machine with networking OFF"),
-                "no confinement guidance"
-            );
-            assert!(
-                s.to_lowercase().contains("bring back only"),
-                "no return-whitelist guidance"
-            );
-        }
+        assert!(
+            kes.contains("SHA256") && kes.contains("out-of-band"),
+            "no digest-verify guidance"
+        );
+        assert!(
+            kes.contains("AIR-GAPPED machine with networking OFF"),
+            "no confinement guidance"
+        );
+        assert!(
+            kes.to_lowercase().contains("bring only"),
+            "no return-whitelist guidance"
+        );
     }
 
     #[test]
@@ -481,100 +322,5 @@ mod tests {
         for bad in ["SigningKey", "cold.skey\ncat", "PRIVATE KEY"] {
             assert!(!s.contains(bad), "leaked {bad:?}");
         }
-    }
-
-    const REAL_TXBODY: &str = r#"{
-    "type": "Unwitnessed Tx ConwayEra",
-    "description": "Ledger Cddl Format",
-    "cborHex": "84a300d9010281825820abcd00010182a2005839001122a1f5f6"
-}"#;
-
-    #[test]
-    fn tx_script_witnesses_each_role_era_scoped() {
-        let roles = vec!["cold".to_string(), "stake".to_string()];
-        let s = tx_cold_sign_script(
-            REAL_TXBODY,
-            &roles,
-            "conway",
-            "--testnet-magic 1",
-            "cardano-cli",
-            "2026-07-12T00:00:00Z",
-        )
-        .unwrap();
-        assert!(s.starts_with("#!/usr/bin/env bash"));
-        // era-scoped transaction witness (tx commands are NOT era-neutral, unlike issue-op-cert):
-        // exactly two command invocations (the header comment names it once more — not counted).
-        assert_eq!(
-            s.matches("\"$CARDANO_CLI\" conway transaction witness")
-                .count(),
-            2
-        );
-        // one independent witness per cold role, key read in place by path.
-        assert!(s.contains("--signing-key-file \"$COLD_SKEY\""));
-        assert!(s.contains("--signing-key-file \"$STAKE_SKEY\""));
-        assert!(s.contains("COLD_WITNESS=") && s.contains("STAKE_WITNESS="));
-        // the network flag is threaded into each witness call.
-        assert_eq!(s.matches("--testnet-magic 1").count(), 2);
-        // the public tx body is embedded; no private key.
-        assert!(s.contains("Unwitnessed Tx ConwayEra"));
-        assert!(!s.contains("SigningKey"));
-    }
-
-    #[test]
-    fn tx_script_omits_network_flag_when_empty() {
-        let s = tx_cold_sign_script(
-            REAL_TXBODY,
-            &["cold".into()],
-            "conway",
-            "",
-            "cardano-cli",
-            "T",
-        )
-        .unwrap();
-        assert!(!s.contains("--testnet-magic") && !s.contains("--mainnet"));
-    }
-
-    #[test]
-    fn tx_script_refuses_signing_key_and_non_txbody() {
-        // a signing key smuggled as the "tx body"
-        let skey = r#"{"type":"PaymentSigningKeyShelley_ed25519","description":"Payment Signing Key","cborHex":"5820dead"}"#;
-        assert!(
-            tx_cold_sign_script(skey, &["cold".into()], "conway", "", "cardano-cli", "T").is_err()
-        );
-        // not a tx body at all
-        assert!(
-            tx_cold_sign_script("hello", &["cold".into()], "conway", "", "cardano-cli", "T")
-                .is_err()
-        );
-        // no roles
-        assert!(tx_cold_sign_script(REAL_TXBODY, &[], "conway", "", "cardano-cli", "T").is_err());
-        // injection-resistant era + role + network
-        assert!(tx_cold_sign_script(
-            REAL_TXBODY,
-            &["cold".into()],
-            "conway;rm -rf /",
-            "",
-            "cardano-cli",
-            "T"
-        )
-        .is_err());
-        assert!(tx_cold_sign_script(
-            REAL_TXBODY,
-            &["a b".into()],
-            "conway",
-            "",
-            "cardano-cli",
-            "T"
-        )
-        .is_err());
-        assert!(tx_cold_sign_script(
-            REAL_TXBODY,
-            &["cold".into()],
-            "conway",
-            "--testnet-magic 1; rm -rf /",
-            "cardano-cli",
-            "T"
-        )
-        .is_err());
     }
 }

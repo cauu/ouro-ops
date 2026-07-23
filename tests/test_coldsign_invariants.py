@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""S0017 p4-4/p4-2 — enforced security invariants for the cold-signing scripts (KES + deploy).
+"""Enforced security invariants for the KES cold-signing script.
 
 The offline cold-signing flow rests on a few properties that must hold for EVERY
 generated script, or a private key could leak off the air-gapped machine. This gate
-generates the real scripts via `ouro-ops kes cold-sign-script` and
-`ouro-ops deploy cold-sign-script` and asserts them. Fast (no docker), standalone:
+generates the real script via `ouro-ops kes cold-sign-script` and asserts it.
+Fast (no docker), standalone:
 
     python3 tests/test_coldsign_invariants.py
 
-Invariants (asserted for BOTH the KES and the deploy cold-sign scripts):
+Invariants:
   1. The script embeds ONLY public data — no signing-key content, no `SigningKey` marker.
   2. The cold key is read IN PLACE: referenced by its path variable and passed only to the
      signing command — never copied, printed, or piped anywhere.
@@ -25,10 +25,6 @@ ROOT = Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests" / "fixtures" / "kes"
 VKEY = FIX / "kes-vkey-public.json"
 SKEY = FIX / "kes-skey-private.json"
-DFIX = ROOT / "tests" / "fixtures" / "deploy"
-TXBODY = DFIX / "tx-body-unsigned.json"
-PAY_SKEY = DFIX / "payment-skey-private.json"
-
 failures = []
 
 
@@ -103,54 +99,16 @@ def kes_case(binary):
           "kes: cold key content read out (cat/echo of $COLD_SKEY)")
 
 
-def deploy_case(binary):
-    def gen(tx_body, *roles):
-        cmd = [binary, "deploy", "cold-sign-script", "--tx-body", str(tx_body)]
-        for r in roles:
-            cmd += ["--cold-key", r]
-        return subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
-
-    # (4) refusing a signing key smuggled as the "tx body".
-    refused = gen(PAY_SKEY, "cold")
-    check(refused.returncode != 0, "deploy cold-sign-script MUST refuse a signing key as --tx-body")
-    pay_cbor = cbor_of(PAY_SKEY)
-    check("#!/usr/bin/env bash" not in refused.stdout and "transaction witness" not in refused.stdout,
-          "deploy cold-sign-script emitted a SCRIPT for a signing-key input")
-    check(pay_cbor not in refused.stdout, "LEAK: payment skey cborHex echoed back on refusal")
-
-    ok = gen(TXBODY, "cold", "stake")
-    check(ok.returncode == 0, f"deploy cold-sign-script failed on a valid tx body: {ok.stderr}")
-    script = ok.stdout
-    check(pay_cbor not in script, "LEAK: a signing-key cborHex appears in the deploy script")
-    check("SigningKey" not in script, "deploy script contains a SigningKey marker")
-
-    code = strip_to_code(script, "OURO_TX_BODY")
-    # (3) every cardano-cli invocation is `<era> transaction witness`, nothing else.
-    wit = re.findall(r'transaction\s+witness', code)
-    check(len(wit) == 2, f"expected one `transaction witness` per cold key (2), found {len(wit)}")
-    for call in re.findall(r'CARDANO_CLI"\s+([a-z0-9]+\s+[a-z-]+\s+[a-z-]+)', code):
-        check(call.endswith("transaction witness"),
-              f"unexpected cardano-cli subcommand in deploy script: {call!r}")
-    for prim in EXFIL:
-        check(prim not in code, f"exfil primitive {prim!r} in deploy script code")
-    # (2) each cold key is passed ONLY to `transaction witness`, never cat/echo'd.
-    for var in ("$COLD_SKEY", "$STAKE_SKEY"):
-        check(f'--signing-key-file "{var}"' in code, f"deploy: {var} not passed to transaction witness")
-        check(f'cat "{var}"' not in code and f'echo "{var}"' not in code,
-              f"deploy: {var} content read out (cat/echo)")
-
-
 def main():
     binary = ouro_bin()
     kes_case(binary)
-    deploy_case(binary)
 
     if failures:
         print("FAIL — cold-sign invariant gate:")
         for f in failures:
             print(f"  - {f}")
         sys.exit(1)
-    print("PASS — cold-sign invariant gate (KES + deploy): public-only embed, in-place cold read, "
+    print("PASS — KES cold-sign invariant gate: public-only embed, in-place cold read, "
           "no exfil, signing-key refused")
 
 

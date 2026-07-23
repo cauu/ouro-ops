@@ -33,7 +33,7 @@ def main():
     paths = validate(invoke("paths").stdout)
     assert paths["status"] == "ok" and paths["changed"] is False
 
-    refused = invoke("tool", "run", "deploy/status", check=False)
+    refused = invoke("tool", "run", "retired/status", check=False)
     assert refused.returncode != 0
     error = validate(refused.stdout)
     assert error["status"] == "error"

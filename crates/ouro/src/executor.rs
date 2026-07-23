@@ -151,7 +151,6 @@ pub const KES_VKEY_PREVIOUS: &str = "/opt/cardano/config/keys/kes.vkey.ouro-prev
 pub const OPCERT_PREVIOUS: &str = "/opt/cardano/config/keys/node.cert.ouro-prev";
 const SOCKET: &str = "/ipc/node.socket";
 /// Where a signed tx artifact is staged INSIDE the container before submit (ephemeral, public tx).
-const TX_STAGE: &str = "/tmp/ouro-tx.signed";
 
 pub type ExecutionPlan = Vec<Vec<String>>;
 pub type RecoverablePlans = (ExecutionPlan, Option<ExecutionPlan>);
@@ -249,21 +248,6 @@ pub fn build_plan(
                 restart(),
             ])
         }
-        // deploy/register-submit: stage the digest-resolved SIGNED tx (public) into the container,
-        // then submit via the node socket on the attested network. The tx is built + signed
-        // air-gapped by the operator (cold key never here); this executor only submits the bytes.
-        "deploy/register-submit" => {
-            let tx = resolve_artifact(intent, "tx", crate::inbox::ArtifactType::Tx, inbox)?;
-            let mut submit = vec![
-                s("docker"), s("exec"), cid.clone(), s("cardano-cli"), s("transaction"), s("submit"),
-                s("--tx-file"), s(TX_STAGE), s("--socket-path"), s(SOCKET),
-            ];
-            submit.extend(net_flags(&att.immutable.network)?);
-            Ok(vec![
-                vec![s("docker"), s("cp"), tx, format!("{cid}:{TX_STAGE}")],
-                submit,
-            ])
-        }
         "upgrade/preload-image" => Err(OuroError::Validation(
             "upgrade image preparation is built from the fetched signed release catalog in the stateless target flow"
                 .into(),
@@ -333,7 +317,6 @@ pub fn recoverable_plans(
             ];
             Ok((commit, Some(rollback)))
         }
-        "deploy/register-submit" => Ok((commit, None)),
         "upgrade/preload-image" => Err(OuroError::Validation(
             "upgrade image preparation is stateless and has no durable transaction plan".into(),
         )),
@@ -1527,61 +1510,6 @@ mod tests {
         let rb = rb.expect("KES has a real inverse");
         assert_eq!(rb[0][2], commit[0][3]);
         assert_eq!(rb[0][3], format!("cid-attested:{OPCERT_DEST}"));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn deploy_submits_resolved_tx() {
-        assert!(build_plan(
-            &intent(
-                "deploy/register-submit",
-                json!({"machine":"bp1","network":"mainnet"})
-            ),
-            &att(),
-            None
-        )
-        .is_err());
-        let tx = format!("tx-1@sha256:{}", "b".repeat(64));
-        let plan = build_plan(
-            &intent(
-                "deploy/register-submit",
-                json!({"machine":"bp1","tx":tx,"network":"mainnet"}),
-            ),
-            &att(),
-            None,
-        )
-        .unwrap();
-        assert_eq!(plan[0][0..2], ["docker".to_string(), "cp".to_string()]);
-        let submit: Vec<String> = plan[1].clone();
-        assert!(
-            submit.contains(&"submit".to_string()) && submit.contains(&"--tx-file".to_string())
-        );
-        assert!(
-            submit.contains(&TX_STAGE.to_string()) && submit.contains(&"--mainnet".to_string())
-        );
-    }
-
-    #[test]
-    fn deploy_has_no_fake_rollback() {
-        let dir = std::env::temp_dir().join(format!("ouro-exec-tx-rb-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let inbox = dir.join("inbox");
-        let tx_bytes = br#"{"type":"Tx ConwayEra","cborHex":"deadbeef"}"#;
-        let tx = crate::inbox::stage(&inbox, crate::inbox::ArtifactType::Tx, tx_bytes).unwrap();
-        let (_, rollback) = recoverable_plans(
-            &intent(
-                "deploy/register-submit",
-                json!({"machine":"bp1","tx":tx,"network":"mainnet"}),
-            ),
-            &att(),
-            &inbox,
-            &dir.join("rollback"),
-        )
-        .unwrap();
-        assert!(
-            rollback.is_none(),
-            "on-chain submit cannot be undone by docker restart"
-        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

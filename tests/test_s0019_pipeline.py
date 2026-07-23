@@ -219,7 +219,7 @@ def main():
     assert d["status"] == "error" and "machine id" in json.dumps(d), d
 
     # 4. unregistered / legacy op → refuse
-    _, d = run(home, "op", "run", "--op", "deploy/takeover", "--node", "bp1",
+    _, d = run(home, "op", "run", "--op", "retired/write", "--node", "bp1",
                "--param", "machine=bp1", "--observation", o, "--plan")
     assert d["status"] == "error" and ("disabled" in json.dumps(d) or "registry" in json.dumps(d)), d
     # Misleading names that used to execute only a restart are retired, not silently aliased.
@@ -235,14 +235,6 @@ def main():
                "--param", "machine=bp1", "--param", f"opcert={missing_opcert}",
                "--observation", o, *policy, "--plan")
     assert d["status"] == "error" and "artifact" in json.dumps(d), d
-
-    # Deploy plans are no longer synthetic: they must carry the exact operator-named signed
-    # transaction so the ephemeral target can derive and bind its effects.
-    tx_ref = "tx-1@sha256:" + "b" * 64
-    _, d = run(home, "op", "run", "--op", "deploy/register-submit", "--node", "bp1",
-               "--param", "machine=bp1", "--param", f"tx={tx_ref}",
-               "--param", "network=preview", "--observation", o, "--plan")
-    assert d["status"] == "error" and "requires --artifact-file" in json.dumps(d), d
 
     # 5. Permit/confirmation capabilities are rejected by plan and never change the final hash.
     _, ref = run(home, "op", "run", "--op", "runtime/restart", "--node", "bp1",

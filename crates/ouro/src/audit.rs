@@ -195,7 +195,7 @@ mod tests {
     fn append_only_audit_records_invocation() {
         let store = AuditStore::in_memory().unwrap();
         let invocation = store
-            .begin_invocation("deploy/preflight", Some("relay1"))
+            .begin_invocation("fixture/read", Some("relay1"))
             .unwrap();
         assert!(!invocation.is_empty());
         assert_eq!(store.count().unwrap(), 1);
@@ -205,12 +205,14 @@ mod tests {
     fn records_finish_and_crash_terminal_events() {
         let store = AuditStore::in_memory().unwrap();
         let ok = store
-            .begin_invocation("deploy/provision", Some("bp1"))
+            .begin_invocation("fixture/write", Some("bp1"))
             .unwrap();
-        store.finish_invocation(&ok, "deploy/provision").unwrap();
-        let crashed = store.begin_invocation("deploy/sync", Some("bp1")).unwrap();
+        store.finish_invocation(&ok, "fixture/write").unwrap();
+        let crashed = store
+            .begin_invocation("fixture/crash", Some("bp1"))
+            .unwrap();
         store
-            .record_crash(&crashed, "deploy/sync", "child exited with signal")
+            .record_crash(&crashed, "fixture/crash", "child exited with signal")
             .unwrap();
         assert!(store.invocation_has_start(&ok).unwrap());
         assert!(store.invocation_has_start(&crashed).unwrap());

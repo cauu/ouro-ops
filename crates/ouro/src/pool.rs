@@ -28,8 +28,8 @@ pub struct RegisterTxReport {
 ///
 /// The REAL, submittable registration is the staged cold-sign flow (S0017 p4-2), which needs a
 /// live node + chain snapshot and therefore runs as dispatched L2 scripts:
-/// `deploy/register-build` (build the unsigned tx online) → `ouro-ops deploy cold-sign-script`
-/// (witness the pool cold key offline) → `deploy/register-submit` (assemble + submit online).
+/// Build the unsigned pool-registration transaction payload. S0027 removes the former Deploy
+/// command/operation wrappers; this pure builder remains available only through the Pool surface.
 pub fn build_register_tx(
     spec: &PoolSpec,
     out_dir: &Path,

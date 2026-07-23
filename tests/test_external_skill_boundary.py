@@ -29,7 +29,7 @@ def test_cli_has_no_decision_skill_route_or_assets() -> None:
     assert retired.returncode != 0
     assert "unknown command skill" in retired.stdout
 
-    retired_tool = ouro("tool", "run", "deploy/status", check=False)
+    retired_tool = ouro("tool", "run", "retired/status", check=False)
     assert retired_tool.returncode != 0
     assert "unknown command tool" in retired_tool.stdout
 

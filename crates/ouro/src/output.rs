@@ -272,13 +272,13 @@ mod tests {
     #[test]
     fn human_render_shows_checks_and_error() {
         let v = serde_json::json!({
-            "tool": "deploy/status", "machine": "bp1", "status": "error", "changed": false,
+            "tool": "fixture/status", "machine": "bp1", "status": "error", "changed": false,
             "checks": [{"name": "bp1.tip_block_positive", "pass": true, "detail": "block=6"},
                        {"name": "bp1.slot_advancing", "pass": false, "detail": "slot 8->8"}],
             "error": {"code": "exit_20", "detail": "node status checks failed", "hint": "inspect failed checks"}
         });
         let out = render_human(&v);
-        assert!(out.contains("✗ deploy/status  error  [bp1]"));
+        assert!(out.contains("✗ fixture/status  error  [bp1]"));
         assert!(out.contains("✓ bp1.tip_block_positive: block=6"));
         assert!(out.contains("✗ bp1.slot_advancing: slot 8->8"));
         assert!(out.contains("error: exit_20 — node status checks failed"));
