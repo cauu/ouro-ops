@@ -120,8 +120,16 @@ pub struct DeployNetworkContract {
     pub genesis_vkey: String,
     pub ancillary_vkey: String,
     pub mithril_aggregator: String,
+    pub bootstrap_peers: Vec<DeployPeerContract>,
     pub min_memory_bytes: u64,
     pub min_free_disk_bytes: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeployPeerContract {
+    pub address: String,
+    pub port: u16,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -624,6 +632,14 @@ impl DeployBootstrapContract {
                 || !facts
                     .mithril_aggregator
                     .ends_with(".api.mithril.network/aggregator")
+                || facts.bootstrap_peers.is_empty()
+                || facts.bootstrap_peers.iter().any(|peer| {
+                    peer.port == 0
+                        || peer.address.is_empty()
+                        || !peer.address.chars().all(|value| {
+                            value.is_ascii_alphanumeric() || matches!(value, '.' | ':' | '-')
+                        })
+                })
                 || facts.min_memory_bytes == 0
                 || facts.min_free_disk_bytes == 0
             {

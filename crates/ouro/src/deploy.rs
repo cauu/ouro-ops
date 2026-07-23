@@ -19,11 +19,14 @@ pub const KEYS_DESTINATION: &str = "/opt/cardano/config/keys";
 const INSPECT_TIMEOUT_S: u32 = 30;
 const HOST_PREPARE_TIMEOUT_S: u32 = 300;
 const UFW_TIMEOUT_S: u32 = 30;
+const ARTIFACT_TIMEOUT_S: u32 = 600;
+const COMPOSE_UP_TIMEOUT_S: u32 = 120;
 
 const INSPECT_SCRIPT: &str = r#"set -u
 ssh_port=$1
 machine_id=$2
 aggregator=$3
+p2p_port=$4
 path_state() {
   path=$1
   if test -L "$path"; then printf symlink
@@ -77,12 +80,24 @@ fi
 compose_v2=false
 if docker_run compose version >/dev/null 2>&1; then compose_v2=true; fi
 ufw_state=unavailable
+ufw_rules=
 if command -v ufw >/dev/null 2>&1; then
-  ufw_line=$(if test "$privilege" = root; then ufw status 2>/dev/null; else sudo -n ufw status 2>/dev/null; fi | head -n1)
+  ufw_rules=$(if test "$privilege" = root; then ufw status 2>/dev/null; else sudo -n ufw status 2>/dev/null; fi)
+  ufw_line=$(printf '%s\n' "$ufw_rules" | head -n1)
   case "$ufw_line" in *active*) ufw_state=active ;; *inactive*) ufw_state=inactive ;; esac
 fi
 ssh_listener=false
 if ss -Hln 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)$ssh_port$"; then ssh_listener=true; fi
+p2p_listener=false
+if test "$p2p_port" -gt 0 && ss -Hln 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)$p2p_port$"; then p2p_listener=true; fi
+metrics_listener=false
+if ss -Hln 2>/dev/null | awk '{print $4}' | grep -Eq '(^|:)12798$'; then metrics_listener=true; fi
+metrics_public_listener=false
+if ss -Hln 2>/dev/null | awk '{print $4}' | grep -Eq '(^0\.0\.0\.0:12798$|^\*:12798$|^\[?::\]?:12798$)'; then metrics_public_listener=true; fi
+ufw_p2p_allow=false
+if test "$p2p_port" -gt 0 && printf '%s\n' "$ufw_rules" | grep -Eq "^${p2p_port}/tcp[[:space:]]+ALLOW[[:space:]]+IN"; then ufw_p2p_allow=true; fi
+ufw_metrics_allow=false
+if printf '%s\n' "$ufw_rules" | grep -Eq '^12798/tcp[[:space:]]+ALLOW[[:space:]]+IN'; then ufw_metrics_allow=true; fi
 aggregator_reachable=false
 if command -v curl >/dev/null 2>&1 && curl -fsS -o /dev/null --max-time 5 "$aggregator" 2>/dev/null; then
   aggregator_reachable=true
@@ -130,6 +145,9 @@ printf '%s\n' \
   "chrony_installed=$chrony_installed" "chrony_synced=$chrony_synced" \
   "chrony_offset=$chrony_offset" "ufw_state=$ufw_state" \
   "ssh_listener=$ssh_listener" "aggregator_reachable=$aggregator_reachable" \
+  "p2p_listener=$p2p_listener" "metrics_listener=$metrics_listener" \
+  "metrics_public_listener=$metrics_public_listener" \
+  "ufw_p2p_allow=$ufw_p2p_allow" "ufw_metrics_allow=$ufw_metrics_allow" \
   "ouro_state=$ouro_state" "legacy_cardano_state=$legacy_cardano_state" \
   "legacy_home_config_state=$legacy_home_config_state" "db_state=$db_state" \
   "keys_state=$keys_state" "keys_mode=$keys_mode" "identity_marker=$identity_marker" \
@@ -298,6 +316,55 @@ fi
 printf '%s\n' "schema=ouro-deploy-ufw-rollback-v1" "restored=true"
 "#;
 
+const ARTIFACT_INSTALL_SCRIPT: &str = r#"set -eu
+compose_content=$1
+topology_content=$2
+image_ref=$3
+expected_config=$4
+project=$5
+docker_run() {
+  if docker info >/dev/null 2>&1; then docker "$@"; else sudo -n docker "$@"; fi
+}
+as_root() {
+  if test "$(id -u)" = 0; then "$@"; else sudo -n "$@"; fi
+}
+case "$project" in ouro-[a-z0-9-]*) ;; *) exit 64 ;; esac
+test ! -L /opt/ouro/compose.yaml
+test ! -L /opt/ouro/topology.json
+compose_tmp=$(as_root mktemp /opt/ouro/.compose.XXXXXX)
+topology_tmp=$(as_root mktemp /opt/ouro/.topology.XXXXXX)
+cleanup() {
+  as_root rm -f "$compose_tmp" "$topology_tmp" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT HUP INT TERM
+printf '%s' "$compose_content" | as_root tee "$compose_tmp" >/dev/null
+printf '%s' "$topology_content" | as_root tee "$topology_tmp" >/dev/null
+as_root chmod 0644 "$compose_tmp" "$topology_tmp"
+docker_run compose -p "$project" -f "$compose_tmp" config -q
+as_root mv "$topology_tmp" /opt/ouro/topology.json
+as_root mv "$compose_tmp" /opt/ouro/compose.yaml
+docker_run pull "$image_ref"
+actual_config=$(docker_run image inspect --format '{{.Id}}' "$image_ref")
+test "$actual_config" = "$expected_config"
+printf '%s\n' \
+  "schema=ouro-deploy-artifacts-v1" \
+  "compose_valid=true" \
+  "topology_installed=true" \
+  "image_config=$actual_config"
+"#;
+
+const COMPOSE_UP_SCRIPT: &str = r#"set -eu
+project=$1
+docker_run() {
+  if docker info >/dev/null 2>&1; then docker "$@"; else sudo -n docker "$@"; fi
+}
+case "$project" in ouro-[a-z0-9-]*) ;; *) exit 64 ;; esac
+test -f /opt/ouro/compose.yaml
+test ! -L /opt/ouro/compose.yaml
+docker_run compose -p "$project" -f /opt/ouro/compose.yaml up -d --no-build --pull never cardano-node
+printf '%s\n' "schema=ouro-deploy-compose-up-v1" "started=true"
+"#;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct FleetIdentityMarker {
@@ -329,6 +396,11 @@ struct InspectFacts {
     ufw_state: String,
     ssh_listener: bool,
     aggregator_reachable: bool,
+    p2p_listener: bool,
+    metrics_listener: bool,
+    metrics_public_listener: bool,
+    ufw_p2p_allow: bool,
+    ufw_metrics_allow: bool,
     ouro_state: String,
     legacy_cardano_state: String,
     legacy_home_config_state: String,
@@ -368,6 +440,7 @@ struct UfwDelta {
 pub fn run(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {
         Some("inspect") => run_inspect(&args[1..]),
+        Some("apply") => run_apply(&args[1..]),
         _ => Err(OuroError::InvalidArgs(
             "expected deploy inspect|apply|check --spec <pool-spec>".into(),
         )),
@@ -501,6 +574,304 @@ fn run_inspect(args: &[String]) -> Result<()> {
     )
 }
 
+fn run_apply(args: &[String]) -> Result<()> {
+    if args.len() != 2 || args[0] != "--spec" {
+        return Err(OuroError::InvalidArgs(
+            "deploy apply requires exactly --spec <pool-spec>".into(),
+        ));
+    }
+    let spec = PoolSpec::from_file(std::path::Path::new(&args[1]))?;
+    if spec.topology_mode != TopologyMode::P2p {
+        return Err(OuroError::Validation(
+            "Fleet Deploy requires topology_mode: p2p".into(),
+        ));
+    }
+    let paths = ConfigPaths::discover();
+    let mut missing_trust = Vec::new();
+    for machine in &spec.machines {
+        if crate::ssh::existing_host_fingerprints(
+            &paths.known_hosts,
+            &machine.ssh.host,
+            machine.ssh.port,
+        )?
+        .is_empty()
+        {
+            missing_trust.push(machine.id.clone());
+        }
+    }
+    if !missing_trust.is_empty() {
+        output::print_json(
+            &ToolOutput::failure(
+                "ouro.deploy.apply",
+                "ssh_host_key_untrusted",
+                "all Fleet host keys must be user-trusted before Apply; no target was contacted",
+            )
+            .with_data(serde_json::json!({
+                "classification": "blocked",
+                "machines": missing_trust,
+                "target_contacted": false,
+                "target_writes": false,
+            })),
+        )?;
+        return Err(OuroError::Reported(10));
+    }
+    let catalog = crate::convention::fetch_release_catalog()?;
+    let fleet_digest = fleet_identity_digest(&spec)?;
+    let genesis_digest = genesis_identity_digest(&spec)?;
+    let (_, _, bootstrap) = catalog.policy.recommended_deploy_for("linux/amd64")?;
+    let aggregator = bootstrap
+        .networks
+        .get(spec.pool.network.as_str())
+        .ok_or_else(|| OuroError::Validation("signed network bootstrap facts are absent".into()))?
+        .mithril_aggregator
+        .clone();
+
+    let mut inspections = BTreeMap::new();
+    let mut blocked = Vec::new();
+    let mut complete_count = 0_usize;
+    for machine in &spec.machines {
+        match inspect_machine(
+            &spec,
+            machine,
+            &paths,
+            &catalog.policy,
+            &fleet_digest,
+            &genesis_digest,
+            &aggregator,
+        ) {
+            Ok(value) => {
+                if value["classification"] == "blocked" {
+                    blocked.push(serde_json::json!({
+                        "machine": machine.id,
+                        "reasons": value["reasons"],
+                    }));
+                }
+                if value["deployment_complete"] == true {
+                    complete_count += 1;
+                }
+                inspections.insert(machine.id.clone(), value);
+            }
+            Err(error) => blocked.push(serde_json::json!({
+                "machine": machine.id,
+                "reasons": ["inspect_failed"],
+                "detail": error.to_string(),
+            })),
+        }
+    }
+    if !blocked.is_empty() {
+        output::print_json(
+            &ToolOutput::failure(
+                "ouro.deploy.apply",
+                "deploy_inspect_blocked",
+                "Apply refused because one or more read-only Inspect preconditions failed",
+            )
+            .with_data(serde_json::json!({
+                "classification": "blocked",
+                "nodes": blocked,
+                "target_writes": false,
+            })),
+        )?;
+        return Err(OuroError::Reported(10));
+    }
+    if complete_count == spec.machines.len() {
+        output::print_json(
+            &ToolOutput::failure(
+                "ouro.deploy.apply",
+                "already_deployed",
+                "the complete exact Fleet already exists; use deploy check or S0026 Upgrade",
+            )
+            .with_data(serde_json::json!({
+                "classification": "already_deployed",
+                "fleet_identity_digest": fleet_digest,
+                "target_writes": false,
+            })),
+        )?;
+        return Err(OuroError::Reported(10));
+    }
+
+    let mut states = BTreeMap::<String, serde_json::Value>::new();
+    let mut any_write_attempted = false;
+    let mut any_failure = false;
+    for machine in &spec.machines {
+        let inspected = inspections
+            .get(&machine.id)
+            .ok_or_else(|| OuroError::Validation("internal Inspect result is absent".into()))?;
+        if inspected["deployment_complete"] == true {
+            states.insert(
+                machine.id.clone(),
+                serde_json::json!({
+                    "machine": machine.id,
+                    "role": role_name(machine.role),
+                    "configuration": "unchanged",
+                    "compose_up": "unchanged",
+                    "deployment_complete_before_apply": true,
+                }),
+            );
+            continue;
+        }
+        let selection: SignedDeploySelection =
+            serde_json::from_value(inspected["selection"].clone()).map_err(|error| {
+                OuroError::Validation(format!("cannot consume signed Inspect selection: {error}"))
+            })?;
+        let desired_digest = inspected["desired_digest"]
+            .as_str()
+            .ok_or_else(|| OuroError::Validation("Inspect desired digest is absent".into()))?;
+        let topology = render_deploy_topology(&spec, machine, &selection)?;
+        let topology_content = serde_json::to_string_pretty(&topology).map_err(|error| {
+            OuroError::Validation(format!("cannot render fixed topology: {error}"))
+        })?;
+        let compose_content = render_compose(&spec, machine, &selection, desired_digest)?;
+        any_write_attempted = true;
+        match converge_host(
+            &spec,
+            machine,
+            &paths,
+            &selection,
+            &fleet_digest,
+            &genesis_digest,
+        )
+        .and_then(|host| {
+            install_deployment_artifacts(
+                machine,
+                &paths,
+                &selection,
+                &compose_content,
+                &topology_content,
+            )
+            .map(|artifacts| (host, artifacts))
+        }) {
+            Ok((host, artifacts)) => {
+                states.insert(
+                    machine.id.clone(),
+                    serde_json::json!({
+                        "machine": machine.id,
+                        "role": role_name(machine.role),
+                        "configuration": "succeeded",
+                        "compose_up": "pending",
+                        "host": host,
+                        "artifacts": artifacts,
+                        "desired_digest": desired_digest,
+                        "deployment_complete_before_apply": false,
+                    }),
+                );
+            }
+            Err(error) => {
+                any_failure = true;
+                states.insert(
+                    machine.id.clone(),
+                    serde_json::json!({
+                        "machine": machine.id,
+                        "role": role_name(machine.role),
+                        "configuration": "failed",
+                        "compose_up": "skipped",
+                        "detail": error.to_string(),
+                        "deployment_complete_before_apply": false,
+                    }),
+                );
+            }
+        }
+    }
+
+    let mut relay_available = spec.machines.iter().any(|machine| {
+        machine.role == MachineRole::Relay
+            && inspections
+                .get(&machine.id)
+                .is_some_and(|value| value["deployment_complete"] == true)
+    });
+    for machine in spec
+        .machines
+        .iter()
+        .filter(|machine| machine.role == MachineRole::Relay)
+    {
+        let configuration_succeeded =
+            states[&machine.id]["configuration"].as_str() == Some("succeeded");
+        if !configuration_succeeded {
+            continue;
+        }
+        match start_compose(machine, &paths) {
+            Ok(()) => {
+                relay_available = true;
+                set_state_field(&mut states, &machine.id, "compose_up", "succeeded")?;
+            }
+            Err(error) => {
+                any_failure = true;
+                set_state_field(&mut states, &machine.id, "compose_up", "failed")?;
+                set_state_field(&mut states, &machine.id, "detail", &error.to_string())?;
+            }
+        }
+    }
+    let bp = spec
+        .machines
+        .iter()
+        .find(|machine| machine.role == MachineRole::Bp)
+        .ok_or_else(|| OuroError::Validation("Fleet BP is absent".into()))?;
+    if states[&bp.id]["configuration"].as_str() == Some("succeeded") {
+        if relay_available {
+            match start_compose(bp, &paths) {
+                Ok(()) => set_state_field(&mut states, &bp.id, "compose_up", "succeeded")?,
+                Err(error) => {
+                    any_failure = true;
+                    set_state_field(&mut states, &bp.id, "compose_up", "failed")?;
+                    set_state_field(&mut states, &bp.id, "detail", &error.to_string())?;
+                }
+            }
+        } else {
+            any_failure = true;
+            set_state_field(
+                &mut states,
+                &bp.id,
+                "compose_up",
+                "skipped_no_relay_command_succeeded",
+            )?;
+        }
+    }
+    let nodes = spec
+        .machines
+        .iter()
+        .filter_map(|machine| states.remove(&machine.id))
+        .collect::<Vec<_>>();
+    let data = serde_json::json!({
+        "classification": if any_failure { "partial_failure" } else { "command_success" },
+        "fleet_identity_digest": fleet_digest,
+        "order": ["configure_all", "relay_compose_up", "bootstrap_bp_compose_up"],
+        "intermediate_readiness_checks": false,
+        "nodes": nodes,
+        "target_writes": any_write_attempted,
+    });
+    if any_failure {
+        output::print_json(
+            &ToolOutput::failure(
+                "ouro.deploy.apply",
+                "deploy_apply_partial_failure",
+                "Apply completed all safe independent steps but one or more node commands failed",
+            )
+            .with_data(data),
+        )?;
+        Err(OuroError::Reported(10))
+    } else {
+        output::print_json(
+            &ToolOutput::ok("ouro.deploy.apply", any_write_attempted).with_data(data),
+        )
+    }
+}
+
+fn set_state_field(
+    states: &mut BTreeMap<String, serde_json::Value>,
+    machine: &str,
+    key: &str,
+    value: &str,
+) -> Result<()> {
+    states
+        .get_mut(machine)
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| OuroError::Validation("internal Apply state is absent".into()))?
+        .insert(
+            key.to_string(),
+            serde_json::Value::String(value.to_string()),
+        );
+    Ok(())
+}
+
 fn inspect_machine(
     spec: &PoolSpec,
     machine: &Machine,
@@ -531,6 +902,11 @@ fn inspect_machine(
         machine.ssh.port.to_string(),
         machine.id.clone(),
         aggregator.to_string(),
+        machine
+            .public_endpoint
+            .as_ref()
+            .map_or(0, |endpoint| endpoint.port)
+            .to_string(),
     ];
     let outcome = crate::ssh::SshRunner::new(false).diag_exec(
         &machine.ssh,
@@ -555,6 +931,9 @@ fn inspect_machine(
     }
     if !facts.ssh_listener {
         reasons.push("declared_ssh_port_not_listening");
+    }
+    if facts.metrics_public_listener || facts.ufw_metrics_allow {
+        reasons.push("metrics_publicly_exposed");
     }
     if matches!(
         facts.legacy_cardano_state.as_str(),
@@ -638,6 +1017,12 @@ fn inspect_machine(
 
     if facts.owned_count > 1 {
         reasons.push("multiple_owned_containers");
+    }
+    if facts.owned_count == 0 && facts.metrics_listener {
+        reasons.push("metrics_port_in_use");
+    }
+    if machine.role == MachineRole::Relay && facts.owned_count == 0 && facts.p2p_listener {
+        reasons.push("relay_p2p_port_in_use");
     }
     let expected_desired_digest =
         deployment_desired_digest(spec, machine, &selection, fleet_digest, genesis_digest)?;
@@ -856,6 +1241,109 @@ pub(crate) fn converge_host(
     })
 }
 
+fn install_deployment_artifacts(
+    machine: &Machine,
+    paths: &ConfigPaths,
+    selection: &SignedDeploySelection,
+    compose_content: &str,
+    topology_content: &str,
+) -> Result<serde_json::Value> {
+    let key = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
+    let image_ref = format!(
+        "{}@{}",
+        selection.repository, selection.platform_manifest_digest
+    );
+    let project = format!("ouro-{}", machine.id);
+    let outcome = crate::ssh::SshRunner::new(false).diag_exec(
+        &machine.ssh,
+        &key,
+        &paths.known_hosts,
+        &[
+            "sh".into(),
+            "-c".into(),
+            ARTIFACT_INSTALL_SCRIPT.into(),
+            "ouro-deploy-artifacts".into(),
+            compose_content.into(),
+            topology_content.into(),
+            image_ref.clone(),
+            selection.image_config_digest.clone(),
+            project.clone(),
+        ],
+        ARTIFACT_TIMEOUT_S,
+    )?;
+    if outcome.status != 0 {
+        return Err(OuroError::Validation(format!(
+            "artifact install/image verification failed on {} with status {}: {}",
+            machine.id,
+            outcome.status,
+            bounded_detail(&outcome.stderr)
+        )));
+    }
+    let facts = parse_closed_facts(
+        &outcome.stdout,
+        "ouro-deploy-artifacts-v1",
+        &[
+            "schema",
+            "compose_valid",
+            "topology_installed",
+            "image_config",
+        ],
+    )?;
+    if !parse_fact_bool(&facts, "compose_valid")?
+        || !parse_fact_bool(&facts, "topology_installed")?
+        || fact(&facts, "image_config")? != selection.image_config_digest
+    {
+        return Err(OuroError::Validation(
+            "artifact installer did not establish the exact signed runtime shape".into(),
+        ));
+    }
+    Ok(serde_json::json!({
+        "project": project,
+        "service": "cardano-node",
+        "image": image_ref,
+        "image_config_digest": selection.image_config_digest,
+        "compose_valid": true,
+        "topology_installed": true,
+    }))
+}
+
+fn start_compose(machine: &Machine, paths: &ConfigPaths) -> Result<()> {
+    let key = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
+    let project = format!("ouro-{}", machine.id);
+    let outcome = crate::ssh::SshRunner::new(false).diag_exec(
+        &machine.ssh,
+        &key,
+        &paths.known_hosts,
+        &[
+            "sh".into(),
+            "-c".into(),
+            COMPOSE_UP_SCRIPT.into(),
+            "ouro-deploy-compose-up".into(),
+            project,
+        ],
+        COMPOSE_UP_TIMEOUT_S,
+    )?;
+    if outcome.status != 0 {
+        return Err(OuroError::Validation(format!(
+            "docker compose up failed on {} with status {}: {}",
+            machine.id,
+            outcome.status,
+            bounded_detail(&outcome.stderr)
+        )));
+    }
+    let facts = parse_closed_facts(
+        &outcome.stdout,
+        "ouro-deploy-compose-up-v1",
+        &["schema", "started"],
+    )?;
+    if !parse_fact_bool(&facts, "started")? {
+        return Err(OuroError::Validation(
+            "docker compose up did not report command success".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn rollback_ufw(
     runner: &crate::ssh::SshRunner,
     machine: &Machine,
@@ -962,7 +1450,7 @@ fn parse_fact_bool(facts: &BTreeMap<String, String>, key: &str) -> Result<bool> 
 }
 
 fn parse_inspect_facts(stdout: &str) -> Result<InspectFacts> {
-    const EXPECTED: [&str; 30] = [
+    const EXPECTED: [&str; 35] = [
         "schema",
         "os_id",
         "os_version",
@@ -978,6 +1466,11 @@ fn parse_inspect_facts(stdout: &str) -> Result<InspectFacts> {
         "ufw_state",
         "ssh_listener",
         "aggregator_reachable",
+        "p2p_listener",
+        "metrics_listener",
+        "metrics_public_listener",
+        "ufw_p2p_allow",
+        "ufw_metrics_allow",
         "ouro_state",
         "legacy_cardano_state",
         "legacy_home_config_state",
@@ -1112,6 +1605,11 @@ fn parse_inspect_facts(stdout: &str) -> Result<InspectFacts> {
         ufw_state: require_enum("ufw_state", &["active", "inactive", "unavailable"])?,
         ssh_listener: parse_bool("ssh_listener")?,
         aggregator_reachable: parse_bool("aggregator_reachable")?,
+        p2p_listener: parse_bool("p2p_listener")?,
+        metrics_listener: parse_bool("metrics_listener")?,
+        metrics_public_listener: parse_bool("metrics_public_listener")?,
+        ufw_p2p_allow: parse_bool("ufw_p2p_allow")?,
+        ufw_metrics_allow: parse_bool("ufw_metrics_allow")?,
         ouro_state: require_enum("ouro_state", &path_states)?,
         legacy_cardano_state: require_enum("legacy_cardano_state", &path_states)?,
         legacy_home_config_state: require_enum("legacy_home_config_state", &path_states)?,
@@ -1182,8 +1680,10 @@ fn deployment_desired_digest(
     fleet_digest: &str,
     genesis_digest: &str,
 ) -> Result<String> {
+    let topology = render_deploy_topology(spec, machine, selection)?;
+    let topology_digest = digest_json(&topology)?;
     digest_json(&serde_json::json!({
-        "schema_version": 1,
+        "deployment_policy_version": 1,
         "fleet_identity_digest": fleet_digest,
         "genesis_identity": genesis_digest,
         "machine_id": machine.id,
@@ -1194,9 +1694,167 @@ fn deployment_desired_digest(
         "platform": selection.platform,
         "platform_manifest_digest": selection.platform_manifest_digest,
         "image_config_digest": selection.image_config_digest,
+        "compose_project": format!("ouro-{}", machine.id),
+        "compose_service": "cardano-node",
         "environment": desired_environment(spec.pool.network),
         "mounts": selective_mount_policy(machine.role),
+        "ports": desired_ports(machine),
+        "logging": {
+            "driver": "json-file",
+            "max-size": "50m",
+            "max-file": "3",
+        },
+        "security": {
+            "privileged": false,
+            "image_default_user_and_capabilities": true,
+        },
+        "restart": "unless-stopped",
+        "command": ["run"],
+        "topology_digest": topology_digest,
     }))
+}
+
+fn render_deploy_topology(
+    spec: &PoolSpec,
+    machine: &Machine,
+    selection: &SignedDeploySelection,
+) -> Result<serde_json::Value> {
+    let relay_peers = spec
+        .machines
+        .iter()
+        .filter(|candidate| candidate.role == MachineRole::Relay)
+        .map(|relay| {
+            let endpoint = relay.public_endpoint.as_ref().ok_or_else(|| {
+                OuroError::Validation(format!("relay {} is missing its public endpoint", relay.id))
+            })?;
+            Ok(serde_json::json!({
+                "address": endpoint.host,
+                "port": endpoint.port,
+            }))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let signed_peers = selection
+        .network
+        .bootstrap_peers
+        .iter()
+        .map(|peer| {
+            serde_json::json!({
+                "address": peer.address,
+                "port": peer.port,
+            })
+        })
+        .collect::<Vec<_>>();
+    match machine.role {
+        MachineRole::Bp => Ok(serde_json::json!({
+            "bootstrapPeers": [],
+            "localRoots": [{
+                "accessPoints": relay_peers,
+                "advertise": false,
+                "trustable": true,
+                "valency": 1,
+            }],
+            "publicRoots": [],
+            "useLedgerAfterSlot": 0,
+            "PeerSharing": false,
+        })),
+        MachineRole::Relay => Ok(serde_json::json!({
+            "bootstrapPeers": signed_peers.clone(),
+            "localRoots": [],
+            "publicRoots": [{
+                "accessPoints": signed_peers,
+                "advertise": true,
+            }],
+            "useLedgerAfterSlot": 0,
+            "PeerSharing": true,
+        })),
+    }
+}
+
+fn desired_ports(machine: &Machine) -> Vec<serde_json::Value> {
+    let mut ports = vec![serde_json::json!({
+        "host_ip": "127.0.0.1",
+        "published": 12798,
+        "target": 12798,
+        "protocol": "tcp",
+    })];
+    if machine.role == MachineRole::Relay {
+        if let Some(endpoint) = &machine.public_endpoint {
+            ports.push(serde_json::json!({
+                "host_ip": "0.0.0.0",
+                "published": endpoint.port,
+                "target": 3001,
+                "protocol": "tcp",
+            }));
+        }
+    }
+    ports
+}
+
+fn render_compose(
+    spec: &PoolSpec,
+    machine: &Machine,
+    selection: &SignedDeploySelection,
+    desired_digest: &str,
+) -> Result<String> {
+    let environment = desired_environment(spec.pool.network)
+        .into_iter()
+        .map(|(key, value)| (key.to_string(), value))
+        .collect::<BTreeMap<_, _>>();
+    let volumes = selective_mount_policy(machine.role)
+        .into_iter()
+        .map(|mount| {
+            let source = match mount.destination {
+                DATA_DESTINATION => "/opt/ouro/db",
+                IPC_DESTINATION => "/opt/ouro/ipc",
+                TOPOLOGY_DESTINATION => "/opt/ouro/topology.json",
+                KEYS_DESTINATION => "/opt/ouro/keys",
+                _ => unreachable!("mount policy is fixed"),
+            };
+            serde_json::json!({
+                "type": "bind",
+                "source": source,
+                "target": mount.destination,
+                "read_only": mount.read_only,
+            })
+        })
+        .collect::<Vec<_>>();
+    let image = format!(
+        "{}@{}",
+        selection.repository, selection.platform_manifest_digest
+    );
+    let lifecycle = match lifecycle_for(machine.role) {
+        NodeLifecycle::Bootstrap => "bootstrap",
+        NodeLifecycle::Operational => "operational",
+    };
+    let compose = serde_json::json!({
+        "services": {
+            "cardano-node": {
+                "image": image,
+                "command": ["run"],
+                "restart": "unless-stopped",
+                "privileged": false,
+                "environment": environment,
+                "labels": {
+                    "io.ouro.machine-id": machine.id,
+                    "io.ouro.role": role_name(machine.role),
+                    "io.ouro.lifecycle": lifecycle,
+                    "io.ouro.network": spec.pool.network.as_str(),
+                    "io.ouro.desired-digest": desired_digest,
+                },
+                "volumes": volumes,
+                "ports": desired_ports(machine),
+                "logging": {
+                    "driver": "json-file",
+                    "options": {
+                        "max-size": "50m",
+                        "max-file": "3",
+                    },
+                },
+            }
+        }
+    });
+    serde_yaml::to_string(&compose)
+        .map_err(|error| OuroError::Validation(format!("cannot render fixed Compose: {error}")))
 }
 
 fn select_pinned_deploy(
@@ -1244,7 +1902,7 @@ pub struct DeployMountPolicy {
     pub read_only: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SignedDeploySelection {
     pub repository: String,
     pub platform: String,
@@ -1394,7 +2052,13 @@ mod tests {
 
     #[test]
     fn host_convergence_scripts_are_fixed_bounded_and_shell_valid() {
-        for script in [HOST_PREPARE_SCRIPT, UFW_APPLY_SCRIPT, UFW_ROLLBACK_SCRIPT] {
+        for script in [
+            HOST_PREPARE_SCRIPT,
+            UFW_APPLY_SCRIPT,
+            UFW_ROLLBACK_SCRIPT,
+            ARTIFACT_INSTALL_SCRIPT,
+            COMPOSE_UP_SCRIPT,
+        ] {
             let status = std::process::Command::new("sh")
                 .args(["-n", "-c", script])
                 .status()
@@ -1430,6 +2094,12 @@ mod tests {
         assert!(!UFW_APPLY_SCRIPT.contains("12798"));
         assert!(UFW_ROLLBACK_SCRIPT.contains("delete allow"));
         assert!(!UFW_ROLLBACK_SCRIPT.contains("reset"));
+        assert!(ARTIFACT_INSTALL_SCRIPT.contains("compose -p \"$project\""));
+        assert!(ARTIFACT_INSTALL_SCRIPT.contains("image inspect --format '{{.Id}}'"));
+        assert!(COMPOSE_UP_SCRIPT.contains("--no-build --pull never"));
+        for forbidden in ["health", "socket", "query tip", "metrics", "sleep ", "poll"] {
+            assert!(!COMPOSE_UP_SCRIPT.contains(forbidden), "{forbidden}");
+        }
     }
 
     #[test]
@@ -1453,5 +2123,67 @@ mod tests {
             &["schema", "added_ssh", "added_p2p", "enabled"],
         )
         .is_err());
+    }
+
+    #[test]
+    fn compose_and_topology_are_role_specific_and_signed() {
+        let spec: PoolSpec = serde_yaml::from_str(
+            r#"spec_version: 1
+pool:
+  network: mainnet
+  network_magic: 764824073
+  genesis_hashes:
+    shelley: 1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81
+topology_mode: p2p
+machines:
+  - id: bp1
+    role: bp
+    ssh: {host: 192.0.2.1, port: 22, user: bp-admin, key_ref: creds://bp1}
+  - id: relay1
+    role: relay
+    public_endpoint: {host: relay.example.com, port: 3001}
+    ssh: {host: 192.0.2.2, port: 22, user: relay-admin, key_ref: creds://relay1}
+"#,
+        )
+        .unwrap();
+        spec.validate().unwrap();
+        let policy = Allowlist::release_document(RELEASES).unwrap();
+        let selection = select_signed_deploy(
+            &policy,
+            "linux/amd64",
+            Network::Mainnet,
+            &spec.pool.genesis_hashes.shelley,
+        )
+        .unwrap();
+        let bp = &spec.machines[0];
+        let relay = &spec.machines[1];
+        let bp_topology = render_deploy_topology(&spec, bp, &selection).unwrap();
+        let relay_topology = render_deploy_topology(&spec, relay, &selection).unwrap();
+        assert_eq!(
+            bp_topology["localRoots"][0]["accessPoints"][0]["address"],
+            "relay.example.com"
+        );
+        assert_eq!(bp_topology["bootstrapPeers"], serde_json::json!([]));
+        assert_eq!(
+            relay_topology["bootstrapPeers"],
+            serde_json::to_value(&selection.network.bootstrap_peers).unwrap()
+        );
+        let bp_compose = render_compose(&spec, bp, &selection, "sha256:bp").unwrap();
+        let relay_compose = render_compose(&spec, relay, &selection, "sha256:relay").unwrap();
+        let bp_yaml: serde_yaml::Value = serde_yaml::from_str(&bp_compose).unwrap();
+        let relay_yaml: serde_yaml::Value = serde_yaml::from_str(&relay_compose).unwrap();
+        let bp_service = &bp_yaml["services"]["cardano-node"];
+        let relay_service = &relay_yaml["services"]["cardano-node"];
+        assert_eq!(bp_service["environment"]["CARDANO_BLOCK_PRODUCER"], "false");
+        assert_eq!(bp_service["labels"]["io.ouro.lifecycle"], "bootstrap");
+        assert_eq!(relay_service["labels"]["io.ouro.lifecycle"], "operational");
+        assert!(bp_compose.contains("/opt/cardano/config/keys"));
+        assert!(!relay_compose.contains("/opt/cardano/config/keys"));
+        assert!(!bp_compose.contains("/opt/cardano/config:"));
+        assert!(relay_compose.contains("0.0.0.0"));
+        assert!(!bp_compose.contains("target: 3001"));
+        assert!(bp_compose.contains("127.0.0.1"));
+        assert_eq!(bp_service["logging"]["options"]["max-size"], "50m");
+        assert_eq!(bp_service["privileged"], false);
     }
 }

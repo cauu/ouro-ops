@@ -674,7 +674,7 @@ takeover 或未校验下载。
 - [x] p3-1 [Host Executor] 使用 CLI 控制的 fixed target scripts 幂等配置 Ubuntu
   packages、Docker/Compose、Chrony、目录和 SSH-safe UFW；Relay-only P2P ingress，
   不引入 Ansible/fail2ban/任意 shell input。
-- [ ] p3-2 [Compose Apply] 实现 role/lifecycle topology、identity marker、
+- [x] p3-2 [Compose Apply] 实现 role/lifecycle topology、identity marker、
   desired digest、固定 Compose 和连续 Relay → bootstrap BP Apply；BP empty read-write
   keys mount，无中间 readiness 检查，支持 partial/idempotent rerun。
 - [ ] p4-1 [Unified Check] 实现一次 Fleet Check，覆盖 host/UFW/Compose/image/mount/
@@ -869,6 +869,12 @@ python3 tests/test_s0027_deploy.py
 - 2026-07-23T15:52:00+08:00 p3-1 completed：固定脚本只从 Ubuntu repositories
   安装六个声明包，单次 bounded Chrony tracking 未达阈值即失败；UFW 记录本次新增
   SSH/Relay-P2P/enable delta，新 SSH 失败只回退该 delta，BP 和 metrics 均不开放 ingress。
+- 2026-07-23T15:53:00+08:00 p3-2 started：实现 signed-peer role topology、固定
+  Compose artifact/pull/config-digest gate，以及一次调用内 Relay → bootstrap BP Apply。
+- 2026-07-23T16:04:07+08:00 p3-2 completed：signed policy v8 绑定 network bootstrap
+  peers；Apply 在全 Fleet read-only gate 后配置所有未完成节点，验证 exact manifest/
+  config，再连续 Relay → bootstrap BP `compose up`，无中间 readiness；完整同 Fleet
+  在首个 target write 前拒绝。
 
 ## 6. Validation Evidence (append-only)
 
@@ -921,5 +927,17 @@ python3 tests/test_s0027_deploy.py
   Relay 添加 declared P2P；BP/12798 无 allow path；脚本内错误和控制机 fresh SSH
   verification 失败都按 recorded delta 删除新增规则/恢复 enable 状态，不调用 reset
   或删除其他既有规则。
+- TC-10 | stack: signed policy v8 + Rust Compose renderer + Python fake SSH | command:
+  `cargo test -q` (180 passed); `python3 tests/test_release_catalog.py`; `python3
+  tests/test_s0027_deploy_apply.py`; `python3 tests/test_s0027_deploy_inspect.py` | result:
+  pass | note: role topology 使用 signed peers/declared Relays；Compose 固定 exact manifest、
+  config digest、native labels、run/env/restart/logging、selective mounts/ports；BP keys
+  read-write 且 BP 无 P2P publish，metrics 仅 loopback。完整同 Fleet Apply 返回
+  `already_deployed` 且 `target_writes=false`。
+- TC-11 | stack: Rust Apply orchestrator + failure-injection fake SSH | command: `python3
+  tests/test_s0027_deploy_apply.py`; `python3 tests/test_s0020_upgrade_workflow.py` | result:
+  pass | note: 三节点事件顺序严格为 configure-all → Relay1-up → Relay2-up → BP-up，命令
+  间不存在 socket/query/log/metrics/health/sleep/poll；一个 Relay 失败时继续其余 Relay
+  和 BP，全部 Relay up 失败时 BP typed skip；S0026 Compose Upgrade handoff 回归通过。
 
 ## 7. Change Requests (append-only)

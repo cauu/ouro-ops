@@ -1,6 +1,6 @@
 {
-  "allowlist_version": 7,
-  "signature": "ed25519:8fed7b70014abb17ed59b72b0ec372da1cf788a40930bd81f0c2f98b5928738bd06de631d89c51ed035127c52fb71eb6f150e4aa95090f57054e740a4fd3e70c",
+  "allowlist_version": 8,
+  "signature": "ed25519:a6bd3541ac7b77e8727723e9f0d40678ec6f2410bb1c7e379db18b79342dadafd8edb63591715afb5443ed8aa56c6434ef943b4d0812f4765b1e09e037e10e0d",
   "repository": "ghcr.io/blinklabs-io/cardano-node",
   "recommended": {
     "linux/amd64": "sha256:0bb21e45159327c4e6109704df256c3c297c725a4b2cdf6d0e1899e3a9df468f",
@@ -64,6 +64,16 @@
             "genesis_vkey": "/opt/cardano/config/mainnet/genesis.vkey",
             "ancillary_vkey": "/opt/cardano/config/mainnet/ancillary.vkey",
             "mithril_aggregator": "https://aggregator.release-mainnet.api.mithril.network/aggregator",
+            "bootstrap_peers": [
+              {
+                "address": "backbone.mainnet.emurgornd.com",
+                "port": 3001
+              },
+              {
+                "address": "backbone.mainnet.cardanofoundation.org",
+                "port": 3001
+              }
+            ],
             "min_memory_bytes": 17179869184,
             "min_free_disk_bytes": 322122547200
           },
@@ -76,6 +86,12 @@
             "genesis_vkey": "/opt/cardano/config/preprod/genesis.vkey",
             "ancillary_vkey": "/opt/cardano/config/preprod/ancillary.vkey",
             "mithril_aggregator": "https://aggregator.release-preprod.api.mithril.network/aggregator",
+            "bootstrap_peers": [
+              {
+                "address": "preprod-node.world.dev.cardano.org",
+                "port": 30000
+              }
+            ],
             "min_memory_bytes": 8589934592,
             "min_free_disk_bytes": 107374182400
           },
@@ -88,6 +104,12 @@
             "genesis_vkey": "/opt/cardano/config/preview/genesis.vkey",
             "ancillary_vkey": "/opt/cardano/config/preview/ancillary.vkey",
             "mithril_aggregator": "https://aggregator.pre-release-preview.api.mithril.network/aggregator",
+            "bootstrap_peers": [
+              {
+                "address": "preview-node.world.dev.cardano.org",
+                "port": 30002
+              }
+            ],
             "min_memory_bytes": 8589934592,
             "min_free_disk_bytes": 107374182400
           }
