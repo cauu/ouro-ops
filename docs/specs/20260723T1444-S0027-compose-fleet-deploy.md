@@ -687,6 +687,8 @@ takeover 或未校验下载。
   idempotency fixtures 和真实 Ubuntu 1 BP + 至少 1 Relay E2E；观测 Mithril pending，
   最终全部 ready，并验证 metrics 私有、不同 SSH 用户、lifecycle strict gate 和 S0026
   Upgrade handoff。
+- [x] p4-2-fix1 [Website] 修复 Deploy 操作卡片缺失的可见图标主题，并加入所有操作
+  tile 都具有非透明背景和 SVG path 的生成器回归。
 
 ### Item → TC Mapping
 
@@ -701,6 +703,7 @@ takeover 或未校验下载。
 | p4-1 | TC-12, TC-13 |
 | p4-2 | TC-14 |
 | p5-1 | TC-15, TC-16, TC-17, TC-18 |
+| p4-2-fix1 | TC-19 |
 
 ## 4. Test And Acceptance Criteria
 
@@ -782,6 +785,9 @@ takeover 或未校验下载。
   bounded harness 重复单次 Check 后所有节点最终 ready、metrics 私有、幂等重跑和
   S0026 Compose Upgrade handoff；完整 Fleet 再次 Deploy 被识别为 already_deployed，
   最终 pending 不能作为 E2E pass。
+- TC-19：网站 Deploy 操作卡片的 tile 和 SVG 在生成产物及浏览器中可见，Deploy 使用
+  明确的 coral/orange 背景与白色图标；所有六个 operation tile theme 都必须声明
+  background，避免白色 SVG 静默落在透明背景上。
 
 Pass/fail：
 
@@ -886,6 +892,13 @@ python3 tests/test_s0027_deploy.py
   唯一来源；网站只序列化原文并生成 operation-scoped Fleet spec，删除 ticker/economics
   与旧注册入口；README/operations/E2E/current review 残留同步清理。
 
+- 2026-07-23T22:02:21+08:00 p4-2-fix1 started：operator 报告 Deploy 图标丢失；
+  浏览器复现为 SVG 节点和尺寸均存在，但 `.t-coral` 没有 CSS background，白色图标
+  落在透明背景上而不可见。
+- 2026-07-23T22:02:21+08:00 p4-2-fix1 completed：将 coral tile 映射到既有 orange
+  token，生成器回归覆盖六个 operation tile theme；本地浏览器确认橙色 tile、白色
+  19px SVG 和三个 path 均可见。
+
 ## 6. Validation Evidence (append-only)
 
 - （待执行）
@@ -968,4 +981,13 @@ python3 tests/test_s0027_deploy.py
   handoff；网站 payload 与 canonical Skill 字节一致，无独立 SSH/Deploy 决策副本，Fleet
   表单不再生成 ticker/economics，旧注册型 current docs/E2E/review surface 已删除。
 
+- TC-19 | stack: Python generator + browser UI | command: `web/onboarding/build.sh`;
+  `python3 -m pytest -q tests/test_web_generator.py` (11 passed); local browser computed-style
+  and screenshot validation | result: pass | note: Deploy tile background 为
+  `rgb(229, 105, 46)`、SVG 为 white/19px/visible/3 paths；生成产物包含相同 CSS，六个
+  operation theme 缺 background 会被自动化测试拒绝。
+
 ## 7. Change Requests (append-only)
+
+- 2026-07-23T22:02:21+08:00 operator 报告网站 Deploy 图标不可见；作为 active S0027
+  的 p4-2-fix1 修复，不改变 Deploy Skill、Prompt 或 CLI 行为。

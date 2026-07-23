@@ -223,6 +223,22 @@ def test_page_keeps_payload_inert_and_network_bounded() -> None:
     assert "innerHTML = skill" not in html
 
 
+def test_operation_tiles_have_visible_icon_backgrounds() -> None:
+    source = SOURCE.read_text(encoding="utf-8")
+    themes = re.findall(r'<span class="tile (t-[a-z]+)" aria-hidden="true">', source)
+    assert len(themes) == 6
+    for theme in themes:
+        assert re.search(
+            rf"\.{re.escape(theme)}\s*\{{[^}}]*background\s*:", source
+        ), f"{theme} has no visible background; its white SVG icon will disappear"
+    deploy = re.search(
+        r'<button[^>]+data-op="deploy".*?</button>', source, re.DOTALL
+    )
+    assert deploy
+    assert 'class="tile t-coral"' in deploy.group(0)
+    assert deploy.group(0).count("<path ") >= 1
+
+
 def test_built_inline_javascript_parses() -> None:
     html = build()
     scripts = re.findall(r"<script>(.*?)</script>", html, re.DOTALL)
