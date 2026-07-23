@@ -96,6 +96,8 @@ metrics_public_listener=false
 if ss -Hln 2>/dev/null | awk '{print $4}' | grep -Eq '(^0\.0\.0\.0:12798$|^\*:12798$|^\[?::\]?:12798$)'; then metrics_public_listener=true; fi
 ufw_p2p_allow=false
 if test "$p2p_port" -gt 0 && printf '%s\n' "$ufw_rules" | grep -Eq "^${p2p_port}/tcp[[:space:]]+ALLOW[[:space:]]+IN"; then ufw_p2p_allow=true; fi
+ufw_ssh_allow=false
+if printf '%s\n' "$ufw_rules" | grep -Eq "^${ssh_port}/tcp[[:space:]]+ALLOW[[:space:]]+IN"; then ufw_ssh_allow=true; fi
 ufw_metrics_allow=false
 if printf '%s\n' "$ufw_rules" | grep -Eq '^12798/tcp[[:space:]]+ALLOW[[:space:]]+IN'; then ufw_metrics_allow=true; fi
 aggregator_reachable=false
@@ -147,7 +149,8 @@ printf '%s\n' \
   "ssh_listener=$ssh_listener" "aggregator_reachable=$aggregator_reachable" \
   "p2p_listener=$p2p_listener" "metrics_listener=$metrics_listener" \
   "metrics_public_listener=$metrics_public_listener" \
-  "ufw_p2p_allow=$ufw_p2p_allow" "ufw_metrics_allow=$ufw_metrics_allow" \
+  "ufw_p2p_allow=$ufw_p2p_allow" "ufw_ssh_allow=$ufw_ssh_allow" \
+  "ufw_metrics_allow=$ufw_metrics_allow" \
   "ouro_state=$ouro_state" "legacy_cardano_state=$legacy_cardano_state" \
   "legacy_home_config_state=$legacy_home_config_state" "db_state=$db_state" \
   "keys_state=$keys_state" "keys_mode=$keys_mode" "identity_marker=$identity_marker" \
@@ -365,6 +368,132 @@ docker_run compose -p "$project" -f /opt/ouro/compose.yaml up -d --no-build --pu
 printf '%s\n' "schema=ouro-deploy-compose-up-v1" "started=true"
 "#;
 
+const CHECK_SCRIPT: &str = r#"set -u
+network=$1
+network_magic=$2
+machine_id=$3
+peer_ports=$4
+case "$peer_ports" in ''|*[!0-9,]*) exit 64 ;; esac
+docker_run() {
+  if docker info >/dev/null 2>&1; then docker "$@"; else sudo -n docker "$@"; fi
+}
+compose_file_sha256=
+topology_sha256=
+test -f /opt/ouro/compose.yaml && test ! -L /opt/ouro/compose.yaml && compose_file_sha256=$(sha256sum /opt/ouro/compose.yaml | awk '{print $1}')
+test -f /opt/ouro/topology.json && test ! -L /opt/ouro/topology.json && topology_sha256=$(sha256sum /opt/ouro/topology.json | awk '{print $1}')
+owned_ids=$(docker_run ps -a -q --filter "label=io.ouro.machine-id=$machine_id" 2>/dev/null || true)
+owned_count=$(printf '%s\n' "$owned_ids" | awk 'NF {n++} END {print n+0}')
+container_running=false
+container_status=absent
+restart_count=0
+restart_policy=
+privileged=
+pid_mode=
+devices=
+cap_add=
+compose_project=
+compose_service=
+image_platform=
+mount_db=
+mount_ipc=
+mount_topology=
+mount_keys=
+metrics_bindings=
+p2p_bindings=
+log_type=
+log_max_size=
+log_max_file=
+env_network=
+env_topology=
+env_database=
+env_socket=
+env_block_producer=
+env_restore_snapshot=
+socket_ready=false
+tip_ready=false
+host_metrics_ready=false
+container_metrics_ready=false
+p2p_listening=false
+established_peers=0
+fatal_log_evidence=false
+if test "$owned_count" = 1; then
+  container_id=$(printf '%s\n' "$owned_ids" | awk 'NF {print; exit}')
+  container_running=$(docker_run inspect --format '{{.State.Running}}' "$container_id" 2>/dev/null || printf false)
+  container_status=$(docker_run inspect --format '{{.State.Status}}' "$container_id" 2>/dev/null || printf unknown)
+  restart_count=$(docker_run inspect --format '{{.RestartCount}}' "$container_id" 2>/dev/null || printf 0)
+  restart_policy=$(docker_run inspect --format '{{.HostConfig.RestartPolicy.Name}}' "$container_id" 2>/dev/null || true)
+  privileged=$(docker_run inspect --format '{{.HostConfig.Privileged}}' "$container_id" 2>/dev/null || true)
+  pid_mode=$(docker_run inspect --format '{{.HostConfig.PidMode}}' "$container_id" 2>/dev/null || true)
+  devices=$(docker_run inspect --format '{{json .HostConfig.Devices}}' "$container_id" 2>/dev/null || true)
+  cap_add=$(docker_run inspect --format '{{json .HostConfig.CapAdd}}' "$container_id" 2>/dev/null || true)
+  compose_project=$(docker_run inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$container_id" 2>/dev/null || true)
+  compose_service=$(docker_run inspect --format '{{index .Config.Labels "com.docker.compose.service"}}' "$container_id" 2>/dev/null || true)
+  image_id=$(docker_run inspect --format '{{.Image}}' "$container_id" 2>/dev/null || true)
+  image_platform=$(docker_run image inspect --format '{{.Os}}/{{.Architecture}}' "$image_id" 2>/dev/null || true)
+  mounts=$(docker_run inspect --format '{{range .Mounts}}{{printf "%s|%s|%t\n" .Source .Destination .RW}}{{end}}' "$container_id" 2>/dev/null || true)
+  mount_db=$(printf '%s\n' "$mounts" | awk -F'|' '$2=="/data/db" {print $1 "|" $3}')
+  mount_ipc=$(printf '%s\n' "$mounts" | awk -F'|' '$2=="/ipc" {print $1 "|" $3}')
+  mount_topology=$(printf '%s\n' "$mounts" | awk -F'|' '$2=="/ouro/topology.json" {print $1 "|" $3}')
+  mount_keys=$(printf '%s\n' "$mounts" | awk -F'|' '$2=="/opt/cardano/config/keys" {print $1 "|" $3}')
+  metrics_bindings=$(docker_run inspect --format '{{json (index .HostConfig.PortBindings "12798/tcp")}}' "$container_id" 2>/dev/null || true)
+  p2p_bindings=$(docker_run inspect --format '{{json (index .HostConfig.PortBindings "3001/tcp")}}' "$container_id" 2>/dev/null || true)
+  log_type=$(docker_run inspect --format '{{.HostConfig.LogConfig.Type}}' "$container_id" 2>/dev/null || true)
+  log_max_size=$(docker_run inspect --format '{{index .HostConfig.LogConfig.Config "max-size"}}' "$container_id" 2>/dev/null || true)
+  log_max_file=$(docker_run inspect --format '{{index .HostConfig.LogConfig.Config "max-file"}}' "$container_id" 2>/dev/null || true)
+  environment=$(docker_run inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$container_id" 2>/dev/null || true)
+  env_value() { printf '%s\n' "$environment" | sed -n "s/^$1=//p" | head -n1; }
+  env_network=$(env_value CARDANO_NETWORK)
+  env_topology=$(env_value CARDANO_TOPOLOGY)
+  env_database=$(env_value CARDANO_DATABASE_PATH)
+  env_socket=$(env_value CARDANO_SOCKET_PATH)
+  env_block_producer=$(env_value CARDANO_BLOCK_PRODUCER)
+  env_restore_snapshot=$(env_value RESTORE_SNAPSHOT)
+  test -S /opt/ouro/ipc/node.socket && socket_ready=true
+  if test "$container_running" = true && test "$socket_ready" = true; then
+    if test "$network" = mainnet; then network_args=--mainnet; else network_args="--testnet-magic $network_magic"; fi
+    docker_run exec "$container_id" sh -c "timeout 5s cardano-cli query tip --socket-path /ipc/node.socket $network_args >/dev/null 2>&1" && tip_ready=true
+  fi
+  curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:12798/metrics 2>/dev/null && host_metrics_ready=true
+  docker_run exec "$container_id" sh -c 'curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:12798/metrics' >/dev/null 2>&1 && container_metrics_ready=true
+  p2p_listening=$(docker_run exec "$container_id" sh -c 'awk '\''NR>1 && $2 ~ /:0BB9$/ && $4=="0A" {found=1} END {print found ? "true" : "false"}'\'' /proc/net/tcp /proc/net/tcp6 2>/dev/null' 2>/dev/null || printf false)
+  peer_port_hex=
+  old_ifs=$IFS
+  IFS=,
+  for peer_port in $peer_ports; do
+    peer_hex=$(printf '%04X' "$peer_port")
+    if test -n "$peer_port_hex"; then peer_port_hex="$peer_port_hex|$peer_hex"; else peer_port_hex=$peer_hex; fi
+  done
+  IFS=$old_ifs
+  established_peers=$(docker_run exec "$container_id" sh -c "awk 'NR>1 && \$4==\"01\" && \$3 ~ /:($peer_port_hex)\$/ {n++} END {print n+0}' /proc/net/tcp /proc/net/tcp6 2>/dev/null" 2>/dev/null || printf 0)
+  docker_run logs --tail 100 "$container_id" 2>&1 | grep -Eiq '(^|[^a-z])(fatal|panic|invalid genesis|configuration error)([^a-z]|$)' && fatal_log_evidence=true
+fi
+cold_key_artifact=false
+if test -d /opt/ouro/keys && test ! -L /opt/ouro/keys; then
+  if find /opt/ouro/keys -maxdepth 1 -type f \( -name 'cold*.skey' -o -name 'payment*.skey' -o -name 'stake*.skey' -o -name 'pool*.skey' -o -name 'genesis*.skey' \) -print -quit 2>/dev/null | grep -q .; then
+    cold_key_artifact=true
+  fi
+fi
+printf '%s\n' \
+  "schema=ouro-deploy-check-v1" \
+  "compose_file_sha256=$compose_file_sha256" "topology_sha256=$topology_sha256" \
+  "owned_count=$owned_count" "container_running=$container_running" \
+  "container_status=$container_status" "restart_count=$restart_count" \
+  "restart_policy=$restart_policy" "privileged=$privileged" "pid_mode=$pid_mode" \
+  "devices=$devices" "cap_add=$cap_add" "compose_project=$compose_project" \
+  "compose_service=$compose_service" "image_platform=$image_platform" \
+  "mount_db=$mount_db" "mount_ipc=$mount_ipc" "mount_topology=$mount_topology" \
+  "mount_keys=$mount_keys" "metrics_bindings=$metrics_bindings" \
+  "p2p_bindings=$p2p_bindings" "log_type=$log_type" \
+  "log_max_size=$log_max_size" "log_max_file=$log_max_file" \
+  "env_network=$env_network" "env_topology=$env_topology" \
+  "env_database=$env_database" "env_socket=$env_socket" \
+  "env_block_producer=$env_block_producer" "env_restore_snapshot=$env_restore_snapshot" \
+  "socket_ready=$socket_ready" "tip_ready=$tip_ready" \
+  "host_metrics_ready=$host_metrics_ready" "container_metrics_ready=$container_metrics_ready" \
+  "p2p_listening=$p2p_listening" "established_peers=$established_peers" \
+  "fatal_log_evidence=$fatal_log_evidence" "cold_key_artifact=$cold_key_artifact"
+"#;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct FleetIdentityMarker {
@@ -400,6 +529,7 @@ struct InspectFacts {
     metrics_listener: bool,
     metrics_public_listener: bool,
     ufw_p2p_allow: bool,
+    ufw_ssh_allow: bool,
     ufw_metrics_allow: bool,
     ouro_state: String,
     legacy_cardano_state: String,
@@ -441,6 +571,7 @@ pub fn run(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {
         Some("inspect") => run_inspect(&args[1..]),
         Some("apply") => run_apply(&args[1..]),
+        Some("check") => run_check(&args[1..]),
         _ => Err(OuroError::InvalidArgs(
             "expected deploy inspect|apply|check --spec <pool-spec>".into(),
         )),
@@ -872,6 +1003,450 @@ fn set_state_field(
     Ok(())
 }
 
+fn run_check(args: &[String]) -> Result<()> {
+    if args.len() != 2 || args[0] != "--spec" {
+        return Err(OuroError::InvalidArgs(
+            "deploy check requires exactly --spec <pool-spec>".into(),
+        ));
+    }
+    let spec = PoolSpec::from_file(std::path::Path::new(&args[1]))?;
+    if spec.topology_mode != TopologyMode::P2p {
+        return Err(OuroError::Validation(
+            "Fleet Deploy requires topology_mode: p2p".into(),
+        ));
+    }
+    let paths = ConfigPaths::discover();
+    let mut missing_trust = Vec::new();
+    for machine in &spec.machines {
+        if crate::ssh::existing_host_fingerprints(
+            &paths.known_hosts,
+            &machine.ssh.host,
+            machine.ssh.port,
+        )?
+        .is_empty()
+        {
+            missing_trust.push(machine.id.clone());
+        }
+    }
+    if !missing_trust.is_empty() {
+        output::print_json(
+            &ToolOutput::failure(
+                "ouro.deploy.check",
+                "ssh_host_key_untrusted",
+                "all Fleet host keys must be user-trusted before Check; no target was contacted",
+            )
+            .with_data(serde_json::json!({
+                "classification": "failed",
+                "machines": missing_trust,
+                "target_contacted": false,
+                "target_writes": false,
+            })),
+        )?;
+        return Err(OuroError::Reported(10));
+    }
+    let catalog = crate::convention::fetch_release_catalog()?;
+    let fleet_digest = fleet_identity_digest(&spec)?;
+    let genesis_digest = genesis_identity_digest(&spec)?;
+    let (_, _, bootstrap) = catalog.policy.recommended_deploy_for("linux/amd64")?;
+    let aggregator = bootstrap
+        .networks
+        .get(spec.pool.network.as_str())
+        .ok_or_else(|| OuroError::Validation("signed network bootstrap facts are absent".into()))?
+        .mithril_aggregator
+        .clone();
+    let mut nodes = Vec::new();
+    for machine in &spec.machines {
+        let inspected = match inspect_machine(
+            &spec,
+            machine,
+            &paths,
+            &catalog.policy,
+            &fleet_digest,
+            &genesis_digest,
+            &aggregator,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                nodes.push(serde_json::json!({
+                    "machine": machine.id,
+                    "role": role_name(machine.role),
+                    "status": "failed",
+                    "node_readiness": "failed",
+                    "forging_readiness": if machine.role == MachineRole::Bp { "failed" } else { "not_applicable" },
+                    "block_production": "unknown",
+                    "static_failures": ["inspect_failed"],
+                    "detail": error.to_string(),
+                }));
+                continue;
+            }
+        };
+        match check_machine(&spec, machine, &paths, &inspected) {
+            Ok(value) => nodes.push(value),
+            Err(error) => nodes.push(serde_json::json!({
+                "machine": machine.id,
+                "role": role_name(machine.role),
+                "status": "failed",
+                "node_readiness": "failed",
+                "forging_readiness": if machine.role == MachineRole::Bp { "failed" } else { "not_applicable" },
+                "block_production": "unknown",
+                "static_failures": ["check_failed"],
+                "detail": error.to_string(),
+            })),
+        }
+    }
+    let classification = if nodes.iter().any(|node| node["status"] == "failed") {
+        "failed"
+    } else if nodes.iter().any(|node| node["status"] == "pending") {
+        "pending"
+    } else {
+        "ready"
+    };
+    output::print_json(
+        &ToolOutput::ok("ouro.deploy.check", false).with_data(serde_json::json!({
+            "classification": classification,
+            "fleet_identity_digest": fleet_digest,
+            "nodes": nodes,
+            "sync_percentage_required": false,
+            "target_writes": false,
+        })),
+    )
+}
+
+fn check_machine(
+    spec: &PoolSpec,
+    machine: &Machine,
+    paths: &ConfigPaths,
+    inspected: &serde_json::Value,
+) -> Result<serde_json::Value> {
+    let selection: SignedDeploySelection = serde_json::from_value(inspected["selection"].clone())
+        .map_err(|error| {
+        OuroError::Validation(format!("cannot consume signed Inspect selection: {error}"))
+    })?;
+    let desired_digest = inspected["desired_digest"]
+        .as_str()
+        .ok_or_else(|| OuroError::Validation("Inspect desired digest is absent".into()))?;
+    let topology = render_deploy_topology(spec, machine, &selection)?;
+    let topology_content = serde_json::to_string_pretty(&topology)
+        .map_err(|error| OuroError::Validation(format!("cannot render topology: {error}")))?;
+    let compose_content = render_compose(spec, machine, &selection, desired_digest)?;
+    let key = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
+    let mut peer_ports = match machine.role {
+        MachineRole::Bp => spec
+            .machines
+            .iter()
+            .filter_map(|candidate| candidate.public_endpoint.as_ref())
+            .map(|endpoint| endpoint.port)
+            .collect::<Vec<_>>(),
+        MachineRole::Relay => selection
+            .network
+            .bootstrap_peers
+            .iter()
+            .map(|peer| peer.port)
+            .chain(std::iter::once(3001))
+            .collect::<Vec<_>>(),
+    };
+    peer_ports.sort_unstable();
+    peer_ports.dedup();
+    let peer_ports = peer_ports
+        .into_iter()
+        .map(|port| port.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let outcome = crate::ssh::SshRunner::new(false).diag_exec(
+        &machine.ssh,
+        &key,
+        &paths.known_hosts,
+        &[
+            "sh".into(),
+            "-c".into(),
+            CHECK_SCRIPT.into(),
+            "ouro-deploy-check".into(),
+            spec.pool.network.as_str().into(),
+            spec.pool.network_magic.to_string(),
+            machine.id.clone(),
+            peer_ports,
+        ],
+        45,
+    )?;
+    if outcome.status != 0 {
+        return Err(OuroError::Validation(format!(
+            "bounded deployment check failed on {} with status {}: {}",
+            machine.id,
+            outcome.status,
+            bounded_detail(&outcome.stderr)
+        )));
+    }
+    const CHECK_KEYS: [&str; 38] = [
+        "schema",
+        "compose_file_sha256",
+        "topology_sha256",
+        "owned_count",
+        "container_running",
+        "container_status",
+        "restart_count",
+        "restart_policy",
+        "privileged",
+        "pid_mode",
+        "devices",
+        "cap_add",
+        "compose_project",
+        "compose_service",
+        "image_platform",
+        "mount_db",
+        "mount_ipc",
+        "mount_topology",
+        "mount_keys",
+        "metrics_bindings",
+        "p2p_bindings",
+        "log_type",
+        "log_max_size",
+        "log_max_file",
+        "env_network",
+        "env_topology",
+        "env_database",
+        "env_socket",
+        "env_block_producer",
+        "env_restore_snapshot",
+        "socket_ready",
+        "tip_ready",
+        "host_metrics_ready",
+        "container_metrics_ready",
+        "p2p_listening",
+        "established_peers",
+        "fatal_log_evidence",
+        "cold_key_artifact",
+    ];
+    let facts = parse_closed_facts(&outcome.stdout, "ouro-deploy-check-v1", &CHECK_KEYS)?;
+    let mut static_failures = inspected["reasons"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let expected_compose_hash = hex_sha256(compose_content.as_bytes());
+    let expected_topology_hash = hex_sha256(topology_content.as_bytes());
+    require_check(
+        &mut static_failures,
+        fact(&facts, "compose_file_sha256")? == expected_compose_hash,
+        "compose_file_mismatch",
+    );
+    require_check(
+        &mut static_failures,
+        fact(&facts, "topology_sha256")? == expected_topology_hash,
+        "topology_mismatch",
+    );
+    require_check(
+        &mut static_failures,
+        fact(&facts, "owned_count")? == "1",
+        "owned_container_count_mismatch",
+    );
+    require_check(
+        &mut static_failures,
+        fact(&facts, "restart_policy")? == "unless-stopped",
+        "restart_policy_mismatch",
+    );
+    require_check(
+        &mut static_failures,
+        fact(&facts, "privileged")? == "false"
+            && fact(&facts, "pid_mode")?.is_empty()
+            && matches!(fact(&facts, "devices")?, "null" | "[]")
+            && matches!(fact(&facts, "cap_add")?, "null" | "[]"),
+        "container_security_mismatch",
+    );
+    require_check(
+        &mut static_failures,
+        fact(&facts, "compose_project")? == format!("ouro-{}", machine.id)
+            && fact(&facts, "compose_service")? == "cardano-node",
+        "compose_identity_mismatch",
+    );
+    require_check(
+        &mut static_failures,
+        fact(&facts, "image_platform")? == selection.platform,
+        "image_platform_mismatch",
+    );
+    for (key, expected) in [
+        ("mount_db", "/opt/ouro/db|true"),
+        ("mount_ipc", "/opt/ouro/ipc|true"),
+        ("mount_topology", "/opt/ouro/topology.json|false"),
+    ] {
+        require_check(
+            &mut static_failures,
+            fact(&facts, key)? == expected,
+            "mount_shape_mismatch",
+        );
+    }
+    let expected_keys = if machine.role == MachineRole::Bp {
+        "/opt/ouro/keys|true"
+    } else {
+        ""
+    };
+    require_check(
+        &mut static_failures,
+        fact(&facts, "mount_keys")? == expected_keys,
+        "keys_mount_mismatch",
+    );
+    require_check(
+        &mut static_failures,
+        binding_matches(
+            fact(&facts, "metrics_bindings")?,
+            Some(("127.0.0.1", 12798)),
+        ) && if machine.role == MachineRole::Relay {
+            binding_matches(
+                fact(&facts, "p2p_bindings")?,
+                machine
+                    .public_endpoint
+                    .as_ref()
+                    .map(|endpoint| ("0.0.0.0", endpoint.port)),
+            )
+        } else {
+            binding_matches(fact(&facts, "p2p_bindings")?, None)
+        },
+        "port_binding_mismatch",
+    );
+    require_check(
+        &mut static_failures,
+        fact(&facts, "log_type")? == "json-file"
+            && fact(&facts, "log_max_size")? == "50m"
+            && fact(&facts, "log_max_file")? == "3",
+        "logging_policy_mismatch",
+    );
+    for (key, expected) in [
+        ("env_network", spec.pool.network.as_str()),
+        ("env_topology", TOPOLOGY_DESTINATION),
+        ("env_database", DATA_DESTINATION),
+        ("env_socket", "/ipc/node.socket"),
+        ("env_block_producer", "false"),
+        ("env_restore_snapshot", "true"),
+    ] {
+        require_check(
+            &mut static_failures,
+            fact(&facts, key)? == expected,
+            "environment_mismatch",
+        );
+    }
+    let host = &inspected["facts"];
+    require_check(
+        &mut static_failures,
+        host["chrony_installed"] == true
+            && host["chrony_synced"] == true
+            && host["chrony_offset_seconds"]
+                .as_f64()
+                .is_some_and(|offset| offset.abs() <= 1.0),
+        "chrony_invariant_failed",
+    );
+    require_check(
+        &mut static_failures,
+        host["ufw_state"] == "active"
+            && host["ufw_ssh_allow"] == true
+            && host["ufw_metrics_allow"] == false
+            && host["metrics_public_listener"] == false
+            && if machine.role == MachineRole::Relay {
+                host["ufw_p2p_allow"] == true
+            } else {
+                host["ufw_p2p_allow"] == false
+            },
+        "ufw_invariant_failed",
+    );
+    require_check(
+        &mut static_failures,
+        !parse_fact_bool(&facts, "cold_key_artifact")?,
+        "cold_key_artifact_present",
+    );
+    static_failures.sort();
+    static_failures.dedup();
+    let container_running = parse_fact_bool(&facts, "container_running")?;
+    let restart_count = fact(&facts, "restart_count")?
+        .parse::<u32>()
+        .unwrap_or(u32::MAX);
+    let fatal = parse_fact_bool(&facts, "fatal_log_evidence")?;
+    let runtime_failure = !container_running || restart_count > 3 || fatal;
+    let dynamic = BTreeMap::from([
+        ("socket", parse_fact_bool(&facts, "socket_ready")?),
+        ("tip", parse_fact_bool(&facts, "tip_ready")?),
+        (
+            "host_metrics",
+            parse_fact_bool(&facts, "host_metrics_ready")?,
+        ),
+        (
+            "container_metrics",
+            parse_fact_bool(&facts, "container_metrics_ready")?,
+        ),
+        ("p2p_listener", parse_fact_bool(&facts, "p2p_listening")?),
+        (
+            "role_peer",
+            fact(&facts, "established_peers")?
+                .parse::<u32>()
+                .is_ok_and(|count| count > 0),
+        ),
+    ]);
+    let status = if !static_failures.is_empty() || runtime_failure {
+        "failed"
+    } else if dynamic.values().all(|ready| *ready) {
+        "ready"
+    } else {
+        "pending"
+    };
+    let observed_lifecycle = inspected["facts"]["owned_lifecycle"]
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .unwrap_or("operational");
+    let forging_readiness = if machine.role == MachineRole::Bp && observed_lifecycle != "bootstrap"
+    {
+        "failed"
+    } else {
+        "not_applicable"
+    };
+    let block_production = if fact(&facts, "env_block_producer")? == "false" {
+        "disabled"
+    } else {
+        "enabled"
+    };
+    Ok(serde_json::json!({
+        "machine": machine.id,
+        "role": role_name(machine.role),
+        "lifecycle": observed_lifecycle,
+        "status": status,
+        "node_readiness": status,
+        "forging_readiness": forging_readiness,
+        "block_production": block_production,
+        "static_failures": static_failures,
+        "runtime": {
+            "container_running": container_running,
+            "container_status": fact(&facts, "container_status")?,
+            "restart_count": restart_count,
+            "fatal_log_evidence": fatal,
+        },
+        "dynamic": dynamic,
+        "desired_digest": desired_digest,
+        "sync_percentage_required": false,
+    }))
+}
+
+fn require_check(failures: &mut Vec<String>, passes: bool, code: &str) {
+    if !passes {
+        failures.push(code.to_string());
+    }
+}
+
+fn binding_matches(value: &str, expected: Option<(&str, u16)>) -> bool {
+    let Ok(bindings) = serde_json::from_str::<serde_json::Value>(value) else {
+        return expected.is_none() && value.is_empty();
+    };
+    match expected {
+        None => bindings.is_null() || bindings.as_array().is_some_and(Vec::is_empty),
+        Some((host_ip, host_port)) => bindings.as_array().is_some_and(|items| {
+            items.len() == 1
+                && items[0]["HostIp"] == host_ip
+                && items[0]["HostPort"] == host_port.to_string()
+        }),
+    }
+}
+
+fn hex_sha256(value: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(value))
+}
+
 fn inspect_machine(
     spec: &PoolSpec,
     machine: &Machine,
@@ -1074,6 +1649,10 @@ fn inspect_machine(
         "blocked"
     };
     let restore_expected = matches!(facts.db_state.as_str(), "absent" | "empty_dir");
+    let expected_topology =
+        serde_json::to_string_pretty(&render_deploy_topology(spec, machine, &selection)?)
+            .map_err(|error| OuroError::Validation(format!("cannot render topology: {error}")))?;
+    let expected_compose = render_compose(spec, machine, &selection, &expected_desired_digest)?;
     Ok(serde_json::json!({
         "machine": machine.id,
         "role": expected_role,
@@ -1091,6 +1670,10 @@ fn inspect_machine(
         "facts": facts,
         "selection": selection,
         "desired_digest": expected_desired_digest,
+        "expected_artifacts": {
+            "compose_sha256": hex_sha256(expected_compose.as_bytes()),
+            "topology_sha256": hex_sha256(expected_topology.as_bytes()),
+        },
         "mithril": {
             "restore_expected": restore_expected,
             "aggregator": aggregator,
@@ -1450,7 +2033,7 @@ fn parse_fact_bool(facts: &BTreeMap<String, String>, key: &str) -> Result<bool> 
 }
 
 fn parse_inspect_facts(stdout: &str) -> Result<InspectFacts> {
-    const EXPECTED: [&str; 35] = [
+    const EXPECTED: [&str; 36] = [
         "schema",
         "os_id",
         "os_version",
@@ -1470,6 +2053,7 @@ fn parse_inspect_facts(stdout: &str) -> Result<InspectFacts> {
         "metrics_listener",
         "metrics_public_listener",
         "ufw_p2p_allow",
+        "ufw_ssh_allow",
         "ufw_metrics_allow",
         "ouro_state",
         "legacy_cardano_state",
@@ -1609,6 +2193,7 @@ fn parse_inspect_facts(stdout: &str) -> Result<InspectFacts> {
         metrics_listener: parse_bool("metrics_listener")?,
         metrics_public_listener: parse_bool("metrics_public_listener")?,
         ufw_p2p_allow: parse_bool("ufw_p2p_allow")?,
+        ufw_ssh_allow: parse_bool("ufw_ssh_allow")?,
         ufw_metrics_allow: parse_bool("ufw_metrics_allow")?,
         ouro_state: require_enum("ouro_state", &path_states)?,
         legacy_cardano_state: require_enum("legacy_cardano_state", &path_states)?,
@@ -2058,6 +2643,7 @@ mod tests {
             UFW_ROLLBACK_SCRIPT,
             ARTIFACT_INSTALL_SCRIPT,
             COMPOSE_UP_SCRIPT,
+            CHECK_SCRIPT,
         ] {
             let status = std::process::Command::new("sh")
                 .args(["-n", "-c", script])
@@ -2099,6 +2685,17 @@ mod tests {
         assert!(COMPOSE_UP_SCRIPT.contains("--no-build --pull never"));
         for forbidden in ["health", "socket", "query tip", "metrics", "sleep ", "poll"] {
             assert!(!COMPOSE_UP_SCRIPT.contains(forbidden), "{forbidden}");
+        }
+        for forbidden in [
+            " tee ",
+            " mv ",
+            " install ",
+            " ufw allow",
+            "compose up",
+            "sleep ",
+            "poll",
+        ] {
+            assert!(!CHECK_SCRIPT.contains(forbidden), "{forbidden}");
         }
     }
 

@@ -677,7 +677,7 @@ takeover 或未校验下载。
 - [x] p3-2 [Compose Apply] 实现 role/lifecycle topology、identity marker、
   desired digest、固定 Compose 和连续 Relay → bootstrap BP Apply；BP empty read-write
   keys mount，无中间 readiness 检查，支持 partial/idempotent rerun。
-- [ ] p4-1 [Unified Check] 实现一次 Fleet Check，覆盖 host/UFW/Compose/image/mount/
+- [x] p4-1 [Unified Check] 实现一次 Fleet Check，覆盖 host/UFW/Compose/image/mount/
   container/socket/tip/P2P/built-in metrics/keys-dir safety，并返回逐节点
   `ready|pending|failed`、node/forging readiness 与 block-production fact。
 - [ ] p4-2 [Skill/Docs/Web] 重写 canonical Deploy Skill、operations docs 和网站 Fleet
@@ -875,6 +875,11 @@ python3 tests/test_s0027_deploy.py
   peers；Apply 在全 Fleet read-only gate 后配置所有未完成节点，验证 exact manifest/
   config，再连续 Relay → bootstrap BP `compose up`，无中间 readiness；完整同 Fleet
   在首个 target write 前拒绝。
+- 2026-07-23T16:05:00+08:00 p4-1 started：实现 bounded、read-only Fleet Check，
+  将静态 deployment invariants 与动态 startup readiness 分开分类。
+- 2026-07-23T16:15:55+08:00 p4-1 completed：单次 Check 逐节点读取 host、Compose、
+  exact image/runtime、socket/tip/P2P/metrics 与 keys path facts；静态 drift、runtime
+  failure 和 startup pending 分层，且 operational/unlabeled BP 保持 forging fail-closed。
 
 ## 6. Validation Evidence (append-only)
 
@@ -939,5 +944,16 @@ python3 tests/test_s0027_deploy.py
   pass | note: 三节点事件顺序严格为 configure-all → Relay1-up → Relay2-up → BP-up，命令
   间不存在 socket/query/log/metrics/health/sleep/poll；一个 Relay 失败时继续其余 Relay
   和 BP，全部 Relay up 失败时 BP typed skip；S0026 Compose Upgrade handoff 回归通过。
+- TC-12 | stack: fixed read-only target Check + Rust classifier + Python fake SSH | command:
+  `cargo test -q` (180 passed); `python3 tests/test_s0027_deploy_check.py` | result: pass |
+  note: exact static shape + running + socket/tip/metrics/P2P/peer 为 ready；仅动态 startup
+  facts 缺失为 pending；Compose hash drift 即使 socket ready 仍 failed；container exited、
+  restart-loop 或 fatal evidence 为 failed；Check 不等待、不写 target、不要求 sync 100%。
+- TC-13 | stack: lifecycle/readiness + probe/Observability regression | command: `python3
+  tests/test_s0027_deploy_check.py`; `python3 tests/test_probe.py`; `python3
+  tests/test_s0020_observability.py`; `cargo test -q` | result: pass | note: Check 验证
+  loopback-only 12798、role topology/P2P peer、socket/tip、BP keys path safety；bootstrap BP
+  报告 `forging_readiness=not_applicable`/`block_production=disabled`，operational 或缺
+  lifecycle BP 按安全默认返回 forging failed，既有 strict readiness regression 通过。
 
 ## 7. Change Requests (append-only)

@@ -34,6 +34,7 @@ def inspect_facts(**overrides: object) -> str:
         "metrics_listener": "false",
         "metrics_public_listener": "false",
         "ufw_p2p_allow": "false",
+        "ufw_ssh_allow": "false",
         "ufw_metrics_allow": "false",
         "ouro_state": "absent",
         "legacy_cardano_state": "absent",
