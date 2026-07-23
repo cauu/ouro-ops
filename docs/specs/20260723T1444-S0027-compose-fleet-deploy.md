@@ -695,6 +695,8 @@ takeover 或未校验下载。
   门禁，并在 snapshot/Skill 中明确呈现该区别。
 - [x] p4-2-fix2 [Website] 阻止 Hero 装饰光晕动画扩大根页面横向 scrollable overflow，
   消除首屏加载及动画过程中右侧空白区域出现后缓慢收回的布局抖动。
+- [x] p4-2-fix3 [Website] 在网站右上角加入指向 Ouro Ops 正式 GitHub 仓库的可访问
+  图标链接，并保持桌面/移动导航不溢出。
 
 ### Item → TC Mapping
 
@@ -712,6 +714,7 @@ takeover 或未校验下载。
 | p4-2-fix1 | TC-19 |
 | p4-1-fix1 | TC-20 |
 | p4-2-fix2 | TC-21 |
+| p4-2-fix3 | TC-22 |
 
 ## 4. Test And Acceptance Criteria
 
@@ -804,6 +807,9 @@ takeover 或未校验下载。
 - TC-21：Hero aura/orb 等纯装饰动画在任意 transform 帧均不得扩大根页面横向
   scrollable overflow；页面保留纵向滚动、sticky navigation、光晕运动与
   reduced-motion 行为，网站 source 与生成产物均固化横向 clip invariant。
+- TC-22：导航右上角必须包含唯一的 `https://github.com/cauu/ouro-ops` 外部链接，
+  使用可见 GitHub SVG、明确 accessible name、`target=_blank` 与
+  `rel=noopener noreferrer`；移动宽度保留 GitHub 和语言入口且不得新增横向溢出。
 
 Pass/fail：
 
@@ -929,6 +935,12 @@ python3 tests/test_s0027_deploy.py
 - 2026-07-23T22:26:54+08:00 p4-2-fix2 completed：为 html/body 固化
   `overflow-x:clip`，在不创建横向滚动容器、不移除 aura 动画的情况下截断纯装饰
   transform 对 document width 的影响；source/生成产物独立回归通过。
+- 2026-07-23T22:40:20+08:00 p4-2-fix3 started：确认 origin 对应
+  `https://github.com/cauu/ouro-ops`；开始在语言选择器右侧加入可访问图标链接，并为
+  窄屏收起次要品牌副标题而保留两个导航操作。
+- 2026-07-23T22:41:33+08:00 p4-2-fix3 completed：导航最右侧加入 32px GitHub SVG
+  链接，固定新窗口安全属性与 accessible name；≤640px 仅收起 `Cardano SPO` 副标题，
+  source/生成产物回归确认 GitHub 与语言入口均保留。
 
 ## 6. Validation Evidence (append-only)
 
@@ -1031,6 +1043,11 @@ python3 tests/test_s0027_deploy.py
   `git diff --check` | result: pass | note: source 与生成产物均包含根级
   `overflow-x:clip`；aura-drift 动画和 Hero visible overflow 保持存在，装饰 transform
   不再扩大 document 横向滚动范围。
+- TC-22 | stack: HTML/CSS accessibility + static website generator | command:
+  `web/onboarding/build.sh`; `python3 -m pytest -q tests/test_web_generator.py` (13 passed);
+  `git diff --check` | result: pass | note: source 与生成产物各自仅含一个正式仓库链接，
+  位于语言选择器之后，具有可见 SVG、accessible name、noopener/noreferrer 和窄屏
+  品牌副标题收敛规则。
 
 ## 7. Change Requests (append-only)
 
@@ -1041,3 +1058,5 @@ python3 tests/test_s0027_deploy.py
   readiness 的类型解释，不放宽 KES Rotation 的 candidate-bound 安全边界。
 - 2026-07-23T22:25:11+08:00 operator 报告网站初次打开时右侧被撑开并随动画缓慢收回；
   作为 p4-2-fix2 修复纯装饰 transform 泄漏到根页面横向滚动范围的问题。
+- 2026-07-23T22:40:20+08:00 operator 要求网站右上角增加 GitHub 链接；作为
+  p4-2-fix3 加入正式仓库入口，不改变 canonical Skill 或 Prompt 内容。

@@ -56,11 +56,18 @@
   .nav-links{margin-left:auto;display:flex;gap:4px;align-items:center}
   .nav-links a{font-size:14px;font-weight:500;color:var(--body);text-decoration:none;padding:8px 12px;border-radius:9999px;transition:color .18s var(--ease),background .18s var(--ease)}
   .nav-links a:hover{color:var(--ink);background:rgba(23,32,38,.05)}
+  .github-link{width:32px;height:32px;padding:0 !important;display:grid;place-items:center}
+  .github-link svg{display:block;width:17px;height:17px}
   .nav-cta{background:var(--ink);color:#fff !important;font-weight:600;box-shadow:var(--sh-btn)}
   .nav-cta:hover{background:var(--surface-dark) !important;color:#fff !important}
   .lang-pick{width:auto;height:32px;padding:0 28px 0 12px;font-size:13px;font-weight:500;color:var(--body);
     border:1px solid var(--hairline);border-radius:9999px;background-color:transparent;margin:0 4px;cursor:pointer}
   .lang-pick:focus{box-shadow:none;border-color:var(--sea)}
+  @media (max-width:640px){
+    .mark span{display:none}
+    .nav-in{gap:8px}
+    .lang-pick{margin:0}
+  }
 
   /* ============ hero + aura ============ */
   .hero{position:relative;overflow:visible}
@@ -340,6 +347,12 @@
         <option value="zh-Hant">繁體中文</option>
         <option value="ja">日本語</option>
       </select>
+      <a class="github-link" href="https://github.com/cauu/ouro-ops" target="_blank"
+         rel="noopener noreferrer" aria-label="Ouro Ops on GitHub" title="GitHub">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path fill="currentColor" d="M8 0C3.58 0 0 3.64 0 8.13c0 3.59 2.29 6.63 5.47 7.71.4.08.55-.18.55-.39 0-.2-.01-.84-.01-1.52-2.01.38-2.53-.5-2.69-.96-.09-.23-.48-.96-.82-1.16-.28-.15-.68-.53-.01-.54.63-.01 1.08.59 1.23.83.72 1.23 1.87.88 2.33.67.07-.53.28-.88.51-1.08-1.78-.21-3.64-.91-3.64-4.02 0-.89.31-1.62.82-2.19-.08-.2-.36-1.04.08-2.16 0 0 .67-.22 2.2.84A7.5 7.5 0 0 1 8 3.91c.68 0 1.36.09 2 .27 1.53-1.06 2.2-.84 2.2-.84.44 1.12.16 1.96.08 2.16.51.57.82 1.3.82 2.19 0 3.12-1.87 3.81-3.65 4.02.29.25.54.74.54 1.51 0 1.09-.01 1.96-.01 2.23 0 .21.15.47.55.39A8.15 8.15 0 0 0 16 8.13C16 3.64 12.42 0 8 0Z"/>
+        </svg>
+      </a>
     </nav>
   </div>
 </header>

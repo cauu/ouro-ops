@@ -181,6 +181,21 @@ def test_animated_decorations_cannot_expand_document_width() -> None:
         assert ".hero{position:relative;overflow:visible}" in html
 
 
+def test_navigation_links_to_the_official_github_repository() -> None:
+    source = SOURCE.read_text(encoding="utf-8")
+    rendered = build()
+    for html in (source, rendered):
+        assert html.count('href="https://github.com/cauu/ouro-ops"') == 1
+        assert 'class="github-link"' in html
+        assert 'target="_blank"' in html
+        assert 'rel="noopener noreferrer"' in html
+        assert 'aria-label="Ouro Ops on GitHub"' in html
+        assert ".github-link svg{display:block;width:17px;height:17px}" in html
+        assert html.index('id="lang"') < html.index('class="github-link"')
+        assert "@media (max-width:640px)" in html
+        assert ".mark span{display:none}" in html
+
+
 def test_wrapper_delegates_ssh_policy_to_canonical_skill() -> None:
     source = SOURCE.read_text(encoding="utf-8")
     for retired_registration_field in [
