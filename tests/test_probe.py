@@ -353,8 +353,9 @@ def main():
     assert fallback_kes["counter_consistent"] is None, fallback_kes
     assert fallback_kes["counter_status"] == "unavailable", fallback_kes
 
-    # cardano-cli represents OpCertNoBlocksMintedYet as a null node-state counter. Preserve the
-    # typed evidence, but do not globally declare the BP ready without a candidate-bound cold key.
+    # cardano-cli represents OpCertNoBlocksMintedYet as a null node-state counter. Preserve that
+    # typed fact and treat the active, in-period credentials as ready to produce their first block.
+    # Candidate activation remains protected by the separate cold-identity-bound KES transaction.
     no_blocks = subprocess.run(
         ["bash", "-c", f"source {LIB}\nouro_observe linux/amd64"],
         env=dict(env, OURO_TEST_KES_NULL="1"), text=True, capture_output=True,
@@ -365,10 +366,10 @@ def main():
         "source": "cardano_cli", "current_period": 10, "start_period": 9, "end_period": 20,
         "remaining_periods": 10, "opcert_counter_on_disk": 5,
         "opcert_counter_node_state": None, "counter_consistent": None,
-        "counter_status": "no_blocks_minted_yet", "period_valid": True, "valid": False,
+        "counter_status": "no_blocks_minted_yet", "period_valid": True, "valid": True,
     }
-    assert no_blocks_readiness["kes_opcert_valid"] is False
-    assert no_blocks_readiness["forging_credentials_ready"] is False
+    assert no_blocks_readiness["kes_opcert_valid"] is True
+    assert no_blocks_readiness["forging_credentials_ready"] is True
 
     # A restart-looping container cannot answer docker exec, but the signed fixed bind layout still
     # provides enough public/metadata-only identity evidence for Phase B recovery planning. It must

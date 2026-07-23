@@ -46,8 +46,12 @@ existing typed operation. Diagnose freely; never repair by improvising a command
   `operating normally` unless the snapshot contains available, valid KES/opcert evidence and reports
   `block_production_ready: true`. A synced BP with expired, invalid, or unavailable KES evidence is
   not a healthy block producer. `role_readiness: ready` is a bounded baseline, not an overall-health
-  claim; resolve symptom-relevant evidence gaps before a broader conclusion. For a relay, KES is not
-  applicable; require peer evidence instead.
+  claim; resolve symptom-relevant evidence gaps before a broader conclusion. A typed
+  `counter_status: no_blocks_minted_yet` with a valid KES period means the pool has not produced its
+  first block; it is not unavailable counter evidence or a broken credential. Report it as ready to
+  produce when the remaining BP gates pass, while stating explicitly that no block-production
+  counter exists yet. An untyped/missing or `unavailable` counter remains insufficient evidence.
+  For a relay, KES is not applicable; require peer evidence instead.
 - When the baseline leaves a gap relevant to the symptom, run one evidence-seeking command at a
   time with `ouro-ops diag exec --dispatch <id> --spec <pool-spec> -- <command>`. Compose arguments
   appropriate to the symptom and iterate as each result narrows the next question.

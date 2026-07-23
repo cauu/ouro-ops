@@ -102,6 +102,7 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     kes_prompt = payload(html)["kes-rotation"]["content"]
     upgrade_prompt = payload(html)["upgrade"]["content"]
     deploy_prompt = payload(html)["deploy"]["content"]
+    troubleshooting_prompt = payload(html)["troubleshooting"]["content"]
     normalized_upgrade_prompt = " ".join(upgrade_prompt.split())
     normalized_deploy_prompt = " ".join(deploy_prompt.split())
     assert "result.container.orchestration" in upgrade_prompt
@@ -136,6 +137,10 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "user: cardano" not in html
     assert "existing cardano account" not in html
     assert "Never ask for a password, private-key content" in upgrade_prompt
+    assert "`counter_status: no_blocks_minted_yet`" in troubleshooting_prompt
+    assert "An untyped/missing or `unavailable` counter remains insufficient evidence" in (
+        troubleshooting_prompt
+    )
     assert "pending_existing: true" in kes_prompt
     assert "choose: continue this pending rotation, or discard it" in kes_prompt
     assert "kes-rotation/discard-stage" in kes_prompt

@@ -4029,6 +4029,12 @@ fn stateless_troubleshooting_output(
 
     let bootstrap_bp = role == Role::Bp
         && observation.live.lifecycle == Some(crate::readiness::NodeLifecycle::Bootstrap);
+    let is_typed_no_blocks_state = |kes: &ObsKes| {
+        kes.source.as_deref() == Some("cardano_cli")
+            && kes.counter_status.as_deref() == Some("no_blocks_minted_yet")
+            && kes.opcert_counter_node_state.is_none()
+            && kes.period_valid == Some(true)
+    };
     let forging = match role {
         Role::Relay => json!({
             "applicable": false,
@@ -4061,7 +4067,9 @@ fn stateless_troubleshooting_output(
                     Some(kes) if kes.counter_consistent == Some(false) => {
                         "opcert_counter_inconsistent"
                     }
-                    Some(kes) if kes.counter_consistent.is_none() => {
+                    Some(kes)
+                        if kes.counter_consistent.is_none() && !is_typed_no_blocks_state(kes) =>
+                    {
                         "opcert_counter_evidence_unavailable"
                     }
                     Some(kes) if !kes.valid => "opcert_invalid",
@@ -4097,6 +4105,8 @@ fn stateless_troubleshooting_output(
                         "opcert_counter_on_disk": kes.opcert_counter_on_disk,
                         "opcert_counter_node_state": kes.opcert_counter_node_state,
                         "counter_consistent": kes.counter_consistent,
+                        "counter_status": kes.counter_status,
+                        "period_valid": kes.period_valid,
                         "valid": kes.valid,
                     })),
                 })
@@ -4120,6 +4130,7 @@ fn stateless_troubleshooting_output(
                     kes.current_period < kes.start_period
                         || kes.current_period >= kes.end_period
                         || kes.counter_consistent.is_some()
+                        || is_typed_no_blocks_state(kes)
                 }),
             Role::Relay => true,
         };

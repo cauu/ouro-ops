@@ -230,10 +230,11 @@ def kes_facts(s):
             node_state = None
             counter_consistent = None
             counter_status = "no_blocks_minted_yet"
-            # A null node-state counter is meaningful evidence but does not independently bind the
-            # cold pool identity. Only the typed install-opcert transaction may combine it with its
-            # candidate-bound active-opcert check; ordinary readiness remains fail-closed.
-            valid = False
+            # A typed null node-state counter means the pool has not minted a block yet. It is not
+            # evidence that the active KES/opcert is broken; ordinary readiness can rely on the
+            # valid period while candidate activation still requires its separate cold-identity
+            # and active-opcert binding.
+            valid = period_valid
         else:
             node_state = int(node_state_raw)
             counter_consistent = node_state <= on_disk <= node_state + 1

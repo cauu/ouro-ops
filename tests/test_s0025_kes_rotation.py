@@ -50,7 +50,7 @@ def write_dynamic_probe(path: Path, state: Path) -> None:
         "    'source':'cardano_cli','current_period':100,'start_period':100,\n"
         "    'end_period':162,'remaining_periods':62,'opcert_counter_on_disk':7,\n"
         "    'opcert_counter_node_state':None,'counter_consistent':None,\n"
-        "    'counter_status':'no_blocks_minted_yet','period_valid':True,'valid':False}\n"
+        "    'counter_status':'no_blocks_minted_yet','period_valid':True,'valid':True}\n"
         "  if state.get('fail_post'): obs['readiness']['tip_synced']=False\n"
         "if state.get('drift_after_stage') and state['stage']: obs['live']['network']='preprod'\n"
         "print(json.dumps(obs,separators=(',',':')))\n"

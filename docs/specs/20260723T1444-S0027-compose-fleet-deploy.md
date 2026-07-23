@@ -689,6 +689,10 @@ takeover 或未校验下载。
   Upgrade handoff。
 - [x] p4-2-fix1 [Website] 修复 Deploy 操作卡片缺失的可见图标主题，并加入所有操作
   tile 都具有非透明背景和 SVG path 的生成器回归。
+- [x] p4-1-fix1 [Probe/Readiness] 将 operational BP 的
+  `counter_status=no_blocks_minted_yet` 解释为“尚未产生 node-state counter”的正常初始
+  状态，而不是凭证损坏；保留 KES period、凭证、权限和未知 counter evidence 的严格
+  门禁，并在 snapshot/Skill 中明确呈现该区别。
 
 ### Item → TC Mapping
 
@@ -704,6 +708,7 @@ takeover 或未校验下载。
 | p4-2 | TC-14 |
 | p5-1 | TC-15, TC-16, TC-17, TC-18 |
 | p4-2-fix1 | TC-19 |
+| p4-1-fix1 | TC-20 |
 
 ## 4. Test And Acceptance Criteria
 
@@ -788,6 +793,11 @@ takeover 或未校验下载。
 - TC-19：网站 Deploy 操作卡片的 tile 和 SVG 在生成产物及浏览器中可见，Deploy 使用
   明确的 coral/orange 背景与白色图标；所有六个 operation tile theme 都必须声明
   background，避免白色 SVG 静默落在透明背景上。
+- TC-20：`cardano-cli` 返回 `qKesNodeStateOperationalCertificateNumber=null` 且 typed
+  `counter_status=no_blocks_minted_yet` 时，只要 KES period、BP 配置、凭证、权限与
+  liveness 均有效，普通 snapshot 必须报告 `block_production_ready=true`，同时保留
+  “尚未出块”的显式事实；未标型/不可用 counter、counter 不一致、KES 未生效/过期及
+  凭证异常仍 fail closed。KES Rotation 对 candidate/cold identity 的授权约束保持不变。
 
 Pass/fail：
 
@@ -802,6 +812,8 @@ Pass/fail：
   或 operational BP 缺少 forging credentials 仍通过，均为 fail。
 - 每个 item 对应 TC 通过并追加 evidence 后，才可标记完成并按
   `immutable-spec-delivery` 单独 commit。
+- TC-20 必须同时证明 typed `no_blocks_minted_yet` 可通过普通 readiness、普通
+  `unavailable` 仍 fail closed，且 KES Rotation candidate-bound 回归通过。
 
 建议验收命令在实现阶段按实际文件固化，至少包括：
 
@@ -898,6 +910,13 @@ python3 tests/test_s0027_deploy.py
 - 2026-07-23T22:02:21+08:00 p4-2-fix1 completed：将 coral tile 映射到既有 orange
   token，生成器回归覆盖六个 operation tile theme；本地浏览器确认橙色 tile、白色
   19px SVG 和三个 path 均可见。
+- 2026-07-23T22:11:48+08:00 p4-1-fix1 started：operator 实测发现普通 readiness 将
+  typed `no_blocks_minted_yet` 与凭证损坏合并为失败；开始修正 probe → snapshot →
+  canonical troubleshooting Skill 的语义链，并保留真正异常的严格拒绝。
+- 2026-07-23T22:18:15+08:00 p4-1-fix1 completed：probe 仅在 typed no-block state
+  使用有效 KES period 形成普通 readiness；snapshot 显式输出 counter status/period
+  validity 并仅为该 typed state 接受空 node-state counter；canonical Skill/网站同步
+  说明“可产块但尚未出块”，未标型或 unavailable counter 继续证据不足。
 
 ## 6. Validation Evidence (append-only)
 
@@ -986,8 +1005,20 @@ python3 tests/test_s0027_deploy.py
   and screenshot validation | result: pass | note: Deploy tile background 为
   `rgb(229, 105, 46)`、SVG 为 white/19px/visible/3 paths；生成产物包含相同 CSS，六个
   operation theme 缺 background 会被自动化测试拒绝。
+- TC-20 | stack: shell probe + Rust snapshot + Python/KES/Skill/web regression | command:
+  `python3 tests/test_probe.py`; `python3 tests/test_s0020_troubleshooting_snapshot.py`;
+  `python3 tests/test_s0020_observability.py`; `python3 tests/test_s0020_kes_airgap_preflight.py`;
+  `python3 tests/test_s0025_kes_rotation.py`; `cargo test -q`; `cargo fmt --all -- --check`;
+  `python3 tests/test_skill_docs.py`; `python3 -m pytest -q tests/test_web_generator.py` |
+  result: pass | note: typed no-block BP 报告 `block_production_ready=true` 且保留
+  `counter_status=no_blocks_minted_yet`；unavailable counter 返回
+  `opcert_counter_evidence_unavailable`/insufficient；180 Rust tests、KES candidate-bound
+  activation、Observability 和 canonical website payload 均通过。
 
 ## 7. Change Requests (append-only)
 
 - 2026-07-23T22:02:21+08:00 operator 报告网站 Deploy 图标不可见；作为 active S0027
   的 p4-2-fix1 修复，不改变 Deploy Skill、Prompt 或 CLI 行为。
+- 2026-07-23T22:11:48+08:00 operator 报告 operational BP 尚未出块时
+  `node_state=null` 被误报为 `block_production_ready=false`；作为 p4-1-fix1 修复普通
+  readiness 的类型解释，不放宽 KES Rotation 的 candidate-bound 安全边界。

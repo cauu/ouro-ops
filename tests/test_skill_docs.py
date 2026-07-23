@@ -260,6 +260,11 @@ def main():
     assert "--op troubleshooting/snapshot" in troubleshooting
     assert "NEVER conclude `BP healthy`" in troubleshooting
     assert "block_production_ready: true" in troubleshooting
+    assert "`counter_status: no_blocks_minted_yet`" in troubleshooting
+    assert (
+        "An untyped/missing or `unavailable` counter remains insufficient evidence"
+        in troubleshooting
+    )
     deploy = (ROOT / "ouro-skills/deploy/SKILL.md").read_text()
     normalized_deploy = " ".join(deploy.split())
     for phrase in [

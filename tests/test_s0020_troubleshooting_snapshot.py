@@ -51,9 +51,11 @@ def observation(kes, *, peers=3, configured=True, lifecycle=None):
 
 def kes(current, end, *, valid):
     return {
-        "current_period": current, "start_period": 1342, "end_period": end,
+        "source": "cardano_cli", "current_period": current,
+        "start_period": 1342, "end_period": end,
         "remaining_periods": end - current, "opcert_counter_on_disk": 7,
-        "opcert_counter_node_state": 7, "counter_consistent": True, "valid": valid,
+        "opcert_counter_node_state": 7, "counter_consistent": True,
+        "counter_status": "present", "period_valid": 1342 <= current < end, "valid": valid,
     }
 
 
@@ -116,6 +118,38 @@ upgrade: {min_online_relays: 0}
     healthy = snapshot("bp1", observation(kes(1380, 1404, valid=True)))
     assert healthy["role_readiness"]["status"] == "ready", healthy
     assert healthy["result"]["forging"]["block_production_ready"] is True, healthy
+
+    no_blocks_kes = kes(1380, 1404, valid=True)
+    no_blocks_kes.update({
+        "opcert_counter_node_state": None,
+        "counter_consistent": None,
+        "counter_status": "no_blocks_minted_yet",
+    })
+    no_blocks = snapshot("bp1", observation(no_blocks_kes))
+    assert no_blocks["role_readiness"]["status"] == "ready", no_blocks
+    assert no_blocks["result"]["forging"]["status"] == "ready", no_blocks
+    assert no_blocks["result"]["forging"]["block_production_ready"] is True, no_blocks
+    assert no_blocks["result"]["forging"]["kes"]["counter_status"] == \
+        "no_blocks_minted_yet", no_blocks
+    assert no_blocks["result"]["forging"]["kes"]["period_valid"] is True, no_blocks
+
+    unavailable_kes = kes(1380, 1404, valid=True)
+    unavailable_kes.update({
+        "opcert_counter_node_state": None,
+        "counter_consistent": None,
+        "counter_status": "unavailable",
+    })
+    unavailable = snapshot("bp1", observation(unavailable_kes))
+    assert unavailable["role_readiness"]["status"] == "insufficient_evidence", unavailable
+    assert unavailable["result"]["forging"]["status"] == \
+        "opcert_counter_evidence_unavailable", unavailable
+    assert unavailable["result"]["forging"]["block_production_ready"] is False, unavailable
+
+    contradictory_kes = dict(no_blocks_kes, opcert_counter_node_state=7)
+    contradictory = snapshot("bp1", observation(contradictory_kes))
+    assert contradictory["role_readiness"]["status"] == "insufficient_evidence", contradictory
+    assert contradictory["result"]["forging"]["status"] == \
+        "opcert_counter_evidence_unavailable", contradictory
 
     bootstrap = snapshot("bp1", observation(None, configured=False, lifecycle="bootstrap"))
     assert bootstrap["role_readiness"]["status"] == "ready", bootstrap
