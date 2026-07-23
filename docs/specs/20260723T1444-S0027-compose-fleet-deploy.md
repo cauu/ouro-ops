@@ -666,7 +666,7 @@ takeover 或未校验下载。
   Mithril/metrics/run/non-producing/selective-mount contract，扩展 signed bootstrap facts
   与 resource policy；加入 bootstrap/operational lifecycle、node/forging readiness，
   并完成 probe/Observability/S0026 Compose Upgrade 和 operational BP strict-gate 回归。
-- [ ] p2-1 [SSH Trust] 实现 user-only interactive `ssh trust` 和严格 known-host dispatch；
+- [x] p2-1 [SSH Trust] 实现 user-only interactive `ssh trust` 和严格 known-host dispatch；
   Agent 缺少/变化 host key 时只能返回 actionable blocker 并等待用户。
 - [ ] p2-2 [Inspect] 复用 operation-scoped pool spec，实现多 SSH 账号、host/runtime/
   resource/port/ownership、signed recommendation、Mithril prerequisites 和 deterministic
@@ -853,6 +853,11 @@ python3 tests/test_s0027_deploy.py
   arm64 runtime contents；发布目录升级为 Ed25519-signed v7 bootstrap contract；
   Fresh Compose shape 不遮蔽 image config，且只有显式 non-producing bootstrap BP
   可跳过 forging gate。
+- 2026-07-23T15:27:06+08:00 p2-1 started：实现 user-only interactive host-key
+  confirmation、credential/account verification 和 strict known_hosts blocker。
+- 2026-07-23T15:32:58+08:00 p2-1 completed：Inspect 在缺 key 时不接触 target；
+  `ssh trust` 仅接受真实 TTY 上的 machine-id 确认，支持 out-of-band fingerprint 和
+  明示 TOFU，并在持久化前以 declared user/credential 完成 strict SSH 验证。
 
 ## 6. Validation Evidence (append-only)
 
@@ -876,5 +881,14 @@ python3 tests/test_s0027_deploy.py
   note: selective topology/data/ipc/BP-rw-keys policy 不挂载完整 config；Compose health/
   S0026 routing 保持可用；unlabeled/operational BP 仍严格要求 forging credentials，
   仅显式 bootstrap BP 报告 non-producing/not-applicable。
+- TC-4 | stack: Rust CLI + pseudo-TTY Python | command: `python3
+  tests/test_s0027_ssh_trust.py` | result: pass | note: missing keys 返回
+  `ssh_host_key_untrusted` 且 fake scan/SSH 均未被调用；用户确认界面展示
+  machine/user/host/port/fingerprint，out-of-band match 与 TOFU 结果分开记录。
+- TC-5 | stack: OpenSSH + Rust CLI + Python | command: `cargo test -q`; `python3
+  tests/test_s0027_ssh_trust.py` | result: pass | note: non-TTY Agent invocation 在 scan 前
+  fail closed；所有 credential verification 使用 `StrictHostKeyChecking=yes`、
+  dedicated Ouro known_hosts/declared account；auth 失败不写 trust，重复 trust 幂等，
+  key change 需用户再次明确确认。
 
 ## 7. Change Requests (append-only)

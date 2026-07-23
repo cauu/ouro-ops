@@ -4,8 +4,10 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use crate::config::ConfigPaths;
 use crate::convention::{Allowlist, DeployBootstrapContract, DeployNetworkContract};
 use crate::domain::{MachineRole, Network};
+use crate::output::{self, ToolOutput};
 use crate::readiness::NodeLifecycle;
 use crate::{OuroError, Result};
 
@@ -13,6 +15,64 @@ pub const TOPOLOGY_DESTINATION: &str = "/ouro/topology.json";
 pub const DATA_DESTINATION: &str = "/data/db";
 pub const IPC_DESTINATION: &str = "/ipc";
 pub const KEYS_DESTINATION: &str = "/opt/cardano/config/keys";
+
+pub fn run(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        Some("inspect") => run_inspect(&args[1..]),
+        _ => Err(OuroError::InvalidArgs(
+            "expected deploy inspect|apply|check --spec <pool-spec>".into(),
+        )),
+    }
+}
+
+fn run_inspect(args: &[String]) -> Result<()> {
+    if args.len() != 2 || args[0] != "--spec" {
+        return Err(OuroError::InvalidArgs(
+            "deploy inspect requires exactly --spec <pool-spec>".into(),
+        ));
+    }
+    let spec = crate::domain::PoolSpec::from_file(std::path::Path::new(&args[1]))?;
+    let paths = ConfigPaths::discover();
+    let mut untrusted = Vec::new();
+    for machine in &spec.machines {
+        let fingerprints = crate::ssh::existing_host_fingerprints(
+            &paths.known_hosts,
+            &machine.ssh.host,
+            machine.ssh.port,
+        )?;
+        if fingerprints.is_empty() {
+            untrusted.push(serde_json::json!({
+                "machine": machine.id,
+                "host": machine.ssh.host,
+                "port": machine.ssh.port,
+                "user_action": format!(
+                    "ouro-ops ssh trust --spec {} --node {}",
+                    args[1], machine.id
+                ),
+            }));
+        }
+    }
+    if !untrusted.is_empty() {
+        output::print_json(
+            &ToolOutput::failure(
+                "ouro.deploy.inspect",
+                "ssh_host_key_untrusted",
+                "one or more targets are absent from Ouro known_hosts; no target was contacted",
+            )
+            .with_data(serde_json::json!({
+                "classification": "blocked",
+                "reason": "ssh_host_key_untrusted",
+                "targets": untrusted,
+                "target_contacted": false,
+            })),
+        )?;
+        return Err(OuroError::Reported(10));
+    }
+    Err(OuroError::Validation(
+        "Deploy host trust gate passed; the remaining Inspect capability is not implemented yet"
+            .into(),
+    ))
+}
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct DeployMountPolicy {

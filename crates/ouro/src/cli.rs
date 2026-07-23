@@ -1,5 +1,5 @@
 use serde_json::json;
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -50,6 +50,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "config" => run_config(&args[2..])?,
         "creds" => run_creds(&args[2..])?,
         "diag" => run_diag(&args[2..])?,
+        "deploy" => crate::deploy::run(&args[2..])?,
         "onboard" => run_onboard(&args[2..])?,
         "adopt" => crate::s0019_cli::run_adopt(&args[2..])?,
         "op" => crate::s0019_cli::run_op(&args[2..])?,
@@ -63,11 +64,160 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "release" => run_release(&args[2..])?,
         "rollback" => run_rollback(&args[2..])?,
         "self-update" => run_self_update(&args[2..])?,
+        "ssh" => run_ssh(&args[2..])?,
         "spec" => run_spec(&args[2..])?,
         "status" => run_status(&args[2..])?,
         other => return Err(OuroError::InvalidArgs(format!("unknown command {other}"))),
     }
     Ok(())
+}
+
+fn run_ssh(args: &[String]) -> Result<()> {
+    if args.first().map(String::as_str) != Some("trust") {
+        return Err(OuroError::InvalidArgs(
+            "expected ssh trust --spec <pool-spec> --node <machine-id> \
+             [--expected-host-key <SHA256:base64>]"
+                .into(),
+        ));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut index = 1;
+    while index < args.len() {
+        let flag = args[index].as_str();
+        if !matches!(flag, "--spec" | "--node" | "--expected-host-key")
+            || !seen.insert(flag)
+            || args
+                .get(index + 1)
+                .is_none_or(|value| value.starts_with("--"))
+        {
+            return Err(OuroError::InvalidArgs(
+                "ssh trust accepts exactly one --spec, one --node and optional \
+                 --expected-host-key"
+                    .into(),
+            ));
+        }
+        index += 2;
+    }
+    if !seen.contains("--spec") || !seen.contains("--node") {
+        return Err(OuroError::InvalidArgs(
+            "ssh trust requires --spec and --node".into(),
+        ));
+    }
+    if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
+        return Err(OuroError::Validation(
+            "ssh trust is user-only and interactive; no host was scanned or trusted. \
+             Run this command yourself in a terminal and confirm the displayed fingerprint."
+                .into(),
+        ));
+    }
+
+    let spec_path = PathBuf::from(flag_value(args, "--spec")?);
+    let spec = PoolSpec::from_file(&spec_path)?;
+    let node = flag_value(args, "--node")?;
+    let machine = spec
+        .machines
+        .iter()
+        .find(|machine| machine.id == node)
+        .ok_or_else(|| OuroError::Validation(format!("unknown machine {node:?}")))?;
+    let expected = optional_flag_value(args, "--expected-host-key");
+    if expected.is_some_and(|fingerprint| !is_ssh_sha256_fingerprint(fingerprint)) {
+        return Err(OuroError::InvalidArgs(
+            "--expected-host-key must be an OpenSSH SHA256:<base64> fingerprint".into(),
+        ));
+    }
+    let paths = ConfigPaths::discover();
+    let credential =
+        crate::secrets::credential_status(&paths.credentials_dir, machine.ssh.key_ref.name())?;
+    if !credential.usable {
+        return Err(OuroError::Validation(format!(
+            "credential {} for machine {} is not registered as a usable owner-only file",
+            machine.ssh.key_ref.as_str(),
+            machine.id
+        )));
+    }
+    let key_path = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
+    let scanned = crate::ssh::scan_ed25519_host_key(&machine.ssh.host, machine.ssh.port, expected)?;
+    let existing = crate::ssh::existing_host_fingerprints(
+        &paths.known_hosts,
+        &machine.ssh.host,
+        machine.ssh.port,
+    )?;
+    let changed_host_key = !existing.is_empty()
+        && !existing
+            .iter()
+            .any(|fingerprint| fingerprint == &scanned.primary_fingerprint);
+    eprintln!("SSH trust confirmation");
+    eprintln!("  machine: {}", machine.id);
+    eprintln!(
+        "  target: {}@{}:{}",
+        machine.ssh.user, machine.ssh.host, machine.ssh.port
+    );
+    eprintln!("  fingerprint: {}", scanned.primary_fingerprint);
+    eprintln!(
+        "  verification: {}",
+        if expected.is_some() {
+            "matched operator-supplied out-of-band fingerprint"
+        } else {
+            "user-accepted TOFU (not independently authenticated)"
+        }
+    );
+    if !existing.is_empty() {
+        eprintln!("  existing fingerprint(s): {}", existing.join(", "));
+    }
+    if changed_host_key {
+        eprintln!("  WARNING: the previously pinned host key differs.");
+    }
+    eprint!("Type machine id '{}' to trust this exact key: ", machine.id);
+    std::io::stderr().flush()?;
+    let mut confirmation = String::new();
+    std::io::stdin().read_line(&mut confirmation)?;
+    if confirmation.trim() != machine.id {
+        return Err(OuroError::Validation(
+            "SSH trust was not confirmed; known_hosts was not changed".into(),
+        ));
+    }
+
+    let temporary_known_hosts = paths.home.join(format!(
+        ".known-hosts-verify-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    crate::ssh::install_scanned_host_key(&temporary_known_hosts, &scanned)?;
+    let verification = SshRunner::new(false).diag_exec(
+        &machine.ssh,
+        &key_path,
+        &temporary_known_hosts,
+        &["true".into()],
+        10,
+    );
+    let _ = std::fs::remove_file(&temporary_known_hosts);
+    let verification = verification?;
+    if verification.status != 0 {
+        return Err(OuroError::Validation(format!(
+            "host key was confirmed but SSH account/credential verification failed with status {}; \
+             Ouro known_hosts was not changed",
+            verification.status
+        )));
+    }
+    let changed = existing != scanned.fingerprints;
+    if changed {
+        crate::ssh::install_scanned_host_key(&paths.known_hosts, &scanned)?;
+    }
+    output::print_json(&ToolOutput::ok("ouro.ssh.trust", changed).with_data(json!({
+        "machine": machine.id,
+        "host": machine.ssh.host,
+        "port": machine.ssh.port,
+        "user": machine.ssh.user,
+        "credential_ref": machine.ssh.key_ref,
+        "fingerprint": scanned.primary_fingerprint,
+        "verification": if expected.is_some() {
+            "out_of_band_fingerprint_matched"
+        } else {
+            "user_accepted_tofu"
+        },
+        "changed_host_key": changed_host_key,
+        "ssh_account_verified": true,
+        "known_hosts": paths.known_hosts,
+    })))
 }
 
 /// Pure external-Skill compatibility check. Argument parsing and comparison happen before any
@@ -1155,10 +1305,12 @@ fn print_help() {
     println!("  run `<command> --help` for a command's usage.\n");
     println!("Control setup:");
     println!("  creds     check/register one operator-named existing SSH key (no list, no copy)");
+    println!("  ssh       trust — user-only interactive host-key confirmation");
     println!(
         "  Ordinary targets use each pool-spec machine's existing SSH account; no target Ouro install/adoption."
     );
     println!("Operate (via the agent, S0020):");
+    println!("  deploy    inspect | apply | check — S0027 Compose Fleet deployment");
     println!("  op        run --op <operation> --node <id> — live stateless read/plan/apply path");
     println!("  inbox     preview a typed public artifact locally (legacy stage also available)");
     println!("  fleet     permit create — authorize one disruptive fleet step");
@@ -1195,6 +1347,11 @@ fn command_usage(command: &str) -> Option<&'static str> {
                     --path <absolute-operator-named-private-key> [--dry-run]\n  \
                     Checks/registers exactly one name as a symlink; never lists, reads, copies, \
                     replaces, or chooses private keys.",
+        "ssh" => "ouro-ops ssh trust --spec <pool-spec> --node <machine-id> \
+                  [--expected-host-key <SHA256:base64>]\n  \
+                  User-only interactive command. Displays and confirms the exact Ed25519 host \
+                  fingerprint, verifies the declared SSH account/credential, then updates only \
+                  Ouro known_hosts. Non-interactive invocation refuses before host scan.",
         "adopt" => "ouro-ops adopt --dispatch <host> --bootstrap-user <account> \
                     --ssh-key creds://<name> --spec <pool-spec> --node <id> \
                     --role <bp|relay> --preview\n  \
@@ -1246,6 +1403,9 @@ fn command_usage(command: &str) -> Option<&'static str> {
                    Free-form diagnosis through the spec's existing operator SSH account. Ouro \
                    adds no sudo but does not enforce read-only access. Host-key pinned, audited, \
                    deadline/output bounded. See the canonical Troubleshooting Skill supplied by the operator.",
+        "deploy" => "ouro-ops deploy inspect|apply|check --spec <pool-spec>\n  \
+                     S0027 Compose Fleet deployment. Inspect and Check are read-only; Apply \
+                     performs the fixed Relay-then-bootstrap-BP convergence.",
         "pool" => "ouro-ops pool overview --spec <pool-spec> [--snapshot <json>] | register-tx --spec <pool-spec>",
         "spec" => "ouro-ops spec validate --spec <pool-spec>",
         "status" => "ouro-ops status --snapshot <json> [--diff-spec --spec <pool-spec>]",

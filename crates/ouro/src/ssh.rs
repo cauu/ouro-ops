@@ -1,5 +1,7 @@
 use serde::Serialize;
 use std::io::{Read, Write};
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -7,6 +9,165 @@ use crate::domain::SshTarget;
 use crate::{OuroError, Result};
 
 const DIAG_STREAM_CAP: usize = 256 * 1024;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ScannedHostKey {
+    pub host: String,
+    pub port: u16,
+    pub entries: Vec<String>,
+    pub fingerprints: Vec<String>,
+    pub primary_fingerprint: String,
+}
+
+pub fn scan_ed25519_host_key(
+    host: &str,
+    port: u16,
+    expected: Option<&str>,
+) -> Result<ScannedHostKey> {
+    let scan = Command::new("ssh-keyscan")
+        .args(["-T", "5", "-p", &port.to_string(), host])
+        .output()
+        .map_err(|error| OuroError::Validation(format!("ssh-keyscan failed to run: {error}")))?;
+    let normalize = |value: &str| {
+        value
+            .trim()
+            .trim_start_matches("SHA256:")
+            .trim_start_matches("sha256:")
+            .to_string()
+    };
+    let mut entries = Vec::new();
+    let mut fingerprints = Vec::new();
+    let mut observed = Vec::new();
+    for entry in String::from_utf8_lossy(&scan.stdout)
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !line.trim_start().starts_with('#'))
+    {
+        let Some(fingerprint) = crate::cli::fingerprint_of(entry) else {
+            continue;
+        };
+        observed.push(fingerprint.clone());
+        if entry.split_whitespace().nth(1) != Some("ssh-ed25519") {
+            continue;
+        }
+        if expected.is_none_or(|value| normalize(&fingerprint) == normalize(value)) {
+            entries.push(entry.to_string());
+            fingerprints.push(fingerprint);
+        }
+    }
+    if entries.is_empty() {
+        let reason = expected.map_or_else(
+            || format!("no Ed25519 host key was presented for {host}:{port}"),
+            |value| {
+                format!(
+                    "host key fingerprint mismatch for {host}:{port}: expected {value}, observed {}",
+                    observed.join(", ")
+                )
+            },
+        );
+        return Err(OuroError::Validation(reason));
+    }
+    entries.sort();
+    entries.dedup();
+    fingerprints.sort();
+    fingerprints.dedup();
+    if fingerprints.len() != 1 {
+        return Err(OuroError::Validation(format!(
+            "{host}:{port} presented multiple distinct Ed25519 host keys; refused"
+        )));
+    }
+    Ok(ScannedHostKey {
+        host: host.to_string(),
+        port,
+        entries,
+        primary_fingerprint: fingerprints[0].clone(),
+        fingerprints,
+    })
+}
+
+pub fn existing_host_fingerprints(
+    known_hosts: &Path,
+    host: &str,
+    port: u16,
+) -> Result<Vec<String>> {
+    if !known_hosts.exists() {
+        return Ok(Vec::new());
+    }
+    let lookup = if port == 22 {
+        host.to_string()
+    } else {
+        format!("[{host}]:{port}")
+    };
+    let output = Command::new("ssh-keygen")
+        .args(["-F", &lookup, "-f"])
+        .arg(known_hosts)
+        .output()
+        .map_err(|error| {
+            OuroError::Validation(format!("cannot inspect Ouro known_hosts: {error}"))
+        })?;
+    let mut fingerprints = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .filter_map(crate::cli::fingerprint_of)
+        .collect::<Vec<_>>();
+    fingerprints.sort();
+    fingerprints.dedup();
+    Ok(fingerprints)
+}
+
+#[cfg(unix)]
+pub fn install_scanned_host_key(known_hosts: &Path, scanned: &ScannedHostKey) -> Result<()> {
+    let parent = known_hosts.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let temporary = parent.join(format!(
+        ".known-hosts-{}.tmp",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let result = (|| -> Result<()> {
+        let mut file = std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(&temporary)?;
+        if let Ok(existing) = std::fs::read(known_hosts) {
+            file.write_all(&existing)?;
+        }
+        file.flush()?;
+        drop(file);
+        let lookup = if scanned.port == 22 {
+            scanned.host.clone()
+        } else {
+            format!("[{}]:{}", scanned.host, scanned.port)
+        };
+        let _ = Command::new("ssh-keygen")
+            .args(["-R", &lookup, "-f"])
+            .arg(&temporary)
+            .output();
+        let mut file = std::fs::OpenOptions::new().append(true).open(&temporary)?;
+        if std::fs::metadata(&temporary)?.len() > 0 {
+            file.write_all(b"\n")?;
+        }
+        for entry in &scanned.entries {
+            file.write_all(entry.as_bytes())?;
+            file.write_all(b"\n")?;
+        }
+        file.sync_all()?;
+        std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o600))?;
+        std::fs::rename(&temporary, known_hosts)?;
+        std::fs::File::open(parent)?.sync_all()?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result
+}
+
+#[cfg(not(unix))]
+pub fn install_scanned_host_key(_known_hosts: &Path, _scanned: &ScannedHostKey) -> Result<()> {
+    Err(OuroError::Validation(
+        "SSH trust installation is supported on macOS and Linux only".into(),
+    ))
+}
 
 enum StdinSource {
     Bytes(Vec<u8>),
