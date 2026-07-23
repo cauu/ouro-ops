@@ -680,7 +680,7 @@ takeover 或未校验下载。
 - [x] p4-1 [Unified Check] 实现一次 Fleet Check，覆盖 host/UFW/Compose/image/mount/
   container/socket/tip/P2P/built-in metrics/keys-dir safety，并返回逐节点
   `ready|pending|failed`、node/forging readiness 与 block-production fact。
-- [ ] p4-2 [Skill/Docs/Web] 重写 canonical Deploy Skill、operations docs 和网站 Fleet
+- [x] p4-2 [Skill/Docs/Web] 重写 canonical Deploy Skill、operations docs 和网站 Fleet
   入口，保证 SSH user/trust、一次确认、单次 Apply、最终 Check 和 BP Bootstrap boundary
   来自 canonical Skill，且旧注册型 Deploy 不再出现。
 - [ ] p5-1 [Integration/E2E] 完成 Rust/Python 回归、fixed executor failure injection、
@@ -880,6 +880,11 @@ python3 tests/test_s0027_deploy.py
 - 2026-07-23T16:15:55+08:00 p4-1 completed：单次 Check 逐节点读取 host、Compose、
   exact image/runtime、socket/tip/P2P/metrics 与 keys path facts；静态 drift、runtime
   failure 和 startup pending 分层，且 operational/unlabeled BP 保持 forging fail-closed。
+- 2026-07-23T16:17:00+08:00 p4-2 started：按 canonical-source boundary 重写 Deploy
+  Skill，再由网站生成器原样内嵌；同步删除旧注册型网站字段、当前 docs 和 E2E 残留。
+- 2026-07-23T16:29:11+08:00 p4-2 completed：canonical Deploy Skill 成为完整流程
+  唯一来源；网站只序列化原文并生成 operation-scoped Fleet spec，删除 ticker/economics
+  与旧注册入口；README/operations/E2E/current review 残留同步清理。
 
 ## 6. Validation Evidence (append-only)
 
@@ -955,5 +960,12 @@ python3 tests/test_s0027_deploy.py
   loopback-only 12798、role topology/P2P peer、socket/tip、BP keys path safety；bootstrap BP
   报告 `forging_readiness=not_applicable`/`block_production=disabled`，operational 或缺
   lifecycle BP 按安全默认返回 forging failed，既有 strict readiness regression 通过。
+- TC-14 | stack: canonical Ouro Skill + static generator + browser UI | command: `python3
+  tests/test_skill_docs.py`; `python3 tests/test_external_skill_boundary.py`; `python3 -m pytest
+  -q tests/test_web_generator.py` (10 passed); `web/onboarding/build.sh`; in-app local UI
+  Inspect/Prompt audit | result: pass | note: Deploy Skill 正向描述 contract、SSH 同/不同账号、
+  user-only trust、Inspect/signed image/Mithril、一次批准/Apply、最终 Check 与 BP Bootstrap
+  handoff；网站 payload 与 canonical Skill 字节一致，无独立 SSH/Deploy 决策副本，Fleet
+  表单不再生成 ticker/economics，旧注册型 current docs/E2E/review surface 已删除。
 
 ## 7. Change Requests (append-only)

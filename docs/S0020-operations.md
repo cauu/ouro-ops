@@ -29,7 +29,10 @@ compatibility preflight. The CLI carries execution mechanisms and no decision Sk
 | `kes-rotation/install-opcert` | disruptive matched KES-pair + public-opcert activation | exact confirmation + fleet permit | local preview + target preflight/`--plan` only |
 | `upgrade/preload-image` | non-disruptive exact GHCR pull | exact confirmation | target `--plan` only |
 | `upgrade/step` | direct Docker-run disruptive recreate | exact confirmation + fleet permit + signed recommended target | Compose/unsupported refuse before mutation; run uses typed safe refusal / `--plan` only |
-| `deploy/register-submit` | irreversible transaction submission | exact confirmation; no fleet permit | signed transaction preview + target `--plan` only |
+| `deploy inspect` | read-only Fleet classification | none | trusted SSH + supported clean/partial hosts |
+| `deploy apply` | first-time host + Compose deployment | one explicit operator chat approval before the single call | exact applicable Inspect result |
+| `deploy check` | read-only unified deployment/readiness check | none | deployed or starting Fleet |
+| `ssh trust` | user-owned control known-host update | interactive user confirmation | one declared machine |
 | `diag exec` | diagnostic command through existing operator SSH | no write capability minted | real diagnostic-only commands |
 
 `config/render` and topology mutation remain unsupported. Legacy `onboard`/`adopt` are
@@ -37,15 +40,15 @@ migration/recovery tools only.
 
 ## Plan → approval → apply
 
-For runtime, KES, upgrade and Deploy, the public sequence is:
+For runtime, KES and upgrade, the public sequence is:
 
 1. Run the operation with `--spec <pool-spec> ... --plan`, without confirmation or permit.
 2. Show the exact returned plan and final `candidate_hash`/`intent_hash`; wait for operator approval.
 3. Mint `ouro-ops confirm create --op <op> --node <id> --intent-hash <final-hash>`.
 4. For a disruptive runtime/KES-activation/upgrade operation, mint `ouro-ops fleet permit create
-   ...` last. KES staging and Deploy take no fleet permit.
+   ...` last. KES staging takes no fleet permit.
 5. Immediately rerun the same operation without `--plan`, adding `--candidate-hash`, the exact
-   confirmation and (when required) fleet permit. KES and Deploy artifact operations also add
+   confirmation and (when required) fleet permit. KES artifact operations also add
    `--artifact-file`; Upgrade never accepts an image artifact.
 
 Apply re-probes and refuses candidate drift before mutation. Capabilities must never be included in
@@ -135,19 +138,36 @@ network-disabled, no-pull, auto-removed filesystem helper, performs one stop/pro
 the ordinary candidate-bound postcondition before deleting staged/recovery material. It never runs
 Phase A, generates another key, advances the cold counter, or restores the known-bad old triple.
 
-Use `ouro-ops inbox preview --type opcert|tx --file <operator-named-file>` on control. It validates
+Use `ouro-ops inbox preview --type opcert --file <operator-named-file>` on control. It validates
 the public artifact and returns a content-addressed reference without writing an inbox. Put that ref
 in the target plan. Approved apply reopens the same file, verifies its bytes against the candidate,
 and streams `runner || artifact` in one private invocation. No separate remote-stage step exists.
 
-For Deploy, the target reopens the exact signed transaction, derives its txid and normalized
-effects with `cardano-cli`, queries each exact input against the live node, and accepts only one
-matching pool-registration certificate with no unrelated chain effects. The sampled slot proves
-that the validity interval was checked but does not make normal chain progress candidate drift;
-apply rechecks the current slot. Approval authorizes at most one fixed submit attempt. A normal
-rejection and an ambiguous transport result are both terminal and are never retried.
-`accepted_by_node` does not prove ledger inclusion; reconciliation is reported separately as
-confirmed, pending or unknown/not observed.
+## Fresh Fleet Deploy
+
+Fleet Deploy consumes only network/genesis, one BP, one or more Relay endpoints and each machine's
+declared SSH route. Ask first whether SSH usernames are shared or per-machine. Missing host keys are
+resolved only by the user through interactive `ouro-ops ssh trust`; Agent-facing commands never
+accept trust.
+
+Run `ouro-ops deploy inspect --spec <pool-spec>` first. It reads supported Ubuntu/resource/runtime/
+port/ownership facts and the current signed image/Mithril contract without changing targets. A clean
+Fleet or safe exact partial is `applicable`; a complete exact Fleet is `already_deployed`; unknown
+data, another owner or unsupported prerequisites are `blocked`.
+
+For `applicable`, show the signed OCI tuple and deterministic per-node change set, then wait for one
+explicit operator approval. One `ouro-ops deploy apply --spec <pool-spec>` call configures the fixed
+Ubuntu packages, Chrony, owned paths, SSH-safe UFW, signed role topology and Compose. It configures
+all applicable machines, runs every Relay Compose command, then runs the non-producing bootstrap BP
+when at least one Relay command succeeded. There is no transaction, permit, confirmation token,
+intermediate health check or readiness wait.
+
+After Apply, run one `ouro-ops deploy check --spec <pool-spec>`. Static host/identity/image/Compose/
+mount/port/UFW/topology/security drift is `failed`. A running exact container still completing
+Mithril/replay/startup is `pending` until socket, tip, loopback metrics, P2P listener and role peer
+facts appear. The Fresh BP remains explicitly `lifecycle=bootstrap`,
+`forging_readiness=not_applicable` and `block_production=disabled`; its later lifecycle transition
+belongs to the separate BP Bootstrap capability.
 
 ## Troubleshooting assurance
 

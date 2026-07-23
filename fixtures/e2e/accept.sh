@@ -62,7 +62,6 @@ run_e2e "supervision modes: systemd + compose"   e2e-t2-runtime-modes
 run_e2e "KES rotation + confirm gate"            e2e-t2-kes
 run_e2e "KES cold-signing roundtrip (p4-1)"      e2e-t2-coldsign
 run_e2e "offline KES rotation (p4-6)"            e2e-t2-offline-rotation
-run_e2e "pool-registration cold-sign (p4-2)"     e2e-t2-register
 run_e2e "secret-leak scanner (no-leak)"          e2e-t2-secrets
 run_e2e "rolling upgrade (rollout)"              e2e-t2-upgrade
 

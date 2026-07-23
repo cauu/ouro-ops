@@ -6561,14 +6561,6 @@ fn stateless_apply_terminal(result: &crate::ssh::SshOutcome) -> (&'static str, &
     {
         return ("apply_succeeded", "verified_success");
     }
-    let error_code = typed
-        .as_ref()
-        .and_then(|value| value.pointer("/error/code"))
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("");
-    if error_code == "submission_ambiguous" {
-        return ("apply_ambiguous", "submission_outcome_unknown_no_retry");
-    }
     let detail = typed
         .as_ref()
         .and_then(|value| value.pointer("/error/detail"))

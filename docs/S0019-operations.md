@@ -12,7 +12,6 @@ manual commands.
 | kes-rotation/stage-key | dangerous | yes | S0025 stateless path generates a fresh pair in the fixed BP-private stage; no restart or fleet permit |
 | kes-rotation/discard-stage | dangerous | yes | candidate-bound operator choice removes one complete pending pair without touching the active triple |
 | kes-rotation/install-opcert | dangerous | yes | S0025 stateless path activates the staged pair plus matching public opcert with verified rollback |
-| deploy/register-submit | dangerous | yes | irreversible on-chain; tx via inbox |
 | observability/health | read | no | managed read; no mutation, no confirm |
 | troubleshooting/snapshot | read | no | stateless role-readiness baseline; BP output requires KES/opcert evidence before reporting block-production readiness |
 | fleet/status | read | no | internal closed role/network/genesis/host-key/readiness/image/generation projection; no agent-supplied counts |

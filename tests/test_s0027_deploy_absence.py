@@ -41,7 +41,7 @@ def test_legacy_deploy_namespace_and_operations_are_absent() -> None:
     assert retired_command.returncode != 0
     command_error = json.loads(retired_command.stdout)
     assert command_error["status"] == "error"
-    assert "unknown command deploy" in command_error["error"]["detail"]
+    assert "expected deploy inspect|apply|check" in command_error["error"]["detail"]
 
     for operation in LEGACY_OPERATIONS:
         retired_operation = invoke(

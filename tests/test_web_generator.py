@@ -101,7 +101,9 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "uname -s" in html and "uname -m" in html
     kes_prompt = payload(html)["kes-rotation"]["content"]
     upgrade_prompt = payload(html)["upgrade"]["content"]
+    deploy_prompt = payload(html)["deploy"]["content"]
     normalized_upgrade_prompt = " ".join(upgrade_prompt.split())
+    normalized_deploy_prompt = " ".join(deploy_prompt.split())
     assert "result.container.orchestration" in upgrade_prompt
     assert "Compose manual handoff" in upgrade_prompt
     assert "docker compose -p <project> -f <config-file> config" in upgrade_prompt
@@ -114,6 +116,19 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "preserves an observed `json-file` log driver" in normalized_upgrade_prompt
     assert "`max-file` and `max-size` rotation options" in normalized_upgrade_prompt
     assert "N→N+1 transition must be present" not in upgrade_prompt
+    for phrase in [
+        "one non-producing bootstrap BP and one or more operational Relays",
+        "ouro-ops deploy inspect --spec <pool-spec.yaml>",
+        "Never run, answer or automate this command",
+        "one explicit approval and WAIT",
+        "ouro-ops deploy apply --spec <pool-spec.yaml>",
+        "ouro-ops deploy check --spec <pool-spec.yaml>",
+        "separate BP Bootstrap capability",
+    ]:
+        assert phrase in normalized_deploy_prompt
+    assert "signed transaction submission" not in normalized_deploy_prompt
+    assert "Deploy a fresh BP + Relay Fleet" in html
+    assert "ticker:" not in deploy_prompt
     assert "Upgrade to signed recommended release" in html
     assert "included Skill's \"SSH account discovery\" section" in html
     assert "This wrapper adds no SSH-account decision" in html
@@ -154,6 +169,14 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
 
 def test_wrapper_delegates_ssh_policy_to_canonical_skill() -> None:
     source = SOURCE.read_text(encoding="utf-8")
+    for retired_registration_field in [
+        'id="f-registration"',
+        'id="f-ticker"',
+        "pledge_lovelace",
+        "metadata_url",
+        "registration:true",
+    ]:
+        assert retired_registration_field not in source
     for duplicate_policy in [
         "ask me whether every machine uses the",
         "same SSH username or different usernames",

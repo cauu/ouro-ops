@@ -408,7 +408,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
     </div>
     <div><h3 data-i18n="trust3.t">Gated writes</h3>
-      <p data-i18n="trust3.b">Every change is a validated intent through <code>ouro-ops op run</code>, with human confirmation for dangerous ops.</p></div>
+      <p data-i18n="trust3.b">Every change goes through a typed <code>ouro-ops</code> command, with human confirmation at the operation's declared boundary.</p></div>
   </div>
 </section>
 
@@ -450,7 +450,7 @@
       <span class="go" aria-hidden="true">→</span></button>
     <button type="button" class="op-card" data-op="deploy">
       <span class="tile t-coral" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg></span>
-      <span><b>deploy</b><small data-i18n="op.deploy.small">Submit a signed pool-registration tx</small></span>
+      <span><b>deploy</b><small data-i18n="op.deploy.small">Deploy a fresh BP + Relay Fleet</small></span>
       <span class="go" aria-hidden="true">→</span></button>
     <button type="button" class="op-card" data-op="kes-rotation">
       <span class="tile t-lavender" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9"/><path d="m17 6 3 3"/></svg></span>
@@ -515,7 +515,6 @@
             <label><input type="radio" name="network" value="preview" /><span>preview</span></label>
           </div>
         </div>
-        <div id="f-ticker"><label for="ticker" data-i18n="lbl.ticker">Ticker (3–5, A–Z 0–9)</label><input id="ticker" value="OURO" maxlength="5" autocomplete="off" spellcheck="false" /></div>
       </div>
       <div class="fleet-bar"><h3 data-i18n="lbl.machines">Machines (1 BP + N relays)</h3><span class="spacer"></span>
         <button type="button" class="btn btn-ghost btn-sm" id="add-relay" data-i18n="btn.addRelay">+ Add relay</button></div>
@@ -542,16 +541,6 @@
             </div>
             <p class="hint" data-i18n="sync.hint">genesis replays from chain start; mithril bootstraps from a certified snapshot.</p>
           </div>
-        </div>
-        <div id="f-registration" hidden>
-          <label style="margin-top:16px;color:var(--ink);font-weight:600;font-size:14px" data-i18n="reg.title">Pool parameters (your pool's real on-chain values)</label>
-          <div class="grid g2" style="margin-top:10px">
-            <div><label for="meta" data-i18n="lbl.meta">Metadata URL (http/https)</label><input id="meta" value="https://pool.example.com/metadata.json" spellcheck="false" /></div>
-            <div><label for="pledge" data-i18n="lbl.pledge">Pledge (₳)</label><input id="pledge" value="100000" inputmode="numeric" class="tnum" /><p class="hint tnum" id="pledge-h"></p></div>
-            <div><label for="margin" data-i18n="lbl.margin">Margin (%)</label><input id="margin" value="2" inputmode="decimal" class="tnum" /></div>
-            <div><label for="cost" data-i18n="lbl.cost">Fixed cost (₳)</label><input id="cost" value="340" inputmode="numeric" class="tnum" /><p class="hint tnum" id="cost-h"></p></div>
-          </div>
-          <p class="hint" data-i18n="reg.hint">These are your pool's real economics — replace the example values with your actual ones.</p>
         </div>
       </div>
 
@@ -593,8 +582,7 @@
 document.documentElement.classList.add("js");
 const $ = (id) => document.getElementById(id);
 const SKILL_PAYLOADS = __OURO_PUBLIC_SKILLS_JSON__;
-const RE = { ticker:/^[A-Z0-9]{3,5}$/, host:/^[A-Za-z0-9.\-:]{1,253}$/, seg:/^[a-z0-9-]+$/,
-  url:/^https?:\/\/[^\s`$;|&"'\\<>(){}]{1,193}$/, hex:/^[0-9a-f]{40,}$/, num:/^\d+$/ };
+const RE = { host:/^[A-Za-z0-9.\-:]{1,253}$/, seg:/^[a-z0-9-]+$/, hex:/^[0-9a-f]{40,}$/ };
 
 // Per-network constants (authoritative, from the official cardano network config.json).
 // Fully derived and hidden — the user never sees or types the genesis hash / magic.
@@ -606,12 +594,12 @@ const NET = {
 
 // Field × operation matrix: which extra fields each operation needs (R2 UX / p1-7).
 const OP = {
-  upgrade:         { need:[], registration:false, hint:"Select the current signed next release, then upgrade relays first and BP last." },
-  deploy:          { need:[], registration:true, hint:"Review and submit one already signed pool-registration transaction through the BP." },
-  "kes-rotation":  { need:[], registration:false, hint:"Stage a fresh KES pair on the BP, build a device-specific offline bundle with cardano-cli, then cold-sign and activate the bound pair and opcert." },
-  runtime:         { need:[], registration:false, hint:"Restart one declared node through a live-state-bound typed operation." },
-  observability:   { need:[], registration:false, hint:"Read bounded live tip, socket, sync and runtime-policy evidence on every node; no public gateway and no mutation." },
-  troubleshooting: { need:[], registration:false, hint:"Start with a role-aware snapshot, then use operator SSH only for remaining evidence gaps." },
+  upgrade:         { need:[], hint:"Select the current signed next release, then upgrade relays first and BP last." },
+  deploy:          { need:[], hint:"Inspect supported hosts, deploy the signed Compose Fleet, then run one unified Check." },
+  "kes-rotation":  { need:[], hint:"Stage a fresh KES pair on the BP, build a device-specific offline bundle with cardano-cli, then cold-sign and activate the bound pair and opcert." },
+  runtime:         { need:[], hint:"Restart one declared node through a live-state-bound typed operation." },
+  observability:   { need:[], hint:"Read bounded live tip, socket, sync and runtime-policy evidence on every node; no public gateway and no mutation." },
+  troubleshooting: { need:[], hint:"Start with a role-aware snapshot, then use operator SSH only for remaining evidence gaps." },
 };
 
 let currentOp = "upgrade";
@@ -643,10 +631,8 @@ function applyOperation() {
   $("om-title").textContent = op;
   $("op-hint").textContent = tr("op." + op + ".hint");
   for (const f of ["nodever","sync"]) $("f-"+f).hidden = !cfg.need.includes(f);
-  $("f-registration").hidden = !cfg.registration;
-  $("f-ticker").hidden = !cfg.registration;
   // Hide the whole "for this operation" block when the op needs nothing beyond the fleet.
-  $("op-fields").hidden = cfg.need.length === 0 && !cfg.registration;
+  $("op-fields").hidden = cfg.need.length === 0;
   $("term-title").textContent = "prompt · " + op;
   $("mach-hint").textContent = tr("machHint");
 }
@@ -654,8 +640,6 @@ function applyOperation() {
 
 function collect() {
   const errs = [], op = currentOp, cfg = OP[op];
-  const ticker = cfg.registration ? $("ticker").value.trim().toUpperCase() : "POOL";
-  if (cfg.registration && !RE.ticker.test(ticker)) errs.push("ticker must be 3–5 uppercase A–Z/0–9");
   const network = radioVal("network");
   const net = NET[network];
   const genesis = net.genesis; // network constant — derived, never user-entered
@@ -677,23 +661,14 @@ function collect() {
   // keep at least 1 online. Rollout upgrades one relay at a time, so this never blocks the upgrade.
   const quorum = relays.length <= 1 ? "0" : "1"; // neutral default when not shown
 
-  // Economics: only meaningful for registration; otherwise schema-valid neutral defaults.
-  let meta="https://pool.example.com/metadata.json", pledgeAda="100000", marginPct="2", costAda="340";
-  if (cfg.registration) { meta=$("meta").value.trim(); pledgeAda=$("pledge").value.trim(); marginPct=$("margin").value.trim(); costAda=$("cost").value.trim();
-    if (!RE.url.test(meta)) errs.push("metadata URL must be a clean http(s) URL");
-    if (!RE.num.test(pledgeAda)) errs.push("pledge must be a whole number of ADA");
-    if (!RE.num.test(costAda)) errs.push("fixed cost must be a whole number of ADA");
-    const mp=parseFloat(marginPct); if(!(mp>=0&&mp<=100)) errs.push("margin % must be between 0 and 100"); }
-
   // Compatibility metadata comes from the canonical Skill included by the build, so the form has
   // no user-editable tool version or digest field.
   const minOuro = "", digest = "";
 
   const nodever = cfg.need.includes("nodever") ? $("nodever").value : "10.5.4";
   const sync = cfg.need.includes("sync") ? radioVal("sync") : "genesis";
-  return { errs, op, ticker, network, magic:net.magic, genesis, meta,
-    pledge:String((parseInt(pledgeAda||"0",10))*1000000), margin:String((parseFloat(marginPct||"0")/100)),
-    cost:String((parseInt(costAda||"0",10))*1000000), nodever, sync, quorum, machines, bp:bp[0], relays, minOuro, digest };
+  return { errs, op, network, magic:net.magic, genesis, nodever, sync, quorum,
+    machines, bp:bp[0], relays, minOuro, digest };
 }
 
 function yaml(d) {
@@ -701,10 +676,6 @@ function yaml(d) {
     "# It is data, not a list of actions: writing this file changes nothing.",
     "spec_version: 1","pool:",`  network: ${d.network}`,`  network_magic: ${d.magic}`,
     "  genesis_hashes:",`    shelley: "${d.genesis}"`];
-  if (d.op === "deploy") {
-    L.push(`  ticker: "${d.ticker}"`, `  metadata_url: "${d.meta}"`,
-      `  pledge_lovelace: ${d.pledge}`, `  margin: ${d.margin}`, `  cost_lovelace: ${d.cost}`);
-  }
   L.push("topology_mode: p2p");
   const isDisruptive = d.op === "upgrade" || d.op === "runtime" || d.op === "kes-rotation";
   L.push("machines:");
@@ -729,8 +700,6 @@ function prompt(d) {
   const skill = SKILL_PAYLOADS[d.op];
   if (!skill || typeof skill.content !== "string") throw new Error(`missing public Skill ${d.op}`);
   const localCli = "./target/release-candidate-control/release/ouro-ops";
-  const opLabel = d.op === "deploy" ?
-    "deploy/register-submit (on-chain pool registration, not node provisioning)" : d.op;
   return [
 `I am the operator of a Cardano stake pool, asking you to run ONE operation for me with the`,
 `ouro-ops CLI on this machine (my control machine). I stay in the loop: present plans to me and`,
@@ -738,7 +707,7 @@ function prompt(d) {
 `already authorizes writing the enclosed local pool-spec.yaml and any deterministic PUBLIC local`,
 `handoff files explicitly required by the included Skill; do not ask again for their paths or a`,
 `separate local file-write go-ahead.`,
-`Operation: ${opLabel}. Network: ${d.network}. BP=${bp}, relays=${relays}.`,
+`Operation: ${d.op}. Network: ${d.network}. BP=${bp}, relays=${relays}.`,
 ``,
 `This is an unreleased local-acceptance build. For EVERY Ouro command in this prompt, use the exact`,
 `repository-local control CLI: ${localCli}`,
@@ -798,22 +767,22 @@ const I18N = {
     "getStarted":"Get started ↓",
     "trust1.t":"Zero upload","trust1.b":"Generated locally on a CSP-locked static page with network access disabled.",
     "trust2.t":"Complete procedures","trust2.b":"The copied prompt includes the complete canonical Skill; the CLI checks compatibility and constrains typed execution.",
-    "trust3.t":"Gated writes","trust3.b":"Every change is a validated intent through <code>ouro-ops op run</code>, with human confirmation for dangerous ops.",
+    "trust3.t":"Gated writes","trust3.b":"Every change goes through a typed <code>ouro-ops</code> command, with human confirmation at the operation's declared boundary.",
     "s1.title":"Validate the CLI","s1.sub":"Validate a local paired CLI candidate; formal signed publication is deferred.",
     "s2.title":"Pick an operation","s2.sub":"The form asks only for what that operation needs, generates everything locally, and gives you one prompt to paste into your agent.",
     "op.upgrade.small":"Upgrade to signed recommended release",
-    "op.deploy.small":"Submit a signed pool-registration tx",
+    "op.deploy.small":"Deploy a fresh BP + Relay Fleet",
     "op.kes-rotation.small":"Rotate the BP KES key with an air-gapped cold signature","op.runtime.small":"Restart a declared node",
     "op.observability.small":"Fleet-wide bounded health read","op.troubleshooting.small":"Snapshot-first diagnosis",
     "op.upgrade.hint":"Select the signed recommended release directly, then upgrade relays first and BP last.",
-    "op.deploy.hint":"Review and submit one already signed pool-registration transaction through the BP.",
+    "op.deploy.hint":"Inspect supported hosts, deploy the signed Compose Fleet, then run one unified Check.",
     "op.kes-rotation.hint":"Stage a fresh KES pair on the BP, build a device-specific offline bundle with cardano-cli, then cold-sign and activate the bound pair and opcert; the signing key never leaves the BP.",
     "op.runtime.hint":"Restart one declared node through a live-state-bound typed operation.",
     "op.observability.hint":"Read bounded live tip, socket, sync and runtime-policy evidence on every node; no public gateway and no mutation.",
     "op.troubleshooting.hint":"Start with a role-aware snapshot, then use operator SSH only for remaining evidence gaps.",
     "steps.configure":"Configure","steps.copy":"Copy the prompt",
     "sec.fleet":"Your fleet","sec.thisop":"For this operation",
-    "lbl.network":"Network","lbl.ticker":"Ticker (3–5, A–Z 0–9)","lbl.machines":"Machines (1 BP + N relays)",
+    "lbl.network":"Network","lbl.machines":"Machines (1 BP + N relays)",
     "btn.addRelay":"+ Add relay","lbl.id":"id","lbl.role":"role","lbl.host":"host (DNS or IP)",
     "persist.note":"Inputs are saved in this browser only (localStorage) — they never leave your machine.","persist.clear":"Clear saved inputs",
     "machHint":"Only the host is entered here; port is 22. The included canonical Skill is the sole source for how the agent confirms SSH usernames during execution.",
@@ -821,9 +790,6 @@ const I18N = {
     "ver.fail":"Couldn't reach GitHub — using the versions baked into this page.",
     "ver.relnotes":"Release notes ↗","ver.tail":" — descriptive only; the signed recommended config digest authorizes the target, while an exact transition only controls rollback.",
     "lbl.sync":"Sync mode","sync.hint":"genesis replays from chain start; mithril bootstraps from a certified snapshot.",
-    "reg.title":"Pool parameters (your pool's real on-chain values)",
-    "lbl.meta":"Metadata URL (http/https)","lbl.pledge":"Pledge (₳)","lbl.margin":"Margin (%)","lbl.cost":"Fixed cost (₳)",
-    "reg.hint":"These are your pool's real economics — replace the example values with your actual ones.",
     "warnNote":"⚠ This prompt contains your full pool config (hostnames/IPs). Copying it sends that to whatever agent you paste it into (e.g. a cloud service) and its logs. It never leaves this page on its own.",
     "btn.copy":"Copy","copied":"Copied ✓","btn.copyPrompt":"Copy prompt","btn.next":"Continue →","btn.back":"← Back",
     "dlg.title":"Send topology to your agent?",
@@ -842,22 +808,22 @@ const I18N = {
     "getStarted":"开始使用 ↓",
     "trust1.t":"零上传","trust1.b":"纯静态页面,所有内容都在本地生成,CSP 禁止页面联网。",
     "trust2.t":"完整流程","trust2.b":"复制的 prompt 包含完整 canonical Skill；CLI 负责兼容性检查和类型化执行约束。",
-    "trust3.t":"写操作有闸门","trust3.b":"所有变更都要走 <code>ouro-ops op run</code>:白名单、留审计,关键步骤必须人工确认。",
+    "trust3.t":"写操作有闸门","trust3.b":"所有变更都通过类型化 <code>ouro-ops</code> 命令执行，并在该操作声明的边界由用户确认。",
     "s1.title":"验收 CLI","s1.sub":"先验收本地配对 CLI 候选;正式签名发布留到下一个 spec。",
     "s2.title":"选择操作","s2.sub":"表单只问这个操作用得到的字段,全部本地生成,最后给你一段直接粘给 agent 的 prompt。",
     "op.upgrade.small":"直升签名推荐版本",
-    "op.deploy.small":"提交已签名的矿池注册交易",
+    "op.deploy.small":"部署全新的 BP + Relay Fleet",
     "op.kes-rotation.small":"通过隔离冷签名轮换 BP 的 KES 密钥","op.runtime.small":"重启声明的节点",
     "op.observability.small":"全池有界健康读取","op.troubleshooting.small":"先快照再排障",
     "op.upgrade.hint":"直接选择签名推荐版本,再依次升级 relay,最后升级 BP。",
-    "op.deploy.hint":"通过 BP 审阅并提交一笔已经签名的矿池注册交易。",
+    "op.deploy.hint":"检查受支持的主机，部署签名约束的 Compose Fleet，再执行一次统一验收。",
     "op.kes-rotation.hint":"在 BP 暂存新的 KES 密钥对，生成包含 cardano-cli 的设备专用离线包，再完成冷签并激活绑定的密钥对与 opcert；签名私钥不会离开 BP。",
     "op.runtime.hint":"通过绑定实时状态的类型化操作重启一个声明的节点。",
     "op.observability.hint":"读取每个节点有界的实时 tip、socket、同步和运行时策略证据;不安装公网网关,不做变更。",
     "op.troubleshooting.hint":"先运行按角色解释的快照,再仅针对剩余证据缺口使用运维 SSH;修复只能走类型化操作。",
     "steps.configure":"配置","steps.copy":"复制 prompt",
     "sec.fleet":"机器配置","sec.thisop":"操作参数",
-    "lbl.network":"网络","lbl.ticker":"Ticker(3–5 位,A–Z 0–9)","lbl.machines":"机器(1 台 BP + 若干 relay)",
+    "lbl.network":"网络","lbl.machines":"机器(1 台 BP + 若干 relay)",
     "btn.addRelay":"+ 添加 relay","lbl.id":"id","lbl.role":"角色","lbl.host":"host(域名或 IP)",
     "persist.note":"输入只保存在本浏览器(localStorage),不会离开你的机器。","persist.clear":"清除已存输入",
     "machHint":"这里只填写 host,端口固定为 22。执行时如何确认 SSH 用户名仅由生成 Prompt 中内嵌的 canonical Skill 规定。",
@@ -865,9 +831,6 @@ const I18N = {
     "ver.fail":"连不上 GitHub,先用页面内置的版本列表。",
     "ver.relnotes":"更新说明 ↗","ver.tail":"——仅作描述；签名推荐配置摘要决定升级目标，精确转换仅决定能否回滚。",
     "lbl.sync":"同步模式","sync.hint":"genesis 从创世块完整同步;mithril 走认证快照,快得多。",
-    "reg.title":"池参数(链上真实数值)",
-    "lbl.meta":"Metadata URL(http/https)","lbl.pledge":"Pledge(₳)","lbl.margin":"Margin(%)","lbl.cost":"固定成本(₳)",
-    "reg.hint":"示例值只是占位,记得换成你的真实参数。",
     "warnNote":"⚠ 这段 prompt 里有你完整的池配置(主机名 / IP)。复制之后粘给哪个 agent(比如云端服务),这些信息就会进到它和它的日志里;页面本身不会往外发任何东西。",
     "btn.copy":"复制","copied":"已复制 ✓","btn.copyPrompt":"复制 prompt","btn.next":"下一步 →","btn.back":"← 上一步",
     "dlg.title":"要把拓扑发给 agent 吗?",
@@ -886,22 +849,22 @@ const I18N = {
     "getStarted":"開始使用 ↓",
     "trust1.t":"零上傳","trust1.b":"純靜態頁面,所有內容都在本地產生——唯一的連線動作,是查一次 cardano-node 的最新版本號。",
     "trust2.t":"完整流程","trust2.b":"複製的 prompt 包含完整 canonical Skill；CLI 負責相容性檢查和型別化執行約束。",
-    "trust3.t":"寫入有閘門","trust3.b":"所有變更都得走 <code>ouro-ops op run</code>:白名單、留稽核,關鍵步驟一定要人工確認。",
+    "trust3.t":"寫入有閘門","trust3.b":"所有變更都透過型別化 <code>ouro-ops</code> 命令執行，並在該操作聲明的邊界由使用者確認。",
     "s1.title":"驗收 CLI","s1.sub":"先驗收本機配對 CLI 候選;正式簽章發布留到下一個 spec。",
     "s2.title":"選擇操作","s2.sub":"表單只問這個操作用得到的欄位,全部本地產生,最後給你一段直接貼給 agent 的 prompt。",
     "op.upgrade.small":"直升簽署推薦版本",
-    "op.deploy.small":"提交已簽署的礦池註冊交易",
+    "op.deploy.small":"部署全新的 BP + Relay Fleet",
     "op.kes-rotation.small":"透過隔離冷簽署輪換 BP 的 KES 金鑰","op.runtime.small":"重新啟動已宣告節點",
     "op.observability.small":"全池有界健康讀取","op.troubleshooting.small":"先快照再排障",
     "op.upgrade.hint":"直接選擇簽署推薦版本,再依序升級 relay,最後升級 BP。",
-    "op.deploy.hint":"透過 BP 審閱並提交一筆已簽署的礦池註冊交易。",
+    "op.deploy.hint":"檢查受支援的主機，部署簽章約束的 Compose Fleet，再執行一次統一驗收。",
     "op.kes-rotation.hint":"在 BP 暫存新的 KES 金鑰對，產生包含 cardano-cli 的裝置專用離線套件，再完成冷簽署並啟用綁定的金鑰對與 opcert；簽署私鑰不會離開 BP。",
     "op.runtime.hint":"透過綁定即時狀態的型別化操作重新啟動一個已宣告節點。",
     "op.observability.hint":"讀取每個節點有界的即時 tip、socket、同步與執行期策略證據;不安裝公開閘道,不做變更。",
     "op.troubleshooting.hint":"先執行依角色解讀的快照,再只針對剩餘證據缺口使用運維 SSH;修復只能走型別化操作。",
     "steps.configure":"設定","steps.copy":"複製 prompt",
     "sec.fleet":"機器設定","sec.thisop":"操作參數",
-    "lbl.network":"網路","lbl.ticker":"Ticker(3–5 位,A–Z 0–9)","lbl.machines":"機器(1 台 BP + 若干 relay)",
+    "lbl.network":"網路","lbl.machines":"機器(1 台 BP + 若干 relay)",
     "btn.addRelay":"+ 新增 relay","lbl.id":"id","lbl.role":"角色","lbl.host":"host(網域或 IP)",
     "persist.note":"輸入只儲存在本瀏覽器(localStorage),不會離開你的機器。","persist.clear":"清除已存輸入",
     "machHint":"這裡只填 host,連接埠固定為 22。執行時如何確認 SSH 使用者名稱僅由生成 Prompt 中內嵌的 canonical Skill 規定。",
@@ -909,9 +872,6 @@ const I18N = {
     "ver.fail":"連不上 GitHub,先用頁面內建的版本清單。",
     "ver.relnotes":"更新說明 ↗","ver.tail":"——僅作描述；簽署推薦設定摘要決定升級目標，精確轉換只決定能否回滾。",
     "lbl.sync":"同步模式","sync.hint":"genesis 從創世區塊完整同步;mithril 走認證快照,快很多。",
-    "reg.title":"池參數(鏈上真實數值)",
-    "lbl.meta":"Metadata URL(http/https)","lbl.pledge":"Pledge(₳)","lbl.margin":"Margin(%)","lbl.cost":"固定成本(₳)",
-    "reg.hint":"範例值只是占位,記得換成你的真實參數。",
     "warnNote":"⚠ 這段 prompt 裡有你完整的池設定(主機名稱 / IP)。複製之後貼給哪個 agent(例如雲端服務),這些資訊就會進到它和它的日誌裡;頁面本身不會往外送任何東西。",
     "btn.copy":"複製","copied":"已複製 ✓","btn.copyPrompt":"複製 prompt","btn.next":"下一步 →","btn.back":"← 上一步",
     "dlg.title":"要把拓撲傳給 agent 嗎?",
@@ -930,22 +890,22 @@ const I18N = {
     "getStarted":"はじめる ↓",
     "trust1.t":"アップロードなし","trust1.b":"完全な静的ページで、生成はすべてローカル。外部通信は cardano-node の最新バージョン確認、その一回だけです。",
     "trust2.t":"完全な手順","trust2.b":"コピーする prompt には canonical Skill 全文が含まれ、CLI は互換性確認と型付き実行を担当します。",
-    "trust3.t":"書き込みにはゲート","trust3.b":"変更はすべて <code>ouro-ops op run</code> 経由。許可リストと監査ログ付きで、危険な操作には人間の確認が必須です。",
+    "trust3.t":"書き込みにはゲート","trust3.b":"変更はすべて型付き <code>ouro-ops</code> コマンドを通り、操作が定めた境界でユーザーが確認します。",
     "s1.title":"CLI を検証","s1.sub":"ローカルのペア済み CLI 候補を検証します。正式な署名付き公開は次の spec で行います。",
     "s2.title":"操作を選ぶ","s2.sub":"フォームで聞くのはその操作に必要な項目だけ。すべてローカルで生成し、エージェントに貼る prompt をひとつ出力します。",
     "op.upgrade.small":"署名済み推奨版へ直接アップグレード",
-    "op.deploy.small":"署名済みプール登録 Tx を送信",
+    "op.deploy.small":"新しい BP + Relay Fleet をデプロイ",
     "op.kes-rotation.small":"エアギャップ冷署名で BP の KES 鍵をローテーション","op.runtime.small":"宣言済みノードを再起動",
     "op.observability.small":"全ノードの限定ヘルス読取","op.troubleshooting.small":"スナップショット優先診断",
     "op.upgrade.hint":"署名済み推奨リリースを直接選択し、relay、最後に BP の順で更新します。",
-    "op.deploy.hint":"BP を通じて署名済みのプール登録トランザクションを確認し、送信します。",
+    "op.deploy.hint":"対応ホストを検査し、署名ポリシーに従う Compose Fleet をデプロイして、統合チェックを実行します。",
     "op.kes-rotation.hint":"BP 上で新しい KES 鍵ペアをステージし、cardano-cli を含むデバイス別オフラインバンドルを作成してから、コールド署名と対応する鍵ペアおよび opcert の有効化を行います。署名秘密鍵は BP から出ません。",
     "op.runtime.hint":"ライブ状態に束縛された型付き操作で宣言済みノードを一台再起動します。",
     "op.observability.hint":"全ノードのライブ tip、socket、同期、ランタイムポリシーを限定的に読み取ります。公開ゲートウェイの追加や変更はありません。",
     "op.troubleshooting.hint":"ロール対応スナップショットを先に実行し、残る証拠不足だけを運用 SSH で調査します。修復は型付き操作だけを使用します。",
     "steps.configure":"設定","steps.copy":"prompt をコピー",
     "sec.fleet":"マシン構成","sec.thisop":"操作パラメータ",
-    "lbl.network":"ネットワーク","lbl.ticker":"Ticker(3–5 文字、A–Z 0–9)","lbl.machines":"マシン(BP 1 台 + relay 複数)",
+    "lbl.network":"ネットワーク","lbl.machines":"マシン(BP 1 台 + relay 複数)",
     "btn.addRelay":"+ relay を追加","lbl.id":"id","lbl.role":"ロール","lbl.host":"host(ドメインまたは IP)",
     "persist.note":"入力はこのブラウザーのみに保存され(localStorage)、あなたのマシンから出ることはありません。","persist.clear":"保存した入力を消去",
     "machHint":"ここでは host のみ入力し、ポートは 22 です。実行時の SSH ユーザー名の確認方法は、生成 Prompt に含まれる canonical Skill のみが規定します。",
@@ -953,9 +913,6 @@ const I18N = {
     "ver.fail":"GitHub に届かないため、ページ内蔵の一覧を使います。",
     "ver.relnotes":"リリースノート ↗","ver.tail":"——説明用です。署名済み推奨設定ダイジェストが対象を決め、正確な遷移はロールバック可否だけを決めます。",
     "lbl.sync":"同期モード","sync.hint":"genesis はジェネシスから完全同期。mithril は認証済みスナップショットで、ずっと速く立ち上がります。",
-    "reg.title":"プールのパラメータ(オンチェーンの実値)",
-    "lbl.meta":"Metadata URL(http/https)","lbl.pledge":"Pledge(₳)","lbl.margin":"Margin(%)","lbl.cost":"固定費(₳)",
-    "reg.hint":"例の値はダミーです。必ず実際の値に置き換えてください。",
     "warnNote":"⚠ この prompt にはプール構成の全部(ホスト名 / IP)が入っています。貼り付けた先のエージェント(クラウドサービスなど)とそのログに渡ります。ページ自身が外に送ることはありません。",
     "btn.copy":"コピー","copied":"コピーしました ✓","btn.copyPrompt":"prompt をコピー","btn.next":"次へ →","btn.back":"← 戻る",
     "dlg.title":"トポロジーをエージェントに渡しますか?",
@@ -991,8 +948,6 @@ function render() {
   // Release-notes deep link for the selected node version (the live source of truth for what's
   // in it — the page itself is zero-network, so this link is how you confirm the current release).
   $("relnotes").href = "https://github.com/IntersectMBO/cardano-node/releases/tag/" + $("nodever").value;
-  $("pledge-h").textContent = "= "+((parseInt($("pledge").value||"0",10))*1e6).toLocaleString()+" lovelace";
-  $("cost-h").textContent = "= "+((parseInt($("cost").value||"0",10))*1e6).toLocaleString()+" lovelace";
   const d = collect(), err = $("err");
   if (d.errs.length) {
     err.hidden=false; err.textContent="Fix before generating:\n• "+d.errs.join("\n• ");
@@ -1075,10 +1030,10 @@ document.querySelectorAll('input[type="radio"]').forEach(el=>el.addEventListener
 // Inputs are saved in THIS BROWSER ONLY so returning users do not retype their fleet. Storage
 // is an enhancement, never a dependency: every access is try/catch-guarded (private mode /
 // disabled storage → the page behaves exactly as before), and an unparseable or wrong-version
-// snapshot is discarded whole. No secrets exist in this form (hosts/ticker/economics only).
+// snapshot is discarded whole. No secrets exist in this form (host topology only).
 const FORM_STORE_KEY = "ouro-onboarding:v1";
 let nodeverRestored = false;
-const FIELD_IDS = ["ticker","meta","pledge","margin","cost"];
+const FIELD_IDS = [];
 function collectFormState() {
   const machines = [...document.querySelectorAll(".machine")].map((row) => ({
     id: row.querySelector(".m-id").value, role: row.querySelector(".m-role").value,

@@ -90,8 +90,9 @@ target/debug/ouro-ops contract
 make release-candidate   # macOS；构建并验收配对候选，但不发布
 ```
 
-`deploy/register-submit` 使用同一套 agentless 一次性 runner：先审阅 operator 已签名交易并绑定
-候选，精确批准后最多执行一次提交；节点接受不等于链上确认，拒绝或结果歧义都不会自动重试。
+Fresh Fleet Deploy 使用 `deploy inspect|apply|check`：先只读识别 supported clean/partial
+主机并展示 signed image/change set，获得一次 operator 同意后以单次 Apply 配置
+Ubuntu/Chrony/UFW/Compose，最后统一检查 BP/Relay 的静态部署形状与启动 readiness。
 `onboard` 和 `adopt` 仅保留给运维方明确要求的 S0019 migration/recovery，不是当前操作的恢复建议
 或前置步骤。
 
