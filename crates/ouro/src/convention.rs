@@ -71,7 +71,57 @@ pub struct LayoutContract {
     pub contract_id: String,
     pub in_container_paths: InContainerPaths,
     pub role_rules: RoleRules,
+    /// Signed facts required only for a fresh S0027 Fleet Deploy. Historical runtime/Upgrade
+    /// contracts may omit them; Deploy selection fails closed when they are absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deploy: Option<DeployBootstrapContract>,
     pub allowed: Vec<AllowedImage>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeployBootstrapContract {
+    pub required_binaries: Vec<String>,
+    pub entrypoint: String,
+    pub args: Vec<String>,
+    pub database_marker: String,
+    pub metrics: DeployMetricsContract,
+    pub environment: DeployEnvironmentContract,
+    pub networks: BTreeMap<String, DeployNetworkContract>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeployMetricsContract {
+    pub container_port: u16,
+    pub host_ip: String,
+    pub host_port: u16,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeployEnvironmentContract {
+    pub network: String,
+    pub topology: String,
+    pub database: String,
+    pub socket: String,
+    pub block_producer: String,
+    pub restore_snapshot: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeployNetworkContract {
+    pub config: String,
+    pub config_sha256: String,
+    pub topology: String,
+    pub genesis: String,
+    pub genesis_hash: String,
+    pub genesis_vkey: String,
+    pub ancillary_vkey: String,
+    pub mithril_aggregator: String,
+    pub min_memory_bytes: u64,
+    pub min_free_disk_bytes: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -158,6 +208,23 @@ impl Allowlist {
         })?;
         self.contract_and_image_for(digest, platform)
             .map(|(_, image)| image)
+    }
+
+    /// Resolve the exact signed deploy tuple together with its image/bootstrap facts. Upgrade
+    /// catalogs and historical embedded contracts intentionally need not carry this extension.
+    pub fn recommended_deploy_for(
+        &self,
+        platform: &str,
+    ) -> Result<(&LayoutContract, &AllowedImage, &DeployBootstrapContract)> {
+        let image = self.recommended_for(platform)?;
+        let (contract, _) = self.contract_and_image_for(&image.image_config_digest, platform)?;
+        let deploy = contract.deploy.as_ref().ok_or_else(|| {
+            OuroError::Validation(format!(
+                "signed recommended image {} ({platform}) has no Fleet Deploy bootstrap contract",
+                image.image_config_digest
+            ))
+        })?;
+        Ok((contract, image, deploy))
     }
 
     pub fn recommended_upgrade_for(
@@ -410,6 +477,9 @@ impl Allowlist {
                     "allowlist weakens mandatory BP/relay role rules".into(),
                 ));
             }
+            if let Some(deploy) = &contract.deploy {
+                deploy.validate()?;
+            }
             for image in &contract.allowed {
                 if !matches!(image.platform.as_str(), "linux/amd64" | "linux/arm64")
                     || !valid_digest(&image.oci_index_digest)
@@ -482,6 +552,85 @@ impl Allowlist {
             return Err(OuroError::Validation(
                 "signed release catalog image is missing its release label".into(),
             ));
+        }
+        Ok(())
+    }
+}
+
+impl DeployBootstrapContract {
+    fn validate(&self) -> Result<()> {
+        let expected_binaries = [
+            "cardano-cli",
+            "cardano-node",
+            "mithril-client",
+            "nview",
+            "txtop",
+        ];
+        let mut binaries = self
+            .required_binaries
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        binaries.sort_unstable();
+        binaries.dedup();
+        if binaries != expected_binaries
+            || self.entrypoint != "/usr/local/bin/entrypoint"
+            || self.args != ["run"]
+            || self.database_marker != "/data/db/protocolMagicId"
+            || self.metrics.container_port != 12798
+            || self.metrics.host_ip != "127.0.0.1"
+            || self.metrics.host_port != 12798
+        {
+            return Err(OuroError::Validation(
+                "Fleet Deploy bootstrap contract weakens the fixed image/runtime/metrics shape"
+                    .into(),
+            ));
+        }
+        let environment = &self.environment;
+        if environment.network != "CARDANO_NETWORK"
+            || environment.topology != "CARDANO_TOPOLOGY"
+            || environment.database != "CARDANO_DATABASE_PATH"
+            || environment.socket != "CARDANO_SOCKET_PATH"
+            || environment.block_producer != "CARDANO_BLOCK_PRODUCER"
+            || environment.restore_snapshot != "RESTORE_SNAPSHOT"
+        {
+            return Err(OuroError::Validation(
+                "Fleet Deploy bootstrap contract has unexpected environment selectors".into(),
+            ));
+        }
+        let expected_networks = ["mainnet", "preprod", "preview"];
+        if self.networks.keys().map(String::as_str).collect::<Vec<_>>() != expected_networks {
+            return Err(OuroError::Validation(
+                "Fleet Deploy bootstrap contract must define mainnet, preprod and preview".into(),
+            ));
+        }
+        for (network, facts) in &self.networks {
+            for path in [
+                &facts.config,
+                &facts.topology,
+                &facts.genesis,
+                &facts.genesis_vkey,
+                &facts.ancillary_vkey,
+            ] {
+                if !safe_absolute(path) || !path.contains(&format!("/{network}/")) {
+                    return Err(OuroError::Validation(format!(
+                        "Fleet Deploy {network} path {path:?} is outside its fixed image network directory"
+                    )));
+                }
+            }
+            if !valid_hex64(&facts.config_sha256)
+                || !valid_hex64(&facts.genesis_hash)
+                || !facts.mithril_aggregator.starts_with("https://aggregator.")
+                || !facts
+                    .mithril_aggregator
+                    .ends_with(".api.mithril.network/aggregator")
+                || facts.min_memory_bytes == 0
+                || facts.min_free_disk_bytes == 0
+            {
+                return Err(OuroError::Validation(format!(
+                    "Fleet Deploy {network} bootstrap facts are incomplete or malformed"
+                )));
+            }
         }
         Ok(())
     }
@@ -564,6 +713,13 @@ fn valid_digest(value: &str) -> bool {
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     }) == Some(true)
+}
+
+fn valid_hex64(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 /// Anti-rollback floor for the allowlist, MAC-protected under the local home (mirrors
@@ -711,6 +867,14 @@ mod tests {
         assert_eq!(catalog.repository, BLINKLABS_REPOSITORY);
         let deploy = catalog.recommended_for("linux/amd64").unwrap();
         assert_eq!(deploy.release, "11.0.1-1");
+        let (_, selected, bootstrap) = catalog.recommended_deploy_for("linux/amd64").unwrap();
+        assert_eq!(selected.image_config_digest, deploy.image_config_digest);
+        assert_eq!(bootstrap.database_marker, "/data/db/protocolMagicId");
+        assert_eq!(bootstrap.required_binaries.len(), 5);
+        assert_eq!(
+            bootstrap.networks["mainnet"].genesis_hash,
+            "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81"
+        );
         let (target, transition) = catalog
             .recommended_upgrade_for(
                 "sha256:a3223d93539d28e4f54e0b20dfc644a55387d5522a3d85b3b981eacff23c0c7a",

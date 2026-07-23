@@ -659,7 +659,7 @@ def main():
         # Every trusted historical amd64 release upgrades directly to the signed recommendation.
         # Exact transition metadata is optional and only enables automatic rollback.
         production = json.loads((ROOT / "data/releases.json").read_text())
-        assert production["allowlist_version"] == 6
+        assert production["allowlist_version"] == 7
         assert len(production["contracts"]) == 1
         assert production["contracts"][0]["convention_version"] == 1
         transitions = production["transitions"]

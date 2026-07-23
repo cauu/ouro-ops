@@ -14,6 +14,13 @@
 use crate::attestation::Role;
 use crate::{OuroError, Result};
 
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NodeLifecycle {
+    Bootstrap,
+    Operational,
+}
+
 /// A bounded readiness snapshot gathered post-write (no "block produced" field — see module docs).
 #[derive(Debug, Clone)]
 pub struct Readiness {
@@ -41,8 +48,7 @@ impl Readiness {
         self.tip_block_next > self.tip_block
     }
 
-    /// Role-specific readiness verdict. Ok = the write's postcondition holds.
-    pub fn evaluate(&self) -> Result<()> {
+    fn evaluate_node(&self) -> Result<()> {
         let fail = |why: &str| {
             Err(OuroError::Validation(format!(
                 "readiness proxy failed: {why} (§2.6a)"
@@ -63,6 +69,18 @@ impl Readiness {
         if !self.tip_synced {
             return fail("tip query reports node is not synchronized");
         }
+        Ok(())
+    }
+
+    /// Role-specific readiness verdict. Missing lifecycle retains the existing operational
+    /// fail-closed behavior.
+    pub fn evaluate(&self) -> Result<()> {
+        self.evaluate_node()?;
+        let fail = |why: &str| {
+            Err(OuroError::Validation(format!(
+                "readiness proxy failed: {why} (§2.6a)"
+            )))
+        };
         match self.role {
             Role::Bp => {
                 if !self.kes_opcert_valid {
@@ -79,6 +97,31 @@ impl Readiness {
             }
         }
         Ok(())
+    }
+
+    /// S0027 readiness boundary. Only an explicitly labeled bootstrap BP may omit forging
+    /// credentials, and it must also prove block production is disabled. Every pre-S0027 BP
+    /// (`None`) remains operational and therefore uses the strict existing gate.
+    pub fn evaluate_for_lifecycle(
+        &self,
+        lifecycle: Option<NodeLifecycle>,
+        block_producer_configured: bool,
+    ) -> Result<()> {
+        match (self.role, lifecycle) {
+            (Role::Bp, Some(NodeLifecycle::Bootstrap)) => {
+                self.evaluate_node()?;
+                if block_producer_configured {
+                    return Err(OuroError::Validation(
+                        "readiness proxy failed: bootstrap BP has block production enabled".into(),
+                    ));
+                }
+                Ok(())
+            }
+            (Role::Relay, Some(NodeLifecycle::Bootstrap)) => Err(OuroError::Validation(
+                "readiness proxy failed: relay cannot use bootstrap lifecycle".into(),
+            )),
+            _ => self.evaluate(),
+        }
     }
 }
 
@@ -161,6 +204,31 @@ mod tests {
         assert!(r.evaluate().is_ok(), "relay does not need forging creds");
         r.established_peers = 0;
         assert!(r.evaluate().is_err(), "relay with no peers fails");
+    }
+
+    #[test]
+    fn only_explicit_non_producing_bootstrap_bp_drops_forging_gate() {
+        let mut bp = healthy_bp();
+        bp.kes_opcert_valid = false;
+        bp.forging_credentials_ready = false;
+        assert!(bp
+            .evaluate_for_lifecycle(Some(NodeLifecycle::Bootstrap), false)
+            .is_ok());
+        assert!(bp
+            .evaluate_for_lifecycle(Some(NodeLifecycle::Bootstrap), true)
+            .is_err());
+        assert!(bp
+            .evaluate_for_lifecycle(Some(NodeLifecycle::Operational), false)
+            .is_err());
+        assert!(
+            bp.evaluate_for_lifecycle(None, false).is_err(),
+            "unlabeled legacy BP must remain operational"
+        );
+
+        bp.role = Role::Relay;
+        assert!(bp
+            .evaluate_for_lifecycle(Some(NodeLifecycle::Bootstrap), false)
+            .is_err());
     }
 
     #[test]

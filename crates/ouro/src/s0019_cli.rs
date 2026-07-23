@@ -3999,6 +3999,7 @@ fn stateless_observation_output(node: &str, observation: &Observation) -> ToolOu
                 "image_reference": observation.live.image_reference,
                 "image_config_digest": observation.live.image_config_digest,
                 "platform": observation.live.platform,
+                "lifecycle": observation.live.lifecycle,
             },
             "runtime_policy": runtime_policy,
         },
@@ -4026,12 +4027,21 @@ fn stateless_troubleshooting_output(
         Role::Relay => "relay",
     };
 
+    let bootstrap_bp = role == Role::Bp
+        && observation.live.lifecycle == Some(crate::readiness::NodeLifecycle::Bootstrap);
     let forging = match role {
         Role::Relay => json!({
             "applicable": false,
             "status": "not_applicable",
             "block_production_ready": null,
             "reason": "relay role does not forge blocks",
+        }),
+        Role::Bp if bootstrap_bp => json!({
+            "applicable": false,
+            "status": "not_applicable",
+            "block_production_ready": null,
+            "block_production": "disabled",
+            "reason": "explicit S0027 bootstrap BP is a non-producing node",
         }),
         Role::Bp => match readiness {
             None => json!({
@@ -4094,6 +4104,7 @@ fn stateless_troubleshooting_output(
         },
     };
     let role_ready = match role {
+        Role::Bp if bootstrap_bp => true,
         Role::Bp => forging
             .get("block_production_ready")
             .and_then(serde_json::Value::as_bool)
@@ -4102,6 +4113,7 @@ fn stateless_troubleshooting_output(
     };
     let evidence_complete = readiness.is_some()
         && match role {
+            Role::Bp if bootstrap_bp => true,
             Role::Bp => readiness
                 .and_then(|value| value.kes.as_ref())
                 .is_some_and(|kes| {
@@ -4154,6 +4166,7 @@ fn stateless_troubleshooting_output(
                 "image_reference": observation.live.image_reference,
                 "image_config_digest": observation.live.image_config_digest,
                 "platform": observation.live.platform,
+                "lifecycle": observation.live.lifecycle,
             },
         },
         "evidence_gaps": [
@@ -4204,6 +4217,8 @@ struct ObsLive {
     host_key_sha256: String,
     genesis_hash: String,
     network: String,
+    #[serde(default)]
+    lifecycle: Option<crate::readiness::NodeLifecycle>,
 }
 
 impl ObsLive {
@@ -4340,14 +4355,45 @@ fn require_adoption_contract(
                     .is_some_and(|tail| tail.starts_with('/'))
         })
     };
-    for required in [
-        contract.in_container_paths.socket.as_str(),
-        contract.in_container_paths.db.as_str(),
-        contract.in_container_paths.keys.as_str(),
-        contract.in_container_paths.config.as_str(),
-        contract.in_container_paths.topology.as_str(),
-        contract.in_container_paths.genesis.as_str(),
-    ] {
+    let s0027_compose = observation.live.lifecycle.is_some()
+        && observation.supervisor.orchestration == "compose"
+        && observation
+            .supervisor
+            .compose
+            .as_ref()
+            .is_some_and(|compose| {
+                compose
+                    .project
+                    .as_deref()
+                    .is_some_and(|project| project.starts_with("ouro-"))
+                    && compose.service.as_deref() == Some("cardano-node")
+                    && compose.working_dir.as_deref() == Some("/opt/ouro")
+                    && compose.config_files == ["/opt/ouro/compose.yaml"]
+                    && compose
+                        .config_hash
+                        .as_deref()
+                        .is_some_and(|hash| !hash.is_empty())
+            });
+    let required_paths = if s0027_compose {
+        // S0027 deliberately keeps image-owned config/genesis visible. Only data, IPC and the
+        // selective topology override are bind-mounted; a relay has no keys mount and a bootstrap
+        // BP may have an empty read-write keys directory.
+        vec![
+            contract.in_container_paths.socket.as_str(),
+            contract.in_container_paths.db.as_str(),
+            "/ouro/topology.json",
+        ]
+    } else {
+        vec![
+            contract.in_container_paths.socket.as_str(),
+            contract.in_container_paths.db.as_str(),
+            contract.in_container_paths.keys.as_str(),
+            contract.in_container_paths.config.as_str(),
+            contract.in_container_paths.topology.as_str(),
+            contract.in_container_paths.genesis.as_str(),
+        ]
+    };
+    for required in required_paths {
         if !covered(required) {
             return Err(OuroError::Validation(format!(
                 "adoption layout is missing bind-mount coverage for required contract path {required}"
@@ -7877,6 +7923,7 @@ mod tests {
                 host_key_sha256: "a".repeat(64),
                 genesis_hash: "gh".into(),
                 network: "mainnet".into(),
+                lifecycle: None,
             },
             readiness: None,
             recreate: None,

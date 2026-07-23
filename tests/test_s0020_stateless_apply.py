@@ -810,7 +810,7 @@ upgrade:
         path=fakebin,
     )
     assert forbidden_archive.returncode != 0
-    assert "accepted only for KES install or Deploy submit" in json.dumps(forbidden_archive_value)
+    assert "accepted only for KES install" in json.dumps(forbidden_archive_value)
     assert not ssh_count.exists(), "forbidden image archive must not open SSH"
 
     confirmed, confirmation_value = invoke(

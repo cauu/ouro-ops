@@ -80,8 +80,9 @@ ouro_observe() {
 
   # Node facts read INSIDE the container (paths from the layout contract); hashes only, no secrets.
   local topo_hash cfg_hash opcert_id has_keys key_perms kes_rotation_perms genesis_hash network tip1 tip2 creds_ok kes_info kes_genesis metrics peers
-  topo_hash="$(docker exec "$cid" sh -c 'sha256sum /opt/cardano/config/mainnet/topology.json 2>/dev/null' 2>/dev/null | awk '{print $1}')"
-  cfg_hash="$(docker exec "$cid" sh -c 'sha256sum /opt/cardano/config/mainnet/config.json 2>/dev/null' 2>/dev/null | awk '{print $1}')"
+  network="$(ouro_probe_inspect "$cid" '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1 == "CARDANO_NETWORK" {print $2; exit}')"
+  topo_hash="$(docker exec "$cid" sh -c 'sha256sum "/opt/cardano/config/$1/topology.json" 2>/dev/null' ouro-network-path "$network" 2>/dev/null | awk '{print $1}')"
+  cfg_hash="$(docker exec "$cid" sh -c 'sha256sum "/opt/cardano/config/$1/config.json" 2>/dev/null' ouro-network-path "$network" 2>/dev/null | awk '{print $1}')"
   opcert_id="$(docker exec "$cid" sh -c 'test -f /opt/cardano/config/keys/node.cert && sha256sum /opt/cardano/config/keys/node.cert' 2>/dev/null | awk '{print $1}')"
   has_keys="$(docker exec "$cid" sh -c 'if test -f /opt/cardano/config/keys/kes.skey || test -f /opt/cardano/config/keys/vrf.skey; then echo true; else echo false; fi' 2>/dev/null)"
   # A BP is not adoptable when its forging secrets are group/world accessible. `stat` emits only
@@ -109,8 +110,7 @@ ouro_observe() {
   # The pool spec and website carry this canonical network identity; whitespace/key-order changes
   # to an equivalent genesis file must not invalidate every operation plan.
   genesis_hash="$(docker exec "$cid" cardano-cli hash genesis-file \
-    --genesis /opt/cardano/config/mainnet/shelley-genesis.json 2>/dev/null | tr -d '\r\n')"
-  network="$(ouro_probe_inspect "$cid" '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1 == "CARDANO_NETWORK" {print $2; exit}')"
+    --genesis "/opt/cardano/config/${network}/shelley-genesis.json" 2>/dev/null | tr -d '\r\n')"
   # Bounded readiness evidence. Two socket queries are sampled on the target; slot is preferred over
   # block because a low-stake BP need not forge, while the network tip should still advance.
   case "$network" in
@@ -365,8 +365,8 @@ def fixed_sha256(container_path):
     value = fixed_public_bytes(container_path)
     return hashlib.sha256(value).hexdigest() if value is not None else ""
 
-def fixed_genesis_hash():
-    value = fixed_public_bytes("/opt/cardano/config/mainnet/shelley-genesis.json")
+def fixed_genesis_hash(network):
+    value = fixed_public_bytes(f"/opt/cardano/config/{network}/shelley-genesis.json")
     return hashlib.blake2b(value, digest_size=32).hexdigest() if value is not None else ""
 
 def static_kes_path_facts():
@@ -460,6 +460,11 @@ def orchestration_facts():
         "config_hash": labels.get("com.docker.compose.config-hash"),
     }
     return "compose", None, compose
+
+def lifecycle_fact():
+    labels = (((inspect_record() or {}).get("Config", {}) or {}).get("Labels", {}) or {})
+    value = labels.get("io.ouro.lifecycle")
+    return value if value in ("bootstrap", "operational") else value
 
 # Upgrade recreate spec (§2.10) — parsed from the full inspect JSON. Fail-closed: emit null when the
 # container shape is not the standard single-container bind-mounted layout, so the executor refuses
@@ -647,16 +652,22 @@ obs = {
     "container_running": bool(record_state.get("Running", False)) and not bool(record_state.get("Restarting", False)),
     "container_restarting": bool(record_state.get("Restarting", False)),
     "container_status": str(record_state.get("Status", "") or ""),
-    "topology_hash": env("OURO_OBS_TOPO") or fixed_sha256("/opt/cardano/config/mainnet/topology.json"),
-    "config_hash": env("OURO_OBS_CFG") or fixed_sha256("/opt/cardano/config/mainnet/config.json"),
+    "topology_hash": env("OURO_OBS_TOPO") or fixed_sha256(
+        f"/opt/cardano/config/{env('OURO_OBS_NET')}/topology.json"
+    ),
+    "config_hash": env("OURO_OBS_CFG") or fixed_sha256(
+        f"/opt/cardano/config/{env('OURO_OBS_NET')}/config.json"
+    ),
     "kes_opcert_id": env("OURO_OBS_OPCERT") or fixed_sha256("/opt/cardano/config/keys/node.cert"),
     "has_forging_keys": (env("OURO_OBS_HASKEYS") == "true") if env("OURO_OBS_HASKEYS") else static_has_keys,
     "forging_key_permissions_safe": env("OURO_OBS_KEY_PERMS") == "true",
     "keys_directory_safe": (env("OURO_OBS_KEYS_DIRECTORY_SAFE") == "true") if env("OURO_OBS_KEYS_DIRECTORY_SAFE") else static_keys_directory_safe,
     "kes_skey_private": (env("OURO_OBS_KES_SKEY_PRIVATE") == "true") if env("OURO_OBS_KES_SKEY_PRIVATE") else static_kes_skey_private,
     "vrf_skey_private": (env("OURO_OBS_VRF_SKEY_PRIVATE") == "true") if env("OURO_OBS_VRF_SKEY_PRIVATE") else static_vrf_skey_private,
-    "host_key_sha256": env("OURO_OBS_HOSTKEY"), "genesis_hash": env("OURO_OBS_GENESIS") or fixed_genesis_hash(),
+    "host_key_sha256": env("OURO_OBS_HOSTKEY"),
+    "genesis_hash": env("OURO_OBS_GENESIS") or fixed_genesis_hash(env("OURO_OBS_NET")),
     "network": env("OURO_OBS_NET"),
+    "lifecycle": lifecycle_fact(),
   },
   "readiness": {
     "node_running": bool(record_state.get("Running", False)) and not bool(record_state.get("Restarting", False)),

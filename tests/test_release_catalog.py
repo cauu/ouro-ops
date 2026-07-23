@@ -48,6 +48,21 @@ def main():
         assert deploy_value["data"]["selection"] == "deploy_recommended"
         assert deploy_value["data"]["repository"] == "ghcr.io/blinklabs-io/cardano-node"
         assert deploy_value["data"]["image"]["release"] == "11.0.1-1"
+        bootstrap = deploy_value["data"]["deploy_bootstrap"]
+        assert bootstrap["database_marker"] == "/data/db/protocolMagicId"
+        assert bootstrap["metrics"] == {
+            "container_port": 12798,
+            "host_ip": "127.0.0.1",
+            "host_port": 12798,
+        }
+        assert set(bootstrap["networks"]) == {"mainnet", "preprod", "preview"}
+        assert bootstrap["required_binaries"] == [
+            "cardano-cli",
+            "cardano-node",
+            "mithril-client",
+            "nview",
+            "txtop",
+        ]
         assert deploy_value["data"]["cache_written"] is False
         assert list(home.iterdir()) == [], "release selection must not create local state"
 
@@ -81,6 +96,7 @@ def main():
             assert upgrade_value["data"]["selection"] == "upgrade_recommended"
             assert upgrade_value["data"]["repository"] == "ghcr.io/blinklabs-io/cardano-node"
             assert upgrade_value["data"]["image"]["release"] == "11.0.1-1"
+            assert upgrade_value["data"]["deploy_bootstrap"] is None
             for field in (
                 "oci_index_digest",
                 "platform_manifest_digest",

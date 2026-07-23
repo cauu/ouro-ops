@@ -8,6 +8,7 @@ pub mod config;
 pub mod confirm;
 pub mod contract;
 pub mod convention;
+pub mod deploy;
 pub mod dispatch;
 pub mod domain;
 pub mod error;

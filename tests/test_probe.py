@@ -111,6 +111,7 @@ def main():
     assert live["container_name"] == "cardano-node"
     assert live["image_reference"] == "ghcr.io/blinklabs-io/cardano-node:10.5.4-1"
     assert live["container_running"] is True and live["container_restarting"] is False
+    assert live["lifecycle"] is None
     assert len(live["mounts"]) == 3
     assert all(m["kind"] == "bind" and m["source_id"].count(":") == 1 for m in live["mounts"])
     assert {m["destination"] for m in live["mounts"]} == {"/data/db", "/opt/cardano/config", "/ipc"}
@@ -166,6 +167,7 @@ def main():
     inherited_label = '"Labels":{"org.opencontainers.image.title":"cardano-node"}'
     compose_labels = (
         '"Labels":{"org.opencontainers.image.title":"cardano-node",'
+        '"io.ouro.lifecycle":"operational",'
         '"com.docker.compose.project":"cardano",'
         '"com.docker.compose.service":"cardano-node",'
         '"com.docker.compose.project.working_dir":"/opt/cardano",'
@@ -178,7 +180,8 @@ def main():
         env=env, text=True, capture_output=True,
     )
     assert compose_result.returncode == 0, compose_result.stderr
-    compose_obs = json.loads(compose_result.stdout)["supervisor"]
+    compose_value = json.loads(compose_result.stdout)
+    compose_obs = compose_value["supervisor"]
     assert compose_obs["orchestration"] == "compose", compose_obs
     assert compose_obs["orchestration_reason"] is None, compose_obs
     assert compose_obs["compose"] == {
@@ -188,6 +191,7 @@ def main():
         "config_files": ["/opt/cardano/compose.yaml"],
         "config_hash": "cfg-hash",
     }, compose_obs
+    assert compose_value["live"]["lifecycle"] == "operational"
 
     portainer_labels = (
         '"Labels":{"org.opencontainers.image.title":"cardano-node",'

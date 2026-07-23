@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BIN = ROOT / "target/debug/ouro-ops"
 
 
-def observation(kes, *, peers=3, configured=True):
+def observation(kes, *, peers=3, configured=True, lifecycle=None):
     return {
         "supervisor": {
             "runtime": "docker", "rootful": True, "rootless": False,
@@ -33,6 +33,7 @@ def observation(kes, *, peers=3, configured=True):
             "kes_opcert_id": "opcert-digest", "has_forging_keys": True,
             "forging_key_permissions_safe": True, "host_key_sha256": "",
             "genesis_hash": "genesis", "network": "mainnet",
+            "lifecycle": lifecycle,
         },
         "readiness": {
             "node_running": True, "socket_answers": True,
@@ -115,6 +116,17 @@ upgrade: {min_online_relays: 0}
     healthy = snapshot("bp1", observation(kes(1380, 1404, valid=True)))
     assert healthy["role_readiness"]["status"] == "ready", healthy
     assert healthy["result"]["forging"]["block_production_ready"] is True, healthy
+
+    bootstrap = snapshot("bp1", observation(None, configured=False, lifecycle="bootstrap"))
+    assert bootstrap["role_readiness"]["status"] == "ready", bootstrap
+    assert bootstrap["result"]["forging"] == {
+        "applicable": False,
+        "status": "not_applicable",
+        "block_production_ready": None,
+        "block_production": "disabled",
+        "reason": "explicit S0027 bootstrap BP is a non-producing node",
+    }, bootstrap
+    assert bootstrap["result"]["container"]["lifecycle"] == "bootstrap", bootstrap
 
     relay = snapshot("relay1", observation(None, peers=4, configured=False))
     assert relay["role_readiness"]["status"] == "ready", relay

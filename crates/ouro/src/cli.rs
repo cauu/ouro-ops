@@ -958,15 +958,12 @@ fn run_release(args: &[String]) -> Result<()> {
     let catalog = crate::convention::fetch_release_catalog()?;
     let digest = catalog.policy.signed_digest()?;
     let from = optional_flag_value(args, "--from");
-    let (selection, image, transition) = if let Some(current) = from {
+    let (selection, image, transition, deploy_contract) = if let Some(current) = from {
         let (image, transition) = catalog.policy.recommended_upgrade_for(current, platform)?;
-        ("upgrade_recommended", image, transition)
+        ("upgrade_recommended", image, transition, None)
     } else {
-        (
-            "deploy_recommended",
-            catalog.policy.recommended_for(platform)?,
-            None,
-        )
+        let (_, image, deploy) = catalog.policy.recommended_deploy_for(platform)?;
+        ("deploy_recommended", image, None, Some(deploy))
     };
     output::print_json(
         &ToolOutput::ok("ouro.release.select", false).with_data(json!({
@@ -977,6 +974,7 @@ fn run_release(args: &[String]) -> Result<()> {
             "policy_digest": digest,
             "repository": catalog.policy.repository,
             "image": image,
+            "deploy_bootstrap": deploy_contract,
             "transition": transition,
             "cache_written": false,
         })),

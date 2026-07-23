@@ -110,7 +110,7 @@ def fleet_permit(home, operation, intent_hash):
     fake_ssh.write_text(
         "#!/bin/sh\n"
         "dd of=/dev/null bs=65536 2>/dev/null\n"
-        f"case \"$*\" in *cardano@10.0.0.10*) printf '%s\\n' '{bp}';; "
+        f"case \"$*\" in *ouro-exec@10.0.0.10*) printf '%s\\n' '{bp}';; "
         f"*) printf '%s\\n' '{relay}';; esac\n"
     )
     fake_ssh.chmod(0o700)
@@ -221,7 +221,11 @@ def main():
     # 4. unregistered / legacy op → refuse
     _, d = run(home, "op", "run", "--op", "retired/write", "--node", "bp1",
                "--param", "machine=bp1", "--observation", o, "--plan")
-    assert d["status"] == "error" and ("disabled" in json.dumps(d) or "registry" in json.dumps(d)), d
+    assert d["status"] == "error" and (
+        "disabled" in json.dumps(d)
+        or "registry" in json.dumps(d)
+        or "unknown write operation" in json.dumps(d)
+    ), d
     # Misleading names that used to execute only a restart are retired, not silently aliased.
     for retired in ("config/render", "runtime/topology-apply", "kes-rotation/rotate"):
         _, d = run(home, "op", "run", "--op", retired, "--node", "bp1",

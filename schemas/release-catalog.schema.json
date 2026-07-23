@@ -78,6 +78,7 @@
             "relay": { "$ref": "#/$defs/roleRule" }
           }
         },
+        "deploy": { "$ref": "#/$defs/deployBootstrap" },
         "allowed": {
           "type": "array",
           "minItems": 1,
@@ -93,6 +94,105 @@
       "properties": {
         "requires_opcert": { "type": "boolean" },
         "forbids_forging_keys": { "type": "boolean" }
+      }
+    },
+    "deployBootstrap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_binaries",
+        "entrypoint",
+        "args",
+        "database_marker",
+        "metrics",
+        "environment",
+        "networks"
+      ],
+      "properties": {
+        "required_binaries": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 5,
+          "uniqueItems": true
+        },
+        "entrypoint": { "$ref": "#/$defs/absolutePath" },
+        "args": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "database_marker": { "$ref": "#/$defs/absolutePath" },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["container_port", "host_ip", "host_port"],
+          "properties": {
+            "container_port": { "const": 12798 },
+            "host_ip": { "const": "127.0.0.1" },
+            "host_port": { "const": 12798 }
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "network",
+            "topology",
+            "database",
+            "socket",
+            "block_producer",
+            "restore_snapshot"
+          ],
+          "properties": {
+            "network": { "const": "CARDANO_NETWORK" },
+            "topology": { "const": "CARDANO_TOPOLOGY" },
+            "database": { "const": "CARDANO_DATABASE_PATH" },
+            "socket": { "const": "CARDANO_SOCKET_PATH" },
+            "block_producer": { "const": "CARDANO_BLOCK_PRODUCER" },
+            "restore_snapshot": { "const": "RESTORE_SNAPSHOT" }
+          }
+        },
+        "networks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mainnet", "preprod", "preview"],
+          "properties": {
+            "mainnet": { "$ref": "#/$defs/deployNetwork" },
+            "preprod": { "$ref": "#/$defs/deployNetwork" },
+            "preview": { "$ref": "#/$defs/deployNetwork" }
+          }
+        }
+      }
+    },
+    "deployNetwork": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "config",
+        "config_sha256",
+        "topology",
+        "genesis",
+        "genesis_hash",
+        "genesis_vkey",
+        "ancillary_vkey",
+        "mithril_aggregator",
+        "min_memory_bytes",
+        "min_free_disk_bytes"
+      ],
+      "properties": {
+        "config": { "$ref": "#/$defs/absolutePath" },
+        "config_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "topology": { "$ref": "#/$defs/absolutePath" },
+        "genesis": { "$ref": "#/$defs/absolutePath" },
+        "genesis_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "genesis_vkey": { "$ref": "#/$defs/absolutePath" },
+        "ancillary_vkey": { "$ref": "#/$defs/absolutePath" },
+        "mithril_aggregator": {
+          "type": "string",
+          "pattern": "^https://aggregator\\..+\\.api\\.mithril\\.network/aggregator$"
+        },
+        "min_memory_bytes": { "type": "integer", "minimum": 1 },
+        "min_free_disk_bytes": { "type": "integer", "minimum": 1 }
       }
     },
     "image": {

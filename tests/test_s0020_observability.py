@@ -143,13 +143,19 @@ def main():
     compose_observation["supervisor"].update({
         "orchestration": "compose",
         "compose": {
-            "project": "cardano",
+            "project": "ouro-bp1",
             "service": "cardano-node",
-            "working_dir": "/opt/cardano",
-            "config_files": ["/opt/cardano/compose.yaml"],
+            "working_dir": "/opt/ouro",
+            "config_files": ["/opt/ouro/compose.yaml"],
             "config_hash": "cfg-hash",
         },
     })
+    compose_observation["live"]["lifecycle"] = "operational"
+    compose_observation["live"]["mounts"] = [
+        {"kind": "bind", "source_id": "8:1", "destination": "/data/db", "read_only": False, "owner": "1000:1000", "mode": "0700", "no_symlink": True},
+        {"kind": "bind", "source_id": "8:2", "destination": "/ouro/topology.json", "read_only": True, "owner": "1000:1000", "mode": "0600", "no_symlink": True},
+        {"kind": "bind", "source_id": "8:3", "destination": "/ipc", "read_only": False, "owner": "1000:1000", "mode": "0700", "no_symlink": True},
+    ]
     compose_fixture = home / "compose-observation.json"
     compose_fixture.write_text(json.dumps(compose_observation))
     compose_read, compose_value = invoke(
@@ -167,6 +173,7 @@ def main():
     compose_container = compose_value["data"]["result"]["container"]
     assert compose_container["orchestration"] == "compose", compose_container
     assert compose_container["compose"]["service"] == "cardano-node", compose_container
+    assert compose_value["data"]["result"]["runtime_policy"]["supported"] is True
 
     compose_payload = json.dumps(compose_observation, separators=(",", ":"))
     probe.write_text(f"ouro_observe() {{ printf '%s\\n' '{compose_payload}'; }}\n")

@@ -661,7 +661,7 @@ takeover 或未校验下载。
   的 CLI/operation/parity/intent/executor/live-code 名称和专属 tests/fixtures；加入
   namespace absence regression，不保留 alias 或兼容转发。Skill/docs/web 只由 p4-2
   一次性替换。
-- [ ] p1-2 [Image/Lifecycle Contract] 验证 signed recommended Blink Labs image 的
+- [x] p1-2 [Image/Lifecycle Contract] 验证 signed recommended Blink Labs image 的
   config/genesis/
   Mithril/metrics/run/non-producing/selective-mount contract，扩展 signed bootstrap facts
   与 resource policy；加入 bootstrap/operational lifecycle、node/forging readiness，
@@ -847,6 +847,12 @@ python3 tests/test_s0027_deploy.py
 - 2026-07-23T14:54:46+08:00 p1-1 completed：旧 Deploy CLI、operation registry、
   executor、transaction cold-sign/submit 实现及专属 fixtures/tests 已删除；只在
   dedicated absence regression 中保留旧名称作为拒绝输入。
+- 2026-07-23T14:55:30+08:00 p1-2 started：固化 signed image bootstrap facts、
+  selective-mount contract 和 bootstrap/operational lifecycle readiness 边界。
+- 2026-07-23T15:26:31+08:00 p1-2 completed：实测 11.0.1-1 amd64 OCI identity 和
+  arm64 runtime contents；发布目录升级为 Ed25519-signed v7 bootstrap contract；
+  Fresh Compose shape 不遮蔽 image config，且只有显式 non-producing bootstrap BP
+  可跳过 forging gate。
 
 ## 6. Validation Evidence (append-only)
 
@@ -858,5 +864,17 @@ python3 tests/test_s0027_deploy.py
   `rg` legacy namespace audit | result: pass | note: 174 Rust tests and targeted Python gates
   passed；旧 namespace 在 live code/tests 中仅存在于 dedicated absence regression，
   Skill/docs/web replacement 按 item boundary 留给 p4-2。
+- TC-2 | stack: Docker + Rust + signed release catalog | command: exact platform-manifest
+  `docker pull`; `python3 tests/s0027_image_contract.py`; `python3
+  tests/test_release_catalog.py` | result: pass | note: amd64 config digest
+  `sha256:0bb21e…468f` 与签名 tuple 一致；原生 arm64 config digest
+  `sha256:f31372…7179` 实测通过，五个工具、三套 config/genesis/Mithril vkeys、
+  `protocolMagicId` restore/skip 和 entrypoint/run semantics 均匹配 signed v7 facts。
+- TC-3 | stack: Rust + shell probe + Python | command: `cargo test -q` (177 passed);
+  `make python-test`; targeted `test_probe.py`, `test_s0020_observability.py`,
+  `test_s0020_troubleshooting_snapshot.py`, `test_s0020_upgrade_workflow.py` | result: pass |
+  note: selective topology/data/ipc/BP-rw-keys policy 不挂载完整 config；Compose health/
+  S0026 routing 保持可用；unlabeled/operational BP 仍严格要求 forging credentials，
+  仅显式 bootstrap BP 报告 non-producing/not-applicable。
 
 ## 7. Change Requests (append-only)
