@@ -668,7 +668,7 @@ takeover 或未校验下载。
   并完成 probe/Observability/S0026 Compose Upgrade 和 operational BP strict-gate 回归。
 - [x] p2-1 [SSH Trust] 实现 user-only interactive `ssh trust` 和严格 known-host dispatch；
   Agent 缺少/变化 host key 时只能返回 actionable blocker 并等待用户。
-- [ ] p2-2 [Inspect] 复用 operation-scoped pool spec，实现多 SSH 账号、host/runtime/
+- [x] p2-2 [Inspect] 复用 operation-scoped pool spec，实现多 SSH 账号、host/runtime/
   resource/port/ownership、signed recommendation、Mithril prerequisites 和 deterministic
   change set 的只读检查。
 - [ ] p3-1 [Host Executor] 使用 CLI 控制的 fixed target scripts 幂等配置 Ubuntu
@@ -858,6 +858,12 @@ python3 tests/test_s0027_deploy.py
 - 2026-07-23T15:32:58+08:00 p2-1 completed：Inspect 在缺 key 时不接触 target；
   `ssh trust` 仅接受真实 TTY 上的 machine-id 确认，支持 out-of-band fingerprint 和
   明示 TOFU，并在持久化前以 declared user/credential 完成 strict SSH 验证。
+- 2026-07-23T15:34:10+08:00 p2-2 started：实现 closed-schema、read-only Fleet
+  Inspect；按 machine 独立使用 SSH user/key，并将目标输出只作为不可信 facts 解析。
+- 2026-07-23T15:44:06+08:00 p2-2 completed：Inspect 在任一 target contact 前完成
+  全 Fleet trust gate；固定只读探针覆盖 host/runtime/resource/port/ownership/Mithril，
+  并返回 deterministic change set、exact desired digest、partial recovery 与同 Fleet
+  `already_deployed` 分类。
 
 ## 6. Validation Evidence (append-only)
 
@@ -890,5 +896,15 @@ python3 tests/test_s0027_deploy.py
   fail closed；所有 credential verification 使用 `StrictHostKeyChecking=yes`、
   dedicated Ouro known_hosts/declared account；auth 失败不写 trust，重复 trust 幂等，
   key change 需用户再次明确确认。
+- TC-6 | stack: Rust CLI + fixed remote shell + Python fake SSH | command: `cargo test -q`;
+  `python3 tests/test_s0027_deploy_inspect.py` | result: pass | note: operation-scoped spec
+  中 BP/Relay 使用不同 declared SSH user/key；unsupported Ubuntu、资源不足、legacy
+  deployment 和未知 Cardano container 均 fail closed；signed recommendation 与
+  Mithril restore prerequisite 进入逐节点 facts/change set。
+- TC-7 | stack: closed-schema target facts + identity regression | command: `python3
+  tests/test_s0027_deploy_inspect.py`; `python3 tests/test_s0027_ssh_trust.py` | result: pass |
+  note: Inspect 输出 `target_writes=false`；target 插入未知 fact 只会形成 blocker，不会
+  被执行；sync/node_version/upgrade 不进入 Fleet/desired identity；完整 exact same
+  fleet 返回 `already_deployed`，signed pinned tuple 和 desired digest 不匹配会拒绝。
 
 ## 7. Change Requests (append-only)
