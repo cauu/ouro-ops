@@ -671,7 +671,7 @@ takeover 或未校验下载。
 - [x] p2-2 [Inspect] 复用 operation-scoped pool spec，实现多 SSH 账号、host/runtime/
   resource/port/ownership、signed recommendation、Mithril prerequisites 和 deterministic
   change set 的只读检查。
-- [ ] p3-1 [Host Executor] 使用 CLI 控制的 fixed target scripts 幂等配置 Ubuntu
+- [x] p3-1 [Host Executor] 使用 CLI 控制的 fixed target scripts 幂等配置 Ubuntu
   packages、Docker/Compose、Chrony、目录和 SSH-safe UFW；Relay-only P2P ingress，
   不引入 Ansible/fail2ban/任意 shell input。
 - [ ] p3-2 [Compose Apply] 实现 role/lifecycle topology、identity marker、
@@ -864,6 +864,11 @@ python3 tests/test_s0027_deploy.py
   全 Fleet trust gate；固定只读探针覆盖 host/runtime/resource/port/ownership/Mithril，
   并返回 deterministic change set、exact desired digest、partial recovery 与同 Fleet
   `already_deployed` 分类。
+- 2026-07-23T15:45:00+08:00 p3-1 started：实现固定 Ubuntu host convergence 与
+  SSH-safe UFW delta/新连接验证/失败回退；不开放任意 package、rule 或 shell input。
+- 2026-07-23T15:52:00+08:00 p3-1 completed：固定脚本只从 Ubuntu repositories
+  安装六个声明包，单次 bounded Chrony tracking 未达阈值即失败；UFW 记录本次新增
+  SSH/Relay-P2P/enable delta，新 SSH 失败只回退该 delta，BP 和 metrics 均不开放 ingress。
 
 ## 6. Validation Evidence (append-only)
 
@@ -906,5 +911,15 @@ python3 tests/test_s0027_deploy.py
   note: Inspect 输出 `target_writes=false`；target 插入未知 fact 只会形成 blocker，不会
   被执行；sync/node_version/upgrade 不进入 Fleet/desired identity；完整 exact same
   fleet 返回 `already_deployed`，signed pinned tuple 和 desired digest 不匹配会拒绝。
+- TC-8 | stack: Rust + fixed POSIX target scripts | command: `cargo test -q` (179 passed);
+  `sh -n` over all Host Executor scripts | result: pass | note: package allowlist 固定为
+  `docker.io/docker-compose-v2/chrony/ufw/ca-certificates/curl`；无 third-party repo、
+  apt upgrade、daemon/sshd 改写、waitsync/sleep/poll；Chrony 只执行一次
+  `timeout 5s chronyc -n tracking` 并强制绝对 offset ≤1 秒。
+- TC-9 | stack: Rust UFW delta model + fixed target scripts | command: `cargo test -q`
+  host convergence regressions | result: pass | note: 先添加 declared SSH allow，再仅为
+  Relay 添加 declared P2P；BP/12798 无 allow path；脚本内错误和控制机 fresh SSH
+  verification 失败都按 recorded delta 删除新增规则/恢复 enable 状态，不调用 reset
+  或删除其他既有规则。
 
 ## 7. Change Requests (append-only)

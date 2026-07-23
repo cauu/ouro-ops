@@ -17,6 +17,8 @@ pub const DATA_DESTINATION: &str = "/data/db";
 pub const IPC_DESTINATION: &str = "/ipc";
 pub const KEYS_DESTINATION: &str = "/opt/cardano/config/keys";
 const INSPECT_TIMEOUT_S: u32 = 30;
+const HOST_PREPARE_TIMEOUT_S: u32 = 300;
+const UFW_TIMEOUT_S: u32 = 30;
 
 const INSPECT_SCRIPT: &str = r#"set -u
 ssh_port=$1
@@ -137,6 +139,165 @@ printf '%s\n' \
   "owned_desired_digest=$owned_desired_digest"
 "#;
 
+const HOST_PREPARE_SCRIPT: &str = r#"set -eu
+role=$1
+marker=$2
+as_root() {
+  if test "$(id -u)" = 0; then "$@"; else sudo -n "$@"; fi
+}
+case "$role" in bp|relay) ;; *) exit 64 ;; esac
+test -r /etc/os-release
+os_id=$(sed -n 's/^ID=//p' /etc/os-release | tr -d '"'"'" | head -n1)
+os_version=$(sed -n 's/^VERSION_ID=//p' /etc/os-release | tr -d '"'"'" | head -n1)
+test "$os_id" = ubuntu
+case "$os_version" in 22.04|24.04) ;; *) exit 65 ;; esac
+need_packages=false
+command -v docker >/dev/null 2>&1 || need_packages=true
+command -v chronyc >/dev/null 2>&1 || need_packages=true
+command -v ufw >/dev/null 2>&1 || need_packages=true
+command -v curl >/dev/null 2>&1 || need_packages=true
+if command -v docker >/dev/null 2>&1; then
+  if docker compose version >/dev/null 2>&1; then :
+  elif sudo -n docker compose version >/dev/null 2>&1; then :
+  else need_packages=true
+  fi
+fi
+packages_changed=false
+if test "$need_packages" = true; then
+  as_root env DEBIAN_FRONTEND=noninteractive apt-get update
+  as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    docker.io docker-compose-v2 chrony ufw ca-certificates curl
+  packages_changed=true
+fi
+as_root systemctl enable --now docker.service
+as_root systemctl enable --now chrony.service
+if docker info >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  docker_mode=user
+elif sudo -n docker info >/dev/null 2>&1 && sudo -n docker compose version >/dev/null 2>&1; then
+  docker_mode=sudo_n
+else
+  exit 66
+fi
+tracking=$(timeout 5s chronyc -n tracking)
+leap=$(printf '%s\n' "$tracking" | awk -F: '/^Leap status/ {gsub(/^[ \t]+/,"",$2); print $2}')
+offset=$(printf '%s\n' "$tracking" | awk -F: '/^System time/ {gsub(/^[ \t]+/,"",$2); split($2,a," "); print a[1]}')
+test "$leap" = Normal
+test -n "$offset"
+awk -v value="$offset" 'BEGIN { if (value < 0) value=-value; exit !(value <= 1.0) }'
+if test -L /opt/ouro; then exit 67; fi
+if test -e /opt/ouro && ! test -d /opt/ouro; then exit 67; fi
+if ! test -e /opt/ouro; then as_root install -d -m 0755 /opt/ouro; fi
+marker_path=/opt/ouro/fleet-identity.json
+if test -e "$marker_path"; then
+  test ! -L "$marker_path"
+  current=$(tr -d '\r\n' <"$marker_path")
+  test "$current" = "$marker"
+else
+  marker_tmp=$(as_root mktemp /opt/ouro/.fleet-identity.XXXXXX)
+  printf '%s\n' "$marker" | as_root tee "$marker_tmp" >/dev/null
+  as_root chmod 0644 "$marker_tmp"
+  as_root mv "$marker_tmp" "$marker_path"
+fi
+for path in /opt/ouro/db /opt/ouro/ipc; do
+  test ! -L "$path"
+  if test -e "$path"; then test -d "$path"; else as_root install -d -m 0755 "$path"; fi
+done
+if test "$role" = bp; then
+  test ! -L /opt/ouro/keys
+  if test -e /opt/ouro/keys; then
+    test -d /opt/ouro/keys
+    as_root chmod 0700 /opt/ouro/keys
+  else
+    as_root install -d -m 0700 /opt/ouro/keys
+  fi
+fi
+printf '%s\n' \
+  "schema=ouro-deploy-host-prepare-v1" \
+  "packages_changed=$packages_changed" \
+  "docker_mode=$docker_mode" \
+  "chrony_synced=true" \
+  "chrony_offset=$offset" \
+  "marker_installed=true"
+"#;
+
+const UFW_APPLY_SCRIPT: &str = r#"set -eu
+role=$1
+ssh_port=$2
+p2p_port=$3
+as_root() {
+  if test "$(id -u)" = 0; then "$@"; else sudo -n "$@"; fi
+}
+case "$role" in bp|relay) ;; *) exit 64 ;; esac
+case "$ssh_port" in ''|*[!0-9]*) exit 64 ;; esac
+case "$p2p_port" in ''|*[!0-9]*) exit 64 ;; esac
+status=$(as_root ufw status)
+was_active=false
+printf '%s\n' "$status" | head -n1 | grep -q 'Status: active' && was_active=true
+added_ssh=false
+added_p2p=false
+enabled=false
+completed=false
+restore_delta() {
+  test "$completed" = true && return 0
+  if test "$added_p2p" = true; then
+    as_root ufw --force delete allow "${p2p_port}/tcp" >/dev/null 2>&1 || true
+  fi
+  if test "$added_ssh" = true; then
+    as_root ufw --force delete allow "${ssh_port}/tcp" >/dev/null 2>&1 || true
+  fi
+  if test "$enabled" = true; then
+    as_root ufw --force disable >/dev/null 2>&1 || true
+  fi
+}
+trap restore_delta EXIT HUP INT TERM
+if ! printf '%s\n' "$status" | grep -Eq "^${ssh_port}/tcp[[:space:]]+ALLOW[[:space:]]+IN"; then
+  as_root ufw allow "${ssh_port}/tcp" comment ouro-deploy-ssh
+  added_ssh=true
+fi
+if test "$role" = relay; then
+  test "$p2p_port" -gt 0
+  if ! printf '%s\n' "$status" | grep -Eq "^${p2p_port}/tcp[[:space:]]+ALLOW[[:space:]]+IN"; then
+    as_root ufw allow "${p2p_port}/tcp" comment ouro-deploy-relay-p2p
+    added_p2p=true
+  fi
+fi
+if test "$was_active" = false; then
+  as_root ufw --force enable
+  enabled=true
+fi
+as_root ufw reload
+completed=true
+printf '%s\n' \
+  "schema=ouro-deploy-ufw-v1" \
+  "added_ssh=$added_ssh" \
+  "added_p2p=$added_p2p" \
+  "enabled=$enabled"
+"#;
+
+const UFW_ROLLBACK_SCRIPT: &str = r#"set -eu
+role=$1
+ssh_port=$2
+p2p_port=$3
+added_ssh=$4
+added_p2p=$5
+enabled=$6
+as_root() {
+  if test "$(id -u)" = 0; then "$@"; else sudo -n "$@"; fi
+}
+if test "$added_p2p" = true && test "$role" = relay; then
+  as_root ufw --force delete allow "${p2p_port}/tcp"
+fi
+if test "$added_ssh" = true; then
+  as_root ufw --force delete allow "${ssh_port}/tcp"
+fi
+if test "$enabled" = true; then
+  as_root ufw --force disable
+else
+  as_root ufw reload
+fi
+printf '%s\n' "schema=ouro-deploy-ufw-rollback-v1" "restored=true"
+"#;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct FleetIdentityMarker {
@@ -183,6 +344,25 @@ struct InspectFacts {
     owned_lifecycle: String,
     owned_network: String,
     owned_desired_digest: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct HostConvergence {
+    pub packages_changed: bool,
+    pub docker_mode: String,
+    pub chrony_offset_seconds: f64,
+    pub marker_installed: bool,
+    pub ufw_added_ssh: bool,
+    pub ufw_added_p2p: bool,
+    pub ufw_enabled: bool,
+    pub fresh_ssh_verified: bool,
+}
+
+#[derive(Debug, Clone)]
+struct UfwDelta {
+    added_ssh: bool,
+    added_p2p: bool,
+    enabled: bool,
 }
 
 pub fn run(args: &[String]) -> Result<()> {
@@ -532,6 +712,253 @@ fn inspect_machine(
             "host_side_restore": false,
         },
     }))
+}
+
+pub(crate) fn converge_host(
+    spec: &PoolSpec,
+    machine: &Machine,
+    paths: &ConfigPaths,
+    selection: &SignedDeploySelection,
+    fleet_digest: &str,
+    genesis_digest: &str,
+) -> Result<HostConvergence> {
+    let key = machine.ssh.key_ref.resolve(&paths.credentials_dir)?;
+    let marker = FleetIdentityMarker {
+        schema_version: 1,
+        fleet_identity_digest: fleet_digest.to_string(),
+        machine_id: machine.id.clone(),
+        role: role_name(machine.role).to_string(),
+        network: spec.pool.network.as_str().to_string(),
+        genesis_identity: genesis_digest.to_string(),
+        repository: selection.repository.clone(),
+        platform: selection.platform.clone(),
+        platform_manifest_digest: selection.platform_manifest_digest.clone(),
+        image_config_digest: selection.image_config_digest.clone(),
+    };
+    let marker_json = serde_json::to_string(&marker).map_err(|error| {
+        OuroError::Validation(format!("cannot render fleet identity marker: {error}"))
+    })?;
+    let runner = crate::ssh::SshRunner::new(false);
+    let prepare = runner.diag_exec(
+        &machine.ssh,
+        &key,
+        &paths.known_hosts,
+        &[
+            "sh".into(),
+            "-c".into(),
+            HOST_PREPARE_SCRIPT.into(),
+            "ouro-deploy-host-prepare".into(),
+            role_name(machine.role).into(),
+            marker_json,
+        ],
+        HOST_PREPARE_TIMEOUT_S,
+    )?;
+    if prepare.status != 0 {
+        return Err(OuroError::Validation(format!(
+            "host preparation failed on {} with status {}: {}",
+            machine.id,
+            prepare.status,
+            bounded_detail(&prepare.stderr)
+        )));
+    }
+    let prepared = parse_closed_facts(
+        &prepare.stdout,
+        "ouro-deploy-host-prepare-v1",
+        &[
+            "schema",
+            "packages_changed",
+            "docker_mode",
+            "chrony_synced",
+            "chrony_offset",
+            "marker_installed",
+        ],
+    )?;
+    if fact(&prepared, "chrony_synced")? != "true" || fact(&prepared, "marker_installed")? != "true"
+    {
+        return Err(OuroError::Validation(
+            "host preparation did not establish Chrony and identity marker invariants".into(),
+        ));
+    }
+    let chrony_offset_seconds: f64 = fact(&prepared, "chrony_offset")?
+        .parse()
+        .map_err(|_| OuroError::Validation("host returned an invalid Chrony offset".into()))?;
+    if !chrony_offset_seconds.is_finite() || chrony_offset_seconds.abs() > 1.0 {
+        return Err(OuroError::Validation(
+            "host Chrony absolute offset exceeds one second".into(),
+        ));
+    }
+    let p2p_port = machine
+        .public_endpoint
+        .as_ref()
+        .map_or(0, |endpoint| endpoint.port);
+    let ufw = runner.diag_exec(
+        &machine.ssh,
+        &key,
+        &paths.known_hosts,
+        &[
+            "sh".into(),
+            "-c".into(),
+            UFW_APPLY_SCRIPT.into(),
+            "ouro-deploy-ufw".into(),
+            role_name(machine.role).into(),
+            machine.ssh.port.to_string(),
+            p2p_port.to_string(),
+        ],
+        UFW_TIMEOUT_S,
+    )?;
+    if ufw.status != 0 {
+        return Err(OuroError::Validation(format!(
+            "UFW convergence failed on {} with status {}: {}",
+            machine.id,
+            ufw.status,
+            bounded_detail(&ufw.stderr)
+        )));
+    }
+    let delta_facts = parse_closed_facts(
+        &ufw.stdout,
+        "ouro-deploy-ufw-v1",
+        &["schema", "added_ssh", "added_p2p", "enabled"],
+    )?;
+    let delta = UfwDelta {
+        added_ssh: parse_fact_bool(&delta_facts, "added_ssh")?,
+        added_p2p: parse_fact_bool(&delta_facts, "added_p2p")?,
+        enabled: parse_fact_bool(&delta_facts, "enabled")?,
+    };
+    let fresh = runner.diag_exec(&machine.ssh, &key, &paths.known_hosts, &["true".into()], 10)?;
+    if fresh.status != 0 {
+        let rollback = rollback_ufw(&runner, machine, &key, paths, p2p_port, &delta);
+        let rollback_detail = match rollback {
+            Ok(()) => "the UFW delta was restored".to_string(),
+            Err(error) => format!("UFW rollback also failed: {error}"),
+        };
+        return Err(OuroError::Validation(format!(
+            "fresh SSH verification failed after UFW convergence on {}; {}",
+            machine.id, rollback_detail
+        )));
+    }
+    Ok(HostConvergence {
+        packages_changed: parse_fact_bool(&prepared, "packages_changed")?,
+        docker_mode: match fact(&prepared, "docker_mode")? {
+            "user" => "user".into(),
+            "sudo_n" => "sudo_n".into(),
+            other => {
+                return Err(OuroError::Validation(format!(
+                    "host returned unsupported Docker mode {other}"
+                )))
+            }
+        },
+        chrony_offset_seconds,
+        marker_installed: true,
+        ufw_added_ssh: delta.added_ssh,
+        ufw_added_p2p: delta.added_p2p,
+        ufw_enabled: delta.enabled,
+        fresh_ssh_verified: true,
+    })
+}
+
+fn rollback_ufw(
+    runner: &crate::ssh::SshRunner,
+    machine: &Machine,
+    key: &std::path::Path,
+    paths: &ConfigPaths,
+    p2p_port: u16,
+    delta: &UfwDelta,
+) -> Result<()> {
+    let outcome = runner.diag_exec(
+        &machine.ssh,
+        key,
+        &paths.known_hosts,
+        &[
+            "sh".into(),
+            "-c".into(),
+            UFW_ROLLBACK_SCRIPT.into(),
+            "ouro-deploy-ufw-rollback".into(),
+            role_name(machine.role).into(),
+            machine.ssh.port.to_string(),
+            p2p_port.to_string(),
+            delta.added_ssh.to_string(),
+            delta.added_p2p.to_string(),
+            delta.enabled.to_string(),
+        ],
+        UFW_TIMEOUT_S,
+    )?;
+    if outcome.status != 0 {
+        return Err(OuroError::Validation(format!(
+            "UFW rollback returned status {}: {}",
+            outcome.status,
+            bounded_detail(&outcome.stderr)
+        )));
+    }
+    let values = parse_closed_facts(
+        &outcome.stdout,
+        "ouro-deploy-ufw-rollback-v1",
+        &["schema", "restored"],
+    )?;
+    if !parse_fact_bool(&values, "restored")? {
+        return Err(OuroError::Validation(
+            "UFW rollback did not report restoration".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn bounded_detail(value: &str) -> String {
+    value.chars().take(500).collect()
+}
+
+fn parse_closed_facts(
+    stdout: &str,
+    expected_schema: &str,
+    expected_keys: &[&str],
+) -> Result<BTreeMap<String, String>> {
+    let expected = expected_keys
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut values = BTreeMap::new();
+    for line in stdout.lines() {
+        let (key, value) = line.split_once('=').ok_or_else(|| {
+            OuroError::Validation("target output contains a malformed fact".into())
+        })?;
+        if !expected.contains(key) {
+            return Err(OuroError::Validation(format!(
+                "target output contains unknown fact {key}"
+            )));
+        }
+        if values.insert(key.to_string(), value.to_string()).is_some() {
+            return Err(OuroError::Validation(format!(
+                "target output contains duplicate fact {key}"
+            )));
+        }
+    }
+    if values.len() != expected.len() || expected.iter().any(|key| !values.contains_key(*key)) {
+        return Err(OuroError::Validation(
+            "target output is missing required facts".into(),
+        ));
+    }
+    if fact(&values, "schema")? != expected_schema {
+        return Err(OuroError::Validation(
+            "target output has an unsupported schema".into(),
+        ));
+    }
+    Ok(values)
+}
+
+fn fact<'a>(facts: &'a BTreeMap<String, String>, key: &str) -> Result<&'a str> {
+    facts
+        .get(key)
+        .map(String::as_str)
+        .ok_or_else(|| OuroError::Validation(format!("target output omitted fact {key}")))
+}
+
+fn parse_fact_bool(facts: &BTreeMap<String, String>, key: &str) -> Result<bool> {
+    match fact(facts, key)? {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(OuroError::Validation(format!(
+            "target fact {key} is not a canonical boolean"
+        ))),
+    }
 }
 
 fn parse_inspect_facts(stdout: &str) -> Result<InspectFacts> {
@@ -963,5 +1390,68 @@ mod tests {
             lifecycle_for(MachineRole::Relay),
             NodeLifecycle::Operational
         );
+    }
+
+    #[test]
+    fn host_convergence_scripts_are_fixed_bounded_and_shell_valid() {
+        for script in [HOST_PREPARE_SCRIPT, UFW_APPLY_SCRIPT, UFW_ROLLBACK_SCRIPT] {
+            let status = std::process::Command::new("sh")
+                .args(["-n", "-c", script])
+                .status()
+                .unwrap();
+            assert!(status.success());
+        }
+        for required in [
+            "docker.io docker-compose-v2 chrony ufw ca-certificates curl",
+            "timeout 5s chronyc -n tracking",
+            "install -d -m 0755 /opt/ouro",
+            "install -d -m 0700 /opt/ouro/keys",
+        ] {
+            assert!(HOST_PREPARE_SCRIPT.contains(required), "{required}");
+        }
+        for forbidden in [
+            "waitsync",
+            "sleep ",
+            "apt-get upgrade",
+            "daemon.json",
+            "sshd_config",
+            "fail2ban",
+            "http://",
+            "https://",
+        ] {
+            assert!(
+                !HOST_PREPARE_SCRIPT.contains(forbidden),
+                "forbidden host behavior: {forbidden}"
+            );
+        }
+        assert!(UFW_APPLY_SCRIPT.contains("ouro-deploy-ssh"));
+        assert!(UFW_APPLY_SCRIPT.contains("ouro-deploy-relay-p2p"));
+        assert!(UFW_APPLY_SCRIPT.contains("test \"$role\" = relay"));
+        assert!(!UFW_APPLY_SCRIPT.contains("12798"));
+        assert!(UFW_ROLLBACK_SCRIPT.contains("delete allow"));
+        assert!(!UFW_ROLLBACK_SCRIPT.contains("reset"));
+    }
+
+    #[test]
+    fn host_executor_target_output_is_closed_schema_data() {
+        let valid = concat!(
+            "schema=ouro-deploy-ufw-v1\n",
+            "added_ssh=true\n",
+            "added_p2p=false\n",
+            "enabled=true\n"
+        );
+        let parsed = parse_closed_facts(
+            valid,
+            "ouro-deploy-ufw-v1",
+            &["schema", "added_ssh", "added_p2p", "enabled"],
+        )
+        .unwrap();
+        assert!(parse_fact_bool(&parsed, "added_ssh").unwrap());
+        assert!(parse_closed_facts(
+            &(valid.to_string() + "command=sudo ufw reset\n"),
+            "ouro-deploy-ufw-v1",
+            &["schema", "added_ssh", "added_p2p", "enabled"],
+        )
+        .is_err());
     }
 }
