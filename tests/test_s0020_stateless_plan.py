@@ -478,6 +478,7 @@ upgrade:
     ssh.write_text(
         "#!/usr/bin/env bash\n"
         "set -eu\n"
+        "if [[ \"$*\" == *\"uname -s\"* && \"$*\" == *\"uname -m\"* ]]; then printf 'Linux\\nx86_64\\n'; exit 0; fi\n"
         "dd of=/dev/null bs=65536 status=none\n"
         "printf '%s' \"$*\" >\"$OURO_TEST_PLAN_LOG\"\n"
         f"printf '%s\\n' '{json.dumps(first_value, separators=(',', ':'))}'\n"

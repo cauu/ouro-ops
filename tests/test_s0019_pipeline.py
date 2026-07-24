@@ -109,6 +109,7 @@ def fleet_permit(home, operation, intent_hash):
     fake_ssh = fakebin / "ssh"
     fake_ssh.write_text(
         "#!/bin/sh\n"
+        "case \"$*\" in *uname\\ -s*uname\\ -m*) printf 'Linux\\nx86_64\\n'; exit 0;; esac\n"
         "dd of=/dev/null bs=65536 2>/dev/null\n"
         f"case \"$*\" in *ouro-exec@10.0.0.10*) printf '%s\\n' '{bp}';; "
         f"*) printf '%s\\n' '{relay}';; esac\n"

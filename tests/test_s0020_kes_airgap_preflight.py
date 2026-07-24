@@ -457,6 +457,7 @@ upgrade:
     ssh.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
+        "if [[ \"$*\" == *\"uname -s\"* && \"$*\" == *\"uname -m\"* ]]; then printf 'Linux\\nx86_64\\n'; exit 0; fi\n"
         "dd of=\"$OURO_TEST_TRANSPORT_STREAM\" bs=65536 status=none\n"
         "printf '%s' \"$*\" >\"$OURO_TEST_TRANSPORT_ARGS\"\n"
         "case \"$*\" in\n"

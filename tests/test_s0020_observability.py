@@ -315,6 +315,7 @@ upgrade:
     ssh.write_text(
         "#!/usr/bin/env bash\n"
         "set -eu\n"
+        "if [[ \"$*\" == *\"uname -s\"* && \"$*\" == *\"uname -m\"* ]]; then printf 'Linux\\nx86_64\\n'; exit 0; fi\n"
         "payload=$(mktemp)\n"
         "trap 'rm -f \"$payload\"' EXIT\n"
         "dd of=\"$payload\" bs=65536 status=none\n"
@@ -342,6 +343,50 @@ upgrade:
     assert dispatched.returncode == 0, dispatched
     assert_live_result(dispatched_value)
     assert log.read_text().strip() == runner_sha, log.read_text()
+
+    # The fixed read-only probe runs in its own strict SSH session. Unsupported or malformed
+    # output refuses before the second session can receive or write runner bytes.
+    upload_attempt = home / "unsupported-upload-attempted"
+    for probe_output, error_code in (
+        ("Linux\\naarch64\\n", "unsupported_target_arch"),
+        ("Darwin\\narm64\\n", "unsupported_target_arch"),
+        ("Linux\\nx86_64\\ninjected\\n", "target_arch_probe_failed"),
+    ):
+        upload_attempt.unlink(missing_ok=True)
+        ssh.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -eu\n"
+            "if [[ \"$*\" == *\"uname -s\"* && \"$*\" == *\"uname -m\"* ]]; then "
+            f"printf '{probe_output}'; exit 0; fi\n"
+            "touch \"$OURO_TEST_UNSUPPORTED_UPLOAD\"\n"
+            "dd of=/dev/null bs=65536 status=none\n"
+        )
+        refused, refused_value = invoke(
+            home,
+            "op",
+            "run",
+            "--op",
+            "observability/health",
+            "--node",
+            "bp1",
+            "--dispatch",
+            "192.0.2.1",
+            "--ssh-key",
+            "creds://bp1",
+            "--spec",
+            str(pool_spec),
+            extra_env={
+                **runner_env,
+                "OURO_TEST_UNSUPPORTED_UPLOAD": str(upload_attempt),
+            },
+            path=fakebin,
+        )
+        assert refused.returncode == 10, refused
+        assert refused_value["tool"] == "ouro.target.architecture", refused_value
+        assert refused_value["error"]["code"] == error_code, refused_value
+        assert refused_value["data"]["runner_uploaded"] is False, refused_value
+        assert refused_value["data"]["target_writes"] is False, refused_value
+        assert not upload_attempt.exists(), "runner transport started before architecture gate"
 
     print("S0020 stateless ephemeral observability passed")
 

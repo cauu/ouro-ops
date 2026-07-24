@@ -6,6 +6,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::domain::SshTarget;
+use crate::output::ToolOutput;
 use crate::{OuroError, Result};
 
 const DIAG_STREAM_CAP: usize = 256 * 1024;
@@ -335,6 +336,9 @@ pub fn bounded_ssh_with_input(
     stream_cap: usize,
     context: &'static str,
 ) -> Result<SshOutcome> {
+    if let Some(refusal) = probe_ephemeral_target(args)? {
+        return Ok(refusal);
+    }
     bounded_command(
         "ssh",
         args,
@@ -356,6 +360,9 @@ pub fn bounded_ssh_with_payload(
     stream_cap: usize,
     context: &'static str,
 ) -> Result<SshOutcome> {
+    if let Some(refusal) = probe_ephemeral_target(args)? {
+        return Ok(refusal);
+    }
     bounded_command(
         "ssh",
         args,
@@ -364,6 +371,119 @@ pub fn bounded_ssh_with_payload(
         stream_cap,
         context,
     )
+}
+
+const TARGET_ARCHITECTURE_PROBE: &str =
+    "LC_ALL=C; os=$(uname -s) || exit 65; arch=$(uname -m) || exit 65; \
+     printf '%s\\n%s\\n' \"$os\" \"$arch\"";
+
+fn architecture_refusal(
+    code: &str,
+    detail: impl Into<String>,
+    os: Option<&str>,
+    arch: Option<&str>,
+) -> Result<SshOutcome> {
+    let record = ToolOutput::failure("ouro.target.architecture", code, detail).with_data(
+        serde_json::json!({
+            "probe": "fixed_uname_s_uname_m",
+            "os": os,
+            "arch": arch,
+            "supported": "Linux/x86_64",
+            "runner_uploaded": false,
+            "target_writes": false,
+        }),
+    );
+    Ok(SshOutcome {
+        status: 10,
+        stdout: format!("{}\n", serde_json::to_string(&record)?),
+        stderr: String::new(),
+    })
+}
+
+fn evaluate_target_architecture(outcome: &SshOutcome) -> Result<Option<SshOutcome>> {
+    if outcome.status != 0 {
+        return architecture_refusal(
+            "target_arch_probe_failed",
+            format!(
+                "fixed target architecture probe failed before runner upload (ssh exit {})",
+                outcome.status
+            ),
+            None,
+            None,
+        )
+        .map(Some);
+    }
+    if !outcome.stderr.trim().is_empty() {
+        return architecture_refusal(
+            "target_arch_probe_failed",
+            "fixed target architecture probe returned unexpected stderr before runner upload",
+            None,
+            None,
+        )
+        .map(Some);
+    }
+    let lines = outcome.stdout.lines().collect::<Vec<_>>();
+    if lines.len() != 2
+        || lines[0].is_empty()
+        || lines[1].is_empty()
+        || lines
+            .iter()
+            .any(|line| line.len() > 64 || line.chars().any(char::is_control))
+    {
+        return architecture_refusal(
+            "target_arch_probe_failed",
+            "fixed target architecture probe returned malformed or injected output before runner upload",
+            None,
+            None,
+        )
+        .map(Some);
+    }
+    let os = lines[0];
+    let arch = lines[1];
+    if os == "Linux" && matches!(arch, "x86_64" | "amd64") {
+        return Ok(None);
+    }
+    architecture_refusal(
+        "unsupported_target_arch",
+        format!("target platform {os}/{arch} cannot execute the embedded Linux/x86_64 runner"),
+        Some(os),
+        Some(arch),
+    )
+    .map(Some)
+}
+
+/// Run the fixed read-only OS/architecture probe over the same strict SSH identity before opening
+/// any stdin stream. A refusal is represented as a typed target outcome so every caller preserves
+/// the one-record CLI contract without uploading runner or payload bytes.
+fn probe_ephemeral_target(args: &[String]) -> Result<Option<SshOutcome>> {
+    if args.is_empty() {
+        return Err(OuroError::Validation(
+            "ephemeral SSH argv is missing its remote command".into(),
+        ));
+    }
+    let mut probe_args = args.to_vec();
+    *probe_args.last_mut().expect("checked non-empty") = TARGET_ARCHITECTURE_PROBE.into();
+    let outcome = bounded_ssh(
+        &probe_args,
+        std::time::Duration::from_secs(15),
+        1024,
+        "fixed target architecture probe",
+    )?;
+    evaluate_target_architecture(&outcome)
+}
+
+pub fn is_target_architecture_refusal(outcome: &SshOutcome) -> bool {
+    outcome.status != 0
+        && serde_json::from_str::<serde_json::Value>(&outcome.stdout)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("tool")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            })
+            .as_deref()
+            == Some("ouro.target.architecture")
 }
 
 /// Single-quote a value for safe inclusion in a remote shell command. `ssh` joins the
@@ -510,6 +630,55 @@ mod bounded_tests {
         let expected = crate::assets::sha256_hex(b"RUNNERPUBLIC-PAYLOAD");
         assert_eq!(outcome.stdout.trim(), expected);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn target_architecture_accepts_only_linux_x86_64_aliases() {
+        for arch in ["x86_64", "amd64"] {
+            let outcome = SshOutcome {
+                status: 0,
+                stdout: format!("Linux\n{arch}\n"),
+                stderr: String::new(),
+            };
+            assert!(evaluate_target_architecture(&outcome).unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn target_architecture_refusal_is_typed_and_write_free() {
+        for (stdout, code) in [
+            ("Linux\naarch64\n", "unsupported_target_arch"),
+            ("Darwin\narm64\n", "unsupported_target_arch"),
+            ("Linux\nx86_64\ninjected\n", "target_arch_probe_failed"),
+            ("", "target_arch_probe_failed"),
+        ] {
+            let refusal = evaluate_target_architecture(&SshOutcome {
+                status: 0,
+                stdout: stdout.into(),
+                stderr: String::new(),
+            })
+            .unwrap()
+            .expect("must refuse");
+            let value: serde_json::Value = serde_json::from_str(&refusal.stdout).unwrap();
+            assert_eq!(refusal.status, 10);
+            assert_eq!(value["tool"], "ouro.target.architecture");
+            assert_eq!(value["error"]["code"], code);
+            assert_eq!(value["data"]["runner_uploaded"], false);
+            assert_eq!(value["data"]["target_writes"], false);
+            assert!(is_target_architecture_refusal(&refusal));
+        }
+    }
+
+    #[test]
+    fn architecture_probe_is_fixed_read_only_uname() {
+        assert!(TARGET_ARCHITECTURE_PROBE.contains("uname -s"));
+        assert!(TARGET_ARCHITECTURE_PROBE.contains("uname -m"));
+        for forbidden in ["mktemp", "dd ", "chmod", "sudo", "rm ", "cat >"] {
+            assert!(
+                !TARGET_ARCHITECTURE_PROBE.contains(forbidden),
+                "probe must not write or elevate: {forbidden}"
+            );
+        }
     }
 }
 

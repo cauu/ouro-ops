@@ -583,6 +583,7 @@ upgrade:
     ssh.write_text(
         "#!/usr/bin/env bash\n"
         "set -eu\n"
+        "if [[ \"$*\" == *\"uname -s\"* && \"$*\" == *\"uname -m\"* ]]; then printf 'Linux\\nx86_64\\n'; exit 0; fi\n"
         "dd of=/dev/null bs=65536 status=none\n"
         "printf '%s\\n' \"$*\" >>\"$OURO_TEST_FLEET_SSH_LOG\"\n"
         "case \"$*\" in\n"
@@ -642,6 +643,7 @@ upgrade:
     ssh.write_text(
         "#!/usr/bin/env bash\n"
         "set -eu\n"
+        "if [[ \"$*\" == *\"uname -s\"* && \"$*\" == *\"uname -m\"* ]]; then printf 'Linux\\nx86_64\\n'; exit 0; fi\n"
         "dd of=/dev/null bs=65536 status=none\n"
         "printf '%s\\n' \"$*\" >>\"$OURO_TEST_FLEET_SSH_LOG\"\n"
         "case \"$*\" in\n"
@@ -685,6 +687,7 @@ upgrade:
     ssh.write_text(
         "#!/usr/bin/env bash\n"
         "set -eu\n"
+        "if [[ \"$*\" == *\"uname -s\"* && \"$*\" == *\"uname -m\"* ]]; then printf 'Linux\\nx86_64\\n'; exit 0; fi\n"
         "dd of=/dev/null bs=65536 status=none\n"
         "printf '%s\\n' \"$*\" >>\"$OURO_TEST_FLEET_SSH_LOG\"\n"
         "case \"$*\" in\n"
@@ -762,6 +765,7 @@ upgrade:
     ssh.write_text(
         "#!/usr/bin/env bash\n"
         "set -eu\n"
+        "if [[ \"$*\" == *\"uname -s\"* && \"$*\" == *\"uname -m\"* ]]; then printf 'Linux\\nx86_64\\n'; exit 0; fi\n"
         "dd of=\"$OURO_TEST_STREAM\" bs=65536 status=none\n"
         "printf '1\\n' >>\"$OURO_TEST_SSH_COUNT\"\n"
         "printf '%s' \"$*\" >\"$OURO_TEST_SSH_ARGS\"\n"

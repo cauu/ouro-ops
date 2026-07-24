@@ -262,7 +262,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
   能验证 immutable releases、scoped Actions permissions/repository rules、Cloudflare
   environment secret names 和 Worker identity；缺失时 typed report，且不阻塞后续
   repo implementation，真实配置只在 p5-1 production acceptance 前强制通过。
-- [ ] p1-2 [Remote Architecture Gate] 在所有 ephemeral runner transport 前加入 fixed
+- [x] p1-2 [Remote Architecture Gate] 在所有 ephemeral runner transport 前加入 fixed
   strict-SSH OS/arch probe；只允许 Linux/x86_64，ARM/unknown 在 upload/write 前 typed
   reject，四种 control architecture 行为一致。
 - [ ] p2-1 [Version Preparation] 实现 deterministic patch/minor/major helper、
@@ -357,6 +357,11 @@ Pass/fail：
 - 2026-07-24T11:19:04+08:00 p1-1 completed：added the read-only GitHub configuration
   verifier and operator runbook；the live probe reports current missing prerequisites without
   blocking repository implementation or reading secret values。
+- 2026-07-24T11:19:30+08:00 p1-2 started：move target OS/architecture discovery ahead
+  of every shared ephemeral runner and runner-plus-payload transport。
+- 2026-07-24T11:25:06+08:00 p1-2 completed：the shared strict-SSH transport now runs
+  one fixed read-only `uname` probe before opening stdin；unsupported and malformed targets return
+  one typed refusal with `runner_uploaded=false` and `target_writes=false`。
 
 ## 6. Validation Evidence (append-only)
 
@@ -368,6 +373,16 @@ Pass/fail：
   cauu/ouro-ops` | result: pass | note: live read-only probe reported immutable releases and the
   production environment/secrets as missing；Actions/rules were readable and Worker identity was
   `ouro-ops-site`；no secret value was read。
+- TC-2 | stack: rust | command: `cargo test -q` | result: pass | note: 183 unit tests
+  cover the fixed probe, Linux x86_64/amd64 acceptance, ARM/non-Linux/malformed refusal and
+  write-free typed evidence。
+- TC-2 | stack: python | command: `python3 tests/test_s0020_observability.py &&
+  python3 tests/test_s0020_stateless_plan.py` | result: pass | note: live fake-SSH transport proves
+  unsupported and injected probes never enter the runner-receiving session。
+- TC-2 | stack: python | command: `python3 tests/test_s0020_stateless_apply.py &&
+  python3 tests/test_s0020_kes_airgap_preflight.py && python3 tests/test_s0019_pipeline.py` |
+  result: pass | note: fleet, apply and runner-plus-payload paths retain their existing behavior
+  through the shared architecture gate。
 
 ## 7. Change Requests (append-only)
 

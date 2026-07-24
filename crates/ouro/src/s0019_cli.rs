@@ -94,6 +94,14 @@ fn finish_ssh_dispatch(tool: &str, result: &crate::ssh::SshOutcome) -> Result<()
     Err(OuroError::Reported(reported_exit))
 }
 
+fn propagate_target_architecture_refusal(result: &crate::ssh::SshOutcome) -> Result<()> {
+    if crate::ssh::is_target_architecture_refusal(result) {
+        output::forward_tool_stdout(result.stdout.as_bytes())?;
+        return Err(OuroError::Reported(result.status));
+    }
+    Ok(())
+}
+
 /// Where the attestation lives. On the TARGET (`--local`, p5-4) it is the single root-owned file
 /// `/var/lib/ouro/node-attestation.json` (overridable via OURO_ATTESTATION, matching
 /// `ouro-attested.sh`); on the control host it is per-node under OURO_HOME (pre-dispatch modelling).
@@ -400,6 +408,7 @@ fn fetch_fleet_status(
             machine.id
         ))
     })?;
+    propagate_target_architecture_refusal(&result)?;
     let bounded = |raw: &[u8]| {
         String::from_utf8_lossy(raw)
             .chars()
@@ -629,6 +638,7 @@ fn fetch_kes_protocol_evidence(
             machine.id
         ))
     })?;
+    propagate_target_architecture_refusal(&result)?;
     if result.status != 0 {
         return Err(OuroError::Validation(format!(
             "relay {} refused KES protocol evidence (exit {}): {}",
