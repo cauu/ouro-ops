@@ -150,7 +150,6 @@ pub const KES_SKEY_PREVIOUS: &str = "/opt/cardano/config/keys/kes.skey.ouro-prev
 pub const KES_VKEY_PREVIOUS: &str = "/opt/cardano/config/keys/kes.vkey.ouro-prev";
 pub const OPCERT_PREVIOUS: &str = "/opt/cardano/config/keys/node.cert.ouro-prev";
 const SOCKET: &str = "/ipc/node.socket";
-/// Where a signed tx artifact is staged INSIDE the container before submit (ephemeral, public tx).
 
 pub type ExecutionPlan = Vec<Vec<String>>;
 pub type RecoverablePlans = (ExecutionPlan, Option<ExecutionPlan>);

@@ -1438,7 +1438,10 @@ fn binding_matches(value: &str, expected: Option<(&str, u16)>) -> bool {
         Some((host_ip, host_port)) => bindings.as_array().is_some_and(|items| {
             items.len() == 1
                 && items[0]["HostIp"] == host_ip
-                && items[0]["HostPort"] == host_port.to_string()
+                && items[0]["HostPort"]
+                    .as_str()
+                    .and_then(|value| value.parse::<u16>().ok())
+                    == Some(host_port)
         }),
     }
 }

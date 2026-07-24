@@ -258,8 +258,52 @@ machines:
     ]
     assert operational_bp["status"] == "failed"
     assert operational_bp["forging_readiness"] == "failed"
+
+    (facts_dir / "bp1-inspect.facts").write_text(
+        bp_complete.replace("owned_lifecycle=bootstrap", "owned_lifecycle=")
+    )
+    _, unlabeled = run("check", spec, env)
+    unlabeled_bp = {node["machine"]: node for node in unlabeled["data"]["nodes"]}[
+        "bp1"
+    ]
+    assert unlabeled_bp["status"] == "failed"
+    assert unlabeled_bp["forging_readiness"] == "failed"
     (facts_dir / "bp1-inspect.facts").write_text(bp_complete)
 
+    (facts_dir / "bp1-check.facts").write_text(
+        check_facts(
+            "bp1",
+            baseline_nodes["bp1"]["expected_artifacts"],
+            role="bp",
+            cold_key_artifact="true",
+        )
+    )
+    _, cold_key = run("check", spec, env)
+    cold_key_bp = {node["machine"]: node for node in cold_key["data"]["nodes"]}[
+        "bp1"
+    ]
+    assert cold_key_bp["status"] == "failed"
+    assert "cold_key_artifact_present" in cold_key_bp["static_failures"]
+
+    (facts_dir / "bp1-check.facts").write_text(
+        check_facts(
+            "bp1",
+            baseline_nodes["bp1"]["expected_artifacts"],
+            role="bp",
+            metrics_bindings='[{"HostIp":"0.0.0.0","HostPort":"12798"}]',
+            p2p_bindings='[{"HostIp":"0.0.0.0","HostPort":"3001"}]',
+        )
+    )
+    _, public_ports = run("check", spec, env)
+    public_bp = {node["machine"]: node for node in public_ports["data"]["nodes"]}[
+        "bp1"
+    ]
+    assert public_bp["status"] == "failed"
+    assert "port_binding_mismatch" in public_bp["static_failures"]
+
+    (facts_dir / "bp1-check.facts").write_text(
+        check_facts("bp1", baseline_nodes["bp1"]["expected_artifacts"], role="bp")
+    )
     (facts_dir / "relay1-check.facts").write_text(
         check_facts(
             "relay1",

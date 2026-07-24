@@ -683,7 +683,7 @@ takeover 或未校验下载。
 - [x] p4-2 [Skill/Docs/Web] 重写 canonical Deploy Skill、operations docs 和网站 Fleet
   入口，保证 SSH user/trust、一次确认、单次 Apply、最终 Check 和 BP Bootstrap boundary
   来自 canonical Skill，且旧注册型 Deploy 不再出现。
-- [ ] p5-1 [Integration/E2E] 完成 Rust/Python 回归、fixed executor failure injection、
+- [~] p5-1 [Integration/E2E] 完成 Rust/Python 回归、fixed executor failure injection、
   idempotency fixtures 和真实 Ubuntu 1 BP + 至少 1 Relay E2E；观测 Mithril pending，
   最终全部 ready，并验证 metrics 私有、不同 SSH 用户、lifecycle strict gate 和 S0026
   Upgrade handoff。
@@ -697,6 +697,12 @@ takeover 或未校验下载。
   消除首屏加载及动画过程中右侧空白区域出现后缓慢收回的布局抖动。
 - [x] p4-2-fix3 [Website] 在网站右上角加入指向 Ouro Ops 正式 GitHub 仓库的可访问
   图标链接，并保持桌面/移动导航不溢出。
+- [x] p5-1a [Deterministic Integration/Harness] 交付已经通过的 failure/recovery/
+  security/lifecycle 确定性回归、生产边界小修正和带显式写授权的双机实机 harness；
+  本项不声称真实主机 Deploy 已通过。
+- [ ] p5-1b [Deferred Real-host Regression] 后续在两台满足 signed resource policy 的
+  fresh Ubuntu 主机执行真实 Inspect → Apply → Mithril/replay pending → ready →
+  already_deployed no-write 全流程，并完成 TC-18。
 
 ### Item → TC Mapping
 
@@ -715,6 +721,8 @@ takeover 或未校验下载。
 | p4-1-fix1 | TC-20 |
 | p4-2-fix2 | TC-21 |
 | p4-2-fix3 | TC-22 |
+| p5-1a | TC-15, TC-16, TC-17, TC-23 |
+| p5-1b | TC-18 |
 
 ## 4. Test And Acceptance Criteria
 
@@ -810,6 +818,10 @@ takeover 或未校验下载。
 - TC-22：导航右上角必须包含唯一的 `https://github.com/cauu/ouro-ops` 外部链接，
   使用可见 GitHub SVG、明确 accessible name、`target=_blank` 与
   `rel=noopener noreferrer`；移动宽度保留 GitHub 和语言入口且不得新增横向溢出。
+- TC-23：允许先交付确定性 Deploy 回归和实机 harness，但必须保留清晰的 destructive
+  opt-in、user-only SSH trust、fresh-host/resource 前置条件、最终 pending 不可通过，
+  且不得将 prepare/syntax 或本地容器容量探针记录成真实 TC-18 success。p5-1 umbrella
+  在 p5-1b 完成前继续保持 in progress。
 
 Pass/fail：
 
@@ -915,7 +927,19 @@ python3 tests/test_s0027_deploy.py
 - 2026-07-23T16:29:11+08:00 p4-2 completed：canonical Deploy Skill 成为完整流程
   唯一来源；网站只序列化原文并生成 operation-scoped Fleet spec，删除 ticker/economics
   与旧注册入口；README/operations/E2E/current review 残留同步清理。
-
+- 2026-07-23T16:33:00+08:00 p5-1 started：补齐 failure/recovery/security/lifecycle
+  集成回归，并建立 1 BP + 1 Relay 的真实 Ubuntu SSH/Compose E2E，最终以 ready 而非
+  pending 作为通过条件。
+- 2026-07-23T16:57:56+08:00 p5-1 deterministic portion completed：failure injection、
+  same-Fleet partial recovery、security/lifecycle 和全量 Rust/Python 回归通过；真实
+  Ubuntu harness 已固化为 user-only trust `prepare` 与 fresh-host authorized `run`
+  两阶段，且最终 pending 必定失败。
+- 2026-07-23T16:57:56+08:00 p5-1 external blocker：本机真实 Ubuntu 22.04 Docker
+  环境实测仅 8,217,410,000 bytes RAM 和 6,984,601,600 bytes free disk，低于 signed
+  Preview 每台 8,589,934,592 / 107,374,182,400 bytes 门槛，无法容纳 1 BP + 1 Relay
+  的真实 Mithril restore/replay。未伪造资源、未替换 signed image、未把 pending
+  标为通过；按 immutable-spec-delivery external-blocker exception 保持 p5-1 `[~]`
+  且暂不 commit，等待两台 dedicated fresh Ubuntu 主机执行 TC-18。
 - 2026-07-23T22:02:21+08:00 p4-2-fix1 started：operator 报告 Deploy 图标丢失；
   浏览器复现为 SVG 节点和尺寸均存在，但 `.t-coral` 没有 CSS background，白色图标
   落在透明背景上而不可见。
@@ -941,6 +965,12 @@ python3 tests/test_s0027_deploy.py
 - 2026-07-23T22:41:33+08:00 p4-2-fix3 completed：导航最右侧加入 32px GitHub SVG
   链接，固定新窗口安全属性与 accessible name；≤640px 仅收起 `Cardano SPO` 副标题，
   source/生成产物回归确认 GitHub 与语言入口均保留。
+- 2026-07-24T09:41:19+08:00 operator 决定先提交、后续再做真实主机回归；将 p5-1
+  追加拆分为已完成的 p5-1a deterministic/harness 交付和待执行的 p5-1b real-host
+  regression，p5-1 umbrella 与 TC-18 继续保持未完成。
+- 2026-07-24T09:41:19+08:00 p5-1a completed：提交此前已验证的 failure injection、
+  partial rerun、安全/lifecycle 回归、HostPort 语义比较和双机 harness；修正 aggregator
+  中过期的 harness 路径说明。本轮遵照 operator 决定不重跑完整回归。
 
 ## 6. Validation Evidence (append-only)
 
@@ -1023,7 +1053,39 @@ python3 tests/test_s0027_deploy.py
   user-only trust、Inspect/signed image/Mithril、一次批准/Apply、最终 Check 与 BP Bootstrap
   handoff；网站 payload 与 canonical Skill 字节一致，无独立 SSH/Deploy 决策副本，Fleet
   表单不再生成 ticker/economics，旧注册型 current docs/E2E/review surface 已删除。
-
+- TC-15 | stack: Rust CLI + Python failure injection | command: `python3
+  tests/test_s0027_deploy.py`; `python3 tests/test_s0027_deploy_apply.py`; `python3
+  tests/test_s0027_deploy_inspect.py` | result: pass | note: package、directory、topology、
+  image pull、Relay up、BP up 和 UFW fresh-SSH 失败均继续安全独立节点；same-marker/
+  desired-digest partial 只跳过已完成 Relay 并收敛剩余节点；完整 Fleet Apply 仅 Inspect
+  后返回 no-write already_deployed；different Fleet marker fail closed。
+- TC-16 | stack: closed-schema/security regression | command: `python3
+  tests/test_s0027_deploy.py`; `cargo clippy -p ouro --lib --tests -- -D warnings` | result:
+  pass | note: target output injection、private-key sentinel、keys symlink/world-write、
+  cold-key filename、任意 package/mount/Compose/UFW/image、tag fallback、公开 metrics/
+  BP P2P 和 non-interactive Agent trust 全部拒绝或静态失败；生产 executor 无
+  accept-new、apt upgrade、UFW reset 或 Compose down 路径。
+- TC-17 | stack: Rust readiness + Python lifecycle regression | command: `cargo test -q`
+  (180 passed); `python3 tests/test_s0027_deploy_check.py`; `make python-test` | result: pass |
+  note: empty-key explicit bootstrap BP 可 node-ready 且 block production disabled；
+  operational 或 missing-lifecycle BP forging fail closed；desired digest 包含 lifecycle，
+  现有 KES/runtime strict regressions 全部通过。
+- TC-18 | stack: real-host E2E harness | command: `fixtures/e2e/s0027/run.sh prepare`
+  with two distinct dummy account declarations; `bash -n fixtures/e2e/s0027/run.sh` | result:
+  pass | note: harness 生成 Preview operation spec 和两条 user-only trust 命令；run 要求
+  fresh-host 明示写授权、clean Inspect、真实 initial Mithril/replay pending、bounded
+  single Check 最终 all-ready、private metrics、already_deployed no-write 和 S0026
+  Compose ownership，最终 pending 不能 pass。
+- TC-18 | stack: local Ubuntu 22.04 capacity probe | command: `docker run --rm
+  ubuntu:22.04` read `/proc/meminfo` and `df -PB1 /` | result: fail | note: 本机 Docker
+  实测 8,217,410,000 bytes RAM / 6,984,601,600 bytes free，低于每台 signed Preview
+  8,589,934,592 / 107,374,182,400 bytes；缺少两台合规 fresh Ubuntu target，真实
+  Apply→Mithril/replay pending→最终 ready 尚未执行，p5-1 保持 in progress。
+- TC-15,TC-16,TC-17 | stack: full regression | command: `cargo fmt --all -- --check`;
+  `cargo test -q`; `make python-test`; `cargo clippy -p ouro --lib --tests -- -D warnings`;
+  `python3 -m pytest -q tests/test_web_generator.py` | result: pass | note: 180 Rust tests、
+  全 maintained Python tests、10 web generator tests、Clippy -D warnings 和 shell/Python
+  syntax gates 全部通过。
 - TC-19 | stack: Python generator + browser UI | command: `web/onboarding/build.sh`;
   `python3 -m pytest -q tests/test_web_generator.py` (11 passed); local browser computed-style
   and screenshot validation | result: pass | note: Deploy tile background 为
@@ -1048,6 +1110,10 @@ python3 tests/test_s0027_deploy.py
   `git diff --check` | result: pass | note: source 与生成产物各自仅含一个正式仓库链接，
   位于语言选择器之后，具有可见 SVG、accessible name、noopener/noreferrer 和窄屏
   品牌副标题收敛规则。
+- TC-23 | stack: shell/Python static delivery check | command: `bash -n
+  fixtures/e2e/s0027/run.sh`; Python AST parse of `tests/test_s0027_deploy.py`;
+  `git diff --check` | result: pass | note: harness 语法、aggregator 路径和补丁完整性通过；
+  本轮未运行真实主机或完整 regression，不形成新的 TC-18 success evidence。
 
 ## 7. Change Requests (append-only)
 
@@ -1060,3 +1126,5 @@ python3 tests/test_s0027_deploy.py
   作为 p4-2-fix2 修复纯装饰 transform 泄漏到根页面横向滚动范围的问题。
 - 2026-07-23T22:40:20+08:00 operator 要求网站右上角增加 GitHub 链接；作为
   p4-2-fix3 加入正式仓库入口，不改变 canonical Skill 或 Prompt 内容。
+- 2026-07-24T09:41:19+08:00 operator 明确要求现有 p5 内容先提交、真实回归后续执行；
+  追加 p5-1a/p5-1b 子项隔离交付与验收，不删除原 p5-1 umbrella 或虚报 TC-18。

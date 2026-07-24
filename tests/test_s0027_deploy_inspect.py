@@ -130,6 +130,18 @@ node_version: 99.0.0
     )
     (fact_dir / "injected-bp.facts").write_text(facts())
     (fact_dir / "injected-relay.facts").write_text(facts() + "run_this=sudo rm -rf /opt\n")
+    (fact_dir / "symlink-bp.facts").write_text(
+        facts(keys_state="symlink", keys_mode="")
+    )
+    (fact_dir / "symlink-relay.facts").write_text(facts())
+    (fact_dir / "world-writable-bp.facts").write_text(
+        facts(keys_state="empty_dir", keys_mode="707")
+    )
+    (fact_dir / "world-writable-relay.facts").write_text(facts())
+    (fact_dir / "public-metrics-bp.facts").write_text(
+        facts(metrics_public_listener="true", ufw_metrics_allow="true")
+    )
+    (fact_dir / "public-metrics-relay.facts").write_text(facts())
 
     fakebin = home / "fakebin"
     fakebin.mkdir()
@@ -201,6 +213,40 @@ node_version: 99.0.0
     assert injected_relay["reasons"] == ["inspect_failed"]
     assert "unknown fact run_this" in injected_relay["detail"]
 
+    for mode, expected_reason in (
+        ("symlink", "unsafe_bp_keys_directory"),
+        ("world-writable", "unsafe_bp_keys_directory"),
+        ("public-metrics", "metrics_publicly_exposed"),
+    ):
+        unsafe_result, unsafe = run_inspect(spec, dict(env, OURO_TEST_MODE=mode))
+        assert unsafe_result.returncode == 0
+        assert unsafe["data"]["classification"] == "blocked"
+        unsafe_bp = {
+            node["machine"]: node for node in unsafe["data"]["nodes"]
+        }["bp1"]
+        assert expected_reason in unsafe_bp["reasons"]
+
+    secret_sentinel = "S0027-PRIVATE-KEY-MUST-NOT-LEAK"
+    (credentials / "bp1").write_text(secret_sentinel)
+    no_leak_result, no_leak = run_inspect(spec, env)
+    assert no_leak["data"]["classification"] == "applicable"
+    assert secret_sentinel not in no_leak_result.stdout
+    assert secret_sentinel not in no_leak_result.stderr
+
+    ssh_before_rejected_specs = ssh_log.read_text()
+    for field in (
+        "packages: [evil-package]",
+        "mounts: ['/:/host']",
+        "compose: {services: {escape: {privileged: true}}}",
+        "ufw_rules: ['allow 12798/tcp']",
+        "image: ghcr.io/example/cardano-node:latest",
+    ):
+        malicious = home / f"pool-spec-malicious-{field.split(':', 1)[0]}.yaml"
+        malicious.write_text(spec.read_text() + f"\n{field}\n")
+        rejected, _ = run_inspect(malicious, env)
+        assert rejected.returncode != 0
+        assert ssh_log.read_text() == ssh_before_rejected_specs
+
     fleet_digest = clean["data"]["fleet_identity_digest"]
     genesis_identity = clean["data"]["genesis_identity"]
     for machine, role, lifecycle in (
@@ -252,6 +298,21 @@ node_version: 99.0.0
     assert complete_result.returncode == 0, complete_result.stderr
     assert complete["data"]["classification"] == "already_deployed"
     assert all(node["deployment_complete"] for node in complete["data"]["nodes"])
+
+    for role in ("bp", "relay"):
+        complete_facts = (fact_dir / f"complete-{role}.facts").read_text()
+        (fact_dir / f"mismatch-{role}.facts").write_text(
+            complete_facts.replace(fleet_digest, "0" * 64)
+        )
+    mismatch_result, mismatch = run_inspect(
+        spec, dict(env, OURO_TEST_MODE="mismatch")
+    )
+    assert mismatch_result.returncode == 0
+    assert mismatch["data"]["classification"] == "blocked"
+    assert all(
+        "fleet_identity_marker_mismatch" in node["reasons"]
+        for node in mismatch["data"]["nodes"]
+    )
 
     assert stat.S_IMODE(known_hosts.stat().st_mode) == 0o600
     assert not any(path.name.startswith("fleet-identity") for path in home.iterdir())

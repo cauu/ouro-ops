@@ -140,9 +140,15 @@ machines:
         "printf '%s|%s\\n' \"$target\" \"$event\" >> \"$OURO_TEST_EVENTS\"\n"
         "printf '%s\\n' \"$*\" >> \"$OURO_TEST_ARGV_DIR/$target.log\"\n"
         "case \"$event\" in\n"
-        "  inspect) cat \"$OURO_TEST_INSPECT_DIR/$target.facts\" ;;\n"
+        "  inspect)\n"
+        "    facts=\"$OURO_TEST_INSPECT_DIR/$target.facts\"\n"
+        "    test -f \"$OURO_TEST_INSPECT_DIR/$OURO_TEST_MODE-$target.facts\" && "
+        "facts=\"$OURO_TEST_INSPECT_DIR/$OURO_TEST_MODE-$target.facts\"\n"
+        "    cat \"$facts\" ;;\n"
         "  host_prepare)\n"
         "    if test \"$OURO_TEST_MODE\" = chrony_fail && test \"$target\" = relay1; then exit 70; fi\n"
+        "    if test \"$OURO_TEST_MODE\" = package_fail && test \"$target\" = relay1; then exit 74; fi\n"
+        "    if test \"$OURO_TEST_MODE\" = directory_fail && test \"$target\" = relay1; then exit 75; fi\n"
         "    printf '%s\\n' 'schema=ouro-deploy-host-prepare-v1' "
         "'packages_changed=true' 'docker_mode=sudo_n' 'chrony_synced=true' "
         "'chrony_offset=0.001' 'marker_installed=true' ;;\n"
@@ -152,11 +158,15 @@ machines:
         "  fresh_ssh)\n"
         "    if test \"$OURO_TEST_MODE\" = fresh_ssh_fail && test \"$target\" = relay1; then exit 71; fi ;;\n"
         "  ufw_rollback) printf '%s\\n' 'schema=ouro-deploy-ufw-rollback-v1' 'restored=true' ;;\n"
-        f"  artifacts) printf '%s\\n' 'schema=ouro-deploy-artifacts-v1' "
+        "  artifacts)\n"
+        "    if test \"$OURO_TEST_MODE\" = topology_fail && test \"$target\" = relay1; then exit 76; fi\n"
+        "    if test \"$OURO_TEST_MODE\" = image_pull_fail && test \"$target\" = relay1; then exit 77; fi\n"
+        f"    printf '%s\\n' 'schema=ouro-deploy-artifacts-v1' "
         f"'compose_valid=true' 'topology_installed=true' 'image_config={CONFIG_DIGEST}' ;;\n"
         "  compose_up)\n"
         "    if test \"$OURO_TEST_MODE\" = relay1_fail && test \"$target\" = relay1; then exit 72; fi\n"
         "    if test \"$OURO_TEST_MODE\" = all_relays_fail && test \"$target\" != bp1; then exit 73; fi\n"
+        "    if test \"$OURO_TEST_MODE\" = bp_up_fail && test \"$target\" = bp1; then exit 78; fi\n"
         "    printf '%s\\n' 'schema=ouro-deploy-compose-up-v1' 'started=true' ;;\n"
         "esac\n"
     )
@@ -244,6 +254,24 @@ machines:
     assert "relay1|ufw_apply" not in chrony_events
     assert "relay2|compose_up" in chrony_events and "bp1|compose_up" in chrony_events
 
+    for mode, failed_after in (
+        ("package_fail", "host_prepare"),
+        ("directory_fail", "host_prepare"),
+        ("topology_fail", "artifacts"),
+        ("image_pull_fail", "artifacts"),
+    ):
+        failed_result, failed_value, failed_events = apply(spec, env, mode)
+        assert failed_result.returncode != 0
+        assert failed_value["error"]["code"] == "deploy_apply_partial_failure"
+        assert f"relay1|{failed_after}" in failed_events
+        assert "relay1|compose_up" not in failed_events
+        assert "relay2|compose_up" in failed_events and "bp1|compose_up" in failed_events
+
+    bp_failed_result, bp_failed, bp_failed_events = apply(spec, env, "bp_up_fail")
+    assert bp_failed_result.returncode != 0
+    assert bp_failed["error"]["code"] == "deploy_apply_partial_failure"
+    assert bp_failed_events[-1] == "bp1|compose_up"
+
     inspected_result = subprocess.run(
         [str(BIN), "deploy", "inspect", "--spec", str(spec)],
         cwd=ROOT,
@@ -297,6 +325,23 @@ machines:
                 owned_desired_digest=node["desired_digest"],
             )
         )
+
+    (fact_dir / "partial-relay1.facts").write_text(
+        (fact_dir / "relay1.facts").read_text()
+    )
+    (fact_dir / "partial-bp1.facts").write_text(inspect_facts())
+    (fact_dir / "partial-relay2.facts").write_text(inspect_facts())
+    partial_result, partial, partial_events = apply(spec, env, "partial")
+    assert partial_result.returncode == 0, partial_result.stderr
+    assert partial["data"]["classification"] == "command_success"
+    assert "relay1|host_prepare" not in partial_events
+    assert "relay1|artifacts" not in partial_events
+    assert "relay1|compose_up" not in partial_events
+    assert "relay2|compose_up" in partial_events and "bp1|compose_up" in partial_events
+    partial_nodes = {node["machine"]: node for node in partial["data"]["nodes"]}
+    assert partial_nodes["relay1"]["configuration"] == "unchanged"
+    assert partial_nodes["relay1"]["deployment_complete_before_apply"] is True
+
     already_result, already, already_events = apply(spec, env, "success")
     assert already_result.returncode != 0
     assert already["error"]["code"] == "already_deployed"
