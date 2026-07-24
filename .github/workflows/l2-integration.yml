@@ -24,10 +24,10 @@ jobs:
             apt-get update
             apt-get install -y bash curl gcc libsqlite3-dev pkg-config python3 python3-pip python3-venv
           elif command -v dnf >/dev/null 2>&1; then
-            dnf install -y bash curl gcc sqlite-devel pkgconf-pkg-config python3 python3-pip
+            dnf install -y bash gcc sqlite-devel pkgconf-pkg-config python3 python3-pip
           fi
           python3 -m venv /opt/ouro-ci-venv
-          /opt/ouro-ci-venv/bin/python -m pip install jsonschema pyyaml
+          /opt/ouro-ci-venv/bin/python -m pip install -r requirements-dev.txt
           curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
       - name: Run L2 integration suite
         run: |

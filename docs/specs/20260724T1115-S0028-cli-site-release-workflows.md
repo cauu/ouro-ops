@@ -285,6 +285,9 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 - [x] p5-1-fix1 [Production Workflow Hardening] 修复真实验收发现的 runner PATH/PEP 668
   CI portability、immutable release attestation 传播延迟和 deploy 后缺少自动 production
   smoke，保持 p5-1 直到一次新的单 dispatch 全自动贯通才完成。
+- [~] p5-1-fix2 [L2 Distribution Follow-up] 让隔离 venv 使用 canonical
+  `requirements-dev.txt`，并保留 Rocky 9 已安装的 `curl-minimal`，消除真实 matrix
+  暴露的 pytest 缺失和 curl 包冲突。
 
 ### Item → TC Mapping
 
@@ -299,6 +302,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 | p4-2 | TC-9 |
 | p5-1 | TC-10 |
 | p5-1-fix1 | TC-11 |
+| p5-1-fix2 | TC-12 |
 
 ## 4. Test And Acceptance Criteria
 
@@ -345,6 +349,9 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
   release attestation；Cloudflare deploy 后使用 action 的 production URL 自动验证
   HTTP/CSP/GitHub link、六个 canonical Skills、verified installer 和无 repo-local
   candidate。对应 workflow source contracts 与完整本地回归均通过。
+- TC-12：L2 venv 从 `requirements-dev.txt` 安装完整测试依赖；Rocky 9 不请求与
+  `curl-minimal` 冲突的 `curl` 包；Ubuntu 24.04、Debian 12、Rocky 9 三个真实 matrix
+  job 全部通过。
 
 Pass/fail：
 
@@ -424,6 +431,14 @@ Pass/fail：
   empty fixture PATH，L2 uses an isolated venv，release verification retries only the bounded
   attestation-propagation window，and every Cloudflare deploy consumes the action's production URL
   for an exact canonical-source smoke。
+- 2026-07-24T15:54:19+08:00 p5-1-fix2 started：the first remote L2 run proved the
+  venv dependency list omitted pytest on Ubuntu/Debian and Rocky's preinstalled `curl-minimal`
+  conflicts with an explicit `curl` package request；use the repository dependency authority and
+  preserve the image-provided curl implementation。
+- 2026-07-24T15:55:00+08:00 p5-1-fix2 implementation checkpoint：remote matrix
+  evidence requires the corrected workflow to exist on GitHub；commit and push the still-in-progress
+  item without marking it complete，then collect all three distribution results before its
+  acceptance transition。
 
 ## 6. Validation Evidence (append-only)
 
