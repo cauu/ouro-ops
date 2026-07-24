@@ -297,7 +297,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
   由 GitHub HTTPS、repository 与 immutable Release 作为 bootstrap 信任根，不再宣称
   installer 在本机执行前自验证，同时保留 installer 对 CLI archive 的 checksum、
   Release identity 与 fixed-workflow attestation 验证。
-- [~] p5-1-fix5 [Footer Attribution] 在 Production Site 页脚增加 `© 2026 Ouro Ops`
+- [x] p5-1-fix5 [Footer Attribution] 在 Production Site 页脚增加 `© 2026 Ouro Ops`
   与 `Built by Pao Studio — the team behind paopao.studio` 声明；`Pao Studio` 链接到
   `https://bubble-studio.xyz/`，`paopao.studio` 链接到
   `https://www.paopao.studio`，且保持移动端可读性与现有页脚内容。
@@ -548,6 +548,11 @@ Pass/fail：
   retries only the exact production verifier up to six times with five-second intervals；workflow
   source contract，local production smoke and diff checks pass。Commit/push this in-progress
   repair to collect one clean automatic production run。
+- 2026-07-24T21:45:00+08:00 p5-1-fix5 completed：current-main run `30097971888`
+  passed validation，v0.1.3 installer gate，Cloudflare deployment and bounded automatic production
+  smoke；version `42042cdb-d763-4c87-a005-b96beedc29f4` deployed。Independent verification
+  confirmed the exact 141533-byte production page，corrected dual paopao.studio destinations，
+  copyright/full attribution，six canonical Skills and one install command。
 
 ## 6. Validation Evidence (append-only)
 
@@ -719,6 +724,13 @@ Pass/fail：
   python3 tests/test_s0028_production_site.py && git diff --check` | result: pass | note: workflow
   enforces six bounded five-second post-deploy attempts，final failure remains non-zero，and the
   exact local production form passes。
+- TC-15 | stack: ui | command: automatic GitHub Actions Site run `30097971888` and
+  independent `python3 packaging/verify-production-site.py --url
+  https://ouro-ops-site.martincauu.workers.dev` | result: pass | note: current-main source
+  `50cc7887cd90c2688f3db79fadb2f04d13fca286` deployed Cloudflare version
+  `42042cdb-d763-4c87-a005-b96beedc29f4`；automatic bounded smoke and independent verification
+  observed 141533 exact bytes，copyright/full attribution，both names linked to
+  `https://www.paopao.studio`，no superseded host，six canonical Skills and one install command。
 
 ## 7. Change Requests (append-only)
 
