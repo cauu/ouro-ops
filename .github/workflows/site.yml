@@ -1,29 +1,37 @@
-name: Site release-form validation
+name: Site
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - "ouro-skills/**"
+      - "packaging/verified-reinstall.sh"
       - "web/onboarding/**"
       - "tests/test_web_generator.py"
       - "tests/test_skill_docs.py"
+      - "tests/test_s0028_site_workflow.py"
       - ".github/workflows/site.yml"
   push:
     branches:
-      - next
+      - main
     paths:
       - "ouro-skills/**"
+      - "packaging/verified-reinstall.sh"
       - "web/onboarding/**"
       - "tests/test_web_generator.py"
       - "tests/test_skill_docs.py"
+      - "tests/test_s0028_site_workflow.py"
       - ".github/workflows/site.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  local-production-form:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,12 +40,33 @@ jobs:
           python-version: "3.12"
       - name: Install test dependencies
         run: python3 -m pip install -r requirements-dev.txt
-      - name: Build site from exactly six canonical Skills
+      - name: Build from canonical sources
         run: ./web/onboarding/build.sh
-      - name: Verify generator, copied content and local HTTP form
+      - name: Verify generated content and workflow boundary
         run: |
           python3 -m pytest -q tests/test_web_generator.py
           python3 tests/test_skill_docs.py
+          python3 tests/test_s0028_site_workflow.py
 
-# Production Cloudflare deployment and production-domain acceptance are deliberately deferred to
-# the next specification. This workflow uploads no hosted site artifact and uses no deploy secret.
+  deploy:
+    needs: validate
+    if: >
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Rebuild the validated static page at the same commit
+        run: ./web/onboarding/build.sh
+      - name: Deploy fixed assets-only Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web/onboarding
+          wranglerVersion: "4.107.0"
+          command: deploy

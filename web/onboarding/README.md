@@ -1,44 +1,32 @@
-# Ouro Ops onboarding website
+# Ouro Ops Website
 
-The Skill-prompt generator is a client-only static page. Its build output contains one file and has
-no package-manager or frontend-runtime dependency. Build time injects exactly the six complete
-canonical external Skills; the CLI does not carry a second decision copy.
+The onboarding website is a client-only static page. Build time injects exactly the six complete
+canonical external Skills; the CLI carries no second decision copy. The page has no package-manager
+or frontend-runtime dependency.
 
-## Local build
-
-Run the build from any directory:
+## Local Build
 
 ```sh
 ./web/onboarding/build.sh
 ```
 
 The generated `web/onboarding/dist/index.html` must be byte-identical to the tracked
-`web/onboarding/index.html`. The repository-level `.gitignore` excludes `dist/`.
+`web/onboarding/index.html`. The repository `.gitignore` excludes `dist/`.
 
-## Current acceptance boundary
+## CI/CD
 
-`.github/workflows/site.yml` builds the production-form page, proves source fidelity/copy behavior
-and serves it over local HTTP in tests. The page's CSP disables ambient network access; pool data
-leaves the browser only when the operator copies and pastes the prompt.
+`.github/workflows/site.yml` has two paths:
 
 | Trigger | Result |
 | --- | --- |
-| Pull request touching the site, Skills or workflow | Complete local production-form validation |
-| Push to `next` touching the site, Skills or workflow | Complete local production-form validation |
-| Manual workflow dispatch | Complete local production-form validation |
+| Pull request, including forks | Build and test only; no Cloudflare secret or deployment |
+| Push to current `main` | Build/test, then automatic production deployment |
+| Manual dispatch on current `main` | Build/test, then idempotent production deployment |
 
-The workflow uses no deploy secret and uploads no hosted site artifact. Production Cloudflare
-deployment, custom-domain wiring and production-domain acceptance are explicitly deferred to the
-next spec.
+The deploy job uses GitHub's `production` environment with secret names
+`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. It publishes the `dist/` directory through the
+fixed `ouro-ops-site` assets-only Worker. There is no PR Preview, PR comment, custom-domain gate,
+required reviewer, or wait timer in this workflow.
 
-Because formal CLI publication is also deferred, prompts copied from this local acceptance page
-bind every Ouro command to `./target/release-candidate-control/release/ouro-ops`, the control binary
-produced by `make release-candidate`. They never select or overwrite a pre-existing `ouro-ops` on
-`PATH`. The next release spec must replace this repository-local binding with the verified formal
-installation channel before production-site acceptance.
-
-## Future production wiring
-
-The next spec may activate the prepared assets-only Cloudflare configuration after adding explicit
-production secrets/environment approval and validating the real domain. Do not infer production
-deployment from a passing local-form workflow.
+The CSP disables ambient page network access. Pool data leaves the browser only when the operator
+copies and pastes a generated prompt.

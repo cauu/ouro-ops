@@ -1,5 +1,5 @@
-// Assets-only Worker for the public Ouro Ops onboarding page.
-// Preview and production publication are owned by .github/workflows/site.yml.
+// Fixed assets-only production Worker for the public Ouro Ops onboarding page.
+// There is no preview or server-side application path.
 {
   "$schema": "https://json.schemastore.org/wrangler.json",
   "name": "ouro-ops-site",

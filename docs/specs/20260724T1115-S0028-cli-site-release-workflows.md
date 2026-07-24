@@ -275,7 +275,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
   distribution artifacts/claims，建立 GitHub-CLI clone-free download/verify、
   `$HOME/.local/bin/ouro-ops` atomic install 流程，覆盖首次安装、同版本 no-write 和严格
   向前更新。
-- [ ] p4-1 [Site Build/Deploy] 将 Site workflow 收敛为 PR build/test 与 `main`
+- [x] p4-1 [Site Build/Deploy] 将 Site workflow 收敛为 PR build/test 与 `main`
   build/test/Cloudflare deploy；无 Preview/PR comment/custom-domain gate。
 - [ ] p4-2 [Site/CLI Contract] 从 production Prompt 删除 repo-local candidate binding，
   加入 verified install/update、CLI-floor-before-Site gate 和 CLI publish 后的幂等 Site
@@ -378,6 +378,11 @@ Pass/fail：
 - 2026-07-24T11:42:16+08:00 p3-1 completed：deleted the CLI stub and placeholder
   install/signing/Homebrew artifacts；the single copyable command source now verifies immutable
   release/assets/attestation/checksum/candidate identity before an atomic user-bin install。
+- 2026-07-24T11:43:00+08:00 p4-1 started：activate PR-safe Site validation and
+  current-main-only production deployment for the fixed assets-only Cloudflare Worker。
+- 2026-07-24T11:44:58+08:00 p4-1 completed：PR/fork runs only deterministic
+  build/tests；push or explicit dispatch on current main rebuilds and deploys the fixed
+  `ouro-ops-site` assets-only Worker through the reviewer-free `production` environment。
 
 ## 6. Validation Evidence (append-only)
 
@@ -425,6 +430,12 @@ Pass/fail：
 - TC-7 | stack: rust | command: `cargo test -q` | result: pass | note: 183 tests pass
   after removing the `self-update` command/help implementation；live placeholder installer,
   signing identity and Homebrew formula are absent。
+- TC-8 | stack: python | command: `python3 tests/test_s0028_site_workflow.py` | result:
+  pass | note: workflow source proves PR/fork contains no secret/deploy path, production deploy is
+  current-main-only and no Preview/comment/custom-domain/manual-approval mechanism exists。
+- TC-8 | stack: ui | command: `./web/onboarding/build.sh && python3 -m pytest -q
+  tests/test_web_generator.py && python3 tests/test_skill_docs.py` | result: pass | note: 13
+  generator/HTTP tests and canonical six-Skill fidelity pass before Cloudflare deployment。
 
 ## 7. Change Requests (append-only)
 

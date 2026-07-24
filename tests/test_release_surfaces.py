@@ -25,8 +25,11 @@ def main() -> None:
     assert "pull_request:" not in release_publish and "\n  push:" not in release_publish
     assert "./web/onboarding/build.sh" in site
     assert "tests/test_web_generator.py" in site
-    for forbidden in ("wrangler", "upload-artifact", "CLOUDFLARE_API_TOKEN"):
-        assert forbidden.lower() not in site.lower(), f"site workflow still deploys via {forbidden}"
+    assert "cloudflare/wrangler-action@v3" in site
+    assert "environment: production" in site
+    assert "github.ref == 'refs/heads/main'" in site
+    for forbidden in ("pull_request_target", "versions upload", "github-script"):
+        assert forbidden.lower() not in site.lower(), f"site workflow contains {forbidden}"
 
     current_docs = [
         ROOT / "README.md",
