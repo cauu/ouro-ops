@@ -1,9 +1,9 @@
 # CLI and Site Release Workflows
 
 Spec-ID: S0028
-状态: draft
+状态: active
 创建时间: 2026-07-24T09:54:02+08:00
-开始时间:
+开始时间: 2026-07-24T11:15:19+08:00
 完成时间:
 前一个 Spec-ID: S0027
 结项原因:
@@ -350,6 +350,8 @@ Pass/fail：
 - 2026-07-24T09:54:02+08:00 draft created：operator 要求在真实 Deploy E2E 前先完善
   CLI/Site 发布 workflow；Site 参考 ouro-pass 直接发布静态产物到 Cloudflare，CLI
   发布链路先讨论后实现。
+- 2026-07-24T11:15:19+08:00 S0028 activated after execution-readiness review；no
+  implementation item started。
 
 ## 6. Validation Evidence (append-only)
 
