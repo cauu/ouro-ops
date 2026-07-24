@@ -297,6 +297,12 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
   由 GitHub HTTPS、repository 与 immutable Release 作为 bootstrap 信任根，不再宣称
   installer 在本机执行前自验证，同时保留 installer 对 CLI archive 的 checksum、
   Release identity 与 fixed-workflow attestation 验证。
+- [~] p5-1-fix5 [Footer Attribution] 在 Production Site 页脚增加 `© 2026 Ouro Ops`
+  与 `Built by Pao Studio — the team behind paopao.studio` 声明；`Pao Studio` 链接到
+  `https://bubble-studio.xyz/`，`paopao.studio` 链接到
+  `https://www.paopao.studio`，且保持移动端可读性与现有页脚内容。
+  Superseding correction：operator 随后明确 `Pao Studio` 也必须链接到
+  `https://www.paopao.studio`；p5-1-fix5 不得包含 `bubble-studio.xyz`。
 
 ### Item → TC Mapping
 
@@ -314,6 +320,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 | p5-1-fix2 | TC-12 |
 | p5-1-fix3 | TC-13 |
 | p5-1-fix4 | TC-14 |
+| p5-1-fix5 | TC-15 |
 
 ## 4. Test And Acceptance Criteria
 
@@ -377,6 +384,15 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
   checksum、Release identity、fixed-workflow attestation、版本单调性和 atomic install
   验证保持不变；Site release-asset gate、copy action、本地完整回归、自动 production
   deploy 与独立 production smoke 全部通过。
+- TC-15：生成页面和 Production URL 均包含唯一、可见的 `© 2026 Ouro Ops` 与完整
+  attribution 文案；`Pao Studio` 的精确链接为 `https://bubble-studio.xyz/`，
+  `paopao.studio` 的精确链接为 `https://www.paopao.studio`，两个外链均具备安全的
+  新窗口属性和清晰的 focus 样式。页脚在 desktop/mobile 不溢出，现有内容、CSP、六个
+  canonical Skills、installer command 与 copy action 不回归；自动 production deploy
+  和独立 production smoke 通过。
+  Superseding acceptance：`Pao Studio` 与 `paopao.studio` 的精确链接均为
+  `https://www.paopao.studio`，生成页面与 Production URL 不得出现
+  `bubble-studio.xyz`。
 
 Pass/fail：
 
@@ -512,6 +528,17 @@ Pass/fail：
   `0ec3351c-098d-43fe-8815-885571e1a365` deployed，and both automatic and independent production
   smoke observed exactly one direct command，copy action，six canonical Skills and no embedded
   installer。
+- 2026-07-24T21:30:00+08:00 p5-1-fix5 started：operator requested a persistent
+  copyright and Pao Studio/paopao.studio attribution at the bottom of the website，with distinct
+  canonical destinations for both linked names。
+- 2026-07-24T21:33:00+08:00 p5-1-fix5 correction：operator clarified that
+  `Pao Studio` and `paopao.studio` both point to `https://www.paopao.studio`；the initial
+  `bubble-studio.xyz` interpretation is superseded before commit or deployment。
+- 2026-07-24T21:39:00+08:00 p5-1-fix5 implementation checkpoint：footer contains the
+  copyright and full attribution，both names resolve to the corrected paopao.studio destination，
+  no superseded host remains，and desktop/mobile layout plus complete local regressions pass。
+  Commit/push the in-progress item so current-main automatic Cloudflare deployment can provide
+  the remaining TC-15 production evidence。
 
 ## 6. Validation Evidence (append-only)
 
@@ -665,6 +692,15 @@ Pass/fail：
   version `0ec3351c-098d-43fe-8815-885571e1a365`，and both smokes observed 140580 exact bytes，
   one canonical install command，a bound copy action，no embedded full installer and six canonical
   Skills。
+- TC-15 | stack: ui | command: local browser inspection at desktop 1280×720 and mobile
+  390×844 | result: pass | note: both attribution links are visible and resolve to
+  `https://www.paopao.studio/`；desktop uses a row，mobile uses a column，and neither viewport nor
+  the attribution region has horizontal overflow。
+- TC-15 | stack: python | command: `python3 -m pytest -q tests/test_web_generator.py &&
+  python3 tests/test_s0028_production_site.py && python3 tests/test_s0028_site_workflow.py &&
+  python3 tests/test_skill_docs.py && make python-test && git diff --check` | result: pass | note:
+  exact copyright/text/link targets，safe external-link attributes，focus/mobile styles and no
+  superseded host are enforced；complete maintained Site/Skill/release/integration coverage passes。
 
 ## 7. Change Requests (append-only)
 
@@ -693,3 +729,10 @@ Pass/fail：
   bootstrap with a direct single-command installer invocation。The explicit trust boundary is
   GitHub HTTPS plus the canonical repository and immutable Release；this simplicity trade-off
   removes only installer self-bootstrap verification，not CLI archive verification。
+- 2026-07-24T21:30:00+08:00 operator requested footer attribution：
+  `© 2026 Ouro Ops` and `Built by Pao Studio — the team behind paopao.studio`；`Pao Studio`
+  points to `https://bubble-studio.xyz/` and `paopao.studio` points to
+  `https://www.paopao.studio`。
+- 2026-07-24T21:33:00+08:00 operator corrected the attribution target before
+  delivery：both `Pao Studio` and `paopao.studio` must point to
+  `https://www.paopao.studio`；do not publish `bubble-studio.xyz`。

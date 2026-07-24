@@ -253,6 +253,13 @@
   .foot-in p{margin:0;font-size:14px;color:var(--body)}
   .foot-in .spacer{flex:1}
   .foot-in small{color:var(--muted-soft);font-size:13px}
+  .foot-present{display:flex;align-items:center;justify-content:space-between;gap:12px 24px;
+    flex-wrap:wrap;margin-top:22px;padding-top:20px;border-top:1px solid var(--hairline-soft)}
+  .foot-present small{color:var(--muted);font-size:13px;line-height:1.6}
+  .foot-present a{color:var(--body-strong);text-decoration:underline;text-underline-offset:3px}
+  .foot-present a:hover{color:var(--sea)}
+  .foot-present a:focus-visible{outline:3px solid var(--sea);outline-offset:3px;border-radius:2px}
+  @media (max-width:640px){.foot-present{align-items:flex-start;flex-direction:column}}
 
   /* ============ dialogs ============ */
   dialog{border:0;border-radius:20px;padding:0;
@@ -495,6 +502,10 @@
     <p data-i18n="foot.left"><strong>Ouro Ops</strong> — open-source tooling for Cardano stake pool operators.</p>
     <span class="spacer"></span>
     <small data-i18n="foot.right">Runs locally in your browser · light on ceremony, strict on mechanism</small>
+  </div>
+  <div class="foot-present wrap" aria-label="Ouro Ops attribution">
+    <small>© 2026 Ouro Ops</small>
+    <small>Built by <a href="https://www.paopao.studio" target="_blank" rel="noopener noreferrer"><strong>Pao Studio</strong></a> — the team behind <a href="https://www.paopao.studio" target="_blank" rel="noopener noreferrer">paopao.studio</a></small>
   </div>
 </footer>
 

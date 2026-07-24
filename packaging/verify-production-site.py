@@ -33,6 +33,26 @@ def verify(
         raise ValueError("production HTML lacks the network-denying CSP")
     if 'href="https://github.com/cauu/ouro-ops"' not in html:
         raise ValueError("production HTML lacks the canonical GitHub link")
+    if html.count("© 2026 Ouro Ops") != 1:
+        raise ValueError("production HTML lacks the unique Ouro Ops copyright")
+    if (
+        html.count(
+            '<a href="https://www.paopao.studio" target="_blank" '
+            'rel="noopener noreferrer"><strong>Pao Studio</strong></a>'
+        )
+        != 1
+    ):
+        raise ValueError("production HTML lacks the canonical Pao Studio attribution")
+    if "bubble-studio.xyz" in html:
+        raise ValueError("production HTML contains the superseded Pao Studio destination")
+    if (
+        html.count(
+            '<a href="https://www.paopao.studio" target="_blank" '
+            'rel="noopener noreferrer">paopao.studio</a>'
+        )
+        != 1
+    ):
+        raise ValueError("production HTML lacks the canonical paopao.studio attribution")
     if "./target/release-candidate-control/release/ouro-ops" in html:
         raise ValueError("production HTML contains the retired repo-local CLI candidate")
 
@@ -76,6 +96,7 @@ def verify(
         "skill_count": len(payload),
         "csp_network_denied": True,
         "github_link": "https://github.com/cauu/ouro-ops",
+        "footer_attribution": True,
         "install_bootstrap_lines": bootstrap_lines,
         "install_copy_action": True,
         "installer_embedded": False,

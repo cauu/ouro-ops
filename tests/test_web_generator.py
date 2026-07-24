@@ -119,6 +119,24 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert 'id="copy-setup"' in html
     assert "clip(INSTALL_BOOTSTRAP)" in html
     assert "run the installer from the latest immutable GitHub Release" in html
+    assert html.count("© 2026 Ouro Ops") == 1
+    assert (
+        html.count(
+            '<a href="https://www.paopao.studio" target="_blank" '
+            'rel="noopener noreferrer"><strong>Pao Studio</strong></a>'
+        )
+        == 1
+    )
+    assert "bubble-studio.xyz" not in html
+    assert (
+        html.count(
+            '<a href="https://www.paopao.studio" target="_blank" '
+            'rel="noopener noreferrer">paopao.studio</a>'
+        )
+        == 1
+    )
+    assert ".foot-present a:focus-visible" in html
+    assert "@media (max-width:640px){.foot-present" in html
     assert "const VERIFIED_REINSTALL" not in html
     assert "class=\"os-tab" not in html
     assert "ouro-ops kes airgap-bundle" in html
