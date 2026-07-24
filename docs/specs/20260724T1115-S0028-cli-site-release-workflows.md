@@ -258,7 +258,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 
 ## 3. Execution Plan
 
-- [ ] p1-1 [Release Prerequisites] 建立无 secret-value 的 external wiring verifier/runbook，
+- [x] p1-1 [Release Prerequisites] 建立无 secret-value 的 external wiring verifier/runbook，
   能验证 immutable releases、scoped Actions permissions/repository rules、Cloudflare
   environment secret names 和 Worker identity；缺失时 typed report，且不阻塞后续
   repo implementation，真实配置只在 p5-1 production acceptance 前强制通过。
@@ -352,10 +352,22 @@ Pass/fail：
   发布链路先讨论后实现。
 - 2026-07-24T11:15:19+08:00 S0028 activated after execution-readiness review；no
   implementation item started。
+- 2026-07-24T11:18:00+08:00 p1-1 started：implement read-only typed verification for
+  GitHub release/environment wiring and the fixed Cloudflare Worker identity。
+- 2026-07-24T11:19:04+08:00 p1-1 completed：added the read-only GitHub configuration
+  verifier and operator runbook；the live probe reports current missing prerequisites without
+  blocking repository implementation or reading secret values。
 
 ## 6. Validation Evidence (append-only)
 
 - （待执行）
+- TC-1 | stack: python | command: `python3 -m unittest -v
+  tests.test_s0028_release_prerequisites` | result: pass | note: configured and missing snapshots
+  return typed non-mutating facts；`--require-ready` gates only the production acceptance mode。
+- TC-1 | stack: other | command: `python3 packaging/release-prerequisites.py --repo
+  cauu/ouro-ops` | result: pass | note: live read-only probe reported immutable releases and the
+  production environment/secrets as missing；Actions/rules were readable and Worker identity was
+  `ouro-ops-site`；no secret value was read。
 
 ## 7. Change Requests (append-only)
 
