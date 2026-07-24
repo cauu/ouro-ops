@@ -94,7 +94,13 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert install_bootstrap(html) == (
         ROOT / "packaging" / "install-bootstrap.sh"
     ).read_text(encoding="utf-8")
-    assert sum(bool(line.strip()) for line in install_bootstrap(html).splitlines()) <= 20
+    assert sum(bool(line.strip()) for line in install_bootstrap(html).splitlines()) == 1
+    assert "bash -o pipefail -c" in install_bootstrap(html)
+    assert "gh release download -R cauu/ouro-ops -p ouro-install.sh -O -" in install_bootstrap(
+        html
+    )
+    assert "verify-asset" not in install_bootstrap(html)
+    assert "attestation verify" not in install_bootstrap(html)
     assert "skill.content.trimEnd()" in html
     assert "BEGIN OURO-SKILL.MD" in html
     assert "END OURO-SKILL.MD" in html
@@ -112,6 +118,7 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "${skill.requires_contract}" in html
     assert 'id="copy-setup"' in html
     assert "clip(INSTALL_BOOTSTRAP)" in html
+    assert "run the installer from the latest immutable GitHub Release" in html
     assert "const VERIFIED_REINSTALL" not in html
     assert "class=\"os-tab" not in html
     assert "ouro-ops kes airgap-bundle" in html

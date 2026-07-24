@@ -55,8 +55,15 @@ def verify(
     if bootstrap != install_bootstrap.read_text(encoding="utf-8"):
         raise ValueError("production install bootstrap differs from canonical source")
     bootstrap_lines = sum(bool(line.strip()) for line in bootstrap.splitlines())
-    if bootstrap_lines > 20:
-        raise ValueError("production install bootstrap is not lightweight")
+    if bootstrap_lines != 1:
+        raise ValueError("production install bootstrap is not exactly one command")
+    if (
+        "bash -o pipefail -c" not in bootstrap
+        or "gh release download -R cauu/ouro-ops -p ouro-install.sh -O -" not in bootstrap
+    ):
+        raise ValueError("production install bootstrap is not the direct Release command")
+    if "verify-asset" in bootstrap or "attestation verify" in bootstrap:
+        raise ValueError("production install bootstrap retains obsolete local installer verification")
     if json.dumps(installer_source.read_text(encoding="utf-8"), ensure_ascii=False) in html:
         raise ValueError("production HTML embeds the complete installer")
     if 'id="copy-setup"' not in html or "clip(INSTALL_BOOTSTRAP)" not in html:

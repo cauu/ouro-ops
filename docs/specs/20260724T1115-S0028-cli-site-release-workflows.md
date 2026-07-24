@@ -292,6 +292,11 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
   immutable GitHub Release 的 checksum-bound、attested asset 发布；Production Site
   只呈现并允许复制一段固定 tag、验证 installer asset 后执行的短 bootstrap，不再
   内嵌或复制完整安装实现。
+- [~] p5-1-fix4 [Single-command Installer] 将 Production Site 的安装入口收敛为直接
+  从 latest GitHub Release 下载并执行 `ouro-install.sh` 的单行命令；明确该 installer
+  由 GitHub HTTPS、repository 与 immutable Release 作为 bootstrap 信任根，不再宣称
+  installer 在本机执行前自验证，同时保留 installer 对 CLI archive 的 checksum、
+  Release identity 与 fixed-workflow attestation 验证。
 
 ### Item → TC Mapping
 
@@ -308,6 +313,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 | p5-1-fix1 | TC-11 |
 | p5-1-fix2 | TC-12 |
 | p5-1-fix3 | TC-13 |
+| p5-1-fix4 | TC-14 |
 
 ## 4. Test And Acceptance Criteria
 
@@ -363,6 +369,14 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
   对应 installer asset/provenance，再以该 tag 执行。Production HTML 不包含完整
   installer，latest Release 尚无 installer asset 时 Site 在 Cloudflare 零写入处失败；
   发布含 installer 的新 patch 后自动 Site deploy 与独立 production smoke 通过。
+- TC-14：网站安装入口只显示并复制一条 canonical shell command；该命令从
+  `cauu/ouro-ops` latest Release 将唯一 `ouro-install.sh` asset 输出到 shell，且下载
+  失败通过 pipeline failure 向用户返回非零状态。页面与发布文档准确说明 installer
+  bootstrap 信任 GitHub HTTPS/repository/immutable Release，不声称执行前本机验证；
+  Production HTML 仍不内嵌完整 installer。`ouro-install.sh` 对 CLI archive 的
+  checksum、Release identity、fixed-workflow attestation、版本单调性和 atomic install
+  验证保持不变；Site release-asset gate、copy action、本地完整回归、自动 production
+  deploy 与独立 production smoke 全部通过。
 
 Pass/fail：
 
@@ -483,6 +497,15 @@ Pass/fail：
   checksum-bound and attested the canonical installer with the four controls，then automatic Site
   run `30083914244` verified that asset before deploying Cloudflare version
   `37bf802e-d6cb-44fd-b6cc-d5ba94c3fb91` and passing production smoke。
+- 2026-07-24T18:10:00+08:00 p5-1-fix4 started：operator accepted the simpler
+  bootstrap trust boundary。The Site will copy one command that executes the installer asset
+  directly from the latest immutable GitHub Release；local pre-execution verification of the
+  installer is removed，while the installer keeps verifying the CLI payload before any install。
+- 2026-07-24T21:25:00+08:00 p5-1-fix4 implementation checkpoint：canonical Site
+  bootstrap is one `bash -o pipefail` command；download failure is a non-zero no-write result，
+  all four localized descriptions and release docs state the direct-execution trust boundary，
+  and production verification requires the exact command。Commit/push the in-progress item so
+  current-main automatic Cloudflare deployment can provide the remaining TC-14 evidence。
 
 ## 6. Validation Evidence (append-only)
 
@@ -619,6 +642,16 @@ Pass/fail：
   cauu/ouro-ops/.github/workflows/release-publish.yml` and `cmp` against repository source |
   result: pass | note: independent download matched the canonical source and checksum exactly；
   immutable Release identity and fixed-workflow provenance both verified。
+- TC-14 | stack: python | command: `python3 tests/test_s0028_verified_reinstall.py &&
+  python3 -m pytest -q tests/test_web_generator.py && python3
+  tests/test_s0028_production_site.py && python3 tests/test_release_surfaces.py && python3
+  tests/test_s0028_site_workflow.py` | result: pass | note: canonical bootstrap has exactly one
+  direct Release command；`pipefail` converts a simulated download failure into non-zero with no
+  install，copy/source fidelity and the explicit trust-boundary copy pass，full installer remains
+  outside HTML and still verifies the CLI archive。
+- TC-14 | stack: other | command: `make python-test && cargo test --locked -q && git diff
+  --check` | result: pass | note: complete maintained integration coverage and all 183 locked Rust
+  tests pass with the single-command installer boundary。
 
 ## 7. Change Requests (append-only)
 
@@ -643,3 +676,7 @@ Pass/fail：
 - 2026-07-24T17:30:57+08:00 operator rejected copying the complete 169-line installer
   from the website as too heavy；accepted publishing canonical `ouro-install.sh` beside the CLI
   assets and keeping only a copyable verified bootstrap on the Site。
+- 2026-07-24T18:10:00+08:00 operator accepted replacing the verified multi-line
+  bootstrap with a direct single-command installer invocation。The explicit trust boundary is
+  GitHub HTTPS plus the canonical repository and immutable Release；this simplicity trade-off
+  removes only installer self-bootstrap verification，not CLI archive verification。

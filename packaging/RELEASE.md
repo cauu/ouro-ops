@@ -39,13 +39,14 @@ second bump. Any mismatched partial state is blocked for operator diagnosis.
 
 First install and update use the same `packaging/ouro-install.sh`, published in every immutable
 GitHub Release beside the CLI archives. The production Site renders the short bootstrap from
-`packaging/install-bootstrap.sh`; users copy it into their control-machine terminal. The bootstrap
-fixes the latest stable tag once, downloads `ouro-install.sh`, verifies its immutable Release
-identity and fixed-workflow attestation, and only then executes it with the fixed tag. No mutable
-branch or `curl | sh` is an installation source.
+`packaging/install-bootstrap.sh`; users copy its single command into their control-machine
+terminal. The command downloads `ouro-install.sh` from the latest Release and executes it directly.
+The installer bootstrap therefore trusts GitHub HTTPS, the canonical `cauu/ouro-ops` repository,
+and its immutable Release; it is not locally verified before execution. No mutable branch is an
+installation source.
 
-The flow requires GitHub CLI, resolves the latest stable tag, verifies immutable release and asset
-identity, verifies the archive attestation against
+The installer requires GitHub CLI, resolves the latest stable tag, verifies immutable release and
+CLI archive identity, verifies the archive attestation against
 `cauu/ouro-ops/.github/workflows/release-publish.yml`, checks `SHA256SUMS`, checks the one-binary
 archive shape, and executes the candidate's version/contract checks before any install write.
 

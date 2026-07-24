@@ -64,11 +64,18 @@ if log:
 if args[:2] == ["release", "view"]:
     print(os.environ.get("GH_TEST_TAG", "v0.1.1"))
 elif args[:2] == ["release", "download"]:
-    target = pathlib.Path(args[args.index("--dir") + 1])
     fixture = pathlib.Path(os.environ["GH_TEST_FIXTURE"])
-    patterns = [args[i + 1] for i, value in enumerate(args) if value == "--pattern"]
-    for pattern in patterns:
-        shutil.copy2(fixture / pattern, target / pattern)
+    patterns = [
+        args[i + 1] for i, value in enumerate(args) if value in ("--pattern", "-p")
+    ]
+    if os.environ.get("GH_TEST_FAIL_DOWNLOAD"):
+        raise SystemExit(1)
+    if "-O" in args and args[args.index("-O") + 1] == "-":
+        sys.stdout.buffer.write((fixture / patterns[0]).read_bytes())
+    else:
+        target = pathlib.Path(args[args.index("--dir") + 1])
+        for pattern in patterns:
+            shutil.copy2(fixture / pattern, target / pattern)
 elif args[:2] in (["release", "verify"], ["release", "verify-asset"]):
     if os.environ.get("GH_TEST_FAIL_VERIFY"):
         raise SystemExit(1)
@@ -156,7 +163,10 @@ def main():
         assert completed.returncode == 0, completed
         assert (home / ".local" / "bin" / "ouro-ops").is_file()
         log = (home / "gh.log").read_text()
-        assert "release download v0.1.1" in log and "ouro-install.sh" in log
+        assert (
+            "release download -R cauu/ouro-ops -p ouro-install.sh -O -" in log
+        )
+        assert "release download v0.1.1" in log
         assert "release verify-asset v0.1.1" in log
         assert (
             "attestation verify" in log
@@ -164,7 +174,7 @@ def main():
             in log
         )
 
-        home = root / "bootstrap-refusal"
+        home = root / "bootstrap-download-refusal"
         home.mkdir()
         refused = run(
             home,
@@ -173,7 +183,7 @@ def main():
             "Linux",
             "x86_64",
             entry=BOOTSTRAP,
-            GH_TEST_FAIL_VERIFY="1",
+            GH_TEST_FAIL_DOWNLOAD="1",
         )
         assert refused.returncode != 0
         assert not (home / ".local").exists()
@@ -258,6 +268,11 @@ def main():
         assert not removed.exists(), removed
     for placeholder in ("release@ouro.example", "RWQPLACEHOLDER", "ouro/tap", "@ouro/ops"):
         assert placeholder not in live, placeholder
+    assert (
+        BOOTSTRAP.read_text()
+        == "bash -o pipefail -c 'gh release download -R cauu/ouro-ops "
+        "-p ouro-install.sh -O - | sh'\n"
+    )
     print("S0028 verified reinstall and legacy distribution removal passed")
 
 

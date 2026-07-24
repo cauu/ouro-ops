@@ -431,12 +431,12 @@
       <span class="step-dot">1</span>
       <div>
         <h2 id="s1-h" data-i18n="s1.title">Install or update the CLI</h2>
-        <p class="sub" data-i18n="s1.sub">Copy one short command to verify the immutable installer and install or update the CLI.</p>
+        <p class="sub" data-i18n="s1.sub">Copy one command to run the installer from the latest immutable GitHub Release.</p>
       </div>
     </div>
     <div class="setup-row">
       <div class="install-bar">
-        <code id="setup-out">Loading verified reinstall commands…</code>
+        <code id="setup-out">Loading install command…</code>
         <button type="button" class="btn btn-oncolor" id="copy-setup" data-i18n="btn.copy">Copy</button>
       </div>
     </div>
@@ -770,7 +770,7 @@ const I18N = {
     "trust1.t":"Zero upload","trust1.b":"Generated locally on a CSP-locked static page with network access disabled.",
     "trust2.t":"Complete procedures","trust2.b":"The copied prompt includes the complete canonical Skill; the CLI checks compatibility and constrains typed execution.",
     "trust3.t":"Gated writes","trust3.b":"Every change goes through a typed <code>ouro-ops</code> command, with human confirmation at the operation's declared boundary.",
-    "s1.title":"Install or update the CLI","s1.sub":"Copy one short command to verify the immutable installer and install or update the CLI.",
+    "s1.title":"Install or update the CLI","s1.sub":"Copy one command to run the installer from the latest immutable GitHub Release.",
     "s2.title":"Pick an operation","s2.sub":"The form asks only for what that operation needs, generates everything locally, and gives you one prompt to paste into your agent.",
     "op.upgrade.small":"Upgrade to signed recommended release",
     "op.deploy.small":"Deploy a fresh BP + Relay Fleet",
@@ -811,7 +811,7 @@ const I18N = {
     "trust1.t":"零上传","trust1.b":"纯静态页面,所有内容都在本地生成,CSP 禁止页面联网。",
     "trust2.t":"完整流程","trust2.b":"复制的 prompt 包含完整 canonical Skill；CLI 负责兼容性检查和类型化执行约束。",
     "trust3.t":"写操作有闸门","trust3.b":"所有变更都通过类型化 <code>ouro-ops</code> 命令执行，并在该操作声明的边界由用户确认。",
-    "s1.title":"安装或更新 CLI","s1.sub":"复制一段短命令，验证不可变安装器后安装或更新 CLI。",
+    "s1.title":"安装或更新 CLI","s1.sub":"复制一条命令，直接运行 latest immutable GitHub Release 中的安装器。",
     "s2.title":"选择操作","s2.sub":"表单只问这个操作用得到的字段,全部本地生成,最后给你一段直接粘给 agent 的 prompt。",
     "op.upgrade.small":"直升签名推荐版本",
     "op.deploy.small":"部署全新的 BP + Relay Fleet",
@@ -852,7 +852,7 @@ const I18N = {
     "trust1.t":"零上傳","trust1.b":"純靜態頁面,所有內容都在本地產生——唯一的連線動作,是查一次 cardano-node 的最新版本號。",
     "trust2.t":"完整流程","trust2.b":"複製的 prompt 包含完整 canonical Skill；CLI 負責相容性檢查和型別化執行約束。",
     "trust3.t":"寫入有閘門","trust3.b":"所有變更都透過型別化 <code>ouro-ops</code> 命令執行，並在該操作聲明的邊界由使用者確認。",
-    "s1.title":"安裝或更新 CLI","s1.sub":"複製一段短命令，驗證不可變安裝器後安裝或更新 CLI。",
+    "s1.title":"安裝或更新 CLI","s1.sub":"複製一條命令，直接執行 latest immutable GitHub Release 中的安裝器。",
     "s2.title":"選擇操作","s2.sub":"表單只問這個操作用得到的欄位,全部本地產生,最後給你一段直接貼給 agent 的 prompt。",
     "op.upgrade.small":"直升簽署推薦版本",
     "op.deploy.small":"部署全新的 BP + Relay Fleet",
@@ -893,7 +893,7 @@ const I18N = {
     "trust1.t":"アップロードなし","trust1.b":"完全な静的ページで、生成はすべてローカル。外部通信は cardano-node の最新バージョン確認、その一回だけです。",
     "trust2.t":"完全な手順","trust2.b":"コピーする prompt には canonical Skill 全文が含まれ、CLI は互換性確認と型付き実行を担当します。",
     "trust3.t":"書き込みにはゲート","trust3.b":"変更はすべて型付き <code>ouro-ops</code> コマンドを通り、操作が定めた境界でユーザーが確認します。",
-    "s1.title":"CLI をインストールまたは更新","s1.sub":"短いコマンドをコピーし、変更不可のインストーラーを検証してから CLI をインストールまたは更新します。",
+    "s1.title":"CLI をインストールまたは更新","s1.sub":"コマンドをコピーして、最新の immutable GitHub Release にあるインストーラーを直接実行します。",
     "s2.title":"操作を選ぶ","s2.sub":"フォームで聞くのはその操作に必要な項目だけ。すべてローカルで生成し、エージェントに貼る prompt をひとつ出力します。",
     "op.upgrade.small":"署名済み推奨版へ直接アップグレード",
     "op.deploy.small":"新しい BP + Relay Fleet をデプロイ",
@@ -1015,7 +1015,7 @@ $("om-back").addEventListener("click",()=>goStep(1));
 $("om-close").addEventListener("click",()=>opModal.close());
 opModal.addEventListener("click",(e)=>{ if(e.target===opModal) opModal.close(); }); // click backdrop to close
 
-// One verified bootstrap works on every supported control platform; copy is explicit and local.
+// One direct installer command works on every supported control platform; copy is explicit and local.
 $("setup-out").textContent = INSTALL_BOOTSTRAP;
 $("copy-setup").addEventListener("click",async()=>{ await clip(INSTALL_BOOTSTRAP);
   const b=$("copy-setup"); b.textContent=tr("copied");

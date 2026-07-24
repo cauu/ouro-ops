@@ -11,10 +11,12 @@ or frontend-runtime dependency.
 ```
 
 The tracked `web/onboarding/index.html` is the template. The generated
-`web/onboarding/dist/index.html` injects the six canonical Skills and the exact copyable short
-bootstrap from `packaging/install-bootstrap.sh`. The complete `packaging/ouro-install.sh` is an
-attested immutable GitHub Release asset and is not embedded in the page. The repository
-`.gitignore` excludes `dist/`.
+`web/onboarding/dist/index.html` injects the six canonical Skills and the exact copyable
+single-command bootstrap from `packaging/install-bootstrap.sh`. That command directly executes
+`packaging/ouro-install.sh` from the latest immutable GitHub Release, trusting GitHub HTTPS, the
+canonical repository, and the immutable Release for the installer bootstrap. The complete
+installer is not embedded in the page; it still verifies the CLI archive before installation. The
+repository `.gitignore` excludes `dist/`.
 
 ## CI/CD
 

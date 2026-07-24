@@ -46,6 +46,8 @@ def main() -> None:
     assert "GitHub Releases in `cauu/ouro-ops` are the only supported CLI distribution channel" in joined
     assert "packaging/ouro-install.sh" in joined
     assert "packaging/install-bootstrap.sh" in joined
+    assert "it is not locally verified before execution" in joined
+    assert "verifies the CLI archive before installation" in joined
     assert "self-update" not in joined
     assert "release@ouro.example" not in joined
     assert "RWQPLACEHOLDER" not in joined
