@@ -285,7 +285,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 - [x] p5-1-fix1 [Production Workflow Hardening] 修复真实验收发现的 runner PATH/PEP 668
   CI portability、immutable release attestation 传播延迟和 deploy 后缺少自动 production
   smoke，保持 p5-1 直到一次新的单 dispatch 全自动贯通才完成。
-- [~] p5-1-fix2 [L2 Distribution Follow-up] 让隔离 venv 使用 canonical
+- [x] p5-1-fix2 [L2 Distribution Follow-up] 让隔离 venv 使用 canonical
   `requirements-dev.txt`，并保留 Rocky 9 已安装的 `curl-minimal`，消除真实 matrix
   暴露的 pytest 缺失和 curl 包冲突。
 
@@ -447,6 +447,9 @@ Pass/fail：
   pass after adding Node；the shared Rust failure is the CLI control-key test's real
   `ssh-keygen` dependency。Declare `openssh-client` on apt images and `openssh-clients` on Rocky，
   then require one final three-distribution matrix。
+- 2026-07-24T16:06:41+08:00 p5-1-fix2 completed：the final main matrix
+  `30077503263` passed Ubuntu 24.04，Debian 12 and Rocky 9 end to end；each image installed
+  the declared Python/Node/SSH runtime and completed the full L2 suite。
 
 ## 6. Validation Evidence (append-only)
 
@@ -525,6 +528,12 @@ Pass/fail：
   page returned HTTP success，network-denying CSP，canonical GitHub link，six byte-exact Skills and
   the byte-exact verified installer，with no repo-local candidate；this diagnostic deployment is not
   used as TC-10's automatic baseline。
+- TC-12 | stack: python | command: `python3 tests/test_s0028_l2_workflow.py` | result:
+  pass | note: the workflow uses the canonical dev-requirements file，preserves Rocky
+  `curl-minimal`，and declares Node plus distro-correct SSH client packages。
+- TC-12 | stack: other | command: GitHub Actions run `30077503263` | result: pass |
+  note: Ubuntu 24.04，Debian 12 and Rocky 9 each passed dependency installation and the complete
+  L2 integration suite on main commit `1659066215e1d3ff4141b8c7af433e67ff3e2d08`。
 
 ## 7. Change Requests (append-only)
 
