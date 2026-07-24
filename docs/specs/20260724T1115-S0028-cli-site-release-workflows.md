@@ -288,7 +288,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 - [x] p5-1-fix2 [L2 Distribution Follow-up] 让隔离 venv 使用 canonical
   `requirements-dev.txt`，并保留 Rocky 9 已安装的 `curl-minimal`，消除真实 matrix
   暴露的 pytest 缺失和 curl 包冲突。
-- [~] p5-1-fix3 [Lightweight Verified Installer] 将完整 `ouro-install.sh` 作为每个
+- [x] p5-1-fix3 [Lightweight Verified Installer] 将完整 `ouro-install.sh` 作为每个
   immutable GitHub Release 的 checksum-bound、attested asset 发布；Production Site
   只呈现并允许复制一段固定 tag、验证 installer asset 后执行的短 bootstrap，不再
   内嵌或复制完整安装实现。
@@ -476,6 +476,13 @@ Pass/fail：
   bootstrap with an explicit copy action and refuses Cloudflare writes until the latest Release has
   a verified installer asset。Commit/push the in-progress item so a new patch Release can provide
   the mandatory production evidence before completion。
+- 2026-07-24T17:51:58+08:00 p5-1-fix3 completed：pre-release Site run
+  `30083505477` validated the page but refused before the Cloudflare action because immutable
+  `v0.1.2` lacked `ouro-install.sh`。One patch dispatch prepared
+  `v0.1.3@f3ba7b5c17df663202bb6097a408bfc8a9b83edf`；publish run `30083597107`
+  checksum-bound and attested the canonical installer with the four controls，then automatic Site
+  run `30083914244` verified that asset before deploying Cloudflare version
+  `37bf802e-d6cb-44fd-b6cc-d5ba94c3fb91` and passing production smoke。
 
 ## 6. Validation Evidence (append-only)
 
@@ -594,6 +601,24 @@ Pass/fail：
   release fixtures require and tamper-test the fifth `ouro-install.sh` checksum subject，bootstrap
   fixtures prove verification precedes execution/refusal is write-free，and Site source tests bind
   the copy action to the exact 16-line canonical bootstrap while excluding the complete installer。
+- TC-13 | stack: other | command: GitHub Actions runs `30083505477`，`30083559168` and
+  `30083597107` | result: pass | note: the v0.1.2 pre-release Site attempt stopped at the installer
+  gate with Cloudflare deploy skipped；one patch preparation then published immutable
+  `v0.1.3@f3ba7b5c17df663202bb6097a408bfc8a9b83edf` with canonical installer digest
+  `2c0e0f96fe7caceb5fb0f8b93a0f818153b866db143bbfa1ee79cc920d23030a` in
+  `SHA256SUMS` and the fixed release-publish attestation。
+- TC-13 | stack: ui | command: automatic Site run `30083914244` and `python3
+  packaging/verify-production-site.py --url
+  https://ouro-ops-site.martincauu.workers.dev` | result: pass | note: the release-triggered run
+  verified `ouro-install.sh` before Cloudflare，deployed version
+  `37bf802e-d6cb-44fd-b6cc-d5ba94c3fb91`，and both automatic and independent smoke observed the
+  exact 16-line bootstrap，a bound copy action，no embedded full installer，six canonical Skills
+  and 141308 production HTML bytes。
+- TC-13 | stack: other | command: `gh release verify v0.1.3`，`gh release verify-asset
+  v0.1.3 ouro-install.sh`，`gh attestation verify ouro-install.sh --signer-workflow
+  cauu/ouro-ops/.github/workflows/release-publish.yml` and `cmp` against repository source |
+  result: pass | note: independent download matched the canonical source and checksum exactly；
+  immutable Release identity and fixed-workflow provenance both verified。
 
 ## 7. Change Requests (append-only)
 
