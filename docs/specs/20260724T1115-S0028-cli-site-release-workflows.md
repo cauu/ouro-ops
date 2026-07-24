@@ -539,6 +539,15 @@ Pass/fail：
   no superseded host remains，and desktop/mobile layout plus complete local regressions pass。
   Commit/push the in-progress item so current-main automatic Cloudflare deployment can provide
   the remaining TC-15 production evidence。
+- 2026-07-24T21:41:00+08:00 p5-1-fix5 production finding：Site run `30097757871`
+  validated and deployed Cloudflare，but its immediate smoke read the previous edge version and
+  reported the new copyright missing；an independent production verification seconds later passed
+  with the exact new 141533-byte page。Harden the post-deploy smoke with six bounded attempts at
+  five-second intervals；final non-convergence remains a failure。
+- 2026-07-24T21:43:00+08:00 p5-1-fix5 propagation checkpoint：post-deploy smoke now
+  retries only the exact production verifier up to six times with five-second intervals；workflow
+  source contract，local production smoke and diff checks pass。Commit/push this in-progress
+  repair to collect one clean automatic production run。
 
 ## 6. Validation Evidence (append-only)
 
@@ -701,6 +710,15 @@ Pass/fail：
   python3 tests/test_skill_docs.py && make python-test && git diff --check` | result: pass | note:
   exact copyright/text/link targets，safe external-link attributes，focus/mobile styles and no
   superseded host are enforced；complete maintained Site/Skill/release/integration coverage passes。
+- TC-15 | stack: ui | command: automatic GitHub Actions Site run `30097757871` followed
+  by independent `python3 packaging/verify-production-site.py --url
+  https://ouro-ops-site.martincauu.workers.dev` | result: fail | note: Cloudflare deploy succeeded，
+  immediate smoke observed the previous edge version without the copyright，then independent
+  verification observed the correct 141533-byte page；bounded propagation retry was missing。
+- TC-15 | stack: python | command: `python3 tests/test_s0028_site_workflow.py &&
+  python3 tests/test_s0028_production_site.py && git diff --check` | result: pass | note: workflow
+  enforces six bounded five-second post-deploy attempts，final failure remains non-zero，and the
+  exact local production form passes。
 
 ## 7. Change Requests (append-only)
 

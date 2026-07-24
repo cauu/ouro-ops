@@ -101,4 +101,16 @@ jobs:
       - name: Smoke deployed production site
         env:
           PRODUCTION_URL: ${{ steps.deploy.outputs.deployment-url }}
-        run: python3 packaging/verify-production-site.py --url "$PRODUCTION_URL"
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            if python3 packaging/verify-production-site.py --url "$PRODUCTION_URL"; then
+              exit 0
+            fi
+            if [[ "$attempt" == 6 ]]; then
+              echo "Production Site did not converge after $attempt attempts" >&2
+              exit 1
+            fi
+            echo "Production Site has not converged yet (attempt $attempt/6); retrying"
+            sleep 5
+          done
