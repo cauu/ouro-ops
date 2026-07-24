@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import pathlib
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -43,6 +44,7 @@ def fixtures(directory, runner_digest="a" * 64):
                 }
             )
         )
+    shutil.copy2(ROOT / "packaging" / "ouro-install.sh", directory / "ouro-install.sh")
 
 
 def run(directory):
@@ -69,13 +71,20 @@ def main():
         accepted = run(directory)
         assert accepted.returncode == 0, accepted
         checksums = (directory / "SHA256SUMS").read_text().splitlines()
-        assert len(checksums) == 4
+        assert len(checksums) == 5
         assert [line.split("  ", 1)[1] for line in checksums] == [
             f"ouro-ops-v0.1.1-{target}.tar.gz" for target in TARGETS
-        ]
+        ] + ["ouro-install.sh"]
 
         archive = directory / "ouro-ops-v0.1.1-x86_64-unknown-linux-musl.tar.gz"
         archive.write_bytes(archive.read_bytes() + b"tampered")
+        assert run(directory).returncode != 0
+
+    with tempfile.TemporaryDirectory() as tmp:
+        directory = pathlib.Path(tmp)
+        fixtures(directory)
+        installer = directory / "ouro-install.sh"
+        installer.write_bytes(installer.read_bytes() + b"\n# tampered\n")
         assert run(directory).returncode != 0
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -99,7 +108,9 @@ def main():
         "OURO_EMBED_LINUX_X86_64_RUNNER",
         "actions/attest@v4",
         "subject-checksums: release/SHA256SUMS",
+        "install -m 0755 packaging/ouro-install.sh release/ouro-install.sh",
         'gh release create "$TAG"',
+        "release/ouro-install.sh",
         'gh release verify "$TAG"',
         'for attempt in 1 2 3 4 5 6 7 8 9 10 11 12',
         'test "$verified" = true',

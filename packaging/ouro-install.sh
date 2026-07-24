@@ -1,6 +1,6 @@
 #!/bin/sh
-# Canonical command source rendered by the Ouro Site for both first install and update.
-# Users copy these commands from the Site. This file is not a separately published installer.
+# Canonical first-install/update implementation published as the ouro-install.sh Release asset.
+# The Site bootstrap fixes and verifies the immutable Release asset before executing this script.
 set -eu
 
 REPO=cauu/ouro-ops
@@ -32,8 +32,11 @@ case "$(uname -s)/$(uname -m)" in
   *) fail "unsupported control platform $(uname -s)/$(uname -m)" ;;
 esac
 
-tag=$(gh release view --repo "$REPO" --json tagName --jq .tagName) ||
-  fail "cannot resolve the latest stable release"
+tag=${OURO_RELEASE_TAG:-}
+if [ -z "$tag" ]; then
+  tag=$(gh release view --repo "$REPO" --json tagName --jq .tagName) ||
+    fail "cannot resolve the latest stable release"
+fi
 case "$tag" in
   v[0-9]*.[0-9]*.[0-9]*) ;;
   *) fail "latest release tag is not stable SemVer: $tag" ;;
@@ -44,7 +47,7 @@ printf '%s\n' "$version" |
   fail "latest release version is not canonical stable SemVer: $version"
 
 archive=ouro-ops-v${version}-${target}.tar.gz
-work_dir=$(mktemp -d "${TMPDIR:-/tmp}/ouro-verified-reinstall.XXXXXXXXXX")
+work_dir=$(mktemp -d "${TMPDIR:-/tmp}/ouro-install.XXXXXXXXXX")
 download_dir=$work_dir/download
 extract_dir=$work_dir/extract
 mkdir -p "$download_dir" "$extract_dir"

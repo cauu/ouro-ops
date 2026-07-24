@@ -5,7 +5,8 @@ on:
   pull_request:
     paths:
       - "ouro-skills/**"
-      - "packaging/verified-reinstall.sh"
+      - "packaging/install-bootstrap.sh"
+      - "packaging/ouro-install.sh"
       - "packaging/check-site-cli-floor.py"
       - "packaging/verify-production-site.py"
       - "web/onboarding/**"
@@ -20,7 +21,8 @@ on:
       - main
     paths:
       - "ouro-skills/**"
-      - "packaging/verified-reinstall.sh"
+      - "packaging/install-bootstrap.sh"
+      - "packaging/ouro-install.sh"
       - "packaging/check-site-cli-floor.py"
       - "packaging/verify-production-site.py"
       - "web/onboarding/**"
@@ -78,6 +80,14 @@ jobs:
         run: |
           set -euo pipefail
           released=$(gh release view --repo cauu/ouro-ops --json tagName --jq .tagName)
+          evidence=$(mktemp -d "${RUNNER_TEMP}/ouro-installer.XXXXXXXXXX")
+          trap 'rm -rf -- "$evidence"' EXIT
+          gh release download "$released" --repo cauu/ouro-ops \
+            --pattern ouro-install.sh --dir "$evidence"
+          gh release verify-asset "$released" "$evidence/ouro-install.sh" \
+            --repo cauu/ouro-ops
+          gh attestation verify "$evidence/ouro-install.sh" --repo cauu/ouro-ops \
+            --signer-workflow cauu/ouro-ops/.github/workflows/release-publish.yml >/dev/null
           python3 packaging/check-site-cli-floor.py --released "$released"
       - name: Deploy fixed assets-only Worker
         id: deploy

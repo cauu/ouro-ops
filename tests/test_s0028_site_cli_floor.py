@@ -50,8 +50,10 @@ def main():
 
     site = (ROOT / ".github" / "workflows" / "site.yml").read_text()
     floor = site.index("Enforce CLI floor before any Cloudflare write")
+    installer_download = site.index("--pattern ouro-install.sh")
+    installer_verify = site.index('gh release verify-asset "$released"')
     cloudflare = site.index("cloudflare/wrangler-action@v3")
-    assert floor < cloudflare
+    assert floor < installer_download < installer_verify < cloudflare
     assert 'gh release view --repo cauu/ouro-ops' in site
     publish = (ROOT / ".github" / "workflows" / "release-publish.yml").read_text()
     release = publish.index('gh release create "$TAG"')

@@ -7,11 +7,13 @@ release contains:
 - `ouro-ops-vX.Y.Z-aarch64-unknown-linux-musl.tar.gz`
 - `ouro-ops-vX.Y.Z-x86_64-apple-darwin.tar.gz`
 - `ouro-ops-vX.Y.Z-aarch64-apple-darwin.tar.gz`
+- `ouro-install.sh`
 - `SHA256SUMS`
 
 Each archive contains exactly one `ouro-ops`. All four controls embed the same static
 Linux/x86_64 target runner. GitHub immutable releases bind the assets to the tag, and the
-`release-publish.yml` workflow creates GitHub artifact attestations for all four archives.
+`release-publish.yml` workflow creates GitHub artifact attestations for all four archives and the
+canonical installer.
 
 The operator SSH credential is **NOT mechanism-isolated from the agent** on a credentialed control
 terminal. Release verification proves CLI artifact identity; it does not turn the surrounding
@@ -35,10 +37,12 @@ second bump. Any mismatched partial state is blocked for operator diagnosis.
 
 ## First Install And Update
 
-First install and update are the same verified reinstall. The production Site renders the exact
-commands from `packaging/verified-reinstall.sh`; users copy those commands into their control
-machine terminal. The command source is not a separately published installer and is never executed
-through `curl | sh`.
+First install and update use the same `packaging/ouro-install.sh`, published in every immutable
+GitHub Release beside the CLI archives. The production Site renders the short bootstrap from
+`packaging/install-bootstrap.sh`; users copy it into their control-machine terminal. The bootstrap
+fixes the latest stable tag once, downloads `ouro-install.sh`, verifies its immutable Release
+identity and fixed-workflow attestation, and only then executes it with the fixed tag. No mutable
+branch or `curl | sh` is an installation source.
 
 The flow requires GitHub CLI, resolves the latest stable tag, verifies immutable release and asset
 identity, verifies the archive attestation against

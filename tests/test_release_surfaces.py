@@ -44,7 +44,8 @@ def main() -> None:
     assert "ouro-ops skill show" not in joined
     assert "ouro-ops tool run" not in joined
     assert "GitHub Releases in `cauu/ouro-ops` are the only supported CLI distribution channel" in joined
-    assert "packaging/verified-reinstall.sh" in joined
+    assert "packaging/ouro-install.sh" in joined
+    assert "packaging/install-bootstrap.sh" in joined
     assert "self-update" not in joined
     assert "release@ouro.example" not in joined
     assert "RWQPLACEHOLDER" not in joined
@@ -58,7 +59,7 @@ def main() -> None:
     assert "release-paired ephemeral Linux runner" in page
     assert "$HOME/.local/bin/ouro-ops" in page
     assert "./target/release-candidate-control/release/ouro-ops" not in page
-    assert "__OURO_VERIFIED_REINSTALL_JSON__" in page
+    assert "__OURO_INSTALL_BOOTSTRAP_JSON__" in page
     assert "Do not invoke or fall back to another ouro-ops on PATH" in page
     assert "brew install ouro/tap/ouro" not in page
     assert "ouro.example/install.sh" not in page

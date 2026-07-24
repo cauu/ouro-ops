@@ -27,6 +27,10 @@ def main():
         "id: deploy",
         "steps.deploy.outputs.deployment-url",
         "packaging/verify-production-site.py --url",
+        "--pattern ouro-install.sh",
+        'gh release verify-asset "$released" "$evidence/ouro-install.sh"',
+        'gh attestation verify "$evidence/ouro-install.sh"',
+        "--signer-workflow cauu/ouro-ops/.github/workflows/release-publish.yml",
     ):
         assert required in workflow, required
     for forbidden in (

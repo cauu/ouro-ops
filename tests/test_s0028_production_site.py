@@ -29,7 +29,8 @@ def main():
         module.verify(
             html.replace("connect-src 'none'", "connect-src https:"),
             ROOT / "ouro-skills",
-            ROOT / "packaging" / "verified-reinstall.sh",
+            ROOT / "packaging" / "install-bootstrap.sh",
+            ROOT / "packaging" / "ouro-install.sh",
         )
     except ValueError as error:
         assert "CSP" in str(error)

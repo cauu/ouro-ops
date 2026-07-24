@@ -207,15 +207,16 @@ jobs:
           pattern: control-*
           path: release
           merge-multiple: true
-      - name: Verify four controls and generate canonical checksums
+      - name: Verify controls and installer, then generate canonical checksums
         env:
           VERSION: ${{ needs.verify-tag.outputs.version }}
         run: |
           set -euo pipefail
+          install -m 0755 packaging/ouro-install.sh release/ouro-install.sh
           python3 packaging/verify-release-assets.py \
             --dir release --version "$VERSION" --write-checksums
           (cd release && sha256sum --check SHA256SUMS)
-      - name: Attest all four release archives
+      - name: Attest all canonical release assets
         uses: actions/attest@v4
         with:
           subject-checksums: release/SHA256SUMS
@@ -229,6 +230,7 @@ jobs:
           ! gh release view "$TAG" >/dev/null 2>&1
           gh release create "$TAG" \
             release/ouro-ops-v"$VERSION"-*.tar.gz \
+            release/ouro-install.sh \
             release/SHA256SUMS \
             --verify-tag \
             --title "$TAG" \

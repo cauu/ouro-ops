@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and checksum the four canonical S0028 CLI release archives."""
+"""Validate and checksum the canonical CLI archives and installer Release asset."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ TARGETS = (
     "x86_64-apple-darwin",
     "aarch64-apple-darwin",
 )
+INSTALLER_NAME = "ouro-install.sh"
 
 
 def sha256(path: pathlib.Path) -> str:
@@ -70,6 +71,15 @@ def verify(directory: pathlib.Path, version: str) -> list[tuple[str, pathlib.Pat
         checksums.append((sha256(archive), archive))
     if len(runner_digests) != 1:
         raise ValueError(f"control descriptors disagree on runner digest: {runner_digests}")
+    installer = directory / INSTALLER_NAME
+    canonical_installer = pathlib.Path(__file__).with_name(INSTALLER_NAME)
+    if not installer.is_file() or installer.is_symlink():
+        raise ValueError(f"{INSTALLER_NAME} must be a regular file")
+    if installer.read_bytes() != canonical_installer.read_bytes():
+        raise ValueError(f"{INSTALLER_NAME} differs from the canonical repository source")
+    if installer.stat().st_mode & 0o111 == 0:
+        raise ValueError(f"{INSTALLER_NAME} is not executable")
+    checksums.append((sha256(installer), installer))
     return checksums
 
 
@@ -94,6 +104,7 @@ def main() -> int:
                 "status": "ok",
                 "version": args.version,
                 "targets": list(TARGETS),
+                "installer": INSTALLER_NAME,
                 "runner_sha256": json.loads(
                     (args.dir / f"descriptor-{TARGETS[0]}.json").read_text()
                 )["runner_sha256"],

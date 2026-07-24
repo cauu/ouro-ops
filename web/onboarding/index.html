@@ -155,16 +155,13 @@
   .setup-row{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:18px 0 0;padding-left:46px}
   .setup-row .hint{margin:0;max-width:44ch}
   @media (max-width:640px){.setup-row{padding-left:0}}
-  .install-bar{display:flex;align-items:center;gap:10px;height:48px;max-width:100%;overflow-x:auto;
-    background:var(--surface-dark);border-radius:var(--r-md);padding:0 7px 0 9px;
+  .install-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:12px;
+    width:min(100%,800px);background:var(--surface-dark);border-radius:var(--r-md);padding:14px;
     box-shadow:0 8px 24px rgba(34,72,134,.22),inset 0 1px 0 rgba(255,255,255,.12)}
-  .install-bar code{font:500 13px/1 var(--mono);color:#d7e0ea;padding:0 6px;white-space:nowrap}
+  .install-bar code{display:block;max-height:180px;overflow:auto;font:500 12px/1.5 var(--mono);
+    color:#d7e0ea;white-space:pre}
+  .install-bar .btn{align-self:start}
   .go-hint{margin-top:12px;max-width:72ch}
-  .os-tabs{display:inline-flex;gap:2px;background:rgba(255,255,255,.08);border-radius:8px;padding:2px}
-  .os-tab{font:600 12px/1 var(--font);color:rgba(255,255,255,.55);background:transparent;border:0;border-radius:6px;
-    padding:5px 10px;cursor:pointer;transition:color .18s var(--ease),background .18s var(--ease)}
-  .os-tab:hover{color:#fff}
-  .os-tab.active{background:rgba(255,255,255,.16);color:#fff}
 
   /* operation grid */
   .ops{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px}
@@ -434,15 +431,11 @@
       <span class="step-dot">1</span>
       <div>
         <h2 id="s1-h" data-i18n="s1.title">Install or update the CLI</h2>
-        <p class="sub" data-i18n="s1.sub">Verify the immutable GitHub release and install it in your user bin directory.</p>
+        <p class="sub" data-i18n="s1.sub">Copy one short command to verify the immutable installer and install or update the CLI.</p>
       </div>
     </div>
     <div class="setup-row">
       <div class="install-bar">
-        <div class="os-tabs" role="tablist" aria-label="operating system">
-          <button type="button" class="os-tab active" data-os="mac">macOS</button>
-          <button type="button" class="os-tab" data-os="linux">Linux</button>
-        </div>
         <code id="setup-out">Loading verified reinstall commands…</code>
         <button type="button" class="btn btn-oncolor" id="copy-setup" data-i18n="btn.copy">Copy</button>
       </div>
@@ -597,7 +590,7 @@
 document.documentElement.classList.add("js");
 const $ = (id) => document.getElementById(id);
 const SKILL_PAYLOADS = __OURO_PUBLIC_SKILLS_JSON__;
-const VERIFIED_REINSTALL = __OURO_VERIFIED_REINSTALL_JSON__;
+const INSTALL_BOOTSTRAP = __OURO_INSTALL_BOOTSTRAP_JSON__;
 const RE = { host:/^[A-Za-z0-9.\-:]{1,253}$/, seg:/^[a-z0-9-]+$/, hex:/^[0-9a-f]{40,}$/ };
 
 // Per-network constants (authoritative, from the official cardano network config.json).
@@ -765,12 +758,6 @@ yaml(d).trimEnd(),
 `invent a raw SSH/docker/cardano-cli workaround or broaden the requested operation.`,
   ].join("\n") + "\n";
 }
-const SETUP = {
-  mac: VERIFIED_REINSTALL,
-  linux: VERIFIED_REINSTALL,
-};
-let setupOs = "mac";
-
 // ---- i18n: en / zh-Hans / zh-Hant / ja. All client-side; the generated PROMPT stays English
 // (it is a machine-facing interface consumed by the agent and the ouro-ops CLI).
 const I18N = {
@@ -783,7 +770,7 @@ const I18N = {
     "trust1.t":"Zero upload","trust1.b":"Generated locally on a CSP-locked static page with network access disabled.",
     "trust2.t":"Complete procedures","trust2.b":"The copied prompt includes the complete canonical Skill; the CLI checks compatibility and constrains typed execution.",
     "trust3.t":"Gated writes","trust3.b":"Every change goes through a typed <code>ouro-ops</code> command, with human confirmation at the operation's declared boundary.",
-    "s1.title":"Install or update the CLI","s1.sub":"Verify the immutable GitHub release and install it in your user bin directory.",
+    "s1.title":"Install or update the CLI","s1.sub":"Copy one short command to verify the immutable installer and install or update the CLI.",
     "s2.title":"Pick an operation","s2.sub":"The form asks only for what that operation needs, generates everything locally, and gives you one prompt to paste into your agent.",
     "op.upgrade.small":"Upgrade to signed recommended release",
     "op.deploy.small":"Deploy a fresh BP + Relay Fleet",
@@ -824,7 +811,7 @@ const I18N = {
     "trust1.t":"零上传","trust1.b":"纯静态页面,所有内容都在本地生成,CSP 禁止页面联网。",
     "trust2.t":"完整流程","trust2.b":"复制的 prompt 包含完整 canonical Skill；CLI 负责兼容性检查和类型化执行约束。",
     "trust3.t":"写操作有闸门","trust3.b":"所有变更都通过类型化 <code>ouro-ops</code> 命令执行，并在该操作声明的边界由用户确认。",
-    "s1.title":"安装或更新 CLI","s1.sub":"验证不可变 GitHub Release，并安装到你的用户级 bin 目录。",
+    "s1.title":"安装或更新 CLI","s1.sub":"复制一段短命令，验证不可变安装器后安装或更新 CLI。",
     "s2.title":"选择操作","s2.sub":"表单只问这个操作用得到的字段,全部本地生成,最后给你一段直接粘给 agent 的 prompt。",
     "op.upgrade.small":"直升签名推荐版本",
     "op.deploy.small":"部署全新的 BP + Relay Fleet",
@@ -865,7 +852,7 @@ const I18N = {
     "trust1.t":"零上傳","trust1.b":"純靜態頁面,所有內容都在本地產生——唯一的連線動作,是查一次 cardano-node 的最新版本號。",
     "trust2.t":"完整流程","trust2.b":"複製的 prompt 包含完整 canonical Skill；CLI 負責相容性檢查和型別化執行約束。",
     "trust3.t":"寫入有閘門","trust3.b":"所有變更都透過型別化 <code>ouro-ops</code> 命令執行，並在該操作聲明的邊界由使用者確認。",
-    "s1.title":"安裝或更新 CLI","s1.sub":"驗證不可變 GitHub Release，並安裝到你的使用者 bin 目錄。",
+    "s1.title":"安裝或更新 CLI","s1.sub":"複製一段短命令，驗證不可變安裝器後安裝或更新 CLI。",
     "s2.title":"選擇操作","s2.sub":"表單只問這個操作用得到的欄位,全部本地產生,最後給你一段直接貼給 agent 的 prompt。",
     "op.upgrade.small":"直升簽署推薦版本",
     "op.deploy.small":"部署全新的 BP + Relay Fleet",
@@ -906,7 +893,7 @@ const I18N = {
     "trust1.t":"アップロードなし","trust1.b":"完全な静的ページで、生成はすべてローカル。外部通信は cardano-node の最新バージョン確認、その一回だけです。",
     "trust2.t":"完全な手順","trust2.b":"コピーする prompt には canonical Skill 全文が含まれ、CLI は互換性確認と型付き実行を担当します。",
     "trust3.t":"書き込みにはゲート","trust3.b":"変更はすべて型付き <code>ouro-ops</code> コマンドを通り、操作が定めた境界でユーザーが確認します。",
-    "s1.title":"CLI をインストールまたは更新","s1.sub":"変更不可の GitHub Release を検証し、ユーザーの bin ディレクトリへインストールします。",
+    "s1.title":"CLI をインストールまたは更新","s1.sub":"短いコマンドをコピーし、変更不可のインストーラーを検証してから CLI をインストールまたは更新します。",
     "s2.title":"操作を選ぶ","s2.sub":"フォームで聞くのはその操作に必要な項目だけ。すべてローカルで生成し、エージェントに貼る prompt をひとつ出力します。",
     "op.upgrade.small":"署名済み推奨版へ直接アップグレード",
     "op.deploy.small":"新しい BP + Relay Fleet をデプロイ",
@@ -1028,14 +1015,9 @@ $("om-back").addEventListener("click",()=>goStep(1));
 $("om-close").addEventListener("click",()=>opModal.close());
 opModal.addEventListener("click",(e)=>{ if(e.target===opModal) opModal.close(); }); // click backdrop to close
 
-// Hero setup terminal: OS toggle + one-click copy (no user data involved — no disclosure needed).
-$("setup-out").textContent = SETUP[setupOs];
-document.querySelectorAll(".os-tab").forEach((b)=>b.addEventListener("click",()=>{
-  setupOs = b.dataset.os;
-  document.querySelectorAll(".os-tab").forEach((x)=>x.classList.toggle("active", x === b));
-  $("setup-out").textContent = SETUP[setupOs];
-}));
-$("copy-setup").addEventListener("click",async()=>{ await clip(SETUP[setupOs]);
+// One verified bootstrap works on every supported control platform; copy is explicit and local.
+$("setup-out").textContent = INSTALL_BOOTSTRAP;
+$("copy-setup").addEventListener("click",async()=>{ await clip(INSTALL_BOOTSTRAP);
   const b=$("copy-setup"); b.textContent=tr("copied");
   setTimeout(()=>{ b.textContent=tr("btn.copy"); },1600); });
 

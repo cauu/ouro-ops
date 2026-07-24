@@ -24,7 +24,10 @@ MAX_HTML_BYTES = 5 * 1024 * 1024
 
 
 def verify(
-    html: str, skills_root: pathlib.Path, install_source: pathlib.Path
+    html: str,
+    skills_root: pathlib.Path,
+    install_bootstrap: pathlib.Path,
+    installer_source: pathlib.Path,
 ) -> dict[str, object]:
     if "connect-src 'none'" not in html:
         raise ValueError("production HTML lacks the network-denying CSP")
@@ -45,11 +48,19 @@ def verify(
         if not isinstance(item, dict) or item.get("content") != canonical:
             raise ValueError(f"production {operation} Skill differs from canonical source")
 
-    install_match = re.search(r'const VERIFIED_REINSTALL = (".*");', html)
+    install_match = re.search(r'const INSTALL_BOOTSTRAP = (".*");', html)
     if not install_match:
-        raise ValueError("production HTML lacks the verified reinstall payload")
-    if json.loads(install_match.group(1)) != install_source.read_text(encoding="utf-8"):
-        raise ValueError("production verified reinstall differs from canonical source")
+        raise ValueError("production HTML lacks the verified install bootstrap")
+    bootstrap = json.loads(install_match.group(1))
+    if bootstrap != install_bootstrap.read_text(encoding="utf-8"):
+        raise ValueError("production install bootstrap differs from canonical source")
+    bootstrap_lines = sum(bool(line.strip()) for line in bootstrap.splitlines())
+    if bootstrap_lines > 20:
+        raise ValueError("production install bootstrap is not lightweight")
+    if json.dumps(installer_source.read_text(encoding="utf-8"), ensure_ascii=False) in html:
+        raise ValueError("production HTML embeds the complete installer")
+    if 'id="copy-setup"' not in html or "clip(INSTALL_BOOTSTRAP)" not in html:
+        raise ValueError("production HTML lacks the install-command copy action")
 
     return {
         "status": "ok",
@@ -58,6 +69,9 @@ def verify(
         "skill_count": len(payload),
         "csp_network_denied": True,
         "github_link": "https://github.com/cauu/ouro-ops",
+        "install_bootstrap_lines": bootstrap_lines,
+        "install_copy_action": True,
+        "installer_embedded": False,
         "repo_local_candidate": False,
     }
 
@@ -83,9 +97,14 @@ def main() -> int:
     source.add_argument("--file", type=pathlib.Path)
     parser.add_argument("--skills-root", type=pathlib.Path, default=root / "ouro-skills")
     parser.add_argument(
-        "--install-source",
+        "--install-bootstrap",
         type=pathlib.Path,
-        default=root / "packaging" / "verified-reinstall.sh",
+        default=root / "packaging" / "install-bootstrap.sh",
+    )
+    parser.add_argument(
+        "--installer-source",
+        type=pathlib.Path,
+        default=root / "packaging" / "ouro-install.sh",
     )
     args = parser.parse_args()
     try:
@@ -94,7 +113,9 @@ def main() -> int:
         else:
             observed_url = args.file.resolve().as_uri()
             html = args.file.read_text(encoding="utf-8")
-        result = verify(html, args.skills_root, args.install_source)
+        result = verify(
+            html, args.skills_root, args.install_bootstrap, args.installer_source
+        )
         result["url"] = observed_url
     except (
         OSError,

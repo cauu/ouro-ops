@@ -288,6 +288,10 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 - [x] p5-1-fix2 [L2 Distribution Follow-up] 让隔离 venv 使用 canonical
   `requirements-dev.txt`，并保留 Rocky 9 已安装的 `curl-minimal`，消除真实 matrix
   暴露的 pytest 缺失和 curl 包冲突。
+- [~] p5-1-fix3 [Lightweight Verified Installer] 将完整 `ouro-install.sh` 作为每个
+  immutable GitHub Release 的 checksum-bound、attested asset 发布；Production Site
+  只呈现并允许复制一段固定 tag、验证 installer asset 后执行的短 bootstrap，不再
+  内嵌或复制完整安装实现。
 
 ### Item → TC Mapping
 
@@ -303,6 +307,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 | p5-1 | TC-10 |
 | p5-1-fix1 | TC-11 |
 | p5-1-fix2 | TC-12 |
+| p5-1-fix3 | TC-13 |
 
 ## 4. Test And Acceptance Criteria
 
@@ -352,6 +357,12 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 - TC-12：L2 venv 从 `requirements-dev.txt` 安装完整测试依赖；Rocky 9 不请求与
   `curl-minimal` 冲突的 `curl` 包；Ubuntu 24.04、Debian 12、Rocky 9 三个真实 matrix
   job 全部通过。
+- TC-13：每个新 Release 包含 canonical `ouro-install.sh`，其 digest 纳入
+  `SHA256SUMS` 且具有固定 release-publish workflow attestation；网站 copy 按钮复制
+  的 bootstrap 不超过 20 个非空行，固定一次 latest stable tag，下载并在执行前验证
+  对应 installer asset/provenance，再以该 tag 执行。Production HTML 不包含完整
+  installer，latest Release 尚无 installer asset 时 Site 在 Cloudflare 零写入处失败；
+  发布含 installer 的新 patch 后自动 Site deploy 与独立 production smoke 通过。
 
 Pass/fail：
 
@@ -457,6 +468,14 @@ Pass/fail：
   `83221c6d-d4a0-45a5-baa4-7be2f411fc65` to
   `https://ouro-ops-site.martincauu.workers.dev` and passed its post-deploy production smoke；
   no second operator dispatch was used。
+- 2026-07-24T17:30:57+08:00 p5-1-fix3 started：operator accepted moving the full
+  installer out of Production HTML and into each immutable GitHub Release；the website must retain
+  a direct copy action for the shorter verified bootstrap。
+- 2026-07-24T17:40:42+08:00 p5-1-fix3 implementation checkpoint：release aggregation
+  now binds canonical `ouro-install.sh` into checksums and attestation；the Site embeds a 16-line
+  bootstrap with an explicit copy action and refuses Cloudflare writes until the latest Release has
+  a verified installer asset。Commit/push the in-progress item so a new patch Release can provide
+  the mandatory production evidence before completion。
 
 ## 6. Validation Evidence (append-only)
 
@@ -570,6 +589,11 @@ Pass/fail：
   tests/test_s0028_production_site.py && git diff --check` | result: pass | note: all 183 locked
   Rust tests and focused release/Site/install/L2/source-fidelity regressions pass at the final
   `0.1.2` source baseline。
+- TC-13 | stack: other | command: `make python-test && cargo test --locked -q && git diff
+  --check` | result: pass | note: full maintained integration coverage and all 183 Rust tests pass；
+  release fixtures require and tamper-test the fifth `ouro-install.sh` checksum subject，bootstrap
+  fixtures prove verification precedes execution/refusal is write-free，and Site source tests bind
+  the copy action to the exact 16-line canonical bootstrap while excluding the complete installer。
 
 ## 7. Change Requests (append-only)
 
@@ -591,3 +615,6 @@ Pass/fail：
   install path 固定为 `$HOME/.local/bin/ouro-ops`；p1-1 以 verifier/runbook 可独立完成，
   external configured 状态延后到 p5-1/TC-10 production acceptance 强制，避免 secrets
   wiring 阻塞 repo implementation。
+- 2026-07-24T17:30:57+08:00 operator rejected copying the complete 169-line installer
+  from the website as too heavy；accepted publishing canonical `ouro-install.sh` beside the CLI
+  assets and keeping only a copyable verified bootstrap on the Site。

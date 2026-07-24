@@ -10,7 +10,8 @@ import tempfile
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-INSTALL = ROOT / "packaging" / "verified-reinstall.sh"
+INSTALL = ROOT / "packaging" / "ouro-install.sh"
+BOOTSTRAP = ROOT / "packaging" / "install-bootstrap.sh"
 TARGETS = {
     ("Linux", "x86_64"): "x86_64-unknown-linux-musl",
     ("Linux", "aarch64"): "aarch64-unknown-linux-musl",
@@ -44,6 +45,9 @@ def make_release(directory, version="0.1.1", marker="canonical"):
         with tarfile.open(archive, "w:gz") as bundle:
             bundle.addfile(info, io.BytesIO(payload))
         lines.append(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n")
+    shutil.copy2(INSTALL, directory / "ouro-install.sh")
+    installer = directory / "ouro-install.sh"
+    lines.append(f"{hashlib.sha256(installer.read_bytes()).hexdigest()}  ouro-install.sh\n")
     (directory / "SHA256SUMS").write_text("".join(lines))
 
 
@@ -89,7 +93,7 @@ esac
     uname.chmod(0o755)
 
 
-def run(home, fixture, fakebin, os_name, arch, **extra):
+def run(home, fixture, fakebin, os_name, arch, entry=INSTALL, **extra):
     env = dict(
         os.environ,
         HOME=str(home),
@@ -102,7 +106,7 @@ def run(home, fixture, fakebin, os_name, arch, **extra):
         **{key: str(value) for key, value in extra.items()},
     )
     return subprocess.run(
-        ["/bin/sh", str(INSTALL)], env=env, text=True, capture_output=True
+        ["/bin/sh", str(entry)], env=env, text=True, capture_output=True
     )
 
 
@@ -116,6 +120,7 @@ def write_current(home, version, marker="canonical"):
 
 def main():
     subprocess.run(["sh", "-n", str(INSTALL)], check=True)
+    subprocess.run(["sh", "-n", str(BOOTSTRAP)], check=True)
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
         fixture = root / "release"
@@ -142,6 +147,36 @@ def main():
                 and "--signer-workflow cauu/ouro-ops/.github/workflows/release-publish.yml"
                 in log
             )
+
+        home = root / "bootstrap"
+        home.mkdir()
+        completed = run(
+            home, fixture, fakebin, "Darwin", "arm64", entry=BOOTSTRAP
+        )
+        assert completed.returncode == 0, completed
+        assert (home / ".local" / "bin" / "ouro-ops").is_file()
+        log = (home / "gh.log").read_text()
+        assert "release download v0.1.1" in log and "ouro-install.sh" in log
+        assert "release verify-asset v0.1.1" in log
+        assert (
+            "attestation verify" in log
+            and "--signer-workflow cauu/ouro-ops/.github/workflows/release-publish.yml"
+            in log
+        )
+
+        home = root / "bootstrap-refusal"
+        home.mkdir()
+        refused = run(
+            home,
+            fixture,
+            fakebin,
+            "Linux",
+            "x86_64",
+            entry=BOOTSTRAP,
+            GH_TEST_FAIL_VERIFY="1",
+        )
+        assert refused.returncode != 0
+        assert not (home / ".local").exists()
 
         for platform in (("Darwin", "arm64"), ("Linux", "x86_64")):
             home = root / f"update-{platform[0]}-{platform[1]}"

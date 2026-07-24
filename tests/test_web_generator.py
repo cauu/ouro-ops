@@ -53,9 +53,9 @@ def payload(html: str) -> dict[str, object]:
     return json.loads(match.group(1))
 
 
-def verified_reinstall(html: str) -> str:
-    match = re.search(r"const VERIFIED_REINSTALL = (\".*\");", html)
-    assert match, "built page must contain one serialized verified reinstall source"
+def install_bootstrap(html: str) -> str:
+    match = re.search(r"const INSTALL_BOOTSTRAP = (\".*\");", html)
+    assert match, "built page must contain one serialized install bootstrap"
     return json.loads(match.group(1))
 
 
@@ -90,10 +90,11 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
         assert html.count(json.dumps(canonical, ensure_ascii=False)[1:-1]) <= 1
     assert len(set(ssh_sections)) == 1
     assert "__OURO_PUBLIC_SKILLS_JSON__" not in html
-    assert "__OURO_VERIFIED_REINSTALL_JSON__" not in html
-    assert verified_reinstall(html) == (
-        ROOT / "packaging" / "verified-reinstall.sh"
+    assert "__OURO_INSTALL_BOOTSTRAP_JSON__" not in html
+    assert install_bootstrap(html) == (
+        ROOT / "packaging" / "install-bootstrap.sh"
     ).read_text(encoding="utf-8")
+    assert sum(bool(line.strip()) for line in install_bootstrap(html).splitlines()) <= 20
     assert "skill.content.trimEnd()" in html
     assert "BEGIN OURO-SKILL.MD" in html
     assert "END OURO-SKILL.MD" in html
@@ -109,7 +110,10 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
     assert "The Skill's mandatory first action is therefore exactly:" in html
     assert "${skill.requires_ouro}" in html
     assert "${skill.requires_contract}" in html
-    assert "mac: VERIFIED_REINSTALL" in html and "linux: VERIFIED_REINSTALL" in html
+    assert 'id="copy-setup"' in html
+    assert "clip(INSTALL_BOOTSTRAP)" in html
+    assert "const VERIFIED_REINSTALL" not in html
+    assert "class=\"os-tab" not in html
     assert "ouro-ops kes airgap-bundle" in html
     assert "M-series Mac" in html and "Intel/AMD Linux" in html
     assert "uname -s" in html and "uname -m" in html
