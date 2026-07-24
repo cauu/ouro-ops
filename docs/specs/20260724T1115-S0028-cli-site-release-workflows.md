@@ -280,7 +280,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 - [x] p4-2 [Site/CLI Contract] 从 production Prompt 删除 repo-local candidate binding，
   加入 verified install/update、CLI-floor-before-Site gate 和 CLI publish 后的幂等 Site
   dispatch，保持 canonical Skill 唯一来源。
-- [~] p5-1 [Production Acceptance] 完成一次真实 automatic bump CLI release 和一次
+- [x] p5-1 [Production Acceptance] 完成一次真实 automatic bump CLI release 和一次
   Cloudflare production deploy，固化 S0029 所需 baseline。
 - [x] p5-1-fix1 [Production Workflow Hardening] 修复真实验收发现的 runner PATH/PEP 668
   CI portability、immutable release attestation 传播延迟和 deploy 后缺少自动 production
@@ -450,6 +450,13 @@ Pass/fail：
 - 2026-07-24T16:06:41+08:00 p5-1-fix2 completed：the final main matrix
   `30077503263` passed Ubuntu 24.04，Debian 12 and Rocky 9 end to end；each image installed
   the declared Python/Node/SSH runtime and completed the full L2 suite。
+- 2026-07-24T16:18:07+08:00 p5-1 completed：one `patch` dispatch prepared source
+  `9fe922feb9dc16337360ed8607197264ffcdeb0c` and immutable `v0.1.2`，publish run
+  `30077864986` produced and verified all four native controls，then automatically dispatched Site
+  run `30078174024`。The Site run deployed Cloudflare version
+  `83221c6d-d4a0-45a5-baa4-7be2f411fc65` to
+  `https://ouro-ops-site.martincauu.workers.dev` and passed its post-deploy production smoke；
+  no second operator dispatch was used。
 
 ## 6. Validation Evidence (append-only)
 
@@ -534,6 +541,35 @@ Pass/fail：
 - TC-12 | stack: other | command: GitHub Actions run `30077503263` | result: pass |
   note: Ubuntu 24.04，Debian 12 and Rocky 9 each passed dependency installation and the complete
   L2 integration suite on main commit `1659066215e1d3ff4141b8c7af433e67ff3e2d08`。
+- TC-10 | stack: other | command: GitHub Actions prepare run `30077822758` and publish
+  run `30077864986` | result: pass | note: one patch selection created sole source/tag
+  `v0.1.2@9fe922feb9dc16337360ed8607197264ffcdeb0c`；the tag-ref workflow executed four
+  native controls，attested the canonical checksums，verified the immutable release after bounded
+  propagation retry and automatically dispatched Site。
+- TC-10 | stack: other | command: `gh release verify v0.1.2 --repo cauu/ouro-ops` |
+  result: pass | note: immutable release identity resolves to the source commit；macOS arm64 asset
+  digest is `3ee4dbad5a09588e7e4ed2e2f10cfbf07591682e39259ccce35f0d23d95797c0`，
+  its artifact attestation and checksum pass，the native binary reports `0.1.2` and all controls
+  bind embedded Linux/x86_64 runner digest
+  `8e53114e582c4ebd2edbe0a60eef4a8f012dfa26628ece7262b6b198f43217a4`。
+- TC-10 | stack: ui | command: automatic GitHub Actions Site run `30078174024` and
+  `python3 packaging/verify-production-site.py --url
+  https://ouro-ops-site.martincauu.workers.dev` | result: pass | note: current-main source
+  `9fe922feb9dc16337360ed8607197264ffcdeb0c` deployed Cloudflare version
+  `83221c6d-d4a0-45a5-baa4-7be2f411fc65`；both workflow and independent smoke observed 148711
+  exact bytes，network-denying CSP，canonical GitHub link，six byte-exact Skills，the verified
+  installer and no repo-local candidate。
+- TC-10 | stack: other | command: `python3 packaging/release-prerequisites.py --repo
+  cauu/ouro-ops --require-ready` | result: pass | note: before production mutation，immutable
+  releases，repository permissions/rules，reviewer-free main-only `production` environment，
+  both Cloudflare secret names and fixed `ouro-ops-site` Worker identity were all configured
+  without reading secret values。
+- TC-10 | stack: other | command: `cargo test --locked -q && python3
+  tests/test_s0028_release_assets.py && python3 tests/test_s0028_site_workflow.py && python3
+  tests/test_s0028_verified_reinstall.py && python3 tests/test_s0028_l2_workflow.py && python3
+  tests/test_s0028_production_site.py && git diff --check` | result: pass | note: all 183 locked
+  Rust tests and focused release/Site/install/L2/source-fidelity regressions pass at the final
+  `0.1.2` source baseline。
 
 ## 7. Change Requests (append-only)
 
