@@ -84,6 +84,82 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
 8. **Site/CLI coupling**：Prompt 使用稳定命令还是明确版本；CLI release 与 production
    site deploy 是同一 release gate 还是先 CLI、后 Site 的两阶段 promotion。
 
+### Proposed Minimal CLI Release (awaiting operator confirmation)
+
+已确认的产品边界：
+
+- control CLI 同时支持 Linux 和 macOS。
+
+建议的第一阶段方案：
+
+1. **平台矩阵**
+   - 发布四个 control artifact：
+     `x86_64-unknown-linux-musl`、`aarch64-unknown-linux-musl`、
+     `x86_64-apple-darwin`、`aarch64-apple-darwin`。
+   - “control CLI 可运行的平台”与“可管理的远端 target runner 平台”分开声明。
+     当前 fixed runner 只有 Linux/x86_64；第一阶段可以继续只承诺 Linux/x86_64
+     target，不能因为发布了 Linux/arm64 control 就暗示远端 ARM 节点已受支持。
+   - 若产品要求管理 Linux/arm64 target，应单独扩展为两个 embedded runner，并让
+     control 根据只读可信 host facts 选择 exact runner/digest；不得在 release workflow
+     中把未配对 runner 当作普通下载依赖临时替换。
+2. **版本与触发**
+   - `Cargo.toml` 是 SemVer 唯一来源。
+   - `next` 继续做集成，只有已进入 `main` 的 exact commit 可以发布。
+   - release 通过 `workflow_dispatch` 输入 version 和 exact main commit，由受保护
+     `release` environment 人工批准；workflow 校验 version 与 `Cargo.toml` 一致，
+     自动创建对应 `vX.Y.Z` draft release，上传全部 assets 后再 publish。
+   - repository 启用 GitHub immutable releases；release 发布后 tag 与 assets 不允许
+     原地替换。失败版本用更高 patch version 向前修复。
+3. **Artifact contract**
+   - 每个平台只发布一个 `ouro-ops-vX.Y.Z-<target>.tar.gz`，包内保持单一
+     `ouro-ops` binary。
+   - 同一 release 附带 `SHA256SUMS` 和 `release-manifest.json`。Manifest 绑定
+     source commit、Cargo version、四个 control digest、每个 control 的 contract
+     version、embedded runner platform/digest 和 workflow identity。
+   - runner bytes 可以作为 build evidence 保存，但不是用户可独立安装的正式产品。
+4. **Trust**
+   - 使用 GitHub immutable release + GitHub artifact attestation，固定官方 repository
+     `cauu/ouro-ops` 和 release workflow identity；用户可用 `gh release verify-asset`
+     与 `gh attestation verify --repo cauu/ouro-ops --signer-workflow ...` 验证。
+   - `SHA256SUMS` 负责传输/文件一致性，不把同源 checksum 误称为独立真实性证明。
+   - 第一阶段不再叠加自管 cosign identity、minisign key 和 Rekor 操作；GitHub
+     attestation 已提供 OIDC/Sigstore provenance，避免同时维护两套未被用户实际使用的
+     信任流程。只有明确的 GitHub-independent/offline 威胁模型出现时再增加独立签名。
+5. **Distribution**
+   - GitHub Releases 是唯一 canonical binary source。
+   - 官方安装流程使用 GitHub CLI 下载、验证 attestation/immutable release，再安装到
+     user-owned bin directory；禁止以未经验证的 `curl | sh` 作为正式入口。
+   - 第一阶段不发布 npm wrapper，也不建立 Homebrew tap。Homebrew 是后续便利渠道，
+     其 formula 只能引用同一 GitHub immutable asset/digest，不能形成第二套 build。
+6. **Update/recovery**
+   - 保留现有 `self-update --check`，第一阶段不实现自动 download/swap。
+   - 用户通过重复同一验证安装流程升级；坏版本不原地替换、不静默降级，发布修复版并
+     更新 latest/site recommendation。
+7. **Promotion**
+   - PR/`next` 只做完整四平台 dry build、contract test 和 packaging test，不创建 tag/
+     release。
+   - main release workflow 先完成 runner/control pairing、tests、manifest/checksums/
+     attestations，再创建完整 draft；受保护 publish job 只发布该 exact draft。
+8. **Site coupling**
+   - production Prompt 使用稳定 `ouro-ops` 命令和正式 verified-install 流程，不绑定
+     repo-local build path。
+   - 首次上线以及任何提高 `requires-ouro`/contract floor 的变更都必须先发布满足要求
+     的 CLI，再发布 Site；纯文案/样式变更无需重新发布 CLI。
+
+该方案刻意把 Homebrew、npm、自更新 apply 和独立离线签名留在后续需求中。它们不是
+不允许，而是在 canonical GitHub release 链路尚未跑通前不会增加第一阶段的发布面。
+
+### Primary References
+
+- GitHub artifact attestations:
+  `https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations`
+- GitHub immutable releases:
+  `https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases`
+- GitHub release integrity verification:
+  `https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/verify-release-integrity`
+- Homebrew tap maintenance (deferred convenience channel):
+  `https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap`
+
 ### Non-goals
 
 - 不在本 spec 执行 S0027/S0029 的真实双机 Deploy E2E。
@@ -215,3 +291,7 @@ Pass/fail：
 
 - 2026-07-24T09:54:02+08:00 operator 明确执行顺序为 S0028 release workflows →
   S0029 full E2E；CLI 方案不得由 agent 在讨论前自行决定。
+- 2026-07-24T10:06:06+08:00 operator 确认 control CLI 支持 Linux 和 macOS；架构、
+  target runner、artifact、trust、distribution、update、promotion 和 Site coupling
+  尚未确认。Draft 加入一套以 GitHub immutable release + artifact attestation 为主链、
+  暂缓多渠道和自更新的最小建议，等待 operator 评审。
