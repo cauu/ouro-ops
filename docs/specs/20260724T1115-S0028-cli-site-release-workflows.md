@@ -265,7 +265,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 - [x] p1-2 [Remote Architecture Gate] 在所有 ephemeral runner transport 前加入 fixed
   strict-SSH OS/arch probe；只允许 Linux/x86_64，ARM/unknown 在 upload/write 前 typed
   reject，四种 control architecture 行为一致。
-- [ ] p2-1 [Version Preparation] 实现 deterministic patch/minor/major helper、
+- [x] p2-1 [Version Preparation] 实现 deterministic patch/minor/major helper、
   Cargo.toml/Cargo.lock-only release commit/tag、concurrency/CAS gates 和 tag-ref publish
   dispatch；支持 exact partial publish recovery。
 - [ ] p2-2 [Four-platform Publish] 重构 paired build，发布四个 single-binary tarball、
@@ -362,6 +362,11 @@ Pass/fail：
 - 2026-07-24T11:25:06+08:00 p1-2 completed：the shared strict-SSH transport now runs
   one fixed read-only `uname` probe before opening stdin；unsupported and malformed targets return
   one typed refusal with `runner_uploaded=false` and `target_writes=false`。
+- 2026-07-24T11:26:00+08:00 p2-1 started：implement deterministic Cargo SemVer
+  preparation, fail-closed repository-state checks and exact unpublished-tag recovery。
+- 2026-07-24T11:28:19+08:00 p2-1 completed：the one-input preparation workflow now
+  performs deterministic Cargo-only bumps, main/CAS/tag/release gates, non-force commit/tag pushes
+  and exact unpublished release recovery before tag-ref publish dispatch。
 
 ## 6. Validation Evidence (append-only)
 
@@ -383,6 +388,16 @@ Pass/fail：
   python3 tests/test_s0020_kes_airgap_preflight.py && python3 tests/test_s0019_pipeline.py` |
   result: pass | note: fleet, apply and runner-plus-payload paths retain their existing behavior
   through the shared architecture gate。
+- TC-3 | stack: python | command: `python3 tests/test_s0028_release_version.py` | result:
+  pass | note: 0.1.0 patch/minor/major produce 0.1.1/0.2.0/1.0.0 and modify only the root Cargo
+  package/lock records；workflow commit/tag identity is source-checked。
+- TC-4 | stack: python | command: `python3 tests/test_s0028_release_version.py` | result:
+  pass | note: partial exact commit/tag state resumes the same release；mismatched partial state is
+  blocked and workflow source enforces clean tree, origin/main CAS, absent tag/release and tag-ref
+  publish dispatch。
+- TC-3 | stack: rust | command: `cargo metadata --locked --no-deps && cargo test --locked
+  -q && python3 tests/test_release_candidate.py` | result: pass | note: locked Cargo metadata,
+  183 Rust tests and paired release-source contract remain valid after preparation refactor。
 
 ## 7. Change Requests (append-only)
 

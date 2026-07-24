@@ -1,57 +1,145 @@
-name: CLI release standard
+name: Prepare CLI release
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "build.rs"
-      - "crates/ouro/**"
-      - "data/releases.json"
-      - "packaging/release-candidate.sh"
-      - "tests/test_release_candidate.py"
-      - ".github/workflows/release.yml"
-  push:
-    branches:
-      - next
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "build.rs"
-      - "crates/ouro/**"
-      - "data/releases.json"
-      - "packaging/release-candidate.sh"
-      - "tests/test_release_candidate.py"
-      - ".github/workflows/release.yml"
+    inputs:
+      bump:
+        description: SemVer component to increment
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
-  contents: read
+  contents: write
+  actions: write
+
+concurrency:
+  group: cli-release
+  cancel-in-progress: false
 
 jobs:
-  paired-candidate:
-    runs-on: macos-14
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-musl
+          ref: main
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: Swatinem/rust-cache@v2
-      - name: Install cross-build tools
+      - name: Require pristine current main
+        env:
+          DISPATCH_SHA: ${{ github.sha }}
         run: |
-          brew install zig
-          cargo install cargo-zigbuild --locked
-      - name: Build and verify paired candidate
-        run: make release-candidate
-      - name: Recheck candidate contract
-        run: python3 tests/test_release_candidate.py
-      - name: Confirm publication is deferred
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DISPATCH_SHA"
+          test -z "$(git status --porcelain)"
+          git fetch --no-tags origin main
+          test "$(git rev-parse origin/main)" = "$DISPATCH_SHA"
+      - name: Resolve new or recoverable release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUMP: ${{ inputs.bump }}
         run: |
-          test "$(find dist/release-candidate -name candidate.json -print | wc -l | tr -d ' ')" = 1
-          grep -R '"status": "release-standard-not-published"' dist/release-candidate
-
-# This workflow intentionally creates no GitHub Release, tag, hosted CLI asset, Homebrew update or
-# signing request. Formal CLI publication belongs to the next specification.
+          set -euo pipefail
+          current=$(python3 packaging/release-version.py current)
+          subject=$(git log -1 --format=%s)
+          mapfile -t tags < <(git tag --points-at HEAD)
+          state_args=(state --current-version "$current" --head-subject "$subject")
+          for tag in "${tags[@]}"; do state_args+=(--head-tag "$tag"); done
+          if gh release view "v$current" >/dev/null 2>&1; then
+            state_args+=(--release-exists)
+          fi
+          state_json=$(python3 packaging/release-version.py "${state_args[@]}")
+          state=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["state"])' <<<"$state_json")
+          if test "$state" = resume; then
+            version="$current"
+            tag="v$version"
+            test "$(git rev-list -n1 "$tag")" = "$(git rev-parse HEAD)"
+            echo "version=$version" >>"$GITHUB_OUTPUT"
+            echo "tag=$tag" >>"$GITHUB_OUTPUT"
+            echo "release_sha=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+            echo "resume=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          latest=$(gh release view --json tagName --jq .tagName 2>/dev/null || true)
+          if test -n "$latest"; then
+            test "$latest" = "v$current" || {
+              echo "Cargo version $current does not equal latest stable release $latest" >&2
+              exit 1
+            }
+          fi
+          bump_json=$(python3 packaging/release-version.py bump --kind "$BUMP" --write)
+          version=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["next"])' <<<"$bump_json")
+          tag="v$version"
+          test "$(git diff --name-only | sort)" = $'Cargo.lock\nCargo.toml'
+          cargo metadata --locked --no-deps >/dev/null
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "base_sha=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+          echo "resume=false" >>"$GITHUB_OUTPUT"
+      - name: Test release source
+        if: steps.release.outputs.resume != 'true'
+        run: |
+          set -euo pipefail
+          python3 tests/test_s0028_release_version.py
+          cargo test --locked
+          python3 tests/test_release_candidate.py
+      - name: Recheck compare-and-swap gates
+        if: steps.release.outputs.resume != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ steps.release.outputs.base_sha }}
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only | sort)" = $'Cargo.lock\nCargo.toml'
+          git fetch --no-tags origin main
+          test "$(git rev-parse origin/main)" = "$BASE_SHA"
+          test "$(python3 packaging/release-version.py current)" = "$VERSION"
+          test -z "$(git tag -l "$TAG")"
+          test -z "$(git ls-remote --tags origin "refs/tags/$TAG")"
+          ! gh release view "$TAG" >/dev/null 2>&1
+      - name: Create and push release commit and tag
+        if: steps.release.outputs.resume != 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Cargo.toml Cargo.lock
+          test "$(git diff --cached --name-only | sort)" = $'Cargo.lock\nCargo.toml'
+          git commit -m "chore(release): $TAG"
+          git tag "$TAG"
+          git push origin HEAD:main
+          git push origin "refs/tags/$TAG"
+      - name: Verify exact release identity
+        id: identity
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git fetch origin main "refs/tags/$TAG:refs/tags/$TAG"
+          release_sha=$(git rev-list -n1 "$TAG")
+          test "$release_sha" = "$(git rev-parse origin/main)"
+          test "$(git log -1 --format=%s "$release_sha")" = "chore(release): $TAG"
+          echo "release_sha=$release_sha" >>"$GITHUB_OUTPUT"
+      - name: Dispatch publish on the release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-publish.yml --ref "$TAG" -f "version=$VERSION"
+          echo "Dispatched release-publish.yml at $TAG ($(git rev-list -n1 "$TAG"))"
