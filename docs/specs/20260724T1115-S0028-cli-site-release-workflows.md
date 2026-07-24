@@ -292,7 +292,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
   immutable GitHub Release 的 checksum-bound、attested asset 发布；Production Site
   只呈现并允许复制一段固定 tag、验证 installer asset 后执行的短 bootstrap，不再
   内嵌或复制完整安装实现。
-- [~] p5-1-fix4 [Single-command Installer] 将 Production Site 的安装入口收敛为直接
+- [x] p5-1-fix4 [Single-command Installer] 将 Production Site 的安装入口收敛为直接
   从 latest GitHub Release 下载并执行 `ouro-install.sh` 的单行命令；明确该 installer
   由 GitHub HTTPS、repository 与 immutable Release 作为 bootstrap 信任根，不再宣称
   installer 在本机执行前自验证，同时保留 installer 对 CLI archive 的 checksum、
@@ -506,6 +506,12 @@ Pass/fail：
   all four localized descriptions and release docs state the direct-execution trust boundary，
   and production verification requires the exact command。Commit/push the in-progress item so
   current-main automatic Cloudflare deployment can provide the remaining TC-14 evidence。
+- 2026-07-24T21:27:00+08:00 p5-1-fix4 completed：main push at
+  `83663deeb5a20915ef896609b6cb3660aca8a096` triggered Site run `30096759655`；the existing
+  v0.1.3 installer gate passed before Cloudflare，version
+  `0ec3351c-098d-43fe-8815-885571e1a365` deployed，and both automatic and independent production
+  smoke observed exactly one direct command，copy action，six canonical Skills and no embedded
+  installer。
 
 ## 6. Validation Evidence (append-only)
 
@@ -652,6 +658,13 @@ Pass/fail：
 - TC-14 | stack: other | command: `make python-test && cargo test --locked -q && git diff
   --check` | result: pass | note: complete maintained integration coverage and all 183 locked Rust
   tests pass with the single-command installer boundary。
+- TC-14 | stack: ui | command: automatic GitHub Actions Site run `30096759655` and
+  `python3 packaging/verify-production-site.py --url
+  https://ouro-ops-site.martincauu.workers.dev` | result: pass | note: current-main source
+  `83663deeb5a20915ef896609b6cb3660aca8a096` passed the v0.1.3 installer gate，deployed Cloudflare
+  version `0ec3351c-098d-43fe-8815-885571e1a365`，and both smokes observed 140580 exact bytes，
+  one canonical install command，a bound copy action，no embedded full installer and six canonical
+  Skills。
 
 ## 7. Change Requests (append-only)
 
