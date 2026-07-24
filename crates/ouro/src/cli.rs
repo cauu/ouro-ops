@@ -63,7 +63,6 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "pool" => run_pool(&args[2..])?,
         "release" => run_release(&args[2..])?,
         "rollback" => run_rollback(&args[2..])?,
-        "self-update" => run_self_update(&args[2..])?,
         "ssh" => run_ssh(&args[2..])?,
         "spec" => run_spec(&args[2..])?,
         "status" => run_status(&args[2..])?,
@@ -391,43 +390,6 @@ fn validate_creds_args(args: &[String], register: bool) -> Result<()> {
             "missing required credential argument; use `ouro-ops creds --help`".into(),
         ));
     }
-    Ok(())
-}
-
-/// `ouro-ops self-update --check [--against <signed-metadata.json>]` (S0016 p2-3).
-///
-/// Reports the running version. With `--against`, compares
-/// to a (signed at release) metadata file and reports whether an update is warranted, WITHOUT
-/// downgrading below the current version (monotonic). The actual network fetch + signature
-/// verification + in-place swap are RELEASE INFRASTRUCTURE (signing key, transparency log,
-/// stable channel) documented in `packaging/RELEASE.md` — deliberately not runnable in-repo,
-/// so this never pretends to have applied an unverified update.
-fn run_self_update(args: &[String]) -> Result<()> {
-    if args.first().map(String::as_str) != Some("--check") {
-        return Err(OuroError::InvalidArgs(
-            "self-update supports --check [--against <file>]; network apply is release infra (packaging/RELEASE.md)".to_string(),
-        ));
-    }
-    let current = crate::version::fmt(crate::version::current());
-    let mut update_available = false;
-    let mut latest = current.clone();
-    if let Some(path) = optional_flag_value(args, "--against") {
-        let meta: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)
-            .map_err(|e| OuroError::Validation(format!("metadata {path} not JSON: {e}")))?;
-        if let Some(v) = meta.get("latest_version").and_then(|v| v.as_str()) {
-            latest = v.to_string();
-            if let (Some(c), Some(l)) = (crate::version::parse(&current), crate::version::parse(v))
-            {
-                update_available = l > c; // never downgrade: only flag when strictly newer
-            }
-        }
-    }
-    output::print_json(&ToolOutput::ok("ouro.self-update.check", false).with_data(json!({
-        "current": current,
-        "latest_seen": latest,
-        "update_available": update_available,
-        "apply": "release infra: verify signature + transparency log, then swap (packaging/RELEASE.md)",
-    })))?;
     Ok(())
 }
 
@@ -1322,7 +1284,6 @@ fn print_help() {
     println!("  release   select — current signed deploy recommendation or next Upgrade hop");
     println!("  pool      overview | register-tx");
     println!("  rollback  roll back a prior change");
-    println!("  self-update  --check");
     println!("Legacy migration/recovery only:");
     println!("  onboard/adopt  S0019 resident-target model (not an ordinary-flow prerequisite)");
     println!("Read-only / meta:");
@@ -1412,7 +1373,6 @@ fn command_usage(command: &str) -> Option<&'static str> {
         "config" => "ouro-ops config render --spec <pool-spec> --machine <id> [--out <dir>] | apply ...",
         "audit" => "ouro-ops audit init | log",
         "rollback" => "ouro-ops rollback --spec <pool-spec> ...",
-        "self-update" => "ouro-ops self-update --check [--against <signed-metadata>]",
         _ => return None,
     })
 }

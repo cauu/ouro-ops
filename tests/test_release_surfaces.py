@@ -35,11 +35,16 @@ def main() -> None:
         ROOT / "docs/S0020-operations.md",
         ROOT / "packaging/RELEASE.md",
         ROOT / "web/onboarding/README.md",
+        ROOT / "data/releases.json",
     ]
     joined = "\n".join(path.read_text() for path in current_docs)
     assert "ouro-ops skill show" not in joined
     assert "ouro-ops tool run" not in joined
-    assert "release-standard-not-published" in joined
+    assert "GitHub Releases in `cauu/ouro-ops` are the only supported CLI distribution channel" in joined
+    assert "packaging/verified-reinstall.sh" in joined
+    assert "self-update" not in joined
+    assert "release@ouro.example" not in joined
+    assert "RWQPLACEHOLDER" not in joined
     assert "ghcr.io/blinklabs-io/cardano-node" in joined
     assert "image layers" in joined
 

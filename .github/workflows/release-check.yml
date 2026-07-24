@@ -11,6 +11,7 @@ on:
       - "packaging/**"
       - "tests/test_release_candidate.py"
       - "tests/test_s0028_release_*.py"
+      - "tests/test_s0028_verified_reinstall.py"
       - ".github/workflows/release*.yml"
   push:
     branches:
@@ -25,6 +26,7 @@ on:
       - "packaging/**"
       - "tests/test_release_candidate.py"
       - "tests/test_s0028_release_*.py"
+      - "tests/test_s0028_verified_reinstall.py"
       - ".github/workflows/release*.yml"
 
 permissions:
@@ -45,5 +47,6 @@ jobs:
           set -euo pipefail
           python3 tests/test_s0028_release_version.py
           python3 tests/test_s0028_release_assets.py
+          python3 tests/test_s0028_verified_reinstall.py
           python3 tests/test_release_candidate.py
           cargo test --locked

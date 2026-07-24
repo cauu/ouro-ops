@@ -31,12 +31,12 @@ and require no target-resident Ouro installation or state.
 
 ## Supply-chain split
 
-- The CLI release candidate is a macOS control binary with its exact embedded runner. Skills and
-  node images are excluded. Formal CLI signing/publication is deferred to the next spec.
+- Formal CLI releases contain four Linux/macOS control binaries with the same exact embedded
+  Linux/x86_64 runner. Skills and node images are excluded.
 - The small signed `releases.json` catalog is already public and independently Ed25519-verified by
   the CLI. It contains metadata only; image layers come directly from Blink Labs GHCR.
-- First installation remains a deliberate trust decision. Until formal CLI publication exists, do
-  not present placeholder Homebrew/install vectors as production-ready.
+- First installation and update use the same GitHub immutable-release and artifact-attestation
+  verification before the binary is atomically installed in the user's local bin directory.
 
 ## When not to use this mode
 

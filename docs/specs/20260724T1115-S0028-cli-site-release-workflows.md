@@ -271,7 +271,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 - [x] p2-2 [Four-platform Publish] 重构 paired build，发布四个 single-binary tarball、
   `SHA256SUMS`、artifact attestations 和 immutable GitHub Release；PR/next 不运行完整
   matrix。
-- [ ] p3-1 [Verified Install/Update] 删除 `self-update` stub 和 live placeholder
+- [x] p3-1 [Verified Install/Update] 删除 `self-update` stub 和 live placeholder
   distribution artifacts/claims，建立 GitHub-CLI clone-free download/verify、
   `$HOME/.local/bin/ouro-ops` atomic install 流程，覆盖首次安装、同版本 no-write 和严格
   向前更新。
@@ -373,6 +373,11 @@ Pass/fail：
 - 2026-07-24T11:34:00+08:00 p2-2 completed：added source-only PR/next checks and a
   tag-ref native four-platform workflow that validates one embedded runner identity, creates four
   single-binary archives, attests their canonical checksums and creates one immutable release。
+- 2026-07-24T11:35:00+08:00 p3-1 started：replace the legacy distribution stubs with
+  one GitHub-CLI verified reinstall command source and deterministic atomic install/update tests。
+- 2026-07-24T11:42:16+08:00 p3-1 completed：deleted the CLI stub and placeholder
+  install/signing/Homebrew artifacts；the single copyable command source now verifies immutable
+  release/assets/attestation/checksum/candidate identity before an atomic user-bin install。
 
 ## 6. Validation Evidence (append-only)
 
@@ -413,6 +418,13 @@ Pass/fail：
   `actions/attest@v4` over canonical checksums, create-once release and `gh release verify`。
 - TC-5 | stack: python | command: `make python-test` | result: pass | note: maintained
   Python release, packaging, Skill, deploy and safety contracts pass with the new publish boundary。
+- TC-7 | stack: python | command: `python3 tests/test_s0028_verified_reinstall.py` |
+  result: pass | note: clean-home fresh install covers macOS/Linux x86_64/arm64 mappings；macOS
+  arm64 and Linux x86_64 cover N-1→N, identical no-write, prerelease/downgrade/unknown/digest and
+  verification refusals at the exact `$HOME/.local/bin/ouro-ops` boundary。
+- TC-7 | stack: rust | command: `cargo test -q` | result: pass | note: 183 tests pass
+  after removing the `self-update` command/help implementation；live placeholder installer,
+  signing identity and Homebrew formula are absent。
 
 ## 7. Change Requests (append-only)
 
