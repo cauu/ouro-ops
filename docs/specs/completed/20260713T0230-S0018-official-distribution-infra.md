@@ -1,12 +1,12 @@
 # Official Distribution, Signing & Self-Update INFRA
 
 Spec-ID: S0018
-Status: draft
+Status: completed
 Created Time: 2026-07-13T02:30:00+08:00
 Start Time:
-Completion Time:
+Completion Time: 2026-07-24T11:05:03+08:00
 Previous Spec-ID: S0017
-Closure Reason:
+Closure Reason: replaced
 
 ## 1. Requirement Details
 
@@ -101,6 +101,15 @@ distribution so an operator can `brew install …` / `npx …` / `curl | sh` a *
 
 ## 5. Execution Log (append-only)
 
+- 2026-07-24T11:05:03+08:00 draft retired without activation：S0028 replaces this proposal
+  with a narrower GitHub immutable release/artifact-attestation chain, external canonical Skills,
+  four control artifacts, an x86_64-only remote target boundary, and no first-phase Homebrew/npm/
+  self-update apply/minisign infrastructure.
+
 ## 6. Validation Evidence (append-only)
 
 ## 7. Change Requests (append-only)
+
+- 2026-07-24T11:05:03+08:00 operator accepted the adversarial S0028 simplification and explicitly
+  replaced this never-activated draft. Historical assumptions remain here as evidence only and
+  must not drive current release implementation.
