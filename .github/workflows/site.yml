@@ -6,10 +6,12 @@ on:
     paths:
       - "ouro-skills/**"
       - "packaging/verified-reinstall.sh"
+      - "packaging/check-site-cli-floor.py"
       - "web/onboarding/**"
       - "tests/test_web_generator.py"
       - "tests/test_skill_docs.py"
       - "tests/test_s0028_site_workflow.py"
+      - "tests/test_s0028_site_cli_floor.py"
       - ".github/workflows/site.yml"
   push:
     branches:
@@ -17,10 +19,12 @@ on:
     paths:
       - "ouro-skills/**"
       - "packaging/verified-reinstall.sh"
+      - "packaging/check-site-cli-floor.py"
       - "web/onboarding/**"
       - "tests/test_web_generator.py"
       - "tests/test_skill_docs.py"
       - "tests/test_s0028_site_workflow.py"
+      - "tests/test_s0028_site_cli_floor.py"
       - ".github/workflows/site.yml"
 
 permissions:
@@ -47,6 +51,7 @@ jobs:
           python3 -m pytest -q tests/test_web_generator.py
           python3 tests/test_skill_docs.py
           python3 tests/test_s0028_site_workflow.py
+          python3 tests/test_s0028_site_cli_floor.py
 
   deploy:
     needs: validate
@@ -62,6 +67,13 @@ jobs:
           python-version: "3.12"
       - name: Rebuild the validated static page at the same commit
         run: ./web/onboarding/build.sh
+      - name: Enforce CLI floor before any Cloudflare write
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          released=$(gh release view --repo cauu/ouro-ops --json tagName --jq .tagName)
+          python3 packaging/check-site-cli-floor.py --released "$released"
       - name: Deploy fixed assets-only Worker
         uses: cloudflare/wrangler-action@v3
         with:

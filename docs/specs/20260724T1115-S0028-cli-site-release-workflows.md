@@ -277,7 +277,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
   向前更新。
 - [x] p4-1 [Site Build/Deploy] 将 Site workflow 收敛为 PR build/test 与 `main`
   build/test/Cloudflare deploy；无 Preview/PR comment/custom-domain gate。
-- [ ] p4-2 [Site/CLI Contract] 从 production Prompt 删除 repo-local candidate binding，
+- [x] p4-2 [Site/CLI Contract] 从 production Prompt 删除 repo-local candidate binding，
   加入 verified install/update、CLI-floor-before-Site gate 和 CLI publish 后的幂等 Site
   dispatch，保持 canonical Skill 唯一来源。
 - [ ] p5-1 [Production Acceptance] 完成一次真实 automatic bump CLI release 和一次
@@ -383,6 +383,13 @@ Pass/fail：
 - 2026-07-24T11:44:58+08:00 p4-1 completed：PR/fork runs only deterministic
   build/tests；push or explicit dispatch on current main rebuilds and deploys the fixed
   `ouro-ops-site` assets-only Worker through the reviewer-free `production` environment。
+- 2026-07-24T11:46:00+08:00 p4-2 started：bind Site setup and prompts to the single
+  verified reinstall source, add the pre-Cloudflare CLI floor and post-release current-main Site
+  dispatch。
+- 2026-07-24T12:04:00+08:00 p4-2 completed：the generated Site now injects the exact
+  canonical verified-reinstall source and binds every Prompt to `$HOME/.local/bin/ouro-ops`；
+  current-main Site deployment refuses before Cloudflare when the latest immutable CLI release is
+  below any canonical Skill floor，and a completed CLI publish dispatches one current-main Site run。
 
 ## 6. Validation Evidence (append-only)
 
@@ -436,6 +443,18 @@ Pass/fail：
 - TC-8 | stack: ui | command: `./web/onboarding/build.sh && python3 -m pytest -q
   tests/test_web_generator.py && python3 tests/test_skill_docs.py` | result: pass | note: 13
   generator/HTTP tests and canonical six-Skill fidelity pass before Cloudflare deployment。
+- TC-9 | stack: ui | command: `python3 -m pytest -q tests/test_web_generator.py &&
+  python3 tests/test_skill_docs.py` | result: pass | note: all six generated Prompt payloads remain
+  byte-exact canonical Skills；the setup block is byte-exact `packaging/verified-reinstall.sh`，
+  every CLI invocation uses the verified user-bin path and no repo-local candidate remains。
+- TC-9 | stack: python | command: `python3 tests/test_s0028_site_cli_floor.py &&
+  python3 tests/test_s0028_site_workflow.py && python3 tests/test_release_surfaces.py` | result:
+  pass | note: an insufficient or invalid release floor fails before the Cloudflare action；a
+  successful immutable CLI publish dispatches the current-main Site workflow，whose production
+  path remains current-main-only。
+- TC-9 | stack: other | command: `make python-test && cargo test -q && git diff --check` |
+  result: pass | note: the complete maintained Python/integration suite and all 183 Rust tests pass；
+  legacy transport failure expectations now reflect the fixed pre-upload architecture probe。
 
 ## 7. Change Requests (append-only)
 

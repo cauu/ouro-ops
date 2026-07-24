@@ -22,6 +22,7 @@ EXPECTED_PUBLIC_SKILLS = frozenset(
     {"observability", "troubleshooting", "runtime", "upgrade", "kes-rotation", "deploy"}
 )
 PLACEHOLDER = "__OURO_PUBLIC_SKILLS_JSON__"
+INSTALL_PLACEHOLDER = "__OURO_VERIFIED_REINSTALL_JSON__"
 VERSION_REQUIREMENT = re.compile(r"^>=\d+\.\d+\.\d+$")
 
 
@@ -82,7 +83,9 @@ def safe_json(value: object) -> str:
     )
 
 
-def build(source: Path, skills_root: Path, dist: Path) -> Path:
+def build(
+    source: Path, skills_root: Path, dist: Path, install_source: Path | None = None
+) -> Path:
     if frozenset(PUBLIC_SKILLS) != EXPECTED_PUBLIC_SKILLS:
         raise ValueError("public Skill mapping must contain exactly the six supported operations")
     paths = list(PUBLIC_SKILLS.values())
@@ -92,6 +95,13 @@ def build(source: Path, skills_root: Path, dist: Path) -> Path:
     template = source.read_text(encoding="utf-8")
     if template.count(PLACEHOLDER) != 1:
         raise ValueError(f"{source}: expected exactly one {PLACEHOLDER} placeholder")
+    if template.count(INSTALL_PLACEHOLDER) != 1:
+        raise ValueError(f"{source}: expected exactly one {INSTALL_PLACEHOLDER} placeholder")
+    if install_source is None:
+        install_source = Path(__file__).resolve().parents[2] / "packaging/verified-reinstall.sh"
+    if not install_source.is_file():
+        raise ValueError(f"missing canonical verified reinstall source: {install_source}")
+    install_commands = install_source.read_text(encoding="utf-8")
 
     payload: dict[str, object] = {}
     for operation, relative in sorted(PUBLIC_SKILLS.items()):
@@ -102,9 +112,11 @@ def build(source: Path, skills_root: Path, dist: Path) -> Path:
         metadata = parse_front_matter(path, content)
         payload[operation] = {**metadata, "content": content}
 
-    rendered = template.replace(PLACEHOLDER, safe_json(payload))
-    if PLACEHOLDER in rendered:
-        raise ValueError("unresolved public Skill placeholder")
+    rendered = template.replace(PLACEHOLDER, safe_json(payload)).replace(
+        INSTALL_PLACEHOLDER, safe_json(install_commands)
+    )
+    if PLACEHOLDER in rendered or INSTALL_PLACEHOLDER in rendered:
+        raise ValueError("unresolved canonical source placeholder")
     if dist.exists():
         shutil.rmtree(dist)
     dist.mkdir(parents=True)
@@ -121,9 +133,19 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, default=here / "index.html")
     parser.add_argument("--skills-root", type=Path, default=root / "ouro-skills")
+    parser.add_argument(
+        "--install-source",
+        type=Path,
+        default=root / "packaging/verified-reinstall.sh",
+    )
     parser.add_argument("--dist", type=Path, default=here / "dist")
     args = parser.parse_args()
-    output = build(args.source.resolve(), args.skills_root.resolve(), args.dist.resolve())
+    output = build(
+        args.source.resolve(),
+        args.skills_root.resolve(),
+        args.dist.resolve(),
+        args.install_source.resolve(),
+    )
     print(f"built {output}")
     return 0
 

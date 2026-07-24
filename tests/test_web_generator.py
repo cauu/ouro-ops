@@ -53,6 +53,12 @@ def payload(html: str) -> dict[str, object]:
     return json.loads(match.group(1))
 
 
+def verified_reinstall(html: str) -> str:
+    match = re.search(r"const VERIFIED_REINSTALL = (\".*\");", html)
+    assert match, "built page must contain one serialized verified reinstall source"
+    return json.loads(match.group(1))
+
+
 def section(text: str, heading: str) -> str:
     match = re.search(rf"^{re.escape(heading)}\n.*?(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
     assert match, f"embedded Skill lacks {heading}"
@@ -84,18 +90,26 @@ def test_release_form_build_has_exact_canonical_skills() -> None:
         assert html.count(json.dumps(canonical, ensure_ascii=False)[1:-1]) <= 1
     assert len(set(ssh_sections)) == 1
     assert "__OURO_PUBLIC_SKILLS_JSON__" not in html
+    assert "__OURO_VERIFIED_REINSTALL_JSON__" not in html
+    assert verified_reinstall(html) == (
+        ROOT / "packaging" / "verified-reinstall.sh"
+    ).read_text(encoding="utf-8")
     assert "skill.content.trimEnd()" in html
     assert "BEGIN OURO-SKILL.MD" in html
     assert "END OURO-SKILL.MD" in html
     assert "never its machine id" in html
     assert "diag exec --dispatch" in html
-    assert "./target/release-candidate-control/release/ouro-ops" in html
+    assert "$HOME/.local/bin/ouro-ops" in html
+    assert "./target/release-candidate-control/release/ouro-ops" not in html
     assert "Replace the leading bare command name ouro-ops" in html
-    assert "inspect, invoke, install, overwrite, or fall back" in html
+    assert "do not invoke or fall back to another ouro-ops on path" in html.lower()
     assert "already authorizes writing the enclosed local pool-spec.yaml" in html
     assert "do not ask again for their paths" in html
     assert "before any remote operational-state or chain write" in html
     assert "The Skill's mandatory first action is therefore exactly:" in html
+    assert "${skill.requires_ouro}" in html
+    assert "${skill.requires_contract}" in html
+    assert "mac: VERIFIED_REINSTALL" in html and "linux: VERIFIED_REINSTALL" in html
     assert "ouro-ops kes airgap-bundle" in html
     assert "M-series Mac" in html and "Intel/AMD Linux" in html
     assert "uname -s" in html and "uname -m" in html

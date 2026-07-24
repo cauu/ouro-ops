@@ -234,3 +234,7 @@ jobs:
             --title "$TAG" \
             --notes "Ouro Ops $TAG"
           gh release verify "$TAG"
+      - name: Dispatch current-main Site after the CLI floor exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run site.yml --ref main

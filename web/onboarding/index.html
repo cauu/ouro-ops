@@ -433,8 +433,8 @@
     <div class="panel-head">
       <span class="step-dot">1</span>
       <div>
-        <h2 id="s1-h" data-i18n="s1.title">Set up once</h2>
-        <p class="sub" data-i18n="s1.sub">Validate a local paired CLI candidate; formal signed publication is deferred.</p>
+        <h2 id="s1-h" data-i18n="s1.title">Install or update the CLI</h2>
+        <p class="sub" data-i18n="s1.sub">Verify the immutable GitHub release and install it in your user bin directory.</p>
       </div>
     </div>
     <div class="setup-row">
@@ -443,7 +443,7 @@
           <button type="button" class="os-tab active" data-os="mac">macOS</button>
           <button type="button" class="os-tab" data-os="linux">Linux</button>
         </div>
-        <code id="setup-out">make release-candidate  # validates; does not publish</code>
+        <code id="setup-out">Loading verified reinstall commands…</code>
         <button type="button" class="btn btn-oncolor" id="copy-setup" data-i18n="btn.copy">Copy</button>
       </div>
     </div>
@@ -597,6 +597,7 @@
 document.documentElement.classList.add("js");
 const $ = (id) => document.getElementById(id);
 const SKILL_PAYLOADS = __OURO_PUBLIC_SKILLS_JSON__;
+const VERIFIED_REINSTALL = __OURO_VERIFIED_REINSTALL_JSON__;
 const RE = { host:/^[A-Za-z0-9.\-:]{1,253}$/, seg:/^[a-z0-9-]+$/, hex:/^[0-9a-f]{40,}$/ };
 
 // Per-network constants (authoritative, from the official cardano network config.json).
@@ -714,7 +715,7 @@ function prompt(d) {
   const relays = d.relays.map(r => r.id).join(", ");
   const skill = SKILL_PAYLOADS[d.op];
   if (!skill || typeof skill.content !== "string") throw new Error(`missing public Skill ${d.op}`);
-  const localCli = "./target/release-candidate-control/release/ouro-ops";
+  const ouroBin = "$HOME/.local/bin/ouro-ops";
   return [
 `I am the operator of a Cardano stake pool, asking you to run ONE operation for me with the`,
 `ouro-ops CLI on this machine (my control machine). I stay in the loop: present plans to me and`,
@@ -724,12 +725,12 @@ function prompt(d) {
 `separate local file-write go-ahead.`,
 `Operation: ${d.op}. Network: ${d.network}. BP=${bp}, relays=${relays}.`,
 ``,
-`This is an unreleased local-acceptance build. For EVERY Ouro command in this prompt, use the exact`,
-`repository-local control CLI: ${localCli}`,
-`Replace the leading bare command name ouro-ops shown in the included Skill with that path. Do not`,
-`inspect, invoke, install, overwrite, or fall back to any`,
-`ouro-ops found on PATH. The Skill's mandatory first action is therefore exactly:`,
-`${localCli} contract check --requires-ouro '>=0.1.0' --requires-contract 1`,
+`For EVERY Ouro command in this prompt, use the exact verified user installation: ${ouroBin}`,
+`Replace the leading bare command name ouro-ops shown in the included Skill with that absolute`,
+`path. Do not invoke or fall back to another ouro-ops on PATH. If this exact binary is absent, stop`,
+`and ask me to complete the website's verified install/update step; do not choose another install`,
+`method. The Skill's mandatory first action is therefore exactly:`,
+`${ouroBin} contract check --requires-ouro '${skill.requires_ouro}' --requires-contract ${skill.requires_contract}`,
 ``,
 `The complete canonical Ouro Skill for this operation follows. Treat it as the procedure and follow`,
 `its compatibility preflight and stop conditions exactly. Do not look for an embedded Skill in the`,
@@ -764,10 +765,9 @@ yaml(d).trimEnd(),
 `invent a raw SSH/docker/cardano-cli workaround or broaden the requested operation.`,
   ].join("\n") + "\n";
 }
-// Formal signed install channels are intentionally not claimed before the next release spec.
 const SETUP = {
-  mac:   "make release-candidate  # validates; does not publish\ntest -x ./target/release-candidate-control/release/ouro-ops",
-  linux: "# Formal control CLI publication is deferred to the next release spec",
+  mac: VERIFIED_REINSTALL,
+  linux: VERIFIED_REINSTALL,
 };
 let setupOs = "mac";
 
@@ -783,7 +783,7 @@ const I18N = {
     "trust1.t":"Zero upload","trust1.b":"Generated locally on a CSP-locked static page with network access disabled.",
     "trust2.t":"Complete procedures","trust2.b":"The copied prompt includes the complete canonical Skill; the CLI checks compatibility and constrains typed execution.",
     "trust3.t":"Gated writes","trust3.b":"Every change goes through a typed <code>ouro-ops</code> command, with human confirmation at the operation's declared boundary.",
-    "s1.title":"Validate the CLI","s1.sub":"Validate a local paired CLI candidate; formal signed publication is deferred.",
+    "s1.title":"Install or update the CLI","s1.sub":"Verify the immutable GitHub release and install it in your user bin directory.",
     "s2.title":"Pick an operation","s2.sub":"The form asks only for what that operation needs, generates everything locally, and gives you one prompt to paste into your agent.",
     "op.upgrade.small":"Upgrade to signed recommended release",
     "op.deploy.small":"Deploy a fresh BP + Relay Fleet",
@@ -824,7 +824,7 @@ const I18N = {
     "trust1.t":"零上传","trust1.b":"纯静态页面,所有内容都在本地生成,CSP 禁止页面联网。",
     "trust2.t":"完整流程","trust2.b":"复制的 prompt 包含完整 canonical Skill；CLI 负责兼容性检查和类型化执行约束。",
     "trust3.t":"写操作有闸门","trust3.b":"所有变更都通过类型化 <code>ouro-ops</code> 命令执行，并在该操作声明的边界由用户确认。",
-    "s1.title":"验收 CLI","s1.sub":"先验收本地配对 CLI 候选;正式签名发布留到下一个 spec。",
+    "s1.title":"安装或更新 CLI","s1.sub":"验证不可变 GitHub Release，并安装到你的用户级 bin 目录。",
     "s2.title":"选择操作","s2.sub":"表单只问这个操作用得到的字段,全部本地生成,最后给你一段直接粘给 agent 的 prompt。",
     "op.upgrade.small":"直升签名推荐版本",
     "op.deploy.small":"部署全新的 BP + Relay Fleet",
@@ -865,7 +865,7 @@ const I18N = {
     "trust1.t":"零上傳","trust1.b":"純靜態頁面,所有內容都在本地產生——唯一的連線動作,是查一次 cardano-node 的最新版本號。",
     "trust2.t":"完整流程","trust2.b":"複製的 prompt 包含完整 canonical Skill；CLI 負責相容性檢查和型別化執行約束。",
     "trust3.t":"寫入有閘門","trust3.b":"所有變更都透過型別化 <code>ouro-ops</code> 命令執行，並在該操作聲明的邊界由使用者確認。",
-    "s1.title":"驗收 CLI","s1.sub":"先驗收本機配對 CLI 候選;正式簽章發布留到下一個 spec。",
+    "s1.title":"安裝或更新 CLI","s1.sub":"驗證不可變 GitHub Release，並安裝到你的使用者 bin 目錄。",
     "s2.title":"選擇操作","s2.sub":"表單只問這個操作用得到的欄位,全部本地產生,最後給你一段直接貼給 agent 的 prompt。",
     "op.upgrade.small":"直升簽署推薦版本",
     "op.deploy.small":"部署全新的 BP + Relay Fleet",
@@ -906,7 +906,7 @@ const I18N = {
     "trust1.t":"アップロードなし","trust1.b":"完全な静的ページで、生成はすべてローカル。外部通信は cardano-node の最新バージョン確認、その一回だけです。",
     "trust2.t":"完全な手順","trust2.b":"コピーする prompt には canonical Skill 全文が含まれ、CLI は互換性確認と型付き実行を担当します。",
     "trust3.t":"書き込みにはゲート","trust3.b":"変更はすべて型付き <code>ouro-ops</code> コマンドを通り、操作が定めた境界でユーザーが確認します。",
-    "s1.title":"CLI を検証","s1.sub":"ローカルのペア済み CLI 候補を検証します。正式な署名付き公開は次の spec で行います。",
+    "s1.title":"CLI をインストールまたは更新","s1.sub":"変更不可の GitHub Release を検証し、ユーザーの bin ディレクトリへインストールします。",
     "s2.title":"操作を選ぶ","s2.sub":"フォームで聞くのはその操作に必要な項目だけ。すべてローカルで生成し、エージェントに貼る prompt をひとつ出力します。",
     "op.upgrade.small":"署名済み推奨版へ直接アップグレード",
     "op.deploy.small":"新しい BP + Relay Fleet をデプロイ",
@@ -1029,6 +1029,7 @@ $("om-close").addEventListener("click",()=>opModal.close());
 opModal.addEventListener("click",(e)=>{ if(e.target===opModal) opModal.close(); }); // click backdrop to close
 
 // Hero setup terminal: OS toggle + one-click copy (no user data involved — no disclosure needed).
+$("setup-out").textContent = SETUP[setupOs];
 document.querySelectorAll(".os-tab").forEach((b)=>b.addEventListener("click",()=>{
   setupOs = b.dataset.os;
   document.querySelectorAll(".os-tab").forEach((x)=>x.classList.toggle("active", x === b));

@@ -13,6 +13,10 @@ Each archive contains exactly one `ouro-ops`. All four controls embed the same s
 Linux/x86_64 target runner. GitHub immutable releases bind the assets to the tag, and the
 `release-publish.yml` workflow creates GitHub artifact attestations for all four archives.
 
+The operator SSH credential is **NOT mechanism-isolated from the agent** on a credentialed control
+terminal. Release verification proves CLI artifact identity; it does not turn the surrounding
+terminal or operator account into a sandbox.
+
 ## Publish
 
 A maintainer starts `Prepare CLI release` on current `main` and chooses exactly one SemVer

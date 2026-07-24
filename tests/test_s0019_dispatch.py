@@ -533,11 +533,14 @@ upgrade:
         text=True,
         capture_output=True,
     )
-    assert transport.returncode == 255 and len(transport.stdout.splitlines()) == 1, transport
+    assert transport.returncode == 10 and len(transport.stdout.splitlines()) == 1, transport
     transport_result = json.loads(transport.stdout)
     assert transport_result["status"] == "error", transport_result
-    assert transport_result["error"]["code"] == "ssh_exit_255", transport_result
-    assert "Permission denied" in transport_result["error"]["detail"], transport_result
+    assert transport_result["tool"] == "ouro.target.architecture", transport_result
+    assert transport_result["error"]["code"] == "target_arch_probe_failed", transport_result
+    assert transport_result["data"]["runner_uploaded"] is False, transport_result
+    assert transport_result["data"]["target_writes"] is False, transport_result
+    assert "ssh exit 255" in transport_result["error"]["detail"], transport_result
     assert len(transport_result["error"]["detail"]) < 4096, transport_result
 
     # The entire S0017 tool family is absent before local execution or legacy dispatch can produce
