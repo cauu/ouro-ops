@@ -57,6 +57,9 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
   permissions；Cloudflare token/account ID 只来自 repository/environment secrets。
 - `release` 和 `production` environment 不配置 required reviewer、wait timer 或第二次
   人工批准；它们只承担 branch restriction、secret isolation 和 deployment audit。
+- release preparation 只使用 scoped `GITHUB_TOKEN` 的 `contents: write`/
+  `actions: write`，不得引入长期 PAT；repository rules 必须允许该 workflow 进行
+  non-force release commit/tag push，其他 main 保护不因发版自动化而关闭。
 - CLI 正式 artifact 必须保持 control binary 与其内嵌 runner 的 digest 配对；发布流程
   不得从网络或另一 job 临时替换 runner。
 - CLI 不内嵌 Skills。网站 Prompt 与 canonical Skills 的发布是 Site track，CLI 只实现
@@ -69,8 +72,9 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
 ### CLI Decisions Required Before Activation
 
 1. **Release trigger and version authority**：已确认使用维护者主动
-   `workflow_dispatch`，触发后不再等待用户/required-reviewer 审批；仍需冻结
-   `next → main → tag` 的确切顺序与 SemVer 来源。
+   `workflow_dispatch`，唯一业务输入是 `patch|minor|major` bump 类型；workflow 从
+   `main` 当前 `Cargo.toml` 读取基准版本，计算下一版本并更新 `Cargo.toml`/
+   `Cargo.lock`。触发后不再等待用户/required-reviewer 审批。
 2. **Supported control platforms**：第一阶段只发布当前已验证的 macOS control
    （arm64/x86_64 中哪些），还是同时支持 Linux control；target runner 是否第一阶段
    只支持 Linux/x86_64。
@@ -94,6 +98,8 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
 - control CLI 同时支持 Linux 和 macOS。
 - release 由维护者主动触发，但 workflow 启动后没有 required reviewer、environment
   approval 或第二次用户确认；通过自动 gates 后直接发布。
+- 维护者不手动编辑或输入 release version；只选择 `patch|minor|major`。例如当前
+  `0.1.0` 选择 `patch`，workflow 自动生成并发布 `0.1.1`。
 
 建议的第一阶段方案：
 
@@ -110,9 +116,25 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
 2. **版本与触发**
    - `Cargo.toml` 是 SemVer 唯一来源。
    - `next` 继续做集成，只有已进入 `main` 的 exact commit 可以发布。
-   - release 通过 `workflow_dispatch` 输入 version 和 exact main commit；workflow
-     校验 version 与 `Cargo.toml` 一致，自动创建对应 `vX.Y.Z` draft release，上传
-     全部 assets 并通过自动 gates 后直接 publish，不等待 environment 人工批准。
+   - release preparation 只允许从 `main` 手动 `workflow_dispatch`，只接收一个 choice
+     input：`patch`（`X.Y.Z+1`）、`minor`（`X.Y+1.0`）或
+     `major`（`X+1.0.0`）；界面不得使用含混的“大/小版本”标签。
+   - workflow 验证当前 Cargo version 与 latest stable release 一致后（尚无正式
+     release 时，以当前 Cargo version 作为 bootstrap baseline），使用 repo-owned
+     deterministic bump helper 更新 root `Cargo.toml` 和 `Cargo.lock`，并拒绝其他
+     tracked file 变化。随后运行 version/package tests，生成单一
+     `chore(release): vX.Y.Z` commit 和同名 tag，使用 non-force push 写入 `main`。
+   - bump/publish 使用全仓库 release concurrency；push 前重新确认 origin/main 未前进。
+     并发写入、已有 tag/release 或非单调版本必须在创建 release 前失败。
+   - 正确 provenance 需要 release artifact 在新 release commit/tag 上构建。由于
+     `GITHUB_TOKEN` 创建的普通 push/tag 不会触发另一个 workflow，preparation 在 tag
+     push 后使用受支持的 `workflow_dispatch` 显式启动 publish phase，并把 ref 固定为
+     新 tag；publish run 的 `GITHUB_SHA` 必须等于 release commit。
+   - publish phase 在新 tag 上重新构建、验证和 attest 四个平台 assets，然后直接
+     publish，不等待 environment 人工批准。维护者从 UI 只启动一次 preparation。
+   - 若 preparation 已成功 push release commit/tag、但 publish dispatch 或外部服务
+     暂时失败，重跑同一 bump 必须识别该 exact unpublished release commit 并恢复 publish，
+     不得再次 bump 到下一版本。
    - repository 启用 GitHub immutable releases；release 发布后 tag 与 assets 不允许
      原地替换。失败版本用更高 patch version 向前修复。
 3. **Artifact contract**
@@ -163,6 +185,8 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
   `https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases`
 - GitHub release integrity verification:
   `https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/verify-release-integrity`
+- GitHub-token-triggered workflow behavior:
+  `https://docs.github.com/en/actions/concepts/security/github_token`
 - Homebrew tap maintenance (deferred convenience channel):
   `https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap`
 
@@ -231,8 +255,10 @@ production site Prompt references supported install/run contract
   same-repo Cloudflare preview；fork PR 只有 build。
 - [ ] p2-2 [Site Production] 实现 `main` + `production` environment 的 Cloudflare
   deploy、custom-domain 文档和 deployed-page smoke/fidelity 验收。
-- [ ] p3-1 [CLI Build/Publish] 按 p1-2 确认的最小平台/artifact/channel实现正式 CLI
-  workflow，并保留 control/embedded-runner 的 exact digest pairing。
+- [ ] p3-1 [CLI Version/Build/Publish] 实现 patch/minor/major 自动 bump、
+  Cargo.toml/Cargo.lock-only release commit、tag-bound publish dispatch 和最小平台/
+  artifact/channel；保持 control/embedded-runner exact digest pairing，并支持
+  commit/tag 已写但 publish 未完成时的幂等恢复。
 - [ ] p3-2 [CLI Trust/Recovery] 按 p1-2 确认的签名、provenance、verification、
   revocation/rollback 选择实现 fail-closed gates 和 operator runbook。
 - [ ] p3-3 [Site/CLI Promotion] 将 production Prompt 从 repo-local candidate 切换为
@@ -248,7 +274,7 @@ production site Prompt references supported install/run contract
 | p1-2 | TC-2 |
 | p2-1 | TC-3, TC-4 |
 | p2-2 | TC-5 |
-| p3-1 | TC-6 |
+| p3-1 | TC-6, TC-10 |
 | p3-2 | TC-7 |
 | p3-3 | TC-8 |
 | p4-1 | TC-9 |
@@ -275,13 +301,19 @@ production site Prompt references supported install/run contract
 - TC-9：dry run 不创建正式 release/production deploy；受控 production run 生成唯一
   baseline，包含 source commit、site URL、CLI version/artifact digest、runner digest、
   verification evidence，S0029 可直接引用。
+- TC-10：从 `Cargo.toml=0.1.0` 分别验证 patch→0.1.1、minor→0.2.0、
+  major→1.0.0；preparation 只修改/提交 `Cargo.toml` 和 `Cargo.lock`，tag、Cargo、
+  binary、release version 完全一致。并发 main 前进、已有 tag/release、非单调版本和
+  额外 tracked diff 均在发布前失败；新 tag publish run 的 `GITHUB_SHA` 等于 release
+  commit。commit/tag 已写而 publish 未完成时，重跑只恢复相同版本，不产生第二次 bump。
 
 Pass/fail：
 
 - 所有 item 对应 TC 通过并有 evidence 后才能完成。
 - 任一 fork PR 获得 secrets、production 重建未验证 HTML、Prompt/Skill 分叉、CLI 与
   runner 不配对、placeholder 被当作 trust anchor、未确认的 S0018 假设被直接实现，
-  或 production Site 先于其引用的 CLI 可用，均为 fail。
+  production Site 先于其引用的 CLI 可用、release workflow 在旧 SHA 上为修改后的
+  worktree 生成 provenance、或部分失败重跑错误地产生下一版本，均为 fail。
 
 ## 5. Execution Log (append-only)
 
@@ -305,3 +337,8 @@ Pass/fail：
   `workflow_dispatch`，但开始后不再等待 release-environment required reviewer；
   Site 的 `main` production deploy 同样不增加人工审批。Environment 只保留 branch/
   secret/audit 边界，所有 publish gates 自动执行。
+- 2026-07-24T10:48:52+08:00 operator 要求把版本 bump 集成进 release workflow：
+  维护者只声明 patch/minor/major（示例 0.1.0 patch→0.1.1），workflow 自动更新
+  `Cargo.toml`/`Cargo.lock`。Draft 采用 preparation commit/tag + tag-ref publish
+  dispatch 两阶段自动链，确保 artifact provenance 指向真正包含新版本文件的 commit；
+  整体仍只有一次用户启动且无第二次审批。
