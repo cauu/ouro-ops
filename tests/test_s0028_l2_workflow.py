@@ -18,7 +18,10 @@ def main():
     assert 'export PATH="/opt/ouro-ci-venv/bin:$PATH"' in workflow
     dnf = workflow.split("dnf install -y ", 1)[1].splitlines()[0]
     assert "curl" not in dnf
+    assert "nodejs" in dnf
     assert "python3-pip" in dnf
+    apt = workflow.split("apt-get install -y ", 1)[1].splitlines()[0]
+    assert "nodejs" in apt
     requirements = (ROOT / "requirements-dev.txt").read_text().lower()
     for dependency in ("jsonschema", "pyyaml", "pytest"):
         assert dependency in requirements

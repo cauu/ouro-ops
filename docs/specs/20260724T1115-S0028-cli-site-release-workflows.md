@@ -439,6 +439,10 @@ Pass/fail：
   evidence requires the corrected workflow to exist on GitHub；commit and push the still-in-progress
   item without marking it complete，then collect all three distribution results before its
   acceptance transition。
+- 2026-07-24T15:58:23+08:00 p5-1-fix2 second matrix finding：the venv dependency and
+  Rocky curl fixes passed their former failure points；all three images then reached the web
+  generator's explicit `node --check` and proved Node was absent from the L2 runtime dependency
+  declaration。Add distro `nodejs` packages and keep the item in progress for another real matrix。
 
 ## 6. Validation Evidence (append-only)
 
