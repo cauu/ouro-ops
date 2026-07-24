@@ -34,8 +34,8 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
 ### Goals
 
 1. 为 `web/onboarding` 建立可审计的 Cloudflare assets-only 发布 workflow：
-   所有 PR 都构建验证；同仓 PR 可发布 preview；`main` 在受保护 environment 下发布
-   production；fork PR 不接触 secrets。
+   所有 PR 都构建验证；同仓 PR 可发布 preview；`main` 通过无人工审批的 production
+   environment 自动发布；fork PR 不接触 secrets。
 2. 保持 canonical Skill 唯一来源：站点发布的 HTML 必须由
    `web/onboarding/build.sh` 从六个 canonical Skills 生成并通过既有 fidelity tests。
 3. 讨论并冻结 CLI 的发布触发、版本、目标平台、artifact、签名/来源证明、安装入口、
@@ -55,6 +55,8 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
   HTML。
 - production deploy 只允许 `main`，使用 GitHub `production` environment 和最小
   permissions；Cloudflare token/account ID 只来自 repository/environment secrets。
+- `release` 和 `production` environment 不配置 required reviewer、wait timer 或第二次
+  人工批准；它们只承担 branch restriction、secret isolation 和 deployment audit。
 - CLI 正式 artifact 必须保持 control binary 与其内嵌 runner 的 digest 配对；发布流程
   不得从网络或另一 job 临时替换 runner。
 - CLI 不内嵌 Skills。网站 Prompt 与 canonical Skills 的发布是 Site track，CLI 只实现
@@ -66,8 +68,9 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
 
 ### CLI Decisions Required Before Activation
 
-1. **Release trigger and version authority**：仅 signed tag、GitHub manual approval，
-   还是二者组合；`next → main → tag` 的确切顺序与 SemVer 来源。
+1. **Release trigger and version authority**：已确认使用维护者主动
+   `workflow_dispatch`，触发后不再等待用户/required-reviewer 审批；仍需冻结
+   `next → main → tag` 的确切顺序与 SemVer 来源。
 2. **Supported control platforms**：第一阶段只发布当前已验证的 macOS control
    （arm64/x86_64 中哪些），还是同时支持 Linux control；target runner 是否第一阶段
    只支持 Linux/x86_64。
@@ -79,8 +82,8 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
    install script、npm wrapper；每个入口由谁维护。
 6. **Update policy**：只做人工安装新版本，还是同时实现 `self-update apply`；撤销坏版本
    时使用 release removal、signed revocation metadata 还是 security floor。
-7. **Promotion and approval**：release candidate 如何晋升 production，谁批准 GitHub
-   environment，失败或误发时允许什么恢复动作。
+7. **Promotion**：release candidate 如何在无第二次人工审批的前提下自动晋升
+   production，以及失败或误发时允许什么恢复动作。
 8. **Site/CLI coupling**：Prompt 使用稳定命令还是明确版本；CLI release 与 production
    site deploy 是同一 release gate 还是先 CLI、后 Site 的两阶段 promotion。
 
@@ -89,6 +92,8 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
 已确认的产品边界：
 
 - control CLI 同时支持 Linux 和 macOS。
+- release 由维护者主动触发，但 workflow 启动后没有 required reviewer、environment
+  approval 或第二次用户确认；通过自动 gates 后直接发布。
 
 建议的第一阶段方案：
 
@@ -105,9 +110,9 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
 2. **版本与触发**
    - `Cargo.toml` 是 SemVer 唯一来源。
    - `next` 继续做集成，只有已进入 `main` 的 exact commit 可以发布。
-   - release 通过 `workflow_dispatch` 输入 version 和 exact main commit，由受保护
-     `release` environment 人工批准；workflow 校验 version 与 `Cargo.toml` 一致，
-     自动创建对应 `vX.Y.Z` draft release，上传全部 assets 后再 publish。
+   - release 通过 `workflow_dispatch` 输入 version 和 exact main commit；workflow
+     校验 version 与 `Cargo.toml` 一致，自动创建对应 `vX.Y.Z` draft release，上传
+     全部 assets 并通过自动 gates 后直接 publish，不等待 environment 人工批准。
    - repository 启用 GitHub immutable releases；release 发布后 tag 与 assets 不允许
      原地替换。失败版本用更高 patch version 向前修复。
 3. **Artifact contract**
@@ -139,7 +144,8 @@ self-update apply 等方案，其中部分已与当前“CLI 不内嵌 Skills、
    - PR/`next` 只做完整四平台 dry build、contract test 和 packaging test，不创建 tag/
      release。
    - main release workflow 先完成 runner/control pairing、tests、manifest/checksums/
-     attestations，再创建完整 draft；受保护 publish job 只发布该 exact draft。
+     attestations，再创建完整 draft；publish job 只发布该 exact draft，且不配置
+     required reviewer。
 8. **Site coupling**
    - production Prompt 使用稳定 `ouro-ops` 命令和正式 verified-install 流程，不绑定
      repo-local build path。
@@ -295,3 +301,7 @@ Pass/fail：
   target runner、artifact、trust、distribution、update、promotion 和 Site coupling
   尚未确认。Draft 加入一套以 GitHub immutable release + artifact attestation 为主链、
   暂缓多渠道和自更新的最小建议，等待 operator 评审。
+- 2026-07-24T10:26:44+08:00 operator 认可移除用户审批步骤：CLI 仍由维护者主动
+  `workflow_dispatch`，但开始后不再等待 release-environment required reviewer；
+  Site 的 `main` production deploy 同样不增加人工审批。Environment 只保留 branch/
+  secret/audit 边界，所有 publish gates 自动执行。
