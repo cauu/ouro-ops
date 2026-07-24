@@ -1,12 +1,12 @@
 # Compose Fleet Deploy
 
 Spec-ID: S0027
-状态: active
+状态: completed
 创建时间: 2026-07-23T11:19:16+08:00
 开始时间: 2026-07-23T14:44:25+08:00
-完成时间:
+完成时间: 2026-07-24T09:54:02+08:00
 前一个 Spec-ID: S0026
-结项原因:
+结项原因: replaced
 
 ## 1. Requirement Details
 
@@ -703,6 +703,9 @@ takeover 或未校验下载。
 - [ ] p5-1b [Deferred Real-host Regression] 后续在两台满足 signed resource policy 的
   fresh Ubuntu 主机执行真实 Inspect → Apply → Mithril/replay pending → ready →
   already_deployed no-write 全流程，并完成 TC-18。
+- [x] p5-1b-handoff [Spec Governance] 按 operator 决定关闭 S0027，不把未执行的
+  TC-18 标记为通过；在 S0029 中完整重述真实主机 E2E，并令其依赖先完成 S0028
+  的 CLI/Site 正式发布链路。
 
 ### Item → TC Mapping
 
@@ -723,6 +726,7 @@ takeover 或未校验下载。
 | p4-2-fix3 | TC-22 |
 | p5-1a | TC-15, TC-16, TC-17, TC-23 |
 | p5-1b | TC-18 |
+| p5-1b-handoff | TC-24 |
 
 ## 4. Test And Acceptance Criteria
 
@@ -822,10 +826,15 @@ takeover 或未校验下载。
   opt-in、user-only SSH trust、fresh-host/resource 前置条件、最终 pending 不可通过，
   且不得将 prepare/syntax 或本地容器容量探针记录成真实 TC-18 success。p5-1 umbrella
   在 p5-1b 完成前继续保持 in progress。
+- TC-24：关闭 S0027 时，p5-1b/TC-18 必须继续明确为未执行，不得改写历史 evidence；
+  新 draft S0029 必须完整承接真实双机 E2E，并显式依赖 S0028 发布完成，使真实验收
+  使用生产 Cloudflare 站点 Prompt 与正式发布的 CLI，而不是本地 release candidate。
 
 Pass/fail：
 
 - TC-1 至 TC-18 全部通过。
+- 若 operator 明确将未完成的真实主机验收替换到后续 spec，则允许以
+  `结项原因: replaced` 关闭；此时 TC-18 仍为未通过，且只有 TC-24 通过后才能结项。
 - 任一旧 Deploy command、operation、Skill、网站入口、当前文档或
   可执行兼容路径仍存在，均为 fail。
 - 任一 Agent 可绕过 CLI 做远端写、代确认 SSH trust、Fresh Deploy 覆盖 image config、
@@ -971,6 +980,9 @@ python3 tests/test_s0027_deploy.py
 - 2026-07-24T09:41:19+08:00 p5-1a completed：提交此前已验证的 failure injection、
   partial rerun、安全/lifecycle 回归、HostPort 语义比较和双机 harness；修正 aggregator
   中过期的 harness 路径说明。本轮遵照 operator 决定不重跑完整回归。
+- 2026-07-24T09:54:02+08:00 p5-1b-handoff completed：operator 决定关闭当前 spec，
+  先完善 CLI/Site 正式发布 workflow，再做完整真实主机 E2E。S0028 承接发布，
+  S0029 原样承接未通过的 p5-1b/TC-18；S0027 不再继续执行。
 
 ## 6. Validation Evidence (append-only)
 
@@ -1114,6 +1126,10 @@ python3 tests/test_s0027_deploy.py
   fixtures/e2e/s0027/run.sh`; Python AST parse of `tests/test_s0027_deploy.py`;
   `git diff --check` | result: pass | note: harness 语法、aggregator 路径和补丁完整性通过；
   本轮未运行真实主机或完整 regression，不形成新的 TC-18 success evidence。
+- TC-24 | stack: immutable spec governance | command: inspect completed S0027 and draft
+  S0028/S0029 headers, dependencies and acceptance restatement; `git diff --check` | result:
+  pass | note: TC-18 仍明确未通过；S0029 完整承接真实主机验收并依赖 S0028，S0027
+  以 replaced 结项，不虚报生产 E2E。
 
 ## 7. Change Requests (append-only)
 
@@ -1128,3 +1144,6 @@ python3 tests/test_s0027_deploy.py
   p4-2-fix3 加入正式仓库入口，不改变 canonical Skill 或 Prompt 内容。
 - 2026-07-24T09:41:19+08:00 operator 明确要求现有 p5 内容先提交、真实回归后续执行；
   追加 p5-1a/p5-1b 子项隔离交付与验收，不删除原 p5-1 umbrella 或虚报 TC-18。
+- 2026-07-24T09:54:02+08:00 operator 要求关闭 S0027，把完整 E2E 移到新的 spec；
+  E2E 前先建立 CLI/Site 发布 workflow spec，Site 参考 ouro-pass 直接发布静态产物到
+  Cloudflare，CLI 发布链路保留为激活前讨论事项。
