@@ -101,6 +101,8 @@ def main():
         "subject-checksums: release/SHA256SUMS",
         'gh release create "$TAG"',
         'gh release verify "$TAG"',
+        'for attempt in 1 2 3 4 5 6 7 8 9 10 11 12',
+        'test "$verified" = true',
     ):
         assert required in workflow, required
     assert "\n  pull_request:" not in workflow

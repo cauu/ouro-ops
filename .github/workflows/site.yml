@@ -7,11 +7,13 @@ on:
       - "ouro-skills/**"
       - "packaging/verified-reinstall.sh"
       - "packaging/check-site-cli-floor.py"
+      - "packaging/verify-production-site.py"
       - "web/onboarding/**"
       - "tests/test_web_generator.py"
       - "tests/test_skill_docs.py"
       - "tests/test_s0028_site_workflow.py"
       - "tests/test_s0028_site_cli_floor.py"
+      - "tests/test_s0028_production_site.py"
       - ".github/workflows/site.yml"
   push:
     branches:
@@ -20,11 +22,13 @@ on:
       - "ouro-skills/**"
       - "packaging/verified-reinstall.sh"
       - "packaging/check-site-cli-floor.py"
+      - "packaging/verify-production-site.py"
       - "web/onboarding/**"
       - "tests/test_web_generator.py"
       - "tests/test_skill_docs.py"
       - "tests/test_s0028_site_workflow.py"
       - "tests/test_s0028_site_cli_floor.py"
+      - "tests/test_s0028_production_site.py"
       - ".github/workflows/site.yml"
 
 permissions:
@@ -52,6 +56,7 @@ jobs:
           python3 tests/test_skill_docs.py
           python3 tests/test_s0028_site_workflow.py
           python3 tests/test_s0028_site_cli_floor.py
+          python3 tests/test_s0028_production_site.py
 
   deploy:
     needs: validate
@@ -75,6 +80,7 @@ jobs:
           released=$(gh release view --repo cauu/ouro-ops --json tagName --jq .tagName)
           python3 packaging/check-site-cli-floor.py --released "$released"
       - name: Deploy fixed assets-only Worker
+        id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -82,3 +88,7 @@ jobs:
           workingDirectory: web/onboarding
           wranglerVersion: "4.107.0"
           command: deploy
+      - name: Smoke deployed production site
+        env:
+          PRODUCTION_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: python3 packaging/verify-production-site.py --url "$PRODUCTION_URL"

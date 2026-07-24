@@ -197,7 +197,9 @@ def main():
 
         no_gh = root / "no-gh"
         no_gh.mkdir()
-        env = dict(os.environ, HOME=str(no_gh), PATH="/usr/bin:/bin")
+        no_gh_path = root / "no-gh-path"
+        no_gh_path.mkdir()
+        env = dict(os.environ, HOME=str(no_gh), PATH=str(no_gh_path))
         missing = subprocess.run(
             ["/bin/sh", str(INSTALL)], env=env, text=True, capture_output=True
         )

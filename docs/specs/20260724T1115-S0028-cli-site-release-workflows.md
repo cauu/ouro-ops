@@ -280,8 +280,11 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 - [x] p4-2 [Site/CLI Contract] 从 production Prompt 删除 repo-local candidate binding，
   加入 verified install/update、CLI-floor-before-Site gate 和 CLI publish 后的幂等 Site
   dispatch，保持 canonical Skill 唯一来源。
-- [ ] p5-1 [Production Acceptance] 完成一次真实 automatic bump CLI release 和一次
+- [~] p5-1 [Production Acceptance] 完成一次真实 automatic bump CLI release 和一次
   Cloudflare production deploy，固化 S0029 所需 baseline。
+- [x] p5-1-fix1 [Production Workflow Hardening] 修复真实验收发现的 runner PATH/PEP 668
+  CI portability、immutable release attestation 传播延迟和 deploy 后缺少自动 production
+  smoke，保持 p5-1 直到一次新的单 dispatch 全自动贯通才完成。
 
 ### Item → TC Mapping
 
@@ -295,6 +298,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 | p4-1 | TC-8 |
 | p4-2 | TC-9 |
 | p5-1 | TC-10 |
+| p5-1-fix1 | TC-11 |
 
 ## 4. Test And Acceptance Criteria
 
@@ -336,6 +340,11 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
   Site URL、CLI version/artifact digest、runner digest 与 verification evidence，可供
   S0029 直接引用。此时 TC-1 的 immutable release、repository permissions/rules、
   Cloudflare secret names 和 Worker identity 必须全部为 configured。
+- TC-11：missing-`gh` fixture 在 GitHub-hosted runner 上不能误用预装 `gh`；Debian 12
+  等 PEP 668 环境通过隔离 venv 运行 L2；release create 后以有界重试等待 immutable
+  release attestation；Cloudflare deploy 后使用 action 的 production URL 自动验证
+  HTTP/CSP/GitHub link、六个 canonical Skills、verified installer 和无 repo-local
+  candidate。对应 workflow source contracts 与完整本地回归均通过。
 
 Pass/fail：
 
@@ -390,6 +399,31 @@ Pass/fail：
   canonical verified-reinstall source and binds every Prompt to `$HOME/.local/bin/ouro-ops`；
   current-main Site deployment refuses before Cloudflare when the latest immutable CLI release is
   below any canonical Skill floor，and a completed CLI publish dispatches one current-main Site run。
+- 2026-07-24T11:59:35+08:00 timestamp correction：the preceding p4-2 completion entry
+  was recorded with an incorrect future wall-clock value；p4-2 completed before this correction。
+- 2026-07-24T11:59:35+08:00 p5-1 started：run the mandatory live prerequisite gate
+  before publishing or deploying；enabled repository immutable releases，created the reviewer-free
+  and zero-wait `production` environment，and restricted it to branch `main`。
+- 2026-07-24T11:59:35+08:00 p5-1 paused under the external-evidence exception：
+  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are not configured as `production`
+  environment secret names，and no secret source exists in the local process environment；no secret
+  value was requested，read，logged or invented，and no release/Site workflow was dispatched。
+- 2026-07-24T15:32:00+08:00 p5-1 resumed：the live prerequisite gate reports every
+  required fact configured without reading secret values；fast-forwarded `next` and `main` to
+  `94c263a` and dispatched one `patch` preparation run。
+- 2026-07-24T15:38:18+08:00 p5-1 first controlled run produced release commit
+  `a08cf25f79c9131566b4134579cad743ee21ab6a` and immutable `v0.1.1` with four native
+  controls and artifact attestations；the publish run stopped after release creation because
+  `gh release verify` raced GitHub's release-attestation propagation，so automatic Site dispatch did
+  not run。A later read-only verification passed；a manual current-main Site dispatch deployed
+  version `d8e61de2-2f70-45a9-a342-b903f339273b` only to diagnose the remaining path，not
+  to claim TC-10。
+- 2026-07-24T15:42:00+08:00 p5-1-fix1 started：repair the three production findings
+  without replacing or mutating immutable `v0.1.1`。
+- 2026-07-24T15:50:10+08:00 p5-1-fix1 completed：missing-`gh` now uses an actually
+  empty fixture PATH，L2 uses an isolated venv，release verification retries only the bounded
+  attestation-propagation window，and every Cloudflare deploy consumes the action's production URL
+  for an exact canonical-source smoke。
 
 ## 6. Validation Evidence (append-only)
 
@@ -455,6 +489,19 @@ Pass/fail：
 - TC-9 | stack: other | command: `make python-test && cargo test -q && git diff --check` |
   result: pass | note: the complete maintained Python/integration suite and all 183 Rust tests pass；
   legacy transport failure expectations now reflect the fixed pre-upload architecture probe。
+- TC-11 | stack: python | command: `python3 tests/test_s0028_release_assets.py &&
+  python3 tests/test_s0028_verified_reinstall.py && python3 tests/test_s0028_site_workflow.py &&
+  python3 tests/test_s0028_production_site.py` | result: pass | note: source contracts cover bounded
+  release-attestation retry，an actually missing `gh`，Cloudflare deployment URL wiring and exact
+  local production-form smoke。
+- TC-11 | stack: other | command: `make python-test && cargo test --locked -q && git diff
+  --check` | result: pass | note: the full maintained Python/integration suite and all 183 locked
+  Rust tests pass after the production portability fixes。
+- TC-11 | stack: ui | command: `python3 packaging/verify-production-site.py --url
+  https://ouro-ops-site.martincauu.workers.dev` | result: pass | note: the first deployed production
+  page returned HTTP success，network-denying CSP，canonical GitHub link，six byte-exact Skills and
+  the byte-exact verified installer，with no repo-local candidate；this diagnostic deployment is not
+  used as TC-10's automatic baseline。
 
 ## 7. Change Requests (append-only)
 

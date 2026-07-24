@@ -233,7 +233,16 @@ jobs:
             --verify-tag \
             --title "$TAG" \
             --notes "Ouro Ops $TAG"
-          gh release verify "$TAG"
+          verified=false
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if gh release verify "$TAG"; then
+              verified=true
+              break
+            fi
+            echo "Release attestation is not visible yet (attempt $attempt/12); retrying"
+            sleep 5
+          done
+          test "$verified" = true
       - name: Dispatch current-main Site after the CLI floor exists
         env:
           GH_TOKEN: ${{ github.token }}

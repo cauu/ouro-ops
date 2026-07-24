@@ -24,6 +24,9 @@ def main():
         "workingDirectory: web/onboarding",
         'wranglerVersion: "4.107.0"',
         "command: deploy",
+        "id: deploy",
+        "steps.deploy.outputs.deployment-url",
+        "packaging/verify-production-site.py --url",
     ):
         assert required in workflow, required
     for forbidden in (
