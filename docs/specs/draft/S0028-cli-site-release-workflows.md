@@ -49,7 +49,7 @@ Homebrew + npm、自更新 apply 等大范围基础设施。Operator 已接受�
 5. GitHub immutable Releases 是唯一 canonical binary source。每次 release 只发布四个
    tarball 与 `SHA256SUMS`，并为 tarball 生成 GitHub artifact attestations。
 6. 首次安装和更新使用同一个 GitHub-CLI verified reinstall：下载、验证、解包到
-   user-owned bin directory，再检查 `version`/`contract`。
+   `$HOME/.local/bin/ouro-ops`，再检查 `version`/`contract`；不使用 sudo。
 7. Production Site 只引用正式 `ouro-ops` 和 verified install/update 流程；首次 Site
    上线和提高 `requires-ouro`/contract floor 时必须先发布满足要求的 CLI。
 8. 完成一次真实 CLI release 与一次真实 Cloudflare production deploy，输出供 S0029
@@ -67,7 +67,7 @@ Homebrew + npm、自更新 apply 等大范围基础设施。Operator 已接受�
 | Artifact | 四个 single-binary tarball + `SHA256SUMS` |
 | Trust | GitHub immutable release + artifact attestation；固定 repo/workflow identity |
 | Distribution | 只使用 GitHub Releases；不做 Homebrew/npm |
-| Install/update | GitHub CLI verified reinstall；不做 `curl \| sh` 或 self-update apply |
+| Install/update | GitHub CLI verified reinstall 到 `$HOME/.local/bin/ouro-ops`；删除无真实线上能力的 `self-update` stub |
 | Bad release | 不覆盖、不降级；发布更高 patch 并更新 latest/site recommendation |
 | Site | PR build/test；`main` automatic Cloudflare deploy；无 Preview/PR comment gate |
 | Site/CLI ordering | 首发和 CLI floor 提升时先 CLI、后 Site；普通 Site 变更独立发布 |
@@ -92,8 +92,9 @@ Homebrew + npm、自更新 apply 等大范围基础设施。Operator 已接受�
   `uname -s`/`uname -m` probe；Agent 不能提供或替换 probe/runner bytes/path/digest。
 - ARM target rejection 不得影响 ARM control 管理 x86_64 target；control architecture
   与 remote runner architecture 是两个独立维度。
-- Placeholder signing identities、fake URLs、Homebrew formula 和未支持的 install
-  claims 必须从 live packaging/docs/site 删除，completed historical specs 保留。
+- `self-update` stub、placeholder signing identities、fake `install.sh`、Homebrew formula
+  和未支持的 distribution claims 必须从 live CLI/packaging/docs/site 删除，completed
+  historical specs 保留。
 - Custom domain 不是本 spec 完成门槛；稳定 Cloudflare Worker production URL 足以完成
   S0029 baseline。
 
@@ -203,13 +204,18 @@ Production Site 提供同一套 clone-free 流程用于首次安装和更新：
 3. 从固定 `cauu/ouro-ops` repository 下载 latest stable 对应 tarball。
 4. 使用固定 repository 与 release workflow identity 验证 immutable release asset 和
    artifact attestation。
-5. 验证 archive 只含一个 expected `ouro-ops`，再原子安装到 user-owned bin directory。
-6. 执行 `ouro-ops version` 和 `ouro-ops contract`；更新还需确认版本严格增加，不接受
-   prerelease 或 downgrade。
+5. 验证 archive 只含一个 expected `ouro-ops`，再在同目录写临时文件并原子 rename 到
+   `$HOME/.local/bin/ouro-ops`；不调用 sudo、不覆盖其他路径。
+6. 目标不存在时 fresh install；目标是相同 verified version/digest 时 no-write
+   idempotent success；目标是较旧 valid Ouro 时严格向前替换；目标是较新版本、
+   prerelease、未知/非 Ouro executable 或无法验证时 fail closed。
+7. 使用绝对 `OURO_BIN=$HOME/.local/bin/ouro-ops` 执行 `version`/`contract`，不依赖用户
+   当前 PATH；是否另行加入 PATH 不属于发布正确性。
 
-现有 `self-update --check` 不作为正式入口。可保留兼容命令，但 live docs/Site 不得声称
-它会查询或应用线上更新。Placeholder `install.sh`/Homebrew/signing identity 要么删除，
-要么改成明确 unsupported historical artifact；不能与 verified GitHub-CLI 流程并存。
+删除现有无真实线上能力的 `self-update` CLI command/help/tests，以及 live
+`packaging/install.sh`、`packaging/SIGNING_IDENTITY` 和
+`packaging/homebrew/ouro-ops.rb` placeholder。`packaging/RELEASE.md` 只描述本 spec 的
+GitHub-CLI verified reinstall，不保留第二套近似流程。
 
 ### E. Site Build And Deploy
 
@@ -253,8 +259,9 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 ## 3. Execution Plan
 
 - [ ] p1-1 [Release Prerequisites] 建立无 secret-value 的 external wiring verifier/runbook，
-  验证 immutable releases、scoped Actions permissions/repository rules、Cloudflare
-  environment secret names 和 Worker identity。
+  能验证 immutable releases、scoped Actions permissions/repository rules、Cloudflare
+  environment secret names 和 Worker identity；缺失时 typed report，且不阻塞后续
+  repo implementation，真实配置只在 p5-1 production acceptance 前强制通过。
 - [ ] p1-2 [Remote Architecture Gate] 在所有 ephemeral runner transport 前加入 fixed
   strict-SSH OS/arch probe；只允许 Linux/x86_64，ARM/unknown 在 upload/write 前 typed
   reject，四种 control architecture 行为一致。
@@ -264,8 +271,10 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 - [ ] p2-2 [Four-platform Publish] 重构 paired build，发布四个 single-binary tarball、
   `SHA256SUMS`、artifact attestations 和 immutable GitHub Release；PR/next 不运行完整
   matrix。
-- [ ] p3-1 [Verified Install/Update] 删除 live placeholder distribution claims，建立
-  GitHub-CLI clone-free download/verify/user-bin install 流程，覆盖首次安装和严格向前更新。
+- [ ] p3-1 [Verified Install/Update] 删除 `self-update` stub 和 live placeholder
+  distribution artifacts/claims，建立 GitHub-CLI clone-free download/verify、
+  `$HOME/.local/bin/ouro-ops` atomic install 流程，覆盖首次安装、同版本 no-write 和严格
+  向前更新。
 - [ ] p4-1 [Site Build/Deploy] 将 Site workflow 收敛为 PR build/test 与 `main`
   build/test/Cloudflare deploy；无 Preview/PR comment/custom-domain gate。
 - [ ] p4-2 [Site/CLI Contract] 从 production Prompt 删除 repo-local candidate binding，
@@ -289,9 +298,11 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 
 ## 4. Test And Acceptance Criteria
 
-- TC-1：不读取 secret value 即可证明 GitHub immutable releases、workflow permissions/
-  repository rule、`production` environment secret names 和 `ouro-ops-site` identity 已
-  配置；缺失项返回 actionable external prerequisite，不改 repository/release/site。
+- TC-1：不读取 secret value 即可检查 GitHub immutable releases、workflow permissions/
+  repository rule、`production` environment secret names 和 `ouro-ops-site` identity；
+  configured 与 missing 都返回 typed facts，缺失项给 actionable prerequisite 且不改
+  repository/release/site。Verifier/runbook 的测试通过即可完成 p1-1；真实 configured
+  状态由 TC-10 强制。
 - TC-2：fixed probe 对 Linux x86_64/amd64 选择唯一 embedded runner；Linux arm64、
   非 Linux、unknown/malformed/injected output 在任何 runner upload/target write 前返回
   `unsupported_target_arch`/typed blocker，且 `target_writes=false`、
@@ -308,8 +319,10 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
   archive、错误 repo/workflow identity、runner mismatch、同版本重发均失败。
 - TC-7：在无 repository checkout 的 clean macOS arm64/x86_64 和 Linux
   arm64/x86_64 control 环境完成 fresh install；至少在 macOS arm64 与 Linux x86_64
-  完成 N-1→N verified update、同版本幂等安装、prerelease/downgrade 拒绝。缺少 GitHub
-  CLI 时只给前置条件且不写 binary/PATH。
+  完成 N-1→N verified update、同版本同 digest no-write、prerelease/downgrade/未知
+  executable 拒绝。安装只写 `$HOME/.local/bin/ouro-ops` 并以绝对路径验证；缺少 GitHub
+  CLI 时只给前置条件且不写 binary/PATH。Live CLI/packaging/docs/site 中不存在
+  `self-update` stub、placeholder install/signing/Homebrew 第二流程。
 - TC-8：PR/fork 只构建测试且无 Cloudflare secrets/upload；`main` 使用 production
   environment 与固定 Wrangler 发布 assets-only Worker。无
   `pull_request_target`、Preview、PR comment 或人工 approval。
@@ -321,7 +334,8 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 - TC-10：受控 production run 从一次 patch/minor/major 选择自动产生唯一 release
   commit/tag、四个 verified assets 和 production Site；baseline 包含 source commit、
   Site URL、CLI version/artifact digest、runner digest 与 verification evidence，可供
-  S0029 直接引用。
+  S0029 直接引用。此时 TC-1 的 immutable release、repository permissions/rules、
+  Cloudflare secret names 和 Worker identity 必须全部为 configured。
 
 Pass/fail：
 
@@ -356,3 +370,8 @@ Pass/fail：
   删除 Site Preview/PR comment/custom-domain gate、自定义 release manifest、全 PR 四平台
   matrix、CLI release environment、Homebrew/npm/self-update apply 和独立签名链；
   安装/更新统一为 GitHub-CLI verified reinstall，S0018 以 replaced 归档。
+- 2026-07-24T11:11:58+08:00 final executability audit 收敛最后歧义：删除而非兼容保留
+  `self-update` stub 与 live placeholder install/signing/Homebrew artifacts；canonical
+  install path 固定为 `$HOME/.local/bin/ouro-ops`；p1-1 以 verifier/runbook 可独立完成，
+  external configured 状态延后到 p5-1/TC-10 production acceptance 强制，避免 secrets
+  wiring 阻塞 repo implementation。
