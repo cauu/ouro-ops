@@ -443,6 +443,10 @@ Pass/fail：
   Rocky curl fixes passed their former failure points；all three images then reached the web
   generator's explicit `node --check` and proved Node was absent from the L2 runtime dependency
   declaration。Add distro `nodejs` packages and keep the item in progress for another real matrix。
+- 2026-07-24T16:01:20+08:00 p5-1-fix2 third matrix finding：all Python and web checks
+  pass after adding Node；the shared Rust failure is the CLI control-key test's real
+  `ssh-keygen` dependency。Declare `openssh-client` on apt images and `openssh-clients` on Rocky，
+  then require one final three-distribution matrix。
 
 ## 6. Validation Evidence (append-only)
 
