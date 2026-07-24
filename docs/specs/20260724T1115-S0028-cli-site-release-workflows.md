@@ -268,7 +268,7 @@ workflow 显式 dispatch Site workflow 的 current `main`；Site 重新 build/te
 - [x] p2-1 [Version Preparation] 实现 deterministic patch/minor/major helper、
   Cargo.toml/Cargo.lock-only release commit/tag、concurrency/CAS gates 和 tag-ref publish
   dispatch；支持 exact partial publish recovery。
-- [ ] p2-2 [Four-platform Publish] 重构 paired build，发布四个 single-binary tarball、
+- [x] p2-2 [Four-platform Publish] 重构 paired build，发布四个 single-binary tarball、
   `SHA256SUMS`、artifact attestations 和 immutable GitHub Release；PR/next 不运行完整
   matrix。
 - [ ] p3-1 [Verified Install/Update] 删除 `self-update` stub 和 live placeholder
@@ -367,6 +367,12 @@ Pass/fail：
 - 2026-07-24T11:28:19+08:00 p2-1 completed：the one-input preparation workflow now
   performs deterministic Cargo-only bumps, main/CAS/tag/release gates, non-force commit/tag pushes
   and exact unpublished release recovery before tag-ref publish dispatch。
+- 2026-07-24T11:29:00+08:00 p2-2 started：implement native four-platform control
+  builds around one exact Linux/x86_64 runner, aggregate validation, attestations and immutable
+  GitHub Release publication。
+- 2026-07-24T11:34:00+08:00 p2-2 completed：added source-only PR/next checks and a
+  tag-ref native four-platform workflow that validates one embedded runner identity, creates four
+  single-binary archives, attests their canonical checksums and creates one immutable release。
 
 ## 6. Validation Evidence (append-only)
 
@@ -398,6 +404,15 @@ Pass/fail：
 - TC-3 | stack: rust | command: `cargo metadata --locked --no-deps && cargo test --locked
   -q && python3 tests/test_release_candidate.py` | result: pass | note: locked Cargo metadata,
   183 Rust tests and paired release-source contract remain valid after preparation refactor。
+- TC-5 | stack: python | command: `python3 tests/test_s0028_release_assets.py` | result:
+  pass | note: canonical four-target set, single executable archive shape, version/target
+  descriptors and one non-empty shared runner digest are enforced；runner labels map to native
+  Linux/macOS x86_64/arm64 hosts。
+- TC-6 | stack: python | command: `python3 tests/test_s0028_release_assets.py` | result:
+  pass | note: tampered tarball and runner mismatch fail；publish source uses tag-ref identity,
+  `actions/attest@v4` over canonical checksums, create-once release and `gh release verify`。
+- TC-5 | stack: python | command: `make python-test` | result: pass | note: maintained
+  Python release, packaging, Skill, deploy and safety contracts pass with the new publish boundary。
 
 ## 7. Change Requests (append-only)
 

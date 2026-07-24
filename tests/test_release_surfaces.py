@@ -11,14 +11,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main() -> None:
     release = (ROOT / ".github/workflows/release.yml").read_text()
+    release_check = (ROOT / ".github/workflows/release-check.yml").read_text()
+    release_publish = (ROOT / ".github/workflows/release-publish.yml").read_text()
     site = (ROOT / ".github/workflows/site.yml").read_text()
     yaml.safe_load(release)
+    yaml.safe_load(release_check)
+    yaml.safe_load(release_publish)
     yaml.safe_load(site)
-    assert "make release-candidate" in release
-    assert "tests/test_release_candidate.py" in release
-    assert "release-standard-not-published" in release
-    for forbidden in ("tauri-action", "upload-artifact", "GITHUB_TOKEN", "releaseDraft"):
-        assert forbidden not in release, f"CLI candidate workflow still publishes via {forbidden}"
+    assert "tests/test_release_candidate.py" in release_check
+    assert "workflow_dispatch:" in release and "workflow_dispatch:" in release_publish
+    assert "actions/attest@v4" in release_publish
+    assert 'gh release create "$TAG"' in release_publish
+    assert "pull_request:" not in release_publish and "\n  push:" not in release_publish
     assert "./web/onboarding/build.sh" in site
     assert "tests/test_web_generator.py" in site
     for forbidden in ("wrangler", "upload-artifact", "CLOUDFLARE_API_TOKEN"):

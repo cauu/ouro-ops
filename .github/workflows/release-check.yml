@@ -1,0 +1,49 @@
+name: CLI release source checks
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "crates/ouro/**"
+      - "data/releases.json"
+      - "packaging/**"
+      - "tests/test_release_candidate.py"
+      - "tests/test_s0028_release_*.py"
+      - ".github/workflows/release*.yml"
+  push:
+    branches:
+      - main
+      - next
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "crates/ouro/**"
+      - "data/releases.json"
+      - "packaging/**"
+      - "tests/test_release_candidate.py"
+      - "tests/test_s0028_release_*.py"
+      - ".github/workflows/release*.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify release source without publication
+        run: |
+          set -euo pipefail
+          python3 tests/test_s0028_release_version.py
+          python3 tests/test_s0028_release_assets.py
+          python3 tests/test_release_candidate.py
+          cargo test --locked

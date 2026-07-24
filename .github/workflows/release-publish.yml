@@ -1,0 +1,236 @@
+name: Publish CLI release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact stable version already committed and tagged
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-release
+  cancel-in-progress: false
+
+jobs:
+  verify-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      tag: ${{ steps.identity.outputs.tag }}
+      release_sha: ${{ steps.identity.outputs.release_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify immutable release source identity
+        id: identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          test "$VERSION" = "$(python3 packaging/release-version.py current)"
+          tag="v$VERSION"
+          test "$GITHUB_REF" = "refs/tags/$tag"
+          test "$GITHUB_SHA" = "$(git rev-list -n1 "$tag")"
+          test "$(git log -1 --format=%s "$GITHUB_SHA")" = "chore(release): $tag"
+          python3 - "$VERSION" Cargo.lock <<'PY'
+          import pathlib, re, sys
+          version, text = sys.argv[1], pathlib.Path(sys.argv[2]).read_text()
+          block = text.split('name = "ouro"', 1)[1].split("[[package]]", 1)[0]
+          assert re.search(rf'^version = "{re.escape(version)}"$', block, re.M), block
+          PY
+          ! gh release view "$tag" >/dev/null 2>&1
+          echo "version=$VERSION" >>"$GITHUB_OUTPUT"
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "release_sha=$GITHUB_SHA" >>"$GITHUB_OUTPUT"
+
+  linux-runner:
+    needs: verify-tag
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - name: Build exact static Linux/x86_64 runner
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc \
+            cargo build --locked --release --target x86_64-unknown-linux-musl --bin ouro-ops
+          runner=target/x86_64-unknown-linux-musl/release/ouro-ops
+          file "$runner" | grep -Eq 'ELF 64-bit.*x86-64'
+          ! readelf -l "$runner" | grep -q INTERP
+          mkdir -p runner
+          cp "$runner" runner/ouro-ops-linux-x86_64
+          chmod 0500 runner/ouro-ops-linux-x86_64
+          sha256sum runner/ouro-ops-linux-x86_64 >runner/SHA256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: embedded-linux-x86_64-runner
+          path: runner/
+          if-no-files-found: error
+          retention-days: 1
+
+  control:
+    needs:
+      - verify-tag
+      - linux-runner
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+            expected_os: Linux
+            expected_arch: x86_64
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+            expected_os: Linux
+            expected_arch: aarch64
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            expected_os: Darwin
+            expected_arch: x86_64
+          - target: aarch64-apple-darwin
+            runner: macos-15
+            expected_os: Darwin
+            expected_arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: embedded-linux-x86_64-runner
+          path: runner
+      - name: Install native musl linker
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+      - name: Build, execute and package native control
+        env:
+          EXPECTED_ARCH: ${{ matrix.expected_arch }}
+          EXPECTED_OS: ${{ matrix.expected_os }}
+          RELEASE_SHA: ${{ needs.verify-tag.outputs.release_sha }}
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$RELEASE_SHA"
+          test "$(uname -s)" = "$EXPECTED_OS"
+          test "$(uname -m)" = "$EXPECTED_ARCH"
+          runner="$GITHUB_WORKSPACE/runner/ouro-ops-linux-x86_64"
+          chmod 0500 "$runner"
+          runner_sha=$(shasum -a 256 "$runner" | awk '{print $1}')
+          if test "$EXPECTED_OS" = Linux; then
+            linker_env="CARGO_TARGET_$(printf '%s' "$TARGET" | tr '[:lower:]-' '[:upper:]_')_LINKER"
+            export "$linker_env=musl-gcc"
+          fi
+          OURO_EMBED_LINUX_X86_64_RUNNER="$runner" \
+            cargo build --locked --release --target "$TARGET" --bin ouro-ops
+          binary="target/$TARGET/release/ouro-ops"
+          if test "$EXPECTED_OS" = Linux; then
+            ! readelf -l "$binary" | grep -q INTERP
+          fi
+          OURO_JSON=1 "$binary" version >"version-$TARGET.json"
+          OURO_JSON=1 "$binary" contract >"contract-$TARGET.json"
+          python3 - "$VERSION" "$TARGET" "$runner_sha" \
+            "version-$TARGET.json" "contract-$TARGET.json" <<'PY'
+          import json, pathlib, sys
+          version, target, runner_sha = sys.argv[1:4]
+          version_record = json.loads(pathlib.Path(sys.argv[4]).read_text())
+          contract = json.loads(pathlib.Path(sys.argv[5]).read_text())["data"]
+          assert version_record["data"]["version"] == version, version_record
+          assert contract["ouro_version"] == version, contract
+          assert contract["runner_platform"] == "linux/x86_64", contract
+          assert contract["runner_sha256"] == runner_sha, (contract, runner_sha)
+          PY
+          package="ouro-ops-v$VERSION-$TARGET.tar.gz"
+          mkdir -p package-root "dist-$TARGET"
+          cp "$binary" package-root/ouro-ops
+          chmod 0755 package-root/ouro-ops
+          COPYFILE_DISABLE=1 tar -C package-root -czf "dist-$TARGET/$package" ouro-ops
+          test "$(tar -tzf "dist-$TARGET/$package")" = ouro-ops
+          package_sha=$(shasum -a 256 "dist-$TARGET/$package" | awk '{print $1}')
+          python3 - "$TARGET" "$VERSION" "$runner_sha" "$package" "$package_sha" \
+            "dist-$TARGET/descriptor-$TARGET.json" <<'PY'
+          import json, pathlib, sys
+          target, version, runner_sha, package, package_sha, output = sys.argv[1:]
+          pathlib.Path(output).write_text(json.dumps({
+              "package": package,
+              "package_sha256": package_sha,
+              "runner_platform": "linux/x86_64",
+              "runner_sha256": runner_sha,
+              "target": target,
+              "version": version,
+          }, sort_keys=True) + "\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: control-${{ matrix.target }}
+          path: dist-${{ matrix.target }}/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs:
+      - verify-tag
+      - control
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: control-*
+          path: release
+          merge-multiple: true
+      - name: Verify four controls and generate canonical checksums
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 packaging/verify-release-assets.py \
+            --dir release --version "$VERSION" --write-checksums
+          (cd release && sha256sum --check SHA256SUMS)
+      - name: Attest all four release archives
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release/SHA256SUMS
+      - name: Publish immutable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.verify-tag.outputs.tag }}
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          ! gh release view "$TAG" >/dev/null 2>&1
+          gh release create "$TAG" \
+            release/ouro-ops-v"$VERSION"-*.tar.gz \
+            release/SHA256SUMS \
+            --verify-tag \
+            --title "$TAG" \
+            --notes "Ouro Ops $TAG"
+          gh release verify "$TAG"
