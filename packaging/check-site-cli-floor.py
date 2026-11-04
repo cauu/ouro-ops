@@ -11,14 +11,8 @@ import sys
 
 
 STABLE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-REQUIRED_SKILLS = (
-    "observability",
-    "troubleshooting",
-    "runtime",
-    "upgrade",
-    "kes-rotation",
-    "deploy",
-)
+# Only skills that drive the ouro-ops CLI declare a floor.
+REQUIRED_SKILLS = ("kes-rotation",)
 
 
 def version(value: str) -> tuple[int, int, int]:
@@ -32,7 +26,7 @@ def version(value: str) -> tuple[int, int, int]:
 def skill_floor(path: pathlib.Path) -> tuple[int, int, int]:
     text = path.read_text()
     front = text.split("\n---\n", 1)[0]
-    match = re.search(r'^requires_ouro:\s*["\']?>=(\d+\.\d+\.\d+)["\']?\s*$', front, re.M)
+    match = re.search(r'^\s*requires_ouro:\s*["\']?>=(\d+\.\d+\.\d+)["\']?\s*$', front, re.M)
     if not match:
         raise ValueError(f"{path} has no exact >= stable requires_ouro floor")
     return version(match.group(1))

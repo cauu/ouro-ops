@@ -12,14 +12,7 @@ import urllib.error
 import urllib.request
 
 
-PUBLIC_SKILLS = {
-    "deploy": "deploy/SKILL.md",
-    "kes-rotation": "kes-rotation/SKILL.md",
-    "observability": "observability/SKILL.md",
-    "runtime": "runtime/SKILL.md",
-    "troubleshooting": "troubleshooting/SKILL.md",
-    "upgrade": "upgrade/SKILL.md",
-}
+PUBLIC_SKILLS = ("pool-ops", "kes-rotation")
 MAX_HTML_BYTES = 5 * 1024 * 1024
 
 
@@ -56,19 +49,11 @@ def verify(
     if "./target/release-candidate-control/release/ouro-ops" in html:
         raise ValueError("production HTML contains the retired repo-local CLI candidate")
 
-    payload_match = re.search(r"const SKILL_PAYLOADS = (\{[^\n]+\});", html)
-    if not payload_match:
-        raise ValueError("production HTML lacks the generated Skill payload")
-    payload = json.loads(payload_match.group(1))
-    if set(payload) != set(PUBLIC_SKILLS):
-        raise ValueError("production HTML does not contain exactly six public Skills")
-    for operation, relative in PUBLIC_SKILLS.items():
-        canonical = (skills_root / relative).read_text(encoding="utf-8")
-        item = payload.get(operation)
-        if not isinstance(item, dict) or item.get("content") != canonical:
-            raise ValueError(f"production {operation} Skill differs from canonical source")
+    names_match = re.search(r"const SKILL_NAMES = (\[[^\n]*\]);", html)
+    if not names_match or json.loads(names_match.group(1)) != list(PUBLIC_SKILLS):
+        raise ValueError("production HTML does not list exactly the public skills")
 
-    install_match = re.search(r'const INSTALL_BOOTSTRAP = (".*");', html)
+    install_match = re.search(r'const INSTALL_COMMAND = (".*");', html)
     if not install_match:
         raise ValueError("production HTML lacks the verified install bootstrap")
     bootstrap = json.loads(install_match.group(1))
@@ -86,14 +71,14 @@ def verify(
         raise ValueError("production install bootstrap retains obsolete local installer verification")
     if json.dumps(installer_source.read_text(encoding="utf-8"), ensure_ascii=False) in html:
         raise ValueError("production HTML embeds the complete installer")
-    if 'id="copy-setup"' not in html or "clip(INSTALL_BOOTSTRAP)" not in html:
-        raise ValueError("production HTML lacks the install-command copy action")
+    if 'data-copy="install-prompt"' not in html or 'data-copy="cli-install"' not in html:
+        raise ValueError("production HTML lacks the install copy actions")
 
     return {
         "status": "ok",
         "changed": False,
         "bytes": len(html.encode("utf-8")),
-        "skill_count": len(payload),
+        "skill_count": len(PUBLIC_SKILLS),
         "csp_network_denied": True,
         "github_link": "https://github.com/cauu/ouro-ops",
         "footer_attribution": True,
@@ -102,6 +87,13 @@ def verify(
         "installer_embedded": False,
         "repo_local_candidate": False,
     }
+
+
+def verify_skill_files(read, skills_root: pathlib.Path) -> None:
+    for name in PUBLIC_SKILLS:
+        canonical = (skills_root / name / "SKILL.md").read_text(encoding="utf-8")
+        if read(f"skills/{name}/SKILL.md") != canonical:
+            raise ValueError(f"published {name} SKILL.md differs from canonical source")
 
 
 def fetch(url: str) -> tuple[str, str]:
@@ -138,12 +130,17 @@ def main() -> int:
     try:
         if args.url:
             observed_url, html = fetch(args.url)
+            base = observed_url.rstrip("/") + "/"
+            read = lambda rel: fetch(base + rel)[1]  # noqa: E731
         else:
             observed_url = args.file.resolve().as_uri()
             html = args.file.read_text(encoding="utf-8")
+            site = args.file.resolve().parent
+            read = lambda rel: (site / rel).read_text(encoding="utf-8")  # noqa: E731
         result = verify(
             html, args.skills_root, args.install_bootstrap, args.installer_source
         )
+        verify_skill_files(read, args.skills_root)
         result["url"] = observed_url
     except (
         OSError,

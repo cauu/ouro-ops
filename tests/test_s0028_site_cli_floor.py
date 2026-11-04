@@ -41,8 +41,8 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         skills = pathlib.Path(tmp) / "skills"
         shutil.copytree(ROOT / "ouro-skills", skills)
-        deploy = skills / "deploy" / "SKILL.md"
-        deploy.write_text(deploy.read_text().replace('requires_ouro: ">=0.1.0"', 'requires_ouro: ">=0.2.0"'))
+        deploy = skills / "kes-rotation" / "SKILL.md"
+        deploy.write_text(deploy.read_text().replace('requires_ouro: ">=0.1.0"', 'requires_ouro: ">=0.2.0"', 1))
         blocked = run(skills, "v0.1.9")
         assert blocked.returncode == 1
         ready = run(skills, "v0.2.0")

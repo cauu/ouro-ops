@@ -59,3 +59,5 @@ ouro-kes-rotation/
 
 # Operator-local pool description (hosts/IPs/creds routing) — not part of the repo
 pool-spec.yaml
+# private pool notes next to pool-spec.yaml
+POOL-NOTES.md

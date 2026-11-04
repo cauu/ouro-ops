@@ -58,11 +58,9 @@ def main() -> None:
     assert "connect-src 'none'" in page
     assert "fetch(" not in page
     assert "node_version:" not in page
-    assert "release-paired ephemeral Linux runner" in page
-    assert "$HOME/.local/bin/ouro-ops" in page
     assert "./target/release-candidate-control/release/ouro-ops" not in page
     assert "__OURO_INSTALL_BOOTSTRAP_JSON__" in page
-    assert "Do not invoke or fall back to another ouro-ops on PATH" in page
+    assert "__OURO_SKILL_NAMES_JSON__" in page
     assert "brew install ouro/tap/ouro" not in page
     assert "ouro.example/install.sh" not in page
     print("current release/site/documentation boundaries passed")

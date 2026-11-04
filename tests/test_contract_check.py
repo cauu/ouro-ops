@@ -10,15 +10,6 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BIN = ROOT / "target" / "debug" / "ouro-ops"
-SKILLS = (
-    "observability",
-    "troubleshooting",
-    "runtime",
-    "upgrade",
-    "kes-rotation",
-    "deploy",
-)
-
 
 def run_check(temp: pathlib.Path, ouro: str, contract: str):
     env = os.environ.copy()
@@ -75,20 +66,6 @@ def test_contract_check_accepts_and_refuses_without_state():
             assert "install" in record["error"]["hint"]
 
 
-def test_six_skills_run_exact_front_matter_check_first():
-    for name in SKILLS:
-        text = (ROOT / "ouro-skills" / name / "SKILL.md").read_text()
-        command = (
-            "ouro-ops contract check --requires-ouro '>=0.1.0' "
-            "--requires-contract 1"
-        )
-        assert text.count(command) == 1, name
-        assert text.find("ouro-ops") == text.find(command), name
-        assert text.find(command) < text.find("## Purpose"), name
-        prefix = text[: text.find(command)]
-        assert "Before reading a pool spec" in prefix, name
-
-
 def test_pure_contract_module_has_no_state_or_transport_dependencies():
     source = (ROOT / "crates" / "ouro" / "src" / "contract.rs").read_text()
     for forbidden in (
@@ -105,6 +82,5 @@ def test_pure_contract_module_has_no_state_or_transport_dependencies():
 
 if __name__ == "__main__":
     test_contract_check_accepts_and_refuses_without_state()
-    test_six_skills_run_exact_front_matter_check_first()
     test_pure_contract_module_has_no_state_or_transport_dependencies()
     print("pure external-Skill contract preflight passed")

@@ -1,45 +1,14 @@
 # Ouro Ops
 
-面向 Cardano Stake Pool 的确定性运维 CLI。用户把网站生成的 operation prompt 交给 AI agent；
-prompt 已包含网站从 canonical `ouro-skills/` 生成的完整 Skill；agent 先运行纯兼容性检查，再只向
-类型化操作传参数，危险写入仍由运维方对最终 live plan 显式确认。CLI 不内嵌决策 Skill。
+让 AI Agent（Grok Bot、Claude Code 等）运维 Cardano 矿池。
 
-当前 active 规格是
-[`S0025 Release-ready external Skills and digest-pinned operations`](docs/specs/20260718T2158-S0025-release-ready-external-skills-digest-pinned-operations.md)。
-S0019 的目标机常驻 CLI、adoption attestation 和 control↔target 版本耦合已退出普通操作路径。
+- [`ouro-skills/pool-ops`](ouro-skills/pool-ops/SKILL.md)：日常运维。Agent 直接通过 SSH + docker compose 做状态检查、出块就绪判断、排障、重启、改配置和升级；会改动节点的操作先给用户确认。
+- [`ouro-skills/kes-rotation`](ouro-skills/kes-rotation/SKILL.md)：KES 轮换。通过 `ouro-ops` CLI 在 BP 上生成新 KES 密钥，生成离线冷签包，校验后安装。
+- `ouro-ops` CLI（`crates/ouro`）：目前只有 KES 轮换需要它。
 
-## 当前架构
+官网（`web/onboarding`）给出一段可以直接发给 Agent 的安装指令，并在 `/skills/<name>/SKILL.md` 发布这两个 Skill。
 
-| 层 | 角色 | 当前职责 |
-| --- | --- | --- |
-| Agent harness | Codex / Claude Code 等 | 对话、展示 plan、等待运维方批准 |
-| External Skills | `ouro-skills/` / 网站生成内容 | 决策框架、停止条件、红线和准确命令；不打包进 CLI |
-| Control CLI | `crates/ouro` 的 `ouro-ops` | pool-spec/凭据/host key、签名策略、plan/confirm/permit、审计 |
-| Ephemeral runner | control release 内嵌 Linux/x86_64 静态 runner | 每次操作临时传到目标、校验、执行闭合命令、返回结构化结果并清理 |
-| BP / Relay | 现有 `cardano` SSH 账号 + Cardano 容器 | 不需要常驻 Ouro CLI、daemon、gate、attestation 或 Ouro 版本状态 |
-
-一次普通远端操作会创建 run-unique 0700 临时目录，校验 control 选定 runner 的 SHA-256，
-通过 `sudo env -i` 执行闭合的 `target` 子命令，限制时间/输出并清理。agent 不能选择 runner、远端
-路径、hash 或 sudo argv。
-
-## 运维流程
-
-- 只读 observability 直接从当前节点 tip 返回证据，无 adoption/confirmation 前置条件。
-- runtime、KES、upgrade 的 `--plan` 绑定 pool spec、host key、role/network/genesis、签名 OCI
-  策略与当前容器状态。
-- apply 必须携带 operator 批准的 `candidate_hash` 和一次性 confirm token，并在写前重新生成同一
-  candidate；运行时漂移会在 mutation 前拒绝。
-- restart/KES/upgrade step 还需要最后生成、180 秒有效的 fleet permit，机制校验 relay quorum 与
-  BP-last。
-- KES opcert 先在 control 本地 `inbox preview`，实际 apply 才和 runner 一次性传输；目标没有持久
-  inbox。Upgrade 镜像不经过 Ouro，由批准后的目标 runner 从 Blink Labs GHCR 拉取签名 catalog
-  绑定的精确 platform-manifest digest。
-- troubleshooting 复用 pool spec 中现有 `cardano` 账号。host-key、超时、输出和审计仍受控，但
-  必须先运行按角色解释的 typed snapshot；仅针对剩余证据缺口使用 `diag exec`。诊断不是 OS
-  机制强制的只读通道；这是 S0020 明确选择的 honest-agent 边界。
-
-完整命令与能力顺序见 [`docs/S0020-operations.md`](docs/S0020-operations.md) 和网站复制的对应
-canonical Skill。每个 Skill 的第一个 Ouro 动作都是无状态的 `contract check`。
+矿池信息放在 Agent 机器上的 `pool-spec.yaml`（schema：[`schemas/pool-spec.schema.json`](schemas/pool-spec.schema.json)）；矿池特有的情况写在旁边的 `POOL-NOTES.md`。这两个文件都不进仓库。
 
 ## 快速开始
 
